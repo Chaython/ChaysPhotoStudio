@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Chay's Photo Studio</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <img src="icons/icon-128.png" width="28" height="28" alt="Chay's Photo Studio logo">
+      <div>
+        <h1>Chay's Photo Studio</h1>
+        <p class="sub">Photoshop-class editor in a tab</p>
+      </div>
+    </header>
+
+    <button id="open-editor" class="primary" type="button">
+      <svg width="14" height="14" viewBox="0 0 64 64" aria-hidden="true"><path d="M 44 18 A 18 18 0 1 0 44 46" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/></svg>
+      Open editor
+    </button>
+
+    <section class="url-box">
+      <label for="editor-url">Editor location</label>
+      <input id="editor-url" type="url" placeholder="https://your-chays-photo-studio.example.com" spellcheck="false">
+      <button id="save-url" type="button">Save</button>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="hint">
+      <strong>Right-click any image</strong> on any page and choose
+      <em>“Edit image in Chay's Photo Studio”</em> — it opens in a new tab and loads straight onto the canvas.
+    </section>
+
+    <footer>
+      <span>© Chaython Meredith · free for consumer &amp; education use</span>
+      <a href="https://github.com/sponsors/Chaython" target="_blank" rel="noreferrer">Donate</a>
+    </footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

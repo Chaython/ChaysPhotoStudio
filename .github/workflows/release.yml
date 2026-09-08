@@ -1,0 +1,289 @@
+# ============================================================
+# Chay's Photo Studio — Release pipeline
+# Triggers: git tag v*.*.* (full release) or manual dispatch
+# (builds artifacts, no release publish).
+#
+# Products:
+#   • Web (self-hostable Next.js standalone bundle)
+#   • Electron desktop installers (Windows NSIS, macOS dmg
+#     universal, Linux AppImage + deb) — fully offline
+#   • System-webview shell (Tauri: deb/AppImage/dmg/nsis)
+#     — tiny binary hosting your deployed editor URL
+#   • Browser plugin zips (Chrome MV3 + Firefox variant)
+#   • GitHub Release with all assets + SHA256SUMS.txt
+#
+# Repository variables (Settings → Secrets and variables → Actions
+# → Variables) — all optional:
+#   WEBVIEW_APP_URL  deployed editor URL for the webview shell
+#                    (default: http://localhost:3000 + warning)
+#   EDITOR_URL       default editor URL baked into the browser
+#                    plugin (default: http://localhost:3000)
+# ============================================================
+name: Release — Build & Distribute
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------
+  # Web bundle + shared icons (standalone server, self-hostable)
+  # ---------------------------------------------------------
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          NEXT_TELEMETRY_DISABLED: 1
+        run: bun install --frozen-lockfile
+
+      - name: Generate app icons
+        run: node scripts/gen-icons.mjs
+
+      - name: Build (Next.js standalone)
+        run: bun run build
+
+      - name: Bundle standalone server for self-hosting
+        run: tar -czf web-standalone.tar.gz -C .next/standalone .
+
+      - name: Upload web bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-standalone
+          path: web-standalone.tar.gz
+          if-no-files-found: error
+
+      - name: Upload icons (electron builder resources)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-icons
+          path: build/icons
+          if-no-files-found: error
+
+      - name: Upload icons (tauri)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-icons
+          path: webview/src-tauri/icons
+          if-no-files-found: error
+
+  # ---------------------------------------------------------
+  # Electron desktop installers — one leg per OS (native modules
+  # are platform-specific, so each OS runs its own full build)
+  # ---------------------------------------------------------
+  electron:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            builder-args: --linux
+          - os: windows-latest
+            builder-args: --win
+          - os: macos-latest
+            builder-args: --mac --universal
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+        run: bun install --frozen-lockfile
+
+      - name: Generate app icons
+        run: node scripts/gen-icons.mjs
+
+      - name: Build (Next.js standalone)
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+        run: bun run build
+
+      - name: Assemble Electron app
+        run: node scripts/prepare-electron-app.mjs
+
+      - name: Package installers (electron-builder)
+        run: bunx electron-builder ${{ matrix.builder-args }} --config electron-builder.yml --publish never
+        env:
+          # unsigned CI builds — see DISTRIBUTION.md for local signing
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-${{ matrix.os }}
+          path: |
+            build/electron/dist/*.exe
+            build/electron/dist/*.dmg
+            build/electron/dist/*.AppImage
+            build/electron/dist/*.deb
+            build/electron/dist/latest*.yml
+          if-no-files-found: error
+
+  # ---------------------------------------------------------
+  # System-webview shell (Tauri v2 — uses the OS webview,
+  # hosts the deployed editor; tiny binaries)
+  # ---------------------------------------------------------
+  webview:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            bundles: deb,appimage
+          - os: windows-latest
+            bundles: nsis
+          - os: macos-latest
+            bundles: dmg,app
+    runs-on: ${{ matrix.os }}
+    needs: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Linux build dependencies (webkit2gtk)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: webview/src-tauri
+
+      - name: Restore icons
+        uses: actions/download-artifact@v4
+        with:
+          name: tauri-icons
+          path: webview/src-tauri/icons
+
+      - name: Point the shell at the editor URL
+        run: node scripts/webview-config.mjs
+        env:
+          WEBVIEW_APP_URL: ${{ vars.WEBVIEW_APP_URL || 'http://localhost:3000' }}
+
+      - name: Build webview shell
+        working-directory: webview/src-tauri
+        run: bunx @tauri-apps/cli build --config tauri.conf.release.json --bundles ${{ matrix.bundles }}
+
+      - name: Upload webview bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: webview-${{ matrix.os }}
+          path: |
+            webview/src-tauri/target/release/bundle/**/*.deb
+            webview/src-tauri/target/release/bundle/**/*.AppImage
+            webview/src-tauri/target/release/bundle/**/*.dmg
+            webview/src-tauri/target/release/bundle/**/*.app/**
+            webview/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+  # ---------------------------------------------------------
+  # Browser plugin (Chrome MV3 + Firefox variant zips)
+  # ---------------------------------------------------------
+  extension:
+    runs-on: ubuntu-latest
+    needs: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore icons
+        uses: actions/download-artifact@v4
+        with:
+          name: app-icons
+          path: build/icons
+
+      - name: Build plugin zips
+        run: node scripts/build-extension.mjs
+        env:
+          EDITOR_URL: ${{ vars.EDITOR_URL || 'http://localhost:3000' }}
+
+      - name: Upload plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-extension
+          path: build/extension
+          if-no-files-found: error
+
+  # ---------------------------------------------------------
+  # GitHub Release — everything above + checksums (tags only)
+  # ---------------------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [web, electron, webview, extension]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Flatten into release folder
+        run: |
+          mkdir -p release
+          find dist -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \
+            -o -name '*.deb' -o -name '*.zip' -o -name '*.tar.gz' \
+            -o -name '*.app' \) -exec cp -r {} release/ \; 2>/dev/null || true
+          # .app is a directory bundle (macOS webview shell)
+          find dist -type d -name '*.app' -exec cp -r {} release/ \; 2>/dev/null || true
+          ls -R release | head -50
+
+      - name: Generate checksums
+        run: |
+          cd release
+          find . -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: ${{ contains(github.ref, '-') }}
+          generate_release_notes: true
+          files: |
+            release/*
+          body: |
+            **Chay's Photo Studio** — distribution build
+
+            | Channel | Assets |
+            |---|---|
+            | 🖥️ Electron desktop (fully offline) | `ChaysPhotoStudio-Setup-*.exe` (Windows) · `ChaysPhotoStudio-*-universal.dmg` (macOS) · `*.AppImage` / `*.deb` (Linux) |
+            | 🪶 Webview shell (tiny, hosts the deployed editor) | `chays-photo-studio-webview_*` bundles |
+            | 🧩 Browser plugin | `chays-photo-studio-extension-*.zip` (Chrome) · `chays-photo-studio-extension-firefox-*.zip` |
+            | 🌐 Self-hosting | `web-standalone.tar.gz` (Node ≥ 20, `node server.js`) |
+
+            See `DISTRIBUTION.md` in the repository for install instructions, repository
+            variables (`WEBVIEW_APP_URL`, `EDITOR_URL`), and signing notes.
+
+            © Chaython Meredith — free for consumer and education use · commercial
+            licensing: chaython@live.ca · support development:
+            https://github.com/sponsors/Chaython

@@ -1,0 +1,258 @@
+// ============================================================
+// Type & Shape tools (Task 2-b upgrade)
+//  Text: clicking an existing text layer's measured glyph bounds ACTIVATES it
+//  (scratch-canvas measureText, same metrics as renderTextCanvas) instead of
+//  stacking new layers. New layers are created with content '' — the
+//  TextLayerEditor in canvas-workspace opens its textarea automatically when
+//  the active text layer has empty content; a `zphoto:edit-text` window event
+//  is also dispatched for future listeners.
+//  Shape: live preview of the actual shape path while dragging (overlay),
+//  Shift constrains to square / 45° lines.
+// ============================================================
+import type { Tool, PointerInfo, ShapeSpec } from '../types'
+import { engine } from '../engine/engine'
+import { getOptions, getFgColor, newDrag, drawCross, drawDashedRect } from './shared'
+import { measureTextSpecBounds } from './dab-utils'
+import { rectFromPoints } from '../utils/canvas'
+
+// ============================================================
+// Type tool
+// ============================================================
+
+/** activate an existing text layer under the cursor, if any */
+function textLayerAt(docX: number, docY: number): string | null {
+  const doc = engine.activeDoc
+  if (!doc) return null
+  for (let i = doc.layers.length - 1; i >= 0; i--) {
+    const l = doc.layers[i]
+    if (l.kind !== 'text' || !l.text || !l.visible) continue
+    const b = measureTextSpecBounds(l.text)
+    if (docX >= b.x && docX <= b.x + b.w && docY >= b.y && docY <= b.y + b.h) return l.id
+  }
+  return null
+}
+
+function editTextLayer(layerId: string) {
+  const doc = engine.activeDoc
+  if (!doc) return
+  doc.activeLayerId = layerId
+  // TextLayerEditor renders its textarea when the active text layer's content
+  // is '' — engine.emit() bumps renderTick so it mounts immediately
+  engine.emit()
+  try {
+    window.dispatchEvent(new CustomEvent('zphoto:edit-text', { detail: { layerId } }))
+  } catch { /* non-browser context */ }
+}
+
+export const textTool: Tool = {
+  id: 'text',
+  cursor: 'text',
+
+  onPointerDown(p: PointerInfo) {
+    if (p.button !== 0) return
+    const doc = engine.activeDoc
+    if (!doc) return
+    const opts = getOptions('text')
+
+    // click on existing text bounds → activate that layer for editing
+    const hit = textLayerAt(p.docX, p.docY)
+    if (hit) {
+      editTextLayer(hit)
+      return
+    }
+
+    // create a new text layer with EMPTY content so the inline editor opens
+    const layer = engine.addTextLayer({
+      x: Math.round(p.docX), y: Math.round(p.docY),
+      fontSize: opts.size ?? 48,
+      fontFamily: opts.family ?? 'Georgia, serif',
+      color: opts.color ?? getFgColor(),
+      bold: !!opts.bold, italic: !!opts.italic,
+      align: opts.align ?? 'left',
+      content: '',
+    })
+    if (layer) editTextLayer(layer.id)
+  },
+
+  onDoubleClick(p: PointerInfo) {
+    const hit = textLayerAt(p.docX, p.docY)
+    if (hit) editTextLayer(hit)
+  },
+
+  renderOverlay(ctx, view, w, h, mouse) {
+    void view; void w; void h
+    if (mouse) {
+      // I-beam-ish marker: cross + baseline ticks
+      ctx.save()
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(mouse.x - 10, mouse.y); ctx.lineTo(mouse.x + 10, mouse.y)
+      ctx.moveTo(mouse.x, mouse.y - 10); ctx.lineTo(mouse.x, mouse.y + 10)
+      ctx.moveTo(mouse.x - 4, mouse.y - 13); ctx.lineTo(mouse.x + 4, mouse.y - 13)
+      ctx.moveTo(mouse.x - 4, mouse.y + 13); ctx.lineTo(mouse.x + 4, mouse.y + 13)
+      ctx.stroke()
+      ctx.restore()
+    }
+  },
+}
+
+// ============================================================
+// Shape tool
+// ============================================================
+let drag = newDrag()
+let shapeRect: { x: number; y: number; w: number; h: number } | null = null
+/** raw (un-normalized) drag vector for lines */
+let shapeVec: { x0: number; y0: number; x1: number; y1: number } | null = null
+
+function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
+  const opts = getOptions('shape')
+  const isLine = opts.shape === 'line'
+  let r = rectFromPoints(drag.startX, drag.startY, p.docX, p.docY)
+  let vec = { x0: drag.startX, y0: drag.startY, x1: p.docX, y1: p.docY }
+  if (p.shift) {
+    if (isLine) {
+      // constrain the line to 45° increments
+      const dx = p.docX - drag.startX, dy = p.docY - drag.startY
+      const dist = Math.hypot(dx, dy)
+      const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4)
+      vec = { x0: drag.startX, y0: drag.startY, x1: drag.startX + Math.cos(angle) * dist, y1: drag.startY + Math.sin(angle) * dist }
+      r = rectFromPoints(vec.x0, vec.y0, vec.x1, vec.y1)
+    } else {
+      const s = Math.max(r.w, r.h)
+      const sx = p.docX >= drag.startX ? 1 : -1
+      const sy = p.docY >= drag.startY ? 1 : -1
+      r = { x: sx > 0 ? drag.startX : drag.startX - s, y: sy > 0 ? drag.startY : drag.startY - s, w: s, h: s }
+      vec = { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h }
+    }
+  }
+  if (!live) {
+    // committed shapes snap to integers
+    if (isLine) {
+      return {
+        shape: 'line',
+        x: Math.round(vec.x0), y: Math.round(vec.y0),
+        w: Math.round(vec.x1 - vec.x0), h: Math.round(vec.y1 - vec.y0),
+        radius: 0,
+        fill: null,
+        stroke: opts.stroke ?? null,
+        strokeWidth: opts.strokeWidth ?? 4,
+      }
+    }
+    return {
+      shape: opts.shape ?? 'rect',
+      x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h),
+      radius: opts.radius ?? 12,
+      fill: opts.fill ?? '#e8a33d',
+      stroke: opts.stroke ?? null,
+      strokeWidth: opts.strokeWidth ?? 4,
+    }
+  }
+  // live preview path
+  if (isLine) {
+    return { shape: 'line', x: vec.x0, y: vec.y0, w: vec.x1 - vec.x0, h: vec.y1 - vec.y0, radius: 0, fill: null, stroke: opts.stroke ?? null, strokeWidth: opts.strokeWidth ?? 4 }
+  }
+  return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', stroke: opts.stroke ?? null, strokeWidth: opts.strokeWidth ?? 4 }
+}
+
+/** draw a shape path (same geometry as renderShapeCanvas) onto any ctx */
+function traceShapePath(c: CanvasRenderingContext2D, spec: ShapeSpec) {
+  const { x, y, w, h, shape } = spec
+  c.beginPath()
+  if (shape === 'ellipse') {
+    c.ellipse(x + w / 2, y + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2)
+  } else if (shape === 'line') {
+    c.moveTo(x, y)
+    c.lineTo(x + w, y + h)
+  } else if (shape === 'rounded-rect') {
+    const rr = Math.min(spec.radius, Math.abs(w / 2), Math.abs(h / 2))
+    c.moveTo(x + rr, y)
+    c.arcTo(x + w, y, x + w, y + h, rr)
+    c.arcTo(x + w, y + h, x, y + h, rr)
+    c.arcTo(x, y + h, x, y, rr)
+    c.arcTo(x, y, x + w, y, rr)
+    c.closePath()
+  } else {
+    c.rect(x, y, w, h)
+  }
+}
+
+export const shapeTool: Tool = {
+  id: 'shape',
+  cursor: 'crosshair',
+
+  onPointerDown(p: PointerInfo) {
+    if (p.button !== 0) return
+    drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
+    shapeRect = null
+    shapeVec = null
+    engine.requestRender()
+  },
+
+  onPointerMove(p: PointerInfo) {
+    if (!drag.active) return
+    const spec = currentShapeSpec(p, true)
+    if (spec) shapeRect = { x: spec.x, y: spec.y, w: spec.w, h: spec.h }
+    shapeVec = spec ? { x0: spec.x, y0: spec.y, x1: spec.x + spec.w, y1: spec.y + spec.h } : null
+    engine.requestRender()
+  },
+
+  onPointerUp(p: PointerInfo) {
+    if (!drag.active) return
+    drag.active = false
+    const spec = currentShapeSpec(p, false)
+    shapeRect = null
+    shapeVec = null
+    const isLine = spec?.shape === 'line'
+    if (!spec || (!isLine && (Math.abs(spec.w) < 2 || Math.abs(spec.h) < 2)) || (isLine && Math.hypot(spec.w, spec.h) < 2)) {
+      engine.requestRender()
+      return
+    }
+    engine.addShapeLayer(spec)
+  },
+
+  renderOverlay(ctx, view, w, h, mouse) {
+    void w; void h
+    if (shapeRect && drag.active && shapeVec) {
+      const spec = getOptions('shape').shape === 'line'
+        ? { ...getOptions('shape'), shape: 'line', x: shapeVec.x0, y: shapeVec.y0, w: shapeVec.x1 - shapeVec.x0, h: shapeVec.y1 - shapeVec.y0 } as ShapeSpec
+        : { ...getOptions('shape'), x: shapeRect.x, y: shapeRect.y, w: shapeRect.w, h: shapeRect.h } as ShapeSpec
+      ctx.save()
+      ctx.translate(view.panX, view.panY)
+      ctx.scale(view.zoom, view.zoom)
+      traceShapePath(ctx, spec)
+      if (spec.shape === 'line') {
+        ctx.strokeStyle = spec.stroke || spec.fill || '#e8a33d'
+        // WYSIWYG doc-space width, clamped so it stays visible at any zoom
+        ctx.lineWidth = Math.max(spec.strokeWidth ?? 4, 1.5 / view.zoom)
+        ctx.lineCap = 'round'
+        ctx.stroke()
+      } else {
+        if (spec.fill) {
+          ctx.fillStyle = spec.fill
+          ctx.globalAlpha = 0.4
+          ctx.fill()
+          ctx.globalAlpha = 1
+        }
+        if (spec.stroke) {
+          ctx.strokeStyle = spec.stroke
+          ctx.lineWidth = spec.strokeWidth ?? 4
+          ctx.stroke()
+        }
+      }
+      ctx.restore()
+      // dashed bbox
+      const x = shapeRect.x * view.zoom + view.panX
+      const y = shapeRect.y * view.zoom + view.panY
+      drawDashedRect(ctx, x, y, shapeRect.w * view.zoom, shapeRect.h * view.zoom)
+      // size readout
+      ctx.save()
+      ctx.font = '10px ui-monospace, monospace'
+      ctx.fillStyle = 'rgba(0,0,0,0.8)'
+      ctx.fillText(`${Math.round(Math.abs(shapeRect.w))} × ${Math.round(Math.abs(shapeRect.h))}`, x + 2, y - 4)
+      ctx.fillStyle = '#e8a33d'
+      ctx.fillText(`${Math.round(Math.abs(shapeRect.w))} × ${Math.round(Math.abs(shapeRect.h))}`, x + 1, y - 5)
+      ctx.restore()
+    } else drawCross(ctx, mouse)
+  },
+}

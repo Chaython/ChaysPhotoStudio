@@ -1,0 +1,92 @@
+:root {
+  --bg: #1c1c1c;
+  --panel: #232323;
+  --amber: #e8a33d;
+  --text: #f5f0e8;
+  --muted: #b8b8b8;
+  --border: #3a3a3a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  width: 320px;
+}
+
+main { padding: 14px 14px 12px; display: grid; gap: 12px; }
+
+header { display: flex; align-items: center; gap: 10px; }
+header img { border-radius: 7px; display: block; }
+h1 { font-size: 14px; margin: 0; letter-spacing: 0.2px; }
+.sub { margin: 1px 0 0; color: var(--muted); font-size: 11px; }
+
+button {
+  font: inherit;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+button:hover { background: #2d2d2d; border-color: #4a4a4a; }
+
+button.primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #221a08;
+  font-weight: 600;
+  padding: 10px;
+}
+button.primary:hover { background: #f0b155; border-color: #f0b155; }
+
+.url-box { display: grid; gap: 6px; }
+.url-box label { font-size: 11px; color: var(--muted); }
+.url-box input {
+  font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+  background: #161616;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 100%;
+}
+.url-box input:focus { outline: none; border-color: var(--amber); }
+.url-box button { width: max-content; padding: 5px 14px; font-size: 12px; }
+
+.status { margin: 0; min-height: 15px; font-size: 11px; color: var(--muted); }
+.status.ok { color: #7fbf7f; }
+.status.err { color: #e07a6a; }
+
+.hint {
+  font-size: 11px;
+  color: var(--muted);
+  background: #262626;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+.hint strong { color: var(--text); font-weight: 600; }
+.hint em { color: var(--amber); font-style: normal; }
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: #8a8a8a;
+  border-top: 1px solid var(--border);
+  padding-top: 9px;
+}
+footer a { color: var(--amber); text-decoration: none; }
+footer a:hover { text-decoration: underline; }

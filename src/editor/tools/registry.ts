@@ -1,0 +1,66 @@
+// Tool registry — aggregates every tool module
+import type { Tool, ToolId } from '../types'
+import { moveTool } from './move'
+import { marqueeRectTool, marqueeEllipseTool } from './marquee'
+import { lassoTool } from './lasso'
+import { polygonLassoTool } from './polygon-lasso'
+import { magneticLassoTool } from './magnetic-lasso'
+import { measureTool } from './measure'
+import { objectSelectTool, quickSelectTool } from './select-tools'
+import { magicWandTool } from './wand'
+import { brushTool, pencilTool } from './brush'
+import { penTool } from './pen'
+import { eraserTool } from './eraser'
+import { cloneStampTool } from './clone-stamp'
+import { healingBrushTool, spotHealingTool, patchTool } from './healing'
+import { blurTool, sharpenTool, smudgeTool, dodgeTool, burnTool, spongeTool } from './retouch'
+import { gradientTool, paintBucketTool } from './fill'
+import { textTool, shapeTool } from './text-shapes'
+import { cropTool, eyedropperTool, handTool, zoomTool } from './crop'
+
+export const TOOLS: Record<ToolId, Tool> = {
+  'move': moveTool,
+  'marquee-rect': marqueeRectTool,
+  'marquee-ellipse': marqueeEllipseTool,
+  'lasso': lassoTool,
+  'polygon-lasso': polygonLassoTool,
+  'magnetic-lasso': magneticLassoTool,
+  'measure': measureTool,
+  'object-select': objectSelectTool,
+  'quick-select': quickSelectTool,
+  'magic-wand': magicWandTool,
+  'crop': cropTool,
+  'eyedropper': eyedropperTool,
+  'brush': brushTool,
+  'pencil': pencilTool,
+  'clone-stamp': cloneStampTool,
+  'healing-brush': healingBrushTool,
+  'spot-healing': spotHealingTool,
+  'patch': patchTool,
+  'eraser': eraserTool,
+  'gradient': gradientTool,
+  'paint-bucket': paintBucketTool,
+  'blur': blurTool,
+  'sharpen': sharpenTool,
+  'smudge': smudgeTool,
+  'dodge': dodgeTool,
+  'burn': burnTool,
+  'sponge': spongeTool,
+  'text': textTool,
+  'pen': penTool,
+  'shape': shapeTool,
+  'hand': handTool,
+  'zoom': zoomTool,
+}
+
+let activeToolId: ToolId = 'move'
+export function getTool(id: ToolId): Tool | null {
+  return TOOLS[id] ?? null
+}
+export function setActiveTool(id: ToolId) {
+  const prev = TOOLS[activeToolId]
+  prev?.onDeactivate?.()
+  activeToolId = id
+  TOOLS[id]?.onActivate?.()
+}
+export function getActiveToolId(): ToolId { return activeToolId }

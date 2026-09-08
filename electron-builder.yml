@@ -1,0 +1,107 @@
+# Chay's Photo Studio — electron-builder packaging config
+# Build steps (see DISTRIBUTION.md):
+#   bun run icons && bun run build && bun run app:dist
+# CI runs one matrix leg per OS with `--win` / `--mac` / `--linux`.
+appId: ca.live.chaython.chays-photo-studio
+productName: Chay's Photo Studio
+copyright: >-
+  © Chaython Meredith. Free for consumer and education use; commercial
+  use requires a license — chaython@live.ca.
+
+directories:
+  output: build/electron/dist
+  buildResources: build/icons
+
+# the app itself is the Next.js standalone server (extraResources,
+# outside the asar so it can be executed) + the tiny electron shell
+files:
+  - electron/**
+
+extraResources:
+  - from: build/electron/app
+    to: app
+    filter:
+      - "**/*"
+
+# icons
+win:
+  icon: build/icons/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  shortcutName: Chay's Photo Studio
+  artifactName: ChaysPhotoStudio-Setup-${version}.${ext}
+
+mac:
+  icon: build/icons/icon.icns
+  category: public.app-category.graphics-design
+  darkModeSupport: true
+  identity: null # CI builds are unsigned; sign locally with CSC_NAME
+  target:
+    - target: dmg
+  artifactName: ChaysPhotoStudio-${version}-${arch}.${ext}
+
+linux:
+  icon: build/icons/icon-512.png
+  category: Graphics
+  maintainer: Chaython Meredith <chaython@live.ca>
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  artifactName: ChaysPhotoStudio-${version}-${arch}.${ext}
+
+# double-click a picture → open it in Chay's Photo Studio
+fileAssociations:
+  - ext: png
+    name: PNG image
+    description: Portable Network Graphics image
+    role: Editor
+  - ext: jpg
+    name: JPEG image
+    description: JPEG image
+    role: Editor
+  - ext: jpeg
+    name: JPEG image
+    description: JPEG image
+    role: Editor
+  - ext: webp
+    name: WebP image
+    description: Google WebP image
+    role: Editor
+  - ext: gif
+    name: GIF image
+    description: Graphics Interchange Format image
+    role: Editor
+  - ext: bmp
+    name: Bitmap image
+    description: Windows bitmap image
+    role: Editor
+  - ext: tif
+    name: TIFF image
+    description: Tagged Image File Format
+    role: Editor
+  - ext: tiff
+    name: TIFF image
+    description: Tagged Image File Format
+    role: Editor
+  - ext: avif
+    name: AVIF image
+    description: AV1 Image File Format
+    role: Editor
+  - ext: psd
+    name: Photoshop document
+    description: Adobe Photoshop document
+    role: Editor
+
+compression: normal
+publish: null # releases are attached by the GitHub workflow

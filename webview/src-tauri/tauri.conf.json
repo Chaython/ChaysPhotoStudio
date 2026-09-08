@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Chay's Photo Studio",
+  "version": "1.0.0",
+  "identifier": "ca.live.chaython.chays-photo-studio.webview",
+  "build": {
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "http://localhost:3000"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Chay's Photo Studio",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "center": true,
+        "dragDropEnabled": false,
+        "backgroundColor": "#1c1c1c"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage", "dmg", "nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Graphics",
+    "shortDescription": "Photoshop-class image editor",
+    "longDescription": "Chay's Photo Studio — a Photoshop-class raster image editor that runs in a native system webview. Free for consumer and education use; commercial licensing: chaython@live.ca."
+  }
+}

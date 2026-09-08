@@ -1,0 +1,238 @@
+// Canvas / color / math helpers used across the engine
+
+export function uid(): string {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
+}
+
+export function createCanvas(w: number, h: number): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = Math.max(1, Math.round(w))
+  c.height = Math.max(1, Math.round(h))
+  return c
+}
+
+export function ctx2d(c: HTMLCanvasElement): CanvasRenderingContext2D {
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('2D context unavailable')
+  return ctx
+}
+
+export function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
+  const c = createCanvas(src.width, src.height)
+  ctx2d(c).drawImage(src, 0, 0)
+  return c
+}
+
+export function canvasFromImage(img: ImageBitmap | HTMLImageElement | HTMLCanvasElement, w?: number, h?: number): HTMLCanvasElement {
+  const cw = w ?? (img as any).width
+  const ch = h ?? (img as any).height
+  const c = createCanvas(cw, ch)
+  ctx2d(c).drawImage(img as any, 0, 0, cw, ch)
+  return c
+}
+
+export function getImageData(c: HTMLCanvasElement): ImageData {
+  return ctx2d(c).getImageData(0, 0, c.width, c.height)
+}
+
+export function putImageData(c: HTMLCanvasElement, data: ImageData) {
+  ctx2d(c).putImageData(data, 0, 0)
+}
+
+export function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v
+}
+
+export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
+export function dist(ax: number, ay: number, bx: number, by: number): number {
+  return Math.hypot(bx - ax, by - ay)
+}
+
+export function rectFromPoints(ax: number, ay: number, bx: number, by: number) {
+  return { x: Math.min(ax, bx), y: Math.min(ay, by), w: Math.abs(bx - ax), h: Math.abs(by - ay) }
+}
+
+export function rectsIntersect(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+}
+
+export function inflateRect(r: { x: number; y: number; w: number; h: number }, px: number) {
+  return { x: r.x - px, y: r.y - px, w: r.w + px * 2, h: r.h + px * 2 }
+}
+
+// ---------- masks ----------
+/** Masks are canvases whose ALPHA channel carries the mask value (255 = visible/selected). */
+export function makeMaskCanvas(w: number, h: number, value = 0): HTMLCanvasElement {
+  const c = createCanvas(w, h)
+  const d = new ImageData(w, h)
+  const a = d.data
+  for (let i = 0; i < a.length; i += 4) { a[i] = 255; a[i + 1] = 255; a[i + 2] = 255; a[i + 3] = value }
+  putImageData(c, d)
+  return c
+}
+
+export function getMaskAlpha(c: HTMLCanvasElement): Uint8ClampedArray {
+  const d = getImageData(c)
+  const out = new Uint8ClampedArray(d.width * d.height)
+  for (let i = 0, j = 3; i < out.length; i++, j += 4) out[i] = d.data[j]
+  return out
+}
+
+export function setMaskAlpha(c: HTMLCanvasElement, alpha: Uint8ClampedArray | Uint8Array) {
+  const d = getImageData(c)
+  for (let i = 0, j = 3; i < alpha.length; i++, j += 4) {
+    d.data[j] = alpha[i]
+    d.data[j - 3] = 255; d.data[j - 2] = 255; d.data[j - 1] = 255
+  }
+  putImageData(c, d)
+}
+
+export function maskToImageDataGray(c: HTMLCanvasElement): ImageData {
+  const d = getImageData(c)
+  const out = new ImageData(d.width, d.height)
+  for (let i = 0, j = 0; j < d.data.length; i++, j += 4) {
+    const v = d.data[j + 3]
+    out.data[j] = v; out.data[j + 1] = v; out.data[j + 2] = v; out.data[j + 3] = 255
+  }
+  return out
+}
+
+/** combine two mask alpha arrays with the given mode; returns new array */
+export function combineMaskAlpha(a: Uint8ClampedArray, b: Uint8ClampedArray, mode: 'add' | 'subtract' | 'intersect'): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(a.length)
+  for (let i = 0; i < a.length; i++) {
+    if (mode === 'add') out[i] = Math.max(a[i], b[i])
+    else if (mode === 'subtract') out[i] = Math.max(0, a[i] - b[i])
+    else out[i] = Math.min(a[i], b[i])
+  }
+  return out
+}
+
+// ---------- colors ----------
+export function hexToRgb(hex: string): [number, number, number] {
+  let h = hex.replace('#', '').trim()
+  if (h.length === 3) h = h.split('').map(c => c + c).join('')
+  const n = parseInt(h.slice(0, 6), 16)
+  if (Number.isNaN(n)) return [255, 255, 255]
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+export function rgbToHex(r: number, g: number, b: number): string {
+  const c = (v: number) => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')
+  return `#${c(r)}${c(g)}${c(b)}`
+}
+
+export function rgbToHsv(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  const d = max - min
+  let h = 0
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
+    h *= 60
+    if (h < 0) h += 360
+  }
+  const s = max === 0 ? 0 : d / max
+  return [h, s * 100, max * 100]
+}
+
+export function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
+  h = ((h % 360) + 360) % 360; s /= 100; v /= 100
+  const c = v * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = v - c
+  let r = 0, g = 0, b = 0
+  if (h < 60) { r = c; g = x } else if (h < 120) { r = x; g = c } else if (h < 180) { g = c; b = x }
+  else if (h < 240) { g = x; b = c } else if (h < 300) { r = x; b = c } else { r = c; b = x }
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255]
+}
+
+export function srgbToLinear(v: number): number {
+  v /= 255
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+}
+
+export function linearToSrgb(v: number): number {
+  v = v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055
+  return clamp(v * 255, 0, 255)
+}
+
+export function luminance(r: number, g: number, b: number): number {
+  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b)
+}
+
+// ---------- misc ----------
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** bilinear resample of a canvas */
+export function resampleCanvas(src: HTMLCanvasElement, w: number, h: number): HTMLCanvasElement {
+  const dst = createCanvas(w, h)
+  const c = ctx2d(dst)
+  c.imageSmoothingEnabled = true
+  c.imageSmoothingQuality = 'high'
+  c.drawImage(src, 0, 0, w, h)
+  return dst
+}
+
+/** load an image file into a canvas */
+export async function fileToCanvas(file: File | Blob): Promise<HTMLCanvasElement> {
+  const bitmap = await createImageBitmap(file)
+  const c = canvasFromImage(bitmap)
+  bitmap.close()
+  return c
+}
+
+export function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 4000)
+}
+
+export function canvasToBlob(c: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+  return new Promise((res, rej) => {
+    c.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), type, quality)
+  })
+}
+
+/** Draw a soft round dab (radial-gradient alpha) into a context at x,y */
+export function drawSoftDab(
+  ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, hardness: number, color: string, alpha: number
+) {
+  const inner = clamp(hardness / 100, 0, 0.98)
+  const g = ctx.createRadialGradient(x, y, radius * inner, x, y, radius)
+  const [r, gg, b] = hexToRgb(color)
+  g.addColorStop(0, `rgba(${r},${gg},${b},${alpha})`)
+  g.addColorStop(1, `rgba(${r},${gg},${b},0)`)
+  ctx.fillStyle = g
+  ctx.beginPath()
+  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  ctx.fill()
+}
+
+/** build a radial falloff mask (0..1) for a square region */
+export function radialFalloff(radius: number): Float32Array {
+  const size = Math.ceil(radius * 2) + 1
+  const out = new Float32Array(size * size)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x - radius, dy = y - radius
+      const d = Math.sqrt(dx * dx + dy * dy) / radius
+      out[y * size + x] = clamp(1 - (d - 0.55) / 0.45, 0, 1)
+    }
+  }
+  return out
+}
