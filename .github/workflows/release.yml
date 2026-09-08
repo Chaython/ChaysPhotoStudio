@@ -48,6 +48,9 @@ jobs:
           NEXT_TELEMETRY_DISABLED: 1
         run: bun install --frozen-lockfile
 
+      - name: Generate Prisma client (source of PrismaClient types)
+        run: bun run db:generate
+
       - name: Generate app icons
         run: node scripts/gen-icons.mjs
 
@@ -106,6 +109,9 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
         run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client (source of PrismaClient types)
+        run: bun run db:generate
 
       - name: Generate app icons
         run: node scripts/gen-icons.mjs

@@ -208,6 +208,15 @@ export function WelcomeScreen() {
           <button className="underline underline-offset-2 hover:text-foreground transition-colors" onClick={() => openDialog('shortcuts')}>
             View all shortcuts
           </button>
+          <span aria-hidden="true" className="opacity-40">·</span>
+          <a
+            href="/chays-photo-studio-1.0.0-project.zip"
+            download
+            className="flex items-center gap-1 underline underline-offset-2 hover:text-foreground transition-colors"
+          >
+            <Download size={11} className="text-primary/70" aria-hidden="true" />
+            Download source (ZIP)
+          </a>
         </div>
 
         <input
