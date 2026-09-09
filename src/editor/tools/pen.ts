@@ -88,7 +88,7 @@ function resetPath() {
   closed = false
   activeAnchor = -1
   drag = null
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 // ---------------- path geometry ----------------
@@ -228,7 +228,7 @@ function toggleAnchorType(i: number) {
     a.pair = true
   }
   activeAnchor = i
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 // ---------------- commit actions (options read FRESH at commit) ----------------
@@ -363,7 +363,7 @@ export const penTool: Tool = {
       if (d < CLOSE_PX) {
         closed = true
         activeAnchor = -1
-        engine.requestRender()
+        engine.pokeOverlay()
         return
       }
     }
@@ -379,7 +379,7 @@ export const penTool: Tool = {
     if (hh) {
       drag = { kind: 'handle', index: hh.index, which: hh.which }
       activeAnchor = hh.index
-      engine.requestRender()
+      engine.pokeOverlay()
       return
     }
 
@@ -389,7 +389,7 @@ export const penTool: Tool = {
       const a = anchors[ai]
       drag = { kind: 'anchor', index: ai, grabDX: p.docX - a.x, grabDY: p.docY - a.y }
       activeAnchor = ai
-      engine.requestRender()
+      engine.pokeOverlay()
       return
     }
 
@@ -405,7 +405,7 @@ export const penTool: Tool = {
     anchors.push({ x: pos.x, y: pos.y, inX: 0, inY: 0, outX: 0, outY: 0, pair: true })
     activeAnchor = anchors.length - 1
     drag = { kind: 'new' }
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
@@ -433,7 +433,7 @@ export const penTool: Tool = {
       a.x = p.docX - drag.grabDX
       a.y = p.docY - drag.grabDY
     }
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerUp(p: PointerInfo) {
@@ -448,7 +448,7 @@ export const penTool: Tool = {
       const moved = Math.hypot(p.docX - a.x, p.docY - a.y) * doc.view.zoom
       if (moved < 3) { a.inX = 0; a.inY = 0; a.outX = 0; a.outY = 0; a.pair = false }
     }
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onKeyDown(e: KeyboardEvent) {
@@ -465,7 +465,7 @@ export const penTool: Tool = {
         e.preventDefault()
         anchors.pop()
         if (activeAnchor >= anchors.length) activeAnchor = -1
-        engine.requestRender()
+        engine.pokeOverlay()
         return true
       }
       return false

@@ -68,10 +68,24 @@ export class Engine {
     return () => this.listeners.delete(cb)
   }
 
-  setRenderer(r: { requestRender(): void }) { this.renderer = r }
+  setRenderer(r: { requestRender(): void; pokeOverlay?(): void; viewChanged?(): void }) { this.renderer = r }
   requestRender() { this.renderer?.requestRender() }
+  /** overlay-only repaint (selection previews, paths, marching ants) — no composite */
+  pokeOverlay() { (this.renderer as any)?.pokeOverlay?.() }
+  /** view-only repaint (pan/zoom re-blit of the cached composite) — no composite */
+  viewChanged() { (this.renderer as any)?.viewChanged?.() }
   emit() {
     this.requestRender()
+    for (const l of this.listeners) l()
+  }
+  /** selection-only change: listeners + overlay repaint, main canvas untouched */
+  emitOverlay() {
+    this.pokeOverlay()
+    for (const l of this.listeners) l()
+  }
+  /** view-only change (pan/zoom): listeners (zoom readout) + re-blit, no composite */
+  emitView() {
+    this.viewChanged()
     for (const l of this.listeners) l()
   }
 
@@ -1187,10 +1201,12 @@ export class Engine {
   setSelectionMask(mask: HTMLCanvasElement | null, mode: SelectionCombine = 'new', label = 'Selection') {
     const doc = this.activeDoc
     if (!doc) return
-    if (!mask) { doc.selection = null; this.emit(); return }
+    if (!mask) { doc.selection = null; this.emitOverlay(); return }
     doc.selection = combineSelection(doc.selection, mask, mode)
     this.pushHistory(label)
-    this.emit()
+    // selection renders on the overlay only (marching ants) — the composite
+    // is untouched, so skip the recomposite (huge win on large documents)
+    this.emitOverlay()
   }
 
   setSelectionAlpha(alpha: Uint8ClampedArray, mode: SelectionCombine = 'new', label = 'Selection') {
@@ -1207,7 +1223,7 @@ export class Engine {
     ctx2d(mask).fillRect(0, 0, doc.width, doc.height)
     doc.selection = selectionFromMask(mask)
     this.pushHistory('Select All')
-    this.emit()
+    this.emitOverlay()
   }
 
   deselect() {
@@ -1215,7 +1231,7 @@ export class Engine {
     if (!doc || !doc.selection) return
     doc.selection = null
     this.pushHistory('Deselect')
-    this.emit()
+    this.emitOverlay()
   }
 
   invertSelection() {
@@ -1229,7 +1245,7 @@ export class Engine {
     sel._v++
     sel.bounds = computeBounds(sel.mask)
     this.pushHistory('Inverse Selection')
-    this.emit()
+    this.emitOverlay()
   }
 
   selectionModify(op: 'grow' | 'contract' | 'feather' | 'border' | 'smooth' | 'invert', px: number) {
@@ -1238,7 +1254,7 @@ export class Engine {
     const next = modifySelection(doc.selection, op, px)
     doc.selection = next
     this.pushHistory(op === 'invert' ? 'Inverse' : `${op[0].toUpperCase()}${op.slice(1)} Selection`)
-    this.emit()
+    this.emitOverlay()
   }
 
   selectShape(rect: Rect, kind: 'rect' | 'ellipse', feather: number, mode: SelectionCombine) {
@@ -1314,7 +1330,7 @@ export class Engine {
     }
     doc.selection = selectionFromMask(mask)
     this.pushHistory('Load Channel as Selection')
-    this.emit()
+    this.emitOverlay()
   }
 
   saveSelectionChannel(name?: string) {
@@ -2192,7 +2208,7 @@ export class Engine {
     if (!doc) return
     doc.view.zoom = clamp(z, 0.02, 32)
     doc.view.autoFit = false // user-specified zoom → view is now sticky per-doc
-    this.emit()
+    this.emitView()
   }
 
   zoomBy(factor: number) {

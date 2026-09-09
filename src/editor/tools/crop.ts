@@ -38,7 +38,7 @@ export const cropTool: Tool = {
   },
   onPointerMove(p: PointerInfo) {
     cropHover = { x: p.docX, y: p.docY }
-    if (!cropDrag.active) { engine.requestRender(); return }
+    if (!cropDrag.active) { engine.pokeOverlay(); return }
     if (cropRect) {
       // move mode
       const dx = p.docX - cropDrag.startX, dy = p.docY - cropDrag.startY
@@ -58,13 +58,13 @@ export const cropTool: Tool = {
       }
       cropRect = r
     }
-    engine.requestRender()
+    engine.pokeOverlay()
   },
   onPointerUp() { cropDrag.active = false },
   onDoubleClick() { commitCrop() },
   onKeyDown(e: KeyboardEvent) {
     if (e.key === 'Enter' && cropRect) { commitCrop(); return true }
-    if (e.key === 'Escape') { cropRect = null; engine.requestRender(); return true }
+    if (e.key === 'Escape') { cropRect = null; engine.pokeOverlay(); return true }
     return false
   },
   renderOverlay(ctx, view, w, h, mouse) {
@@ -118,7 +118,7 @@ function commitCrop() {
   if (!doc || !cropRect) return
   const r = cropRect
   cropRect = null
-  if (r.w < 4 || r.h < 4) { engine.requestRender(); return }
+  if (r.w < 4 || r.h < 4) { engine.pokeOverlay(); return }
   engine.cropTo({
     x: clamp(r.x, 0, doc.width - 1),
     y: clamp(r.y, 0, doc.height - 1),
@@ -144,7 +144,7 @@ export const eyedropperTool: Tool = {
     // live preview in status bar handled by cursor pos; color chip preview
     const opts = getOptions('eyedropper')
     const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite')
-    if (hex) { eyedropPreview = hex; engine.requestRender() }
+    if (hex) { eyedropPreview = hex; engine.pokeOverlay() }
   },
   renderOverlay(ctx, view, w, h, mouse) {
     void view; void w; void h
@@ -181,7 +181,8 @@ export const handTool: Tool = {
     doc.view.panY += p.rawY - handDrag.lastY
     handDrag.lastX = p.rawX
     handDrag.lastY = p.rawY
-    engine.requestRender()
+    // view-only: re-blit the cached composite — never recomposite while panning
+    engine.viewChanged()
   },
   onPointerUp() { handDrag.active = false },
 }

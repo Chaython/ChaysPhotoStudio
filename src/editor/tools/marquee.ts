@@ -39,7 +39,7 @@ function make(kind: 'rect' | 'ellipse'): Tool {
       }
       if (opts.style === 'ratio' && opts.ratioValue) { /* fixed ratio handled at commit */ }
       current = rect
-      engine.requestRender()
+      engine.pokeOverlay()
     },
     onPointerUp(p: PointerInfo) {
       if (!drag.active) return
@@ -47,7 +47,7 @@ function make(kind: 'rect' | 'ellipse'): Tool {
       const opts = getOptions(kind === 'rect' ? 'marquee-rect' : 'marquee-ellipse')
       let rect = current ?? rectFromPoints(drag.startX, drag.startY, p.docX, p.docY)
       if (p.shift) { const s = Math.max(rect.w, rect.h); rect = { ...rect, w: s, h: s } }
-      if (rect.w < 1 || rect.h < 1) { current = null; engine.requestRender(); return }
+      if (rect.w < 1 || rect.h < 1) { current = null; engine.pokeOverlay(); return }
       if (opts.style === 'fixed') {
         rect = { ...rect, w: Number(opts.fixedW) || rect.w, h: Number(opts.fixedH) || rect.h }
       }

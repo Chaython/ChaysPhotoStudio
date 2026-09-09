@@ -210,7 +210,7 @@ export function WelcomeScreen() {
           </button>
           <span aria-hidden="true" className="opacity-40">·</span>
           <a
-            href="/chays-photo-studio-1.1.0-project.zip"
+            href="/chays-photo-studio-1.1.1-project.zip"
             download
             className="flex items-center gap-1 underline underline-offset-2 hover:text-foreground transition-colors"
           >
@@ -468,7 +468,7 @@ function AiGeneratorCard() {
       {image && !busy && (
         <div className="space-y-2">
           <div className={cn('rounded-lg border p-1.5 flex items-center justify-center', CHECKER)}>
-            <img src={image} alt="AI-generated result" className="max-h-56 w-auto rounded shadow" />
+            <img src={image} alt="AI-generated result" draggable={false} className="max-h-56 w-auto rounded shadow" />
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <button

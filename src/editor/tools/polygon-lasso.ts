@@ -26,17 +26,17 @@ function distToFirstScreen(p: PointerInfo): number | null {
 }
 
 function commit(mode?: 'new' | 'add' | 'subtract' | 'intersect') {
-  if (pts.length < 3) { pts = []; engine.requestRender(); return }
+  if (pts.length < 3) { pts = []; engine.pokeOverlay(); return }
   const opts = getOptions('polygon-lasso')
   engine.selectPolygon(pts, opts.feather ?? 0, mode ?? opts.mode ?? 'new')
   pts = []
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 function cancel() {
   if (!pts.length) return
   pts = []
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 export const polygonLassoTool: Tool = {
@@ -63,17 +63,17 @@ export const polygonLassoTool: Tool = {
       // then start the next with this click
       commit(mode)
       pts = [{ x: p.docX, y: p.docY }]
-      engine.requestRender()
+      engine.pokeOverlay()
       return
     }
 
     pts.push({ x: p.docX, y: p.docY })
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
     hover = { x: p.docX, y: p.docY }
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onDoubleClick() {
@@ -87,7 +87,7 @@ export const polygonLassoTool: Tool = {
       if (pts.length) {
         e.preventDefault()
         pts = pts.slice(0, -1)
-        engine.requestRender()
+        engine.pokeOverlay()
         return true
       }
     }

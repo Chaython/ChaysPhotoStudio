@@ -111,7 +111,7 @@ export function BrushTipPicker({ tool }: { tool: 'brush' | 'eraser' }) {
           className="flex items-center gap-1 h-7 px-1 rounded hover:bg-accent/50 transition-colors shrink-0"
         >
           {preset?.dataURL ? (
-            <img src={preset.dataURL} alt="" className="size-5 object-contain" />
+            <img src={preset.dataURL} alt="" draggable={false} className="size-5 object-contain" />
           ) : (
             <span className="size-5 flex items-center justify-center">
               <TipThumb tipId={tipId} size={20} />
@@ -176,7 +176,7 @@ export function BrushTipPicker({ tool }: { tool: 'brush' | 'eraser' }) {
                   )}
                 >
                   {p.dataURL ? (
-                    <img src={p.dataURL} alt="" className="size-5 object-contain shrink-0" />
+                    <img src={p.dataURL} alt="" draggable={false} className="size-5 object-contain shrink-0" />
                   ) : (
                     <span className="size-5 shrink-0" />
                   )}

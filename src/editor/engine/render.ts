@@ -123,6 +123,14 @@ export class Viewport {
     this.overlayDirty = true
   }
 
+  /** view-only change (pan / zoom): re-blit the CACHED composite at the new
+   *  offset/scale — never recomposites the document. Pan and zoom stay
+   *  60fps-smooth even on huge photos. */
+  viewChanged() {
+    this.needsDraw = true
+    this.overlayDirty = true
+  }
+
   private resize() {
     const host = this.host, main = this.canvas, ov = this.overlay
     if (!host || !main || !ov) return

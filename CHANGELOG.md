@@ -2,6 +2,14 @@
 
 Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
+## 1.1.1
+
+- Performance: path and selection tools (Pen, lassos, marquees, crop, measure) now repaint their previews on the overlay canvas only — dragging no longer recomposites the whole document, keeping the GUI responsive on large photos.
+- Performance: panning and zooming (Hand tool, Navigator drag, zoom controls) re-blit the cached composite instead of recompositing, and selection changes no longer trigger full recomposites.
+- Performance: the histogram panel samples a downscaled proxy of the composite instead of reading the full-resolution image.
+- Images in dialogs no longer start native browser ghost-drags when clicked or dragged.
+- AI Generate results can now be dragged from the dialog straight onto the canvas — the image is placed as a layer centered on the drop point.
+
 ## 1.1.0
 
 - AI image generation now defaults to the free Pollinations engine (no account or key) with automatic retries; custom OpenAI-compatible endpoints work as before.

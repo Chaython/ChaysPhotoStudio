@@ -193,7 +193,7 @@ function commit(modeArg?: SelectionCombine): void {
   points = []
   lastDir = null
   dropGradient()
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 function cancel(): void {
@@ -201,7 +201,7 @@ function cancel(): void {
   points = []
   lastDir = null
   dropGradient()
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 // ---------- tool ----------
@@ -234,17 +234,17 @@ export const magneticLassoTool: Tool = {
       buildGradient()
     }
     dragging = true
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
     if (!dragging) {
-      if (points.length) engine.requestRender() // rubber line + close-zone ring
+      if (points.length) engine.pokeOverlay() // rubber line + close-zone ring
       return
     }
     // Alt temporarily disables snapping (freehand straight segments)
     follow({ x: p.docX, y: p.docY }, p.alt)
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerUp(p: PointerInfo) {
@@ -253,7 +253,7 @@ export const magneticLassoTool: Tool = {
     lastShift = p.shift
     lastAlt = p.alt
     // path stays open: click near start / double-click / Enter to commit
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onDoubleClick(p: PointerInfo) {

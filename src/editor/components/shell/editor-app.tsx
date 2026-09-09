@@ -15,6 +15,7 @@ import { useKeyboardShortcuts } from '../../keyboard-shortcuts'
 import { useEditorStore } from '../../store'
 import { engine } from '../../engine/engine'
 import { openFiles, placeImageAsSmartLayer } from '../../engine/io'
+import { dataUrlToCanvas } from '../../image-ops'
 import { getViewport, setCursorCallbacks } from '../../engine/render'
 import { TOOL_DEFS } from '../../constants/tools'
 import { setActiveTool } from '../../tools/registry'
@@ -67,13 +68,52 @@ export function EditorApp() {
   // a single image + an open document → Photoshop-style place as Smart Object
   // layer; otherwise open as documents (project files too). The depth counter
   // keeps the overlay stable while hovering nested elements.
+  // INTERNAL result drags (AI Generate preview → canvas) carry the
+  // 'text/x-chays-result' marker and are placed at the drop point.
   useEffect(() => {
     let depth = 0
+    const isResultDrag = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('text/x-chays-result')
+    const placeGeneratedAtPoint = async (dataUrl: string, clientX: number, clientY: number) => {
+      try {
+        const canvas = await dataUrlToCanvas(dataUrl)
+        let doc = engine.activeDoc
+        if (!doc) {
+          engine.newDocument({ name: 'Generated Image', width: canvas.width, height: canvas.height, fill: 'transparent' })
+          doc = engine.activeDoc
+          if (!doc) return
+        }
+        // drop point → document space (canvas-host coords → pan/zoom)
+        const host = getViewport().host
+        const rect = host?.getBoundingClientRect()
+        const docX = rect ? (clientX - rect.left - doc.view.panX) / doc.view.zoom : doc.width / 2
+        const docY = rect ? (clientY - rect.top - doc.view.panY) / doc.view.zoom : doc.height / 2
+        const layer = engine.addLayerFromCanvas(canvas, 'Generated Image')
+        if (layer && (canvas.width !== doc.width || canvas.height !== doc.height)) {
+          // native-size layer: position its center on the drop point (kept
+          // within the doc so the drop always lands visibly on canvas)
+          const cx = Math.min(Math.max(docX, 0), doc.width)
+          const cy = Math.min(Math.max(docY, 0), doc.height)
+          layer.offsetX = Math.round(cx - canvas.width / 2)
+          layer.offsetY = Math.round(cy - canvas.height / 2)
+          engine.emit()
+        }
+        useEditorStore.getState().pushToast('Placed generated image at the drop point', 'success')
+      } catch {
+        useEditorStore.getState().pushToast("Couldn't place the generated image", 'error')
+      }
+    }
     const filesOf = (e: DragEvent) => Array.from(e.dataTransfer?.files ?? [])
     const onDrop = (e: DragEvent) => {
       e.preventDefault()
       depth = 0
       setDropping(false)
+      // AI Generate result drag → place as a layer at the drop point
+      if (isResultDrag(e)) {
+        const stash = (window as any).__chaysDragResult as { dataUrl: string } | undefined
+        ;(window as any).__chaysDragResult = null
+        if (stash?.dataUrl) void placeGeneratedAtPoint(stash.dataUrl, e.clientX, e.clientY)
+        return
+      }
       const files = filesOf(e)
       if (!files.length) return
       const projects = files.filter(f => f.name.endsWith('.zproj.json'))
@@ -96,6 +136,13 @@ export function EditorApp() {
       // Chromium refused to dispatch the drop event at all (drags "not
       // working" / flaky depending on whether the last event before the
       // release happened to be a dragenter).
+      // AI result drags are also internal, but must land on the canvas:
+      // cancel them so the browser dispatches the drop.
+      if (isResultDrag(e)) {
+        e.preventDefault()
+        e.dataTransfer!.dropEffect = 'copy'
+        return
+      }
       if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return
       e.preventDefault()
       e.dataTransfer.dropEffect = 'copy'
@@ -103,7 +150,7 @@ export function EditorApp() {
     const onDragEnter = (e: DragEvent) => {
       e.preventDefault()
       depth++
-      if (e.dataTransfer?.types?.includes('Files')) setDropping(true)
+      if (e.dataTransfer?.types?.includes('Files') || isResultDrag(e)) setDropping(true)
     }
     const onDragLeave = () => {
       depth = Math.max(0, depth - 1)

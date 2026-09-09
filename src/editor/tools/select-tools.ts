@@ -33,13 +33,13 @@ export const objectSelectTool: Tool = {
     if (p.button !== 0) return
     drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
     rect = null
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
     if (!drag.active) return
     rect = rectFromPoints(drag.startX, drag.startY, p.docX, p.docY)
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerUp(p: PointerInfo) {
@@ -47,14 +47,14 @@ export const objectSelectTool: Tool = {
     drag.active = false
     const r = rect
     rect = null
-    if (!r || r.w < 4 || r.h < 4) { engine.requestRender(); return }
+    if (!r || r.w < 4 || r.h < 4) { engine.pokeOverlay(); return }
     const opts = getOptions('object-select')
     const mode = combineMode(p, opts.mode ?? 'new')
     // show the overlay FIRST (detection is synchronous — defer past the next
     // paint: rAF lets the overlay draw, then the timeout runs the work)
     detecting = true
     detectRect = r
-    engine.requestRender()
+    engine.pokeOverlay()
     requestAnimationFrame(() => setTimeout(() => {
       try {
         const doc = engine.activeDoc
@@ -76,7 +76,7 @@ export const objectSelectTool: Tool = {
       } finally {
         detecting = false
         detectRect = null
-        engine.requestRender()
+        engine.pokeOverlay()
       }
     }, 0))
   },
@@ -210,5 +210,5 @@ function qsGrow(cx: number, cy: number) {
     }
   }
   ctx2d(qsMask).putImageData(sub, x0, y0)
-  engine.requestRender()
+  engine.pokeOverlay()
 }

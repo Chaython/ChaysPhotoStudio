@@ -49,7 +49,7 @@ function clearMeasurement(): void {
   end = null
   dragging = false
   publish()
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 /** snap the drag angle to 45° increments, preserving length */
@@ -107,14 +107,14 @@ export const measureTool: Tool = {
     start = { x: p.docX, y: p.docY }
     end = null
     dragging = true
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
     if (!dragging || !start) return
     const raw = { x: p.docX, y: p.docY }
     end = p.shift ? constrain45(start, raw) : raw
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerUp() {
@@ -127,7 +127,7 @@ export const measureTool: Tool = {
       end = null
     }
     publish()
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onKeyDown(e: KeyboardEvent) {

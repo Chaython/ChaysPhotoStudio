@@ -11,7 +11,7 @@ import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { getFlatComposite } from '../../engine/document'
 import { getViewport } from '../../engine/render'
-import { getImageData } from '../../utils/canvas'
+import { getImageData, createCanvas, ctx2d } from '../../utils/canvas'
 import { PanelBtn } from './layers-panel'
 import { cn } from '@/lib/utils'
 import { FancyScroll } from '@/components/ui/fancy-scroll'
@@ -182,13 +182,14 @@ export function NavigatorPanel() {
     const docY = (py - offY) / scale
     doc.view.panX = host.clientWidth / 2 - docX * doc.view.zoom
     doc.view.panY = host.clientHeight / 2 - docY * doc.view.zoom
-    engine.requestRender()
+    // view-only: re-blit the cached composite — no recomposite while dragging
+    engine.viewChanged()
   }
 
   const endPan = () => {
     if (!panning.current) return
     panning.current = false
-    engine.emit() // sync store mirrors (zoom readout etc.)
+    engine.emitView() // sync store mirrors (zoom readout etc.) — no composite
   }
 
   return (
@@ -302,7 +303,20 @@ export function HistogramPanel() {
     ctx.fillStyle = '#0d0d0d'
     ctx.fillRect(0, 0, W, H)
     const flat = getFlatComposite(doc)
-    const img = getImageData(flat)
+    // downscale before the readback: a histogram over a ≤512px proxy is
+    // statistically identical to the stride-sampled full-res pass, but the
+    // getImageData copy drops from ~48 MB (12 MP photo) to ~1 MB — the panel
+    // stops stalling the main thread on large documents
+    const maxDim = Math.max(doc.width, doc.height)
+    const s = maxDim > 512 ? 512 / maxDim : 1
+    let img: ImageData
+    if (s < 1) {
+      const small = createCanvas(Math.max(1, Math.round(doc.width * s)), Math.max(1, Math.round(doc.height * s)))
+      ctx2d(small).drawImage(flat, 0, 0, small.width, small.height)
+      img = getImageData(small)
+    } else {
+      img = getImageData(flat)
+    }
     const hist = computeHist(img)
     setStats({ mean: hist.mean, std: hist.std, median: hist.median, total: hist.total })
 

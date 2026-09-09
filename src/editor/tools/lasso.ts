@@ -16,7 +16,7 @@ export const lassoTool: Tool = {
     if (!active) return
     const last = pts[pts.length - 1]
     if (Math.hypot(p.docX - last.x, p.docY - last.y) > 1.5) pts.push({ x: p.docX, y: p.docY })
-    engine.requestRender()
+    engine.pokeOverlay()
   },
   onPointerUp() {
     if (!active) return
@@ -27,7 +27,7 @@ export const lassoTool: Tool = {
       engine.selectPolygon(pts, opts.feather ?? 0, mode)
     }
     pts = []
-    engine.requestRender()
+    engine.pokeOverlay()
   },
   renderOverlay(ctx, view, w, h, mouse) {
     void w; void h

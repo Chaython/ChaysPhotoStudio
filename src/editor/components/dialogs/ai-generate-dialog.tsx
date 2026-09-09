@@ -365,7 +365,15 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
                 <img
                   src={current}
                   alt={`Generated result ${sel + 1} of ${images.length}`}
-                  className="max-h-60 w-auto rounded-sm shadow"
+                  className="max-h-60 w-auto rounded-sm shadow cursor-grab active:cursor-grabbing"
+                  title="Drag onto the canvas to place it — or use the buttons below"
+                  draggable
+                  onDragStart={e => {
+                    ;(window as any).__chaysDragResult = { dataUrl: current }
+                    e.dataTransfer.effectAllowed = 'copy'
+                    e.dataTransfer.setData('text/x-chays-result', '1')
+                  }}
+                  onDragEnd={() => { (window as any).__chaysDragResult = null }}
                 />
               )}
             </div>
@@ -381,7 +389,7 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
                       i === sel ? 'border-primary ring-1 ring-primary/60' : 'border-border hover:border-primary/40 opacity-80 hover:opacity-100',
                     )}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    <img src={img} alt="" draggable={false} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
@@ -391,7 +399,7 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
 
         <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground">
           <Info size={11} className="mt-0.5 flex-shrink-0" />
-          <span>Results arrive as lossless PNGs — place them as layers, Smart Objects or new documents. Ctrl+Enter generates.</span>
+          <span>Results arrive as lossless PNGs — place them as layers, Smart Objects or new documents, or drag the preview straight onto the canvas. Ctrl+Enter generates.</span>
         </div>
       </div>
 
