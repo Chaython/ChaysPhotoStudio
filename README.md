@@ -1,8 +1,9 @@
 # Chay's Photo Studio
 
 A 100% browser-based raster image editor — a Photoshop-class feature set running on a
-custom **WebGL2** engine. No server-side image processing: everything (layers, filters,
-magic wand, object detection, and more) happens locally in your browser.
+custom **WebGL2** engine. All editing (layers, filters, magic wand, object detection,
+upscaling, and more) happens locally in your browser. AI image generation runs on the
+free Pollinations engine (no account or key) or your own OpenAI-compatible endpoint.
 
 ![Chay's Photo Studio](public/icon.svg)
 

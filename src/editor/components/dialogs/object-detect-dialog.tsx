@@ -1,12 +1,12 @@
 'use client'
 // ============================================================
-// Detect Objects (AI) dialog — cloud vision bounding boxes over a
-// downscaled composite of the active document. Each detected box can
-// be turned into a rectangular selection or lifted into its own layer
-// ("Layer via Copy" from the composite — dialogs stays open so several
-// objects can be picked). Server-side only: the pixels travel as a
-// ≤800px JPEG data-URL to /api/object-detect; the raw image never
-// leaves the browser except as that compressed preview.
+// Detect Objects (AI) dialog — on-device vision bounding boxes
+// over a downscaled composite of the active document. Each
+// detected box can be turned into a rectangular selection or
+// lifted into its own layer ("Layer via Copy" from the
+// composite — the dialog stays open so several objects can be
+// picked). Everything runs locally: the pixels never leave the
+// browser.
 // ============================================================
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -16,6 +16,7 @@ import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { getFlatComposite } from '../../engine/document'
 import { createCanvas, ctx2d } from '../../utils/canvas'
+import { detectObjects, type DetectedObject } from '../../image-ops'
 import type { DialogProps } from './generic-dialogs'
 import { cn } from '@/lib/utils'
 
@@ -23,14 +24,6 @@ const MAX_DIM = 800 // analysis-side long edge
 const AMBER = '#e8a33d'
 const HOVER_TINT = 'rgba(232,163,61,0.15)'
 const CHECKER = 'bg-[repeating-conic-gradient(#3a3a3a_0%_25%,#2c2c2c_0%_50%)] [background-size:12px_12px]'
-
-interface DetectedObject {
-  label: string
-  x: number
-  y: number
-  w: number
-  h: number
-}
 
 export function ObjectDetectDialog({ onClose }: DialogProps) {
   const doc = engine.activeDoc
@@ -45,7 +38,7 @@ export function ObjectDetectDialog({ onClose }: DialogProps) {
   const runToken = useRef(0)
   const inFlight = useRef(false)
 
-  // ---- detection pipeline: composite → ≤800px → JPEG data-URL → POST ----
+  // ---- detection pipeline: composite → ≤800px → on-device analysis ----
   const detect = useCallback(async () => {
     const d = engine.activeDoc
     if (!d || inFlight.current) return
@@ -66,25 +59,13 @@ export function ObjectDetectDialog({ onClose }: DialogProps) {
       const c = ctx2d(small)
       c.imageSmoothingQuality = 'high'
       c.drawImage(flat, 0, 0, pw, ph)
-      const image = small.toDataURL('image/jpeg', 0.88)
       if (token !== runToken.current) return
       setPreview(small)
 
-      const res = await fetch('/api/object-detect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image }),
-      })
-      let json: any = null
-      try { json = await res.json() } catch { /* non-JSON error body */ }
+      // local saliency + region analysis — instant, offline
+      const objects = detectObjects(small)
       if (token !== runToken.current) return
-      if (!res.ok || !json || !Array.isArray(json.objects)) {
-        throw new Error(
-          (json && typeof json.error === 'string' && json.error) ||
-            `Detection failed (HTTP ${res.status})`,
-        )
-      }
-      setObjects(json.objects as DetectedObject[])
+      setObjects(objects)
     } catch (e) {
       if (token !== runToken.current) return
       setError(e instanceof Error ? e.message : 'Detection failed')
@@ -235,7 +216,7 @@ export function ObjectDetectDialog({ onClose }: DialogProps) {
         <DialogTitle className="flex items-center gap-2">
           <ScanSearch size={15} className="text-primary" /> Detect Objects (AI)
         </DialogTitle>
-        <p className="-mt-1 text-[10px] text-muted-foreground">Cloud vision · Z.AI</p>
+        <p className="-mt-1 text-[10px] text-muted-foreground">On-device vision · salient regions</p>
       </DialogHeader>
 
       <div className="space-y-3 py-1">

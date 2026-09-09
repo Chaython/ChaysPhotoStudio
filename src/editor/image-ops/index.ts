@@ -94,11 +94,13 @@ export { selectSubject, objectSelect, quickSelectRegion, colorRange, focusArea, 
 // ---- content-aware fill ----
 export { inpaint }
 
-// ---- AI upscaler ----
+// ---- AI upscaler (on-device) ----
 export {
-  lanczosResample, upscaleSmart, cloudUpscale, nearestBackendSize, backendCanEnlarge,
-  setUpscaleStatusHook, type UpscaleOptions, type CloudUpscaleResult,
+  lanczosResample, upscaleSmart, type UpscaleOptions,
 } from './upscale'
+
+// ---- object detection (on-device) ----
+export { detectObjects, type DetectedObject } from './detect'
 
 // ---- AI image generation (text-to-image) ----
 export {

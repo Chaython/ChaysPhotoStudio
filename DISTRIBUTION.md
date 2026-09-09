@@ -35,23 +35,26 @@ host the web build.
 
 ## 2. Releasing (GitHub automation)
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-That tag triggers **Release — Build & Distribute**, which:
+**Every push to the default branch** (`main`/`master`) triggers **Release — Build &
+Distribute**, which:
 
 1. builds the web bundle + icons (`web` job)
 2. packages **Electron installers** on three runners — Windows NSIS
    (`ChaysPhotoStudio-Setup-*.exe`), macOS universal DMG, Linux AppImage + `.deb`
 3. builds the **Tauri webview shell** per OS (deb/AppImage, NSIS, dmg+app)
 4. zips the **browser plugin** (Chrome + Firefox variants)
-5. creates a **draft GitHub Release** containing every asset + `SHA256SUMS.txt`
-   (review it, then click *Publish*)
+5. publishes a **continuous GitHub Release** (prerelease, tagged
+   `v{version}-b{run number}`) containing every asset + `SHA256SUMS.txt`
 
-A manual run (Actions → *Release — Build & Distribute* → *Run workflow*) builds
-all artifacts without publishing a release.
+To publish a **stable release** (marked as *Latest*, no prerelease flag):
+
+```bash
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+A manual run (Actions → *Release — Build & Distribute* → *Run workflow*) publishes a
+continuous-style release just like a push.
 
 > **macOS signing (optional):** CI builds are unsigned (`identity: null` in
 > `electron-builder.yml`). To sign locally:

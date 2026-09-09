@@ -1964,39 +1964,6 @@ export class Engine {
     return true
   }
 
-  /**
-   * Cloud (neural) AI upscale — posts the flat composite to /api/ai-upscale
-   * (z-ai SDK image edit model), then Lanczos-fits the enhanced result to the
-   * exact target resolution. Returns a NEW document (original untouched).
-   */
-  async aiUpscaleCloud(opts: {
-    scale?: number; detail?: number; onProgress?: (p: number) => void
-  }): Promise<PsDocument | null> {
-    const doc = this.activeDoc
-    if (!doc) { this.ui?.toast('No active document', 'error'); return null }
-    const flat = getFlatComposite(doc)
-    try {
-      const res = await imageOps.cloudUpscale(flat, {
-        scale: clamp(opts.scale ?? 2, 1, 4),
-        detail: opts.detail ?? 45,
-        onProgress: opts.onProgress,
-      })
-      const name = `${doc.name} · AI ×${(opts.scale ?? 2).toFixed(2).replace(/\.?0+$/, '')}`
-      const newDoc = this.addCanvasDocument(res.canvas, name)
-      // inherit the source doc's view (same zoom → the larger result visibly
-      // fills more screen; the difference is immediately apparent) and mark it
-      // sticky so the first-display auto-fit doesn't re-fit it back down
-      newDoc.view = { zoom: doc.view.zoom, panX: doc.view.panX, panY: doc.view.panY, autoFit: false }
-      this.emit()
-      this.ui?.toast(`Neural upscale complete — ${newDoc.width} × ${newDoc.height} px. Zoom in (Ctrl+) to inspect the detail; Ctrl+0 re-fits.`, 'success')
-      return newDoc
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Neural engine error'
-      this.ui?.toast(msg, 'error')
-      return null
-    }
-  }
-
   rotateCanvas(deg: number) {
     const doc = this.activeDoc
     if (!doc) return

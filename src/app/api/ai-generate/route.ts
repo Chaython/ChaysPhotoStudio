@@ -1,26 +1,20 @@
 // AI Image Generation backend — multi-provider text-to-image.
 //
 // Providers:
-//   zai           (default) z-ai-web-dev-sdk neural engine — retried hard
-//                 (3 attempts, 70s cap each) because the upstream service is
-//                 intermittently flaky (400/code-1214 load rejections, empty
-//                 results, unreachable image host, hung requests).
-//   pollinations  free community engine (no API key) — used directly on
-//                 request AND as the automatic fallback when Z.AI fails.
+//   pollinations  (default) free community engine (no API key) —
+//                 retried because the shared service is intermittently
+//                 busy (rate limits, non-image responses, slow gens).
 //   custom        user-supplied OpenAI-compatible endpoint
 //                 (baseUrl [/images/generations], optional Bearer key, model).
 //
-// Size rules (learned from upstream error code 1214, see worklog Task 10):
-//   Z.AI requires both dimensions 512–2880, multiples of 32, ≤ 2^22 pixels.
-//   The old 1440x720 / 720x1440 presets VIOLATED that (720 % 32 !== 0) and
-//   failed instantly — presets now use 1472x736 / 736x1472.
-//   Pollinations & custom endpoints accept any WxH.
+// Dimensions: presets stick to multiples of 32 between 512 and 2880 and
+// ≤ 4.2 MP so every engine accepts them; both providers also accept any
+// reasonable WxH.
 import { NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
 
 const MAX_PROMPT = 600
 
-type Provider = 'zai' | 'pollinations' | 'custom'
+type Provider = 'pollinations' | 'custom'
 
 interface CustomConfig {
   baseUrl?: string
@@ -33,12 +27,9 @@ interface GenImage {
   provider: string
 }
 
-const ZAI_ATTEMPTS = 3
-const ZAI_TIMEOUT_MS = 70_000
-const ZAI_BACKOFF_MS = [2_500, 5_000]
-const POLL_ATTEMPTS = 2
-const POLL_TIMEOUT_MS = 75_000
-const POLL_BACKOFF_MS = 5_000
+const POLL_ATTEMPTS = 3
+const POLL_TIMEOUT_MS = 90_000
+const POLL_BACKOFF_MS = 4_000
 const CUSTOM_ATTEMPTS = 2
 const CUSTOM_TIMEOUT_MS = 90_000
 const CUSTOM_BACKOFF_MS = 3_000
@@ -54,15 +45,6 @@ function parseSize(size: string | undefined): { w: number; h: number } {
   return { w: 1024, h: 1024 }
 }
 
-/** Z.AI upstream constraints (error code 1214): 512–2880, ×32, ≤ 2^22 px. */
-function zaiSizeValid(w: number, h: number): boolean {
-  return (
-    w >= 512 && w <= 2880 && h >= 512 && h <= 2880 &&
-    w % 32 === 0 && h % 32 === 0 &&
-    w * h <= 2 ** 22
-  )
-}
-
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     p,
@@ -76,17 +58,6 @@ function toDataUrl(buffer: Buffer, mime: string): string {
   return `data:${mime};base64,${buffer.toString('base64')}`
 }
 
-/** sniff the real image format from magic bytes — the Z.AI SDK returns JPEG
- *  bytes for some models while other paths label everything PNG. */
-function sniffImageMime(buffer: Buffer): string | null {
-  if (buffer.length < 12) return null
-  if (buffer[0] === 0xff && buffer[1] === 0xd8) return 'image/jpeg'
-  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png'
-  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'image/gif'
-  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[8] === 0x57 && buffer[9] === 0x45) return 'image/webp'
-  return null
-}
-
 /** fetch a result URL → data-URL with real content-type detection. */
 async function downloadAsDataUrl(url: string, timeoutMs: number): Promise<string> {
   const res = await withTimeout(fetch(url, { redirect: 'follow' }), timeoutMs, 'image download')
@@ -96,71 +67,6 @@ async function downloadAsDataUrl(url: string, timeoutMs: number): Promise<string
   const buf = Buffer.from(await res.arrayBuffer())
   if (buf.length < 100) throw new Error('the endpoint returned an empty image')
   return toDataUrl(buf, ct || 'image/png')
-}
-
-// ---------- provider: Z.AI (with retries) ----------
-
-interface UpstreamError {
-  message: string
-  status?: number
-  permanent: boolean
-}
-
-function parseUpstreamError(err: unknown): UpstreamError {
-  const raw = err instanceof Error ? err.message : String(err)
-  const m = raw.match(/API request failed with status (\d+)\s*:\s*([\s\S]*)$/)
-  if (m) {
-    const status = Number(m[1])
-    let body: any = null
-    try { body = JSON.parse(m[2]) } catch { /* non-JSON body */ }
-    const code = body?.code ?? body?.error?.code
-    let detail = String(body?.message ?? body?.error?.message ?? m[2]).slice(0, 200)
-    // translate known upstream messages (size constraint arrives in Chinese)
-    if (/长宽|512px|2880|integer multiple|整数倍/i.test(detail) || code === 1214) {
-      detail = 'the requested size is not supported by this engine (dimensions must be 512–2880px, multiples of 32, ≤ 4.2 MP)'
-    }
-    const permanent = status >= 400 && status < 500 && status !== 429
-    return { message: `engine rejected the request (HTTP ${status}${code ? `, code ${code}` : ''}): ${detail}`, status, permanent }
-  }
-  if (/timeout|timed out|aborted|Terminate/i.test(raw)) {
-    return { message: 'the generation engine timed out', permanent: false }
-  }
-  if (/Unable to connect|ECONNREFUSED|ConnectionRefused|ENOTFOUND|fetch failed|network|ConnectTimeout/i.test(raw)) {
-    return { message: 'could not reach the generation engine', permanent: false }
-  }
-  return { message: raw.slice(0, 250) || 'unknown generation error', permanent: false }
-}
-
-async function generateWithZai(prompt: string, size: string): Promise<GenImage> {
-  const zai = await ZAI.create()
-  let last: UpstreamError | null = null
-  for (let attempt = 1; attempt <= ZAI_ATTEMPTS; attempt++) {
-    try {
-      const response = await withTimeout(
-        // SDK types declare a 7-size union (incl. the actually-invalid
-        // 1440x720) — the real API accepts any 512–2880 ×32 size, so cast.
-        zai.images.generations.create({ prompt, size } as never),
-        ZAI_TIMEOUT_MS,
-        `attempt ${attempt}`,
-      )
-      const base64 = (response as any)?.data?.[0]?.base64
-      if (typeof base64 === 'string' && base64.length > 100) {
-        // decode to sniff the real format (bytes are sometimes JPEG despite the SDK contract)
-        let mime = 'image/png'
-        try {
-          const sniffed = sniffImageMime(Buffer.from(base64, 'base64'))
-          if (sniffed) mime = sniffed
-        } catch { /* keep png default */ }
-        return { image: `data:${mime};base64,${base64}`, provider: 'zai' }
-      }
-      last = { message: 'the engine returned an empty result', permanent: false }
-    } catch (err) {
-      last = parseUpstreamError(err)
-    }
-    if (attempt === ZAI_ATTEMPTS) break
-    await sleep(ZAI_BACKOFF_MS[attempt - 1] ?? 5_000)
-  }
-  throw Object.assign(new Error(last?.message ?? 'generation failed'), { upstream: last })
 }
 
 // ---------- provider: Pollinations (free, no key) ----------
@@ -173,7 +79,7 @@ async function generateWithPollinations(prompt: string, w: number, h: number): P
       const url =
         `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
         `?width=${w}&height=${h}&nologo=true&seed=${seed}`
-      const res = await withTimeout(fetch(url, { redirect: 'follow' }), POLL_TIMEOUT_MS, 'pollinations')
+      const res = await withTimeout(fetch(url, { redirect: 'follow' }), POLL_TIMEOUT_MS, 'free engine')
       if (!res.ok) {
         const text = await res.text().catch(() => '')
         throw new Error(`free engine returned HTTP ${res.status}${text ? `: ${text.slice(0, 150)}` : ''}`)
@@ -285,53 +191,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Prompt too long (max ${MAX_PROMPT} chars)` }, { status: 400 })
     }
 
-    const provider: Provider =
-      body.provider === 'pollinations' || body.provider === 'custom' ? body.provider : 'zai'
+    const provider: Provider = body.provider === 'custom' ? 'custom' : 'pollinations'
     const { w, h } = parseSize(body.size)
 
-    if (provider === 'zai' && !zaiSizeValid(w, h)) {
-      return NextResponse.json({
-        error: `Z.AI requires dimensions 512–2880px, multiples of 32, ≤ 4.2 MP — ${w}x${h} is not valid. Pick another aspect or use the Pollinations engine.`,
-      }, { status: 400 })
-    }
-
-    let result: GenImage
-    let fallback = false
-    let primaryError: Error | null = null
-
-    if (provider === 'zai') {
-      try {
-        result = await generateWithZai(prompt, body.size ?? '1024x1024')
-      } catch (err) {
-        primaryError = err instanceof Error ? err : new Error(String(err))
-        // AUTO-FALLBACK: Z.AI is flaky — always give the free engine a shot
-        try {
-          result = await generateWithPollinations(prompt, w, h)
-          fallback = true
-        } catch {
-          throw primaryError
-        }
-      }
-    } else if (provider === 'pollinations') {
-      result = await generateWithPollinations(prompt, w, h)
-    } else {
-      result = await generateWithCustom(body.custom ?? {}, prompt, w, h)
-    }
+    const result: GenImage =
+      provider === 'pollinations'
+        ? await generateWithPollinations(prompt, w, h)
+        : await generateWithCustom(body.custom ?? {}, prompt, w, h)
 
     return NextResponse.json({
       image: result.image,
       provider: result.provider,
-      fallback,
+      fallback: false,
       size: body.size ?? '1024x1024',
     })
   } catch (err: unknown) {
     const e = err instanceof Error ? err : new Error(String(err))
-    const isSizeReject = /not supported by this engine/.test(e.message)
-    const permanent = (e as any)?.permanent || (e as any)?.upstream?.permanent
-    const friendly = isSizeReject || permanent
+    const permanent = (e as any)?.permanent
+    const friendly = permanent
       ? e.message
-      : `${e.message}. The engine may be busy — try again, or switch to the Pollinations engine.`
-    const status = isSizeReject ? 400 : (e as any)?.upstream?.status === 400 ? 400 : 502
-    return NextResponse.json({ error: friendly }, { status })
+      : `${e.message}. The free engine may be busy — try again, or configure your own endpoint under "My API".`
+    return NextResponse.json({ error: friendly }, { status: permanent ? 400 : 502 })
   }
 }

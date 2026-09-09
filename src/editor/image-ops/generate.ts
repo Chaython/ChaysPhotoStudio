@@ -1,9 +1,8 @@
 // ============================================================
 // AI Image Generation — client-side helper for text-to-image.
-// Talks to /api/ai-generate (server-only SDK / providers):
-//   zai           — Z.AI neural engine (default, auto-retries,
-//                   auto-falls-back to Pollinations when flaky)
-//   pollinations  — free community engine, no key, any size
+// Talks to /api/ai-generate (providers):
+//   pollinations  — free community engine (default, no key,
+//                   auto-retries when busy)
 //   custom        — user's own OpenAI-compatible endpoint
 // One image per request; this module loops so callers get
 // progressive results (onImage) and can cancel mid-batch.
@@ -11,9 +10,8 @@
 import { fileToCanvas } from '../utils/canvas'
 
 /**
- * Aspect presets. IMPORTANT: Z.AI rejects 1440x720 / 720x1440
- * (dimensions must be multiples of 32 — 720 is not; upstream error
- * code 1214). 2:1 / 1:2 use 1472x736 / 736x1472 instead.
+ * Aspect presets — dimensions are multiples of 32 between 512 and
+ * 2880 (≤ 4.2 MP) so every generation engine accepts them.
  */
 export const AI_GEN_SIZES: { label: string; sub: string; size: string; w: number; h: number }[] = [
   { label: 'Square', sub: '1024 × 1024', size: '1024x1024', w: 1, h: 1 },
@@ -39,7 +37,7 @@ export const AI_STYLE_PRESETS: { id: string; label: string; mod: string }[] = [
 
 export const AI_GEN_MAX_PROMPT = 600
 
-export type AiGenProvider = 'zai' | 'pollinations' | 'custom'
+export type AiGenProvider = 'pollinations' | 'custom'
 
 /** User's own OpenAI-compatible endpoint config (persisted locally). */
 export interface CustomGenConfig {
@@ -68,9 +66,9 @@ export function saveCustomGenConfig(cfg: CustomGenConfig) {
 }
 
 export interface AiGenMeta {
-  /** which engine actually produced the image: 'zai' | 'pollinations' | 'custom' */
+  /** which engine actually produced the image: 'pollinations' | 'custom' */
   provider: string
-  /** true when the primary engine failed and a fallback engine produced it */
+  /** true when a fallback engine produced the image (reserved) */
   fallback?: boolean
 }
 
@@ -82,7 +80,7 @@ export interface AiGenerateOptions {
   count?: number
   /** abort mid-batch */
   signal?: AbortSignal
-  /** generation engine (default: zai with automatic pollinations fallback) */
+  /** generation engine (default: free engine) */
   provider?: AiGenProvider
   /** custom endpoint config — required when provider === 'custom' */
   custom?: { baseUrl?: string; apiKey?: string; model?: string }

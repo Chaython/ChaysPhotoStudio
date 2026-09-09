@@ -1,16 +1,16 @@
 'use client'
-// AI Upscale dialog — Lanczos+detail local engine and neural cloud enhance
-// with a live 100% crop comparison preview, progress and target-size guard.
+// AI Upscale dialog — on-device Lanczos+detail engine with a live 100%
+// crop comparison preview, progress and target-size guard.
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
-import { Sparkles, Cpu, Cloud, ZoomIn, Info } from 'lucide-react'
+import { Sparkles, Cpu, ZoomIn, Info } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { getFlatComposite } from '../../engine/document'
-import { upscaleSmart, setUpscaleStatusHook, backendCanEnlarge } from '../../image-ops'
+import { upscaleSmart } from '../../image-ops'
 import { createCanvas, ctx2d } from '../../utils/canvas'
 import type { DialogProps } from './generic-dialogs'
 import { cn } from '@/lib/utils'
@@ -20,26 +20,14 @@ const CROP = 180 // preview crop (doc px)
 
 export function AiUpscaleDialog({ onClose }: DialogProps) {
   const doc = engine.activeDoc
-  // The neural cloud model emits fixed 720–1440 px outputs: it can only add
-  // REAL pixels when the source is smaller than its native output. For big
-  // sources it re-renders at ~1024 px and Lanczos-stretches back — no true
-  // resolution gain — so default to the Local engine there and say why.
-  const neuralEffective = !!doc && backendCanEnlarge(doc.width, doc.height)
-  const [engineKind, setEngineKind] = useState<'local' | 'cloud'>('local')
   const [scale, setScale] = useState(2)
   const [detail, setDetail] = useState(55)
   const [denoise, setDenoise] = useState(20)
   const [busy, setBusy] = useState(false)
-  const [status, setStatus] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
   const beforeRef = useRef<HTMLCanvasElement>(null)
   const afterRef = useRef<HTMLCanvasElement>(null)
   const previewToken = useRef(0)
-
-  useEffect(() => {
-    setUpscaleStatusHook(setStatus)
-    return () => setUpscaleStatusHook(null)
-  }, [])
 
   const targetW = doc ? Math.round(doc.width * scale) : 0
   const targetH = doc ? Math.round(doc.height * scale) : 0
@@ -65,14 +53,12 @@ export function AiUpscaleDialog({ onClose }: DialogProps) {
     bc.drawImage(crop, 0, 0, cw * scale, ch * scale)
 
     // "after" — AI pipeline (denoise → Lanczos → detail)
-    const result = await upscaleSmart(crop, {
-      scale, detail: engineKind === 'cloud' ? detail * 0.6 : detail, denoise: engineKind === 'cloud' ? 0 : denoise,
-    })
+    const result = await upscaleSmart(crop, { scale, detail, denoise })
     if (token !== previewToken.current) return // superseded
     const ac = ctx2d(after)
     ac.clearRect(0, 0, after.width, after.height)
     ac.drawImage(result, 0, 0)
-  }, [doc, scale, detail, denoise, engineKind])
+  }, [doc, scale, detail, denoise])
 
   useEffect(() => {
     const id = setTimeout(() => { void recompute() }, 140)
@@ -87,26 +73,17 @@ export function AiUpscaleDialog({ onClose }: DialogProps) {
     setBusy(true)
     setProgress(0.01)
     const store = useEditorStore.getState()
-    store.setProgress({ active: true, label: engineKind === 'cloud' ? 'Neural upscale' : 'AI upscale', value: 0 })
+    store.setProgress({ active: true, label: 'AI upscale', value: 0 })
     try {
-      if (engineKind === 'cloud') {
-        const ok = await engine.aiUpscaleCloud({
-          scale, detail,
-          onProgress: p => { setProgress(p); useEditorStore.getState().setProgress({ active: true, label: 'Neural upscale', value: p }) },
-        })
-        if (ok) onClose()
-      } else {
-        const ok = await engine.aiUpscale({
-          scale, detail, denoise,
-          onProgress: p => { setProgress(p); useEditorStore.getState().setProgress({ active: true, label: 'AI upscale', value: p }) },
-        })
-        if (ok) onClose()
-      }
+      const ok = await engine.aiUpscale({
+        scale, detail, denoise,
+        onProgress: p => { setProgress(p); useEditorStore.getState().setProgress({ active: true, label: 'AI upscale', value: p }) },
+      })
+      if (ok) onClose()
     } finally {
       useEditorStore.getState().setProgress(null)
       setProgress(0)
       setBusy(false)
-      setStatus(null)
     }
   }
 
@@ -127,40 +104,13 @@ export function AiUpscaleDialog({ onClose }: DialogProps) {
       </DialogHeader>
       <div className="space-y-3 py-1">
         {/* engine */}
-        <div className="grid grid-cols-2 gap-1.5">
-          <button
-            className={cn('flex items-center gap-2 rounded border px-2.5 py-2 text-left text-[11px] transition-colors',
-              engineKind === 'local' ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-accent')}
-            onClick={() => setEngineKind('local')}
-            aria-pressed={engineKind === 'local'}
-          >
-            <Cpu size={14} className="text-primary" />
-            <span>
-              <span className="block font-medium">Local Precision</span>
-              <span className="text-[10px] text-muted-foreground">Lanczos-3 · edge-adaptive detail</span>
-            </span>
-          </button>
-          <button
-            className={cn('flex items-center gap-2 rounded border px-2.5 py-2 text-left text-[11px] transition-colors',
-              engineKind === 'cloud' ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-accent')}
-            onClick={() => setEngineKind('cloud')}
-            aria-pressed={engineKind === 'cloud'}
-          >
-            <Cloud size={14} className="text-primary" />
-            <span>
-              <span className="block font-medium">Neural Cloud{neuralEffective ? ' ✓' : ''}</span>
-              <span className="text-[10px] text-muted-foreground">{neuralEffective ? 'true neural enlargement available' : 'AI detail synthesis · new document'}</span>
-            </span>
-          </button>
+        <div className="flex items-center gap-2 rounded border border-primary/40 bg-primary/10 px-2.5 py-2 text-[11px]">
+          <Cpu size={14} className="text-primary" />
+          <span>
+            <span className="block font-medium">On-device precision engine</span>
+            <span className="text-[10px] text-muted-foreground">Lanczos-3 · edge-adaptive detail · runs 100% locally</span>
+          </span>
         </div>
-        {doc && !neuralEffective && (
-          <div className="flex items-start gap-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-600 dark:text-amber-400">
-            <Info size={11} className="mt-0.5 flex-shrink-0" />
-            <span>
-              The neural engine outputs 720–1440&nbsp;px — at {doc.width}×{doc.height} it can’t add true pixels (the result would be re-stretched from a smaller render). Local Precision keeps full {doc.width * scale}×{doc.height * scale} px resolution and is recommended for this image.
-            </span>
-          </div>
-        )}
 
         {/* scale */}
         <div className="space-y-1">
@@ -187,10 +137,8 @@ export function AiUpscaleDialog({ onClose }: DialogProps) {
             <Slider value={[detail]} min={0} max={100} step={1} onValueChange={v => setDetail(v[0])} disabled={busy} />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[11px]">
-              Denoise <span className="text-muted-foreground font-mono">{engineKind === 'cloud' ? 'auto' : `${denoise}%`}</span>
-            </Label>
-            <Slider value={[denoise]} min={0} max={100} step={1} onValueChange={v => setDenoise(v[0])} disabled={busy || engineKind === 'cloud'} />
+            <Label className="text-[11px]">Denoise <span className="text-muted-foreground font-mono">{denoise}%</span></Label>
+            <Slider value={[denoise]} min={0} max={100} step={1} onValueChange={v => setDenoise(v[0])} disabled={busy} />
           </div>
         </div>
 
@@ -222,22 +170,21 @@ export function AiUpscaleDialog({ onClose }: DialogProps) {
           </div>
         </div>
 
-        {/* engine output note */}
+        {/* engine note */}
         <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground">
           <Info size={11} className="mt-0.5 flex-shrink-0" />
           <span>
-            {engineKind === 'local'
-              ? 'Applies in place — every layer keeps its structure, masks and smart filters; text/vector layers re-render crisply. Pixel data is never re-compressed (raw RGBA pipeline). Recorded in Actions.'
-              : 'Uploads a lossless PNG, enhances with the cloud neural engine, then Lanczos-fits it to the exact target size as a new document. The original stays untouched.'}
+            Applies in place — every layer keeps its structure, masks and smart filters; text/vector layers
+            re-render crisply. Pixel data is never re-compressed or uploaded (raw RGBA pipeline, fully
+            on-device). Recorded in Actions.
           </span>
         </div>
 
-        {(busy || status) && (
+        {busy && (
           <div className="space-y-1">
             <div className="h-1.5 rounded-full bg-muted overflow-hidden">
               <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.round(progress * 100)}%` }} />
             </div>
-            {status && <div className="text-[10px] text-primary animate-pulse">{status}</div>}
           </div>
         )}
       </div>

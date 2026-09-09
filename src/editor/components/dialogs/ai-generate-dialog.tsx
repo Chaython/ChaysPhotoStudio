@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
   Sparkles, Layers, FilePlus2, Boxes, Download, Loader2, Ban, Info, Wand2,
-  Cloud, Flower2, Plug,
+  Flower2, Plug,
 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
@@ -28,7 +28,6 @@ const CHECKER = 'bg-[repeating-conic-gradient(#3a3a3a_0%_25%,#2c2c2c_0%_50%)] [b
 const COUNTS = [1, 2, 4]
 
 const ENGINES: { id: AiGenProvider; label: string; sub: string; icon: any }[] = [
-  { id: 'zai', label: 'Z.AI Cloud', sub: 'Neural · auto-fallback', icon: Cloud },
   { id: 'pollinations', label: 'Pollinations', sub: 'Free · no key', icon: Flower2 },
   { id: 'custom', label: 'Custom API', sub: 'Your endpoint', icon: Plug },
 ]
@@ -51,7 +50,7 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
   const [images, setImages] = useState<string[]>([])
   const [sel, setSel] = useState(0)
   const [placing, setPlacing] = useState(false)
-  const [engineId, setEngineId] = useState<AiGenProvider>('zai')
+  const [engineId, setEngineId] = useState<AiGenProvider>('pollinations')
   const [customCfg, setCustomCfg] = useState<CustomGenConfig>({ baseUrl: '', apiKey: '', model: '' })
   const [meta, setMeta] = useState<AiGenMeta | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -170,7 +169,7 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
         {/* engine */}
         <div className="space-y-1">
           <Label className="text-[11px]">Engine</Label>
-          <div className="grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-2 gap-1">
             {ENGINES.map(en => (
               <button
                 key={en.id}
@@ -323,7 +322,7 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
             <div className="flex items-center gap-2 text-[11px]">
               <Loader2 size={13} className="animate-spin text-primary" />
               <span className="text-primary">
-                Generating image {done + 1} of {count}{engineId === 'zai' ? ' — neural engine' : engineId === 'pollinations' ? ' — free engine' : ' — your API'}…
+                Generating image {done + 1} of {count}{engineId === 'pollinations' ? ' — free engine' : ' — your API'}…
               </span>
               <span className="ml-auto font-mono text-muted-foreground">{elapsed}s</span>
               <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => abortRef.current?.abort()}>
@@ -334,11 +333,9 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
               <div className="h-full bg-primary transition-[width]" style={{ width: `${(done / count) * 100}%` }} />
             </div>
             <div className="text-[9px] text-muted-foreground">
-              {engineId === 'zai'
-                ? 'Each image usually takes 30–60s. Z.AI auto-retries and falls back to the free Pollinations engine when busy.'
-                : engineId === 'pollinations'
-                  ? 'The free community engine — usually fast, sometimes queued. Output resolution is chosen by the engine.'
-                  : 'Your endpoint — usually seconds. Requests retry once on transient errors.'}
+              {engineId === 'pollinations'
+                ? 'The free community engine — usually fast, sometimes queued. Output resolution is chosen by the engine.'
+                : 'Your endpoint — usually seconds. Requests retry once on transient errors.'}
             </div>
           </div>
         ) : (
@@ -363,12 +360,6 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
                 {sel + 1}/{images.length}{meta?.provider === 'pollinations' ? ' · Pollinations' : meta?.provider === 'custom' ? ' · your API' : ''}
               </span>
             </Label>
-            {meta?.fallback && (
-              <div className="flex items-start gap-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-600 dark:text-amber-400">
-                <Info size={11} className="mt-0.5 flex-shrink-0" />
-                <span>Z.AI was busy — this image came from the free Pollinations engine. Regenerate later for the neural engine, or upscale it with AI Upscale.</span>
-              </div>
-            )}
             <div className={cn('rounded border p-1.5 flex items-center justify-center', CHECKER)}>
               {current && (
                 <img

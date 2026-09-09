@@ -1,10 +1,14 @@
 # ============================================================
 # Chay's Photo Studio — Release pipeline
-# Triggers: git tag v*.*.* (full release) or manual dispatch
-# (builds artifacts, no release publish).
+# Triggers:
+#   • every push to the default branch → full build of ALL bundles
+#     + automatic continuous release (prerelease, tagged
+#     v{version}-b{run number})
+#   • git tag v*.*.* → stable release marked as Latest
+#   • manual dispatch → same as a continuous build
 #
-# Products:
-#   • Web (self-hostable Next.js standalone bundle)
+# Products (every run):
+#   • Web (self-hostable Next.js standalone bundle — the PWA)
 #   • Electron desktop installers (Windows NSIS, macOS dmg
 #     universal, Linux AppImage + deb) — fully offline
 #   • System-webview shell (Tauri: deb/AppImage/dmg/nsis)
@@ -23,6 +27,7 @@ name: Release — Build & Distribute
 
 on:
   push:
+    branches: [main, master]
     tags: ['v*.*.*']
   workflow_dispatch:
 
@@ -239,14 +244,27 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------
-  # GitHub Release — everything above + checksums (tags only)
+  # GitHub Release — everything above + checksums (every run)
   # ---------------------------------------------------------
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: [web, electron, webview, extension]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Compute release tag
+        id: rel
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "pre=false" >> "$GITHUB_OUTPUT"
+          else
+            VER=$(grep -m1 '"version"' package.json | sed -E 's/.*"version": *"([^"]+)".*/\1/')
+            echo "tag=v${VER}-b${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "name=Continuous build ${GITHUB_RUN_NUMBER} ($(echo "$GITHUB_SHA" | cut -c1-7))" >> "$GITHUB_OUTPUT"
+            echo "pre=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -272,8 +290,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
-          prerelease: ${{ contains(github.ref, '-') }}
+          tag_name: ${{ steps.rel.outputs.tag }}
+          name: ${{ steps.rel.outputs.name }}
+          draft: false
+          prerelease: ${{ steps.rel.outputs.pre == 'true' }}
+          make_latest: ${{ steps.rel.outputs.pre == 'false' }}
           generate_release_notes: true
           files: |
             release/*
@@ -285,10 +306,12 @@ jobs:
             | 🖥️ Electron desktop (fully offline) | `ChaysPhotoStudio-Setup-*.exe` (Windows) · `ChaysPhotoStudio-*-universal.dmg` (macOS) · `*.AppImage` / `*.deb` (Linux) |
             | 🪶 Webview shell (tiny, hosts the deployed editor) | `chays-photo-studio-webview_*` bundles |
             | 🧩 Browser plugin | `chays-photo-studio-extension-*.zip` (Chrome) · `chays-photo-studio-extension-firefox-*.zip` |
-            | 🌐 Self-hosting | `web-standalone.tar.gz` (Node ≥ 20, `node server.js`) |
+            | 🌐 Self-hosting / PWA | `web-standalone.tar.gz` (Node ≥ 20, `node server.js` — installable as an app from the browser) |
 
-            See `DISTRIBUTION.md` in the repository for install instructions, repository
-            variables (`WEBVIEW_APP_URL`, `EDITOR_URL`), and signing notes.
+            Continuous builds are published on every push to the default branch;
+            stable `v*.*.*` tags are marked as the latest release. See `DISTRIBUTION.md`
+            in the repository for install instructions, repository variables
+            (`WEBVIEW_APP_URL`, `EDITOR_URL`), and signing notes.
 
             © Chaython Meredith — free for consumer and education use · commercial
             licensing: chaython@live.ca · support development:

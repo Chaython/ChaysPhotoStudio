@@ -9,11 +9,8 @@
 //    doesn't get baked in at 4×
 //  - enhanceDetail: post-upscale unsharp with edge-adaptive strength
 //    (gradient-weighted) + micro-contrast — the "AI detail" look
-//  - upscaleSmart: full local pipeline (denoise → Lanczos → detail)
-//    with progress + cooperative yielding
-//  - cloudUpscaleViaApi: calls the /api/ai-upscale backend (z-ai SDK
-//    image edit model) for a neural detail pass, then Lanczos-fits
-//    the result to the exact target dimensions
+//  - upscaleSmart: full pipeline (denoise → Lanczos → detail)
+//    with progress + cooperative yielding — fully on-device
 // ============================================================
 import { createCanvas, ctx2d, cloneCanvas } from '../utils/canvas'
 
@@ -223,102 +220,3 @@ export async function upscaleSmart(
   return out
 }
 
-// ---------- cloud (neural) upscale via backend SDK ----------
-
-export interface CloudUpscaleResult { canvas: HTMLCanvasElement; backendWidth: number; backendHeight: number }
-
-/** pick the SDK-supported output size closest to the target aspect.
- * NOTE: dimensions must be multiples of 32 (upstream error 1214 rejects
- * 720) — 2:1/1:2 use 1472x736/736x1472. */
-export function nearestBackendSize(aspect: number): string {
-  const sizes: [string, number][] = [
-    ['1024x1024', 1], ['768x1344', 768 / 1344], ['864x1152', 864 / 1152],
-    ['1344x768', 1344 / 768], ['1152x864', 1152 / 864], ['1472x736', 2], ['736x1472', 0.5],
-  ]
-  let best = sizes[0], bestD = Infinity
-  for (const s of sizes) {
-    const dd = Math.abs(Math.log(aspect / s[1]))
-    if (dd < bestD) { bestD = dd; best = s }
-  }
-  return best[0]
-}
-
-/** true when the neural backend's native output is strictly larger than the
- *  source in BOTH dimensions — i.e. it can genuinely add real pixels. The
- *  image-edit model emits fixed 720–1440 px outputs, so sources already at or
- *  above that size get re-fit (Lanczos) instead of truly enlarged. */
-export function backendCanEnlarge(srcW: number, srcH: number): boolean {
-  const [bw, bh] = nearestBackendSize(srcW / srcH).split('x').map(Number)
-  return bw > srcW && bh > srcH
-}
-
-/**
- * Neural enhance: POST the composite to /api/ai-upscale (z-ai SDK image-edit),
- * then Lanczos-fit the returned image to the exact target size + local detail pass.
- */
-export async function cloudUpscale(
-  src: HTMLCanvasElement, opts: UpscaleOptions & { maxUpload?: number }
-): Promise<CloudUpscaleResult> {
-  const maxUpload = opts.maxUpload ?? 1152
-  onProgressInfo?.('Preparing image for neural engine…')
-  // 1) cap upload size (keep aspect)
-  let upload = src
-  const m = Math.max(src.width, src.height)
-  if (m > maxUpload) {
-    const k = maxUpload / m
-    upload = createCanvas(Math.round(src.width * k), Math.round(src.height * k))
-    const uc = ctx2d(upload)
-    uc.imageSmoothingQuality = 'high'
-    uc.drawImage(src, 0, 0, upload.width, upload.height)
-  }
-  // lossless PNG upload — a JPEG re-encode here would bake compression
-  // artifacts into the source before the neural pass amplifies them.
-  // (Route caps the request body at 8 MB; only fall back to high-quality
-  // JPEG for pathological PNG payloads that wouldn't fit.)
-  let dataUrl = upload.toDataURL('image/png')
-  if (dataUrl.length > 7_000_000) dataUrl = upload.toDataURL('image/jpeg', 0.95)
-  opts.onProgress?.(0.08)
-
-  onProgressInfo?.('Neural engine is enhancing details…')
-  const sizeStr = nearestBackendSize(src.width / src.height)
-  const res = await fetch('/api/ai-upscale', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: dataUrl, size: sizeStr }),
-  })
-  opts.onProgress?.(0.55)
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-    throw new Error(err.error || `Upscale service error ${res.status}`)
-  }
-  const json = await res.json() as { image: string }
-  opts.onProgress?.(0.62)
-
-  // 2) load returned image
-  const blob = await (await fetch(json.image)).blob()
-  const bmp = await createImageBitmap(blob)
-  const returned = createCanvas(bmp.width, bmp.height)
-  ctx2d(returned).drawImage(bmp, 0, 0)
-  bmp.close()
-  opts.onProgress?.(0.68)
-
-  // 3) Lanczos-fit to exact target + detail
-  onProgressInfo?.('Fitting result to target resolution…')
-  const w = Math.max(1, Math.round(src.width * opts.scale))
-  const h = Math.max(1, Math.round(src.height * opts.scale))
-  const fitted = await lanczosResample(returned, w, h, p => opts.onProgress?.(0.68 + p * 0.28))
-  if ((opts.detail ?? 55) > 0) {
-    const img = ctx2d(fitted).getImageData(0, 0, w, h)
-    enhanceDetail(img, (opts.detail ?? 55) * 0.6) // gentler — neural pass already adds detail
-    ctx2d(fitted).putImageData(img, 0, 0)
-  }
-  onProgressInfo?.(null)
-  opts.onProgress?.(1)
-  return { canvas: fitted, backendWidth: returned.width, backendHeight: returned.height }
-}
-
-/** status hook for dialogs (set by the AI Upscale dialog) */
-let onProgressInfo: ((label: string | null) => void) | null = null
-export function setUpscaleStatusHook(fn: ((label: string | null) => void) | null) {
-  onProgressInfo = fn
-}

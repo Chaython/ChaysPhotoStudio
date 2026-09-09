@@ -56,3 +56,6 @@ server.log
 webview/src-tauri/target/
 webview/src-tauri/gen/
 webview/src-tauri/tauri.conf.release.json
+
+# internal development log (never distributed)
+worklog.md

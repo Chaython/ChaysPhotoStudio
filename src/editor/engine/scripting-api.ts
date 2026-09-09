@@ -114,14 +114,6 @@ export function getScriptApi(engine: Engine) {
         if (prev) engine.setActiveDocument(prev)
         return ok
       },
-      /** cloud (neural) AI upscale — returns the new enhanced document's id (or null) */
-      async aiUpscaleCloud(scale = 2, opts: { detail?: number } = {}) {
-        const prev = engine.activeDoc?.id
-        engine.setActiveDocument(docId)
-        const nd = await engine.aiUpscaleCloud({ scale, detail: opts.detail })
-        if (prev) engine.setActiveDocument(prev)
-        return nd?.id ?? null
-      },
       rotate(deg: number) { const prev = engine.activeDoc?.id; engine.setActiveDocument(docId); engine.rotateCanvas(deg); if (prev) engine.setActiveDocument(prev) },
       flip(dir: 'horizontal' | 'vertical') { const prev = engine.activeDoc?.id; engine.setActiveDocument(docId); engine.flipCanvas(dir); if (prev) engine.setActiveDocument(prev) },
       flatten() { const prev = engine.activeDoc?.id; engine.setActiveDocument(docId); engine.flatten(); if (prev) engine.setActiveDocument(prev) },

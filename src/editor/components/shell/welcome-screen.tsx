@@ -210,7 +210,7 @@ export function WelcomeScreen() {
           </button>
           <span aria-hidden="true" className="opacity-40">·</span>
           <a
-            href="/chays-photo-studio-1.0.0-project.zip"
+            href="/chays-photo-studio-1.1.0-project.zip"
             download
             className="flex items-center gap-1 underline underline-offset-2 hover:text-foreground transition-colors"
           >
@@ -256,8 +256,7 @@ function AiGeneratorCard() {
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [image, setImage] = useState<string | null>(null)
-  const [usedFallback, setUsedFallback] = useState(false)
-  const [engineId, setEngineId] = useState<AiGenProvider>('zai')
+  const [engineId, setEngineId] = useState<AiGenProvider>('pollinations')
   const [customCfg, setCustomCfg] = useState<CustomGenConfig>({ baseUrl: '', apiKey: '', model: '' })
   const abortRef = useRef<AbortController | null>(null)
 
@@ -283,14 +282,12 @@ function AiGeneratorCard() {
     setBusy(true)
     setElapsed(0)
     setImage(null)
-    setUsedFallback(false)
     const ac = new AbortController()
     abortRef.current = ac
     try {
       const [url] = await aiGenerate({
         prompt: prompt.trim(), size, signal: ac.signal, provider: engineId,
         custom: engineId === 'custom' ? customCfg : undefined,
-        onImage: (_url, _i, _n, meta) => { if (meta?.fallback) setUsedFallback(true) },
       })
       setImage(url)
     } catch (e: any) {
@@ -355,7 +352,7 @@ function AiGeneratorCard() {
       {/* engine selector */}
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className="text-[10px] text-muted-foreground">Engine</span>
-        {([['zai', 'Cloud'], ['pollinations', 'Free'], ['custom', 'My API']] as [AiGenProvider, string][]).map(([id, label]) => (
+        {([['pollinations', 'Free'], ['custom', 'My API']] as [AiGenProvider, string][]).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setEngineId(id)}
@@ -367,7 +364,7 @@ function AiGeneratorCard() {
                 ? 'border-primary bg-primary/15 text-primary'
                 : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
             )}
-            title={id === 'zai' ? 'Z.AI neural engine — auto-retries and falls back to the free engine when busy' : id === 'pollinations' ? 'Pollinations — free community engine, no API key' : 'Your own OpenAI-compatible endpoint (configured in the AI Generate dialog or below)'}
+            title={id === 'pollinations' ? 'Pollinations — free community engine, no API key' : 'Your own OpenAI-compatible endpoint (configured in the AI Generate dialog or below)'}
           >
             {label}
           </button>
@@ -455,11 +452,9 @@ function AiGeneratorCard() {
             <span className="ml-auto font-mono text-muted-foreground">{elapsed}s</span>
           </div>
           <div className="text-[9px] text-muted-foreground">
-            {engineId === 'zai'
-              ? 'Usually 30–60s. The engine auto-retries when busy — keep this tab open.'
-              : engineId === 'pollinations'
-                ? 'The free engine is usually fast, sometimes queued.'
-                : 'Your endpoint should answer in seconds.'}
+            {engineId === 'pollinations'
+              ? 'The free engine is usually fast, sometimes queued.'
+              : 'Your endpoint should answer in seconds.'}
           </div>
         </div>
       )}
@@ -472,12 +467,6 @@ function AiGeneratorCard() {
 
       {image && !busy && (
         <div className="space-y-2">
-          {usedFallback && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[10px] text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
-              <Sparkles size={11} className="mt-0.5 flex-shrink-0" />
-              <span>Z.AI was busy — this came from the free Pollinations engine. Regenerate later for the neural engine, or upscale it after opening.</span>
-            </div>
-          )}
           <div className={cn('rounded-lg border p-1.5 flex items-center justify-center', CHECKER)}>
             <img src={image} alt="AI-generated result" className="max-h-56 w-auto rounded shadow" />
           </div>
