@@ -9,6 +9,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 - AI Upscale consolidated into the on-device precision engine (denoise → Lanczos-3 → edge-adaptive detail recovery).
 - Every push to the default branch now builds all bundles (Electron installers, webview shells, browser plugin, web bundle) and publishes a GitHub Release automatically; `v*.*.*` tags publish stable releases.
 - Fixed CI failing on fresh checkouts (Prisma client generation).
+- Desktop installers: the packaged app is now named "Chays Photo Studio" (installer tooling rejects apostrophes in package paths); the app window keeps the full branded title.
+- Added package metadata (description, author, homepage) required by Linux package builds.
 
 ## 1.0.0
 

@@ -1,6 +1,6 @@
 [package]
 name = "chays-photo-studio-webview"
-version = "1.0.0"
+version = "1.1.0"
 description = "Chay's Photo Studio — lightweight system-webview shell"
 authors = ["Chaython Meredith <chaython@live.ca>"]
 license = "LicenseRef-LICENSE-in-repository"
