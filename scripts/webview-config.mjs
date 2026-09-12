@@ -29,8 +29,9 @@ if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
 
 const overlay = {
   build: {
+    // release shell hosts the deployed editor; devUrl stays out of
+    // release configs (it is a `tauri dev`-only setting).
     frontendDist: url.toString().replace(/\/+$/, ''),
-    devUrl: url.toString().replace(/\/+$/, ''),
   },
 }
 fs.writeFileSync(OUT, JSON.stringify(overlay, null, 2) + '\n')

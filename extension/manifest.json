@@ -3,7 +3,7 @@
   "name": "Chay's Photo Studio",
   "short_name": "Chay's Photo",
   "version": "1.0.0",
-  "description": "Photoshop-class image editor in a tab — right-click any image on the web to edit it in Chay's Photo Studio.",
+  "description": "Photoshop-class image editor bundled right into the plugin — no server, works offline. Right-click any image on the web to edit it.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -17,6 +17,6 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["contextMenus", "storage"],
+  "permissions": ["contextMenus"],
   "minimum_chrome_version": "102"
 }

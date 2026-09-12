@@ -27,23 +27,24 @@ Actions → *Variables*):
 
 | Variable | Used by | Default |
 |---|---|---|
-| `WEBVIEW_APP_URL` | Tauri webview shell — where it loads the editor from | `http://localhost:3000` (with a build warning) |
-| `EDITOR_URL` | Browser plugin — the baked-in editor location users can override in the popup | `http://localhost:3000` |
+| `WEBVIEW_APP_URL` | Tauri webview shell — where it loads the editor from | `https://chaython.github.io/ChaysPhotoStudio/` (auto-deployed by the same workflow) |
 
-Set both to your deployed editor (e.g. `https://studio.example.com`) once you
-host the web build.
+The **browser plugin is self-contained** — it bundles the whole editor inside the
+extension and needs no URL, server, or host permissions. GitHub Pages is enabled
+automatically on the first release run.
 
 ## 2. Releasing (GitHub automation)
 
 **Every push to the default branch** (`main`/`master`) triggers **Release — Build &
 Distribute**, which:
 
-1. builds the web bundle + icons (`web` job)
-2. packages **Electron installers** on three runners — Windows NSIS
+1. builds the web bundle + icons + static exports (`web` job)
+2. deploys the **static web app to GitHub Pages** (auto-enabled on first run)
+3. packages **Electron installers** on three runners — Windows NSIS
    (`ChaysPhotoStudio-Setup-*.exe`), macOS universal DMG, Linux AppImage + `.deb`
-3. builds the **Tauri webview shell** per OS (deb/AppImage, NSIS, dmg+app)
-4. zips the **browser plugin** (Chrome + Firefox variants)
-5. publishes a **continuous GitHub Release** (prerelease, tagged
+4. builds the **Tauri webview shell** per OS (deb/AppImage, NSIS, dmg+app)
+5. zips the **browser plugin** (Chrome + Firefox variants — editor bundled inside)
+6. publishes a **continuous GitHub Release** (prerelease, tagged
    `v{version}-b{run number}`) containing every asset + `SHA256SUMS.txt`
 
 To publish a **stable release** (marked as *Latest*, no prerelease flag):
@@ -74,9 +75,8 @@ bun run app:prepare           # assemble build/electron/app
 bun run app:dist              # package for your current OS
 bun run app:dist:win          # …or explicitly --win / --mac --universal / --linux
 
-# Browser plugin
-bun run ext:build                                  # zips into build/extension/
-EDITOR_URL=https://studio.example.com bun run ext:build   # bake your URL
+# Browser plugin (self-contained — bundles the whole editor)
+bun run ext:build            # static export + zips into build/extension/
 
 # Tauri webview shell (requires Rust; uses the OS webview)
 bun run webview:dev                                  # shell on localhost:3000
@@ -94,15 +94,17 @@ tar -xzf web-standalone.tar.gz && PORT=3000 node server.js
 2. Chrome → `chrome://extensions` → enable **Developer mode** → **Load unpacked**
    → select the folder
 3. Right-click any image → **Edit image in Chay's Photo Studio**
-4. Click the toolbar icon to set your editor's URL (default baked from `EDITOR_URL`)
+4. Click the toolbar icon → **Open editor** — the full app runs inside the
+   extension, no server required
 
 **Chrome Web Store:** upload `build/extension/chays-photo-studio-extension-*.zip`
 (Developer Dashboard → New item). **Firefox (addons.mozilla.org):** upload
 `chays-photo-studio-extension-firefox-*.zip` — same code, event-page background.
 
-The plugin needs **no host permissions**: the context menu works everywhere, and
-the editor page itself fetches the image URL (sites that block cross-origin
-fetches show a friendly error asking the user to save the file first).
+The plugin is **self-contained and offline-capable**: the entire editor ships
+inside the extension, it needs no host permissions, and the context menu works
+everywhere. When AI generation is used, the free engine is called directly from
+the browser.
 
 ## 5. PWA — "install as an app" from the browser
 

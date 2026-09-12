@@ -14,9 +14,15 @@ import { useEffect } from 'react'
 
 export function AppBridges() {
   useEffect(() => {
-    // ---- 1. service worker (production builds only) ----
-    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-      const register = () => { navigator.serviceWorker.register('/sw.js').catch(() => {}) }
+    // ---- 1. service worker (production, http(s) pages only) ----
+    // Skipped inside browser extensions / non-web contexts, where
+    // registration is not permitted (the catch() would swallow it,
+    // but skipping outright keeps the console clean).
+    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production'
+        && /^https?:$/.test(location.protocol)) {
+      // relative: resolves correctly on root hosting and sub-path
+      // hosting (GitHub Pages) alike; the worker derives its own BASE.
+      const register = () => { navigator.serviceWorker.register('sw.js').catch(() => {}) }
       if (document.readyState === 'complete') register()
       else window.addEventListener('load', register, { once: true })
     }

@@ -1,25 +1,16 @@
 // Chay's Photo Studio — browser plugin background.
-// Chrome MV3: service worker. Firefox MV3 (build variant): event page
-// (the build script swaps the manifest's background key; this file is
-// written in callback style so it runs unchanged in both).
-// `__EDITOR_URL__` is replaced at build time (scripts/build-extension.mjs).
-const DEFAULT_EDITOR_URL = '__EDITOR_URL__'
+// The plugin is self-contained: the full editor webapp is bundled
+// inside the extension (index.html + _next assets at the package
+// root), so it opens instantly with no server and works offline.
+// Chrome MV3: service worker. Firefox MV3 (build variant): event
+// page (the build script swaps the manifest's background key; this
+// file is written in callback style so it runs unchanged in both).
+const EDITOR_PAGE = 'index.html'
 
-function storageGet(keys) {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.sync.get(keys, (res) => resolve(res || {}))
-    } catch (e) {
-      resolve({})
-    }
-  })
-}
-
-function openEditor(callback) {
-  storageGet('editorUrl').then((res) => {
-    const base = String((res && res.editorUrl) || DEFAULT_EDITOR_URL).replace(/\/+$/, '')
-    callback(base)
-  })
+function editorUrl(params) {
+  const base = chrome.runtime.getURL(EDITOR_PAGE)
+  if (!params) return base
+  return base + '?' + new URLSearchParams(params).toString()
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -38,11 +29,9 @@ chrome.runtime.onInstalled.addListener(() => {
 })
 
 chrome.contextMenus.onClicked.addListener((info) => {
-  openEditor((base) => {
-    if (info.menuItemId === 'chays-edit-image' && info.srcUrl) {
-      chrome.tabs.create({ url: base + '/?url=' + encodeURIComponent(info.srcUrl) })
-    } else if (info.menuItemId === 'chays-open-editor') {
-      chrome.tabs.create({ url: base + '/' })
-    }
-  })
+  if (info.menuItemId === 'chays-edit-image' && info.srcUrl) {
+    chrome.tabs.create({ url: editorUrl({ url: info.srcUrl }) })
+  } else if (info.menuItemId === 'chays-open-editor') {
+    chrome.tabs.create({ url: editorUrl() })
+  }
 })

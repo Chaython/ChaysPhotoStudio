@@ -1,12 +1,15 @@
 /* Chay's Photo Studio — service worker.
-   Installed only in production builds (see src/app/native-bridges.tsx).
+   Installed only in production, http(s) pages (see src/app/native-bridges.tsx).
    Strategy:
    - precache the app shell on install
    - navigations: network-first with cached-shell + offline fallback
    - static assets: stale-while-revalidate
-   - never touches /api/* or cross-origin requests            */
+   - never touches /api/* or cross-origin requests
+   BASE: derived from this worker's own URL, so the same file serves
+   root deployments and sub-path deployments (GitHub Pages) alike. */
 const CACHE = 'chays-photo-studio-v1'
-const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png']
+const BASE = self.location.pathname.replace(/\/sw\.js$/, '')
+const SHELL = [`${BASE}/`, `${BASE}/manifest.webmanifest`, `${BASE}/icons/icon-192.png`, `${BASE}/icons/icon-512.png`]
 
 const OFFLINE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>Chay's Photo Studio — offline</title><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -15,7 +18,7 @@ div{text-align:center;max-width:32ch}h1{font-size:18px;margin:0 0 8px}p{color:#b
 a{color:#e8a33d}</style></head><body><div>
 <h1>Chay's Photo Studio</h1>
 <p>You're offline. Documents you were editing stay open — reconnect to use AI features (generate, upscale, detect).</p>
-<p style="margin-top:12px"><a href="/">Retry</a></p>
+<p style="margin-top:12px"><a href="${BASE}/">Retry</a></p>
 </div></body></html>`
 
 self.addEventListener('install', (e) => {
@@ -46,15 +49,15 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return
   const url = new URL(req.url)
   if (url.origin !== self.location.origin) return // cross-origin: browser default
-  if (url.pathname.startsWith('/api/')) return // live server data, never cached
+  if (url.pathname.startsWith(`${BASE}/api/`)) return // live server data, never cached
 
   if (req.mode === 'navigate') {
     e.respondWith(networkFirstNavigation(req))
     return
   }
   const isStatic =
-    url.pathname.startsWith('/_next/static') ||
-    url.pathname.startsWith('/icons/') ||
+    url.pathname.startsWith(`${BASE}/_next/static`) ||
+    url.pathname.startsWith(`${BASE}/icons/`) ||
     STATIC_RE.test(url.pathname)
   if (isStatic) e.respondWith(staleWhileRevalidate(req))
 })
@@ -64,11 +67,11 @@ async function networkFirstNavigation(req) {
     const res = await fetch(req)
     if (res && res.ok) {
       const cache = await caches.open(CACHE)
-      cache.put('/', res.clone()).catch(() => {})
+      cache.put(`${BASE}/`, res.clone()).catch(() => {})
     }
     return res
   } catch {
-    const cached = (await caches.match(req)) || (await caches.match('/'))
+    const cached = (await caches.match(req)) || (await caches.match(`${BASE}/`))
     if (cached) return cached
     return new Response(OFFLINE_HTML, { headers: { 'content-type': 'text/html; charset=utf-8' }, status: 503 })
   }

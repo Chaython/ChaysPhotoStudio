@@ -20,6 +20,14 @@ directories:
 files:
   - electron/**
 
+# The asar ships ONLY the pure-JS electron shell (no native addons),
+# and the standalone server runs as a child process whose modules are
+# N-API (ABI-stable). So skip @electron/rebuild entirely — it would
+# otherwise try to rebuild devDependencies like @parcel/watcher for
+# the Electron ABI, which source-builds on the Linux runner but fails
+# on the Windows/macOS (universal) CI runners.
+npmRebuild: false
+
 extraResources:
   - from: build/electron/app
     to: app

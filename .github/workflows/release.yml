@@ -9,19 +9,20 @@
 #
 # Products (every run):
 #   • Web (self-hostable Next.js standalone bundle — the PWA)
+#   • GitHub Pages deployment of the static webapp
+#     (https://<owner>.github.io/ChaysPhotoStudio) — auto-enabled
 #   • Electron desktop installers (Windows NSIS, macOS dmg
 #     universal, Linux AppImage + deb) — fully offline
 #   • System-webview shell (Tauri: deb/AppImage/dmg/nsis)
-#     — tiny binary hosting your deployed editor URL
-#   • Browser plugin zips (Chrome MV3 + Firefox variant)
+#     — tiny binary hosting the deployed editor URL
+#   • Browser plugin (Chrome MV3 + Firefox variant) — the full
+#     editor bundled inside, no server needed
 #   • GitHub Release with all assets + SHA256SUMS.txt
 #
 # Repository variables (Settings → Secrets and variables → Actions
 # → Variables) — all optional:
 #   WEBVIEW_APP_URL  deployed editor URL for the webview shell
-#                    (default: http://localhost:3000 + warning)
-#   EDITOR_URL       default editor URL baked into the browser
-#                    plugin (default: http://localhost:3000)
+#                    (default: the GitHub Pages deployment)
 # ============================================================
 name: Release — Build & Distribute
 
@@ -37,6 +38,7 @@ permissions:
 jobs:
   # ---------------------------------------------------------
   # Web bundle + shared icons (standalone server, self-hostable)
+  # + static exports (GitHub Pages flavor, plugin flavor)
   # ---------------------------------------------------------
   web:
     runs-on: ubuntu-latest
@@ -65,11 +67,28 @@ jobs:
       - name: Bundle standalone server for self-hosting
         run: tar -czf web-standalone.tar.gz -C .next/standalone .
 
+      - name: Build static webapp exports (Pages + plugin flavors)
+        run: node scripts/export-webapp.mjs both
+
       - name: Upload web bundle
         uses: actions/upload-artifact@v4
         with:
           name: web-standalone
           path: web-standalone.tar.gz
+          if-no-files-found: error
+
+      - name: Upload static webapp (Pages flavor)
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapp-static-pages
+          path: build/webapp-export-pages/
+          if-no-files-found: error
+
+      - name: Upload static webapp (plugin flavor)
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapp-static-plugin
+          path: build/webapp-export/
           if-no-files-found: error
 
       - name: Upload icons (electron builder resources)
@@ -85,6 +104,41 @@ jobs:
           name: tauri-icons
           path: webview/src-tauri/icons
           if-no-files-found: error
+
+  # ---------------------------------------------------------
+  # GitHub Pages — deploy the static webapp
+  # (auto-enables Pages with "GitHub Actions" source on first run)
+  # ---------------------------------------------------------
+  pages:
+    runs-on: ubuntu-latest
+    needs: web
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Download static webapp
+        uses: actions/download-artifact@v4
+        with:
+          name: webapp-static-pages
+          path: site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   # ---------------------------------------------------------
   # Electron desktop installers — one leg per OS (native modules
@@ -194,11 +248,29 @@ jobs:
       - name: Point the shell at the editor URL
         run: node scripts/webview-config.mjs
         env:
-          WEBVIEW_APP_URL: ${{ vars.WEBVIEW_APP_URL || 'http://localhost:3000' }}
+          WEBVIEW_APP_URL: ${{ vars.WEBVIEW_APP_URL || 'https://chaython.github.io/ChaysPhotoStudio/' }}
 
       - name: Build webview shell
         working-directory: webview/src-tauri
-        run: bunx @tauri-apps/cli build --config tauri.conf.release.json --bundles ${{ matrix.bundles }}
+        shell: bash
+        run: |
+          set -o pipefail
+          bunx @tauri-apps/cli build --config tauri.conf.release.json --bundles ${{ matrix.bundles }} 2>&1 | tee /tmp/webview-build.log | tail -40
+        env:
+          RUST_BACKTRACE: '1'
+
+      # Surface the actual error in the job summary (visible without
+      # downloading full logs) if the build fails.
+      - name: Dump build output on failure
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo "### Webview build failure — last 120 lines"
+            echo '```'
+            tail -120 /tmp/webview-build.log || echo "(no log captured)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload webview bundles
         uses: actions/upload-artifact@v4
@@ -213,7 +285,8 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------
-  # Browser plugin (Chrome MV3 + Firefox variant zips)
+  # Browser plugin (Chrome MV3 + Firefox variant zips) — the full
+  # editor webapp bundled inside; assembled from the static export
   # ---------------------------------------------------------
   extension:
     runs-on: ubuntu-latest
@@ -231,10 +304,14 @@ jobs:
           name: app-icons
           path: build/icons
 
+      - name: Restore static webapp (plugin flavor)
+        uses: actions/download-artifact@v4
+        with:
+          name: webapp-static-plugin
+          path: build/webapp-export
+
       - name: Build plugin zips
         run: node scripts/build-extension.mjs
-        env:
-          EDITOR_URL: ${{ vars.EDITOR_URL || 'http://localhost:3000' }}
 
       - name: Upload plugin
         uses: actions/upload-artifact@v4
@@ -248,6 +325,8 @@ jobs:
   # ---------------------------------------------------------
   release:
     needs: [web, electron, webview, extension]
+    # NOTE: `pages` is intentionally not a dependency — a Pages hiccup
+    # (e.g. org policy) must never block artifact publishing.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -303,15 +382,16 @@ jobs:
 
             | Channel | Assets |
             |---|---|
+            | 🌐 Web app (hosted) | https://chaython.github.io/ChaysPhotoStudio/ — deployed from this repo on every push |
             | 🖥️ Electron desktop (fully offline) | `ChaysPhotoStudio-Setup-*.exe` (Windows) · `ChaysPhotoStudio-*-universal.dmg` (macOS) · `*.AppImage` / `*.deb` (Linux) |
             | 🪶 Webview shell (tiny, hosts the deployed editor) | `chays-photo-studio-webview_*` bundles |
-            | 🧩 Browser plugin | `chays-photo-studio-extension-*.zip` (Chrome) · `chays-photo-studio-extension-firefox-*.zip` |
-            | 🌐 Self-hosting / PWA | `web-standalone.tar.gz` (Node ≥ 20, `node server.js` — installable as an app from the browser) |
+            | 🧩 Browser plugin (self-contained — the whole editor bundled inside, works offline) | `chays-photo-studio-extension-*.zip` (Chrome) · `chays-photo-studio-extension-firefox-*.zip` |
+            | 🏠 Self-hosting / PWA server | `web-standalone.tar.gz` (Node ≥ 20, `node server.js` — installable as an app from the browser) |
 
             Continuous builds are published on every push to the default branch;
             stable `v*.*.*` tags are marked as the latest release. See `DISTRIBUTION.md`
             in the repository for install instructions, repository variables
-            (`WEBVIEW_APP_URL`, `EDITOR_URL`), and signing notes.
+            (`WEBVIEW_APP_URL`), and signing notes.
 
             © Chaython Meredith — free for consumer and education use · commercial
             licensing: chaython@live.ca · support development:

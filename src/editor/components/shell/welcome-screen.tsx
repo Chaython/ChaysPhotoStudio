@@ -24,8 +24,28 @@ import { cn } from '@/lib/utils'
 export function WelcomeScreen() {
   const openDialog = useEditorStore(s => s.openDialog)
   const fileRef = useRef<HTMLInputElement>(null)
+  const sourceZipRef = useRef<HTMLAnchorElement>(null)
   const [dragging, setDragging] = useState(false)
   const [installPrompt, setInstallPrompt] = useState<(Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }) | null>(null)
+
+  // Source-zip link: static deployments (GitHub Pages, browser plugin)
+  // don't ship the 1 MB project archive — fall back to GitHub's
+  // auto-generated source archive of the default branch. That URL is
+  // version-independent and always resolves (raw file URLs 404 for
+  // build artifacts that are never committed).
+  useEffect(() => {
+    const a = sourceZipRef.current
+    if (!a) return
+    const probe = async () => {
+      try {
+        const res = await fetch(a.getAttribute('href') || '', { method: 'HEAD' })
+        if (!res.ok) throw new Error('missing')
+      } catch {
+        a.setAttribute('href', 'https://github.com/Chaython/ChaysPhotoStudio/archive/refs/heads/main.zip')
+      }
+    }
+    void probe()
+  }, [])
 
   // PWA install offer — the browser only fires beforeinstallprompt on
   // https (or localhost) installs with a valid manifest + service worker.
@@ -210,12 +230,22 @@ export function WelcomeScreen() {
           </button>
           <span aria-hidden="true" className="opacity-40">·</span>
           <a
-            href="/chays-photo-studio-1.1.1-project.zip"
+            ref={sourceZipRef}
+            href="/chays-photo-studio-1.1.3-project.zip"
             download
             className="flex items-center gap-1 underline underline-offset-2 hover:text-foreground transition-colors"
           >
             <Download size={11} className="text-primary/70" aria-hidden="true" />
             Download source (ZIP)
+          </a>
+          <span aria-hidden="true" className="opacity-40">·</span>
+          <a
+            href="https://github.com/Chaython/ChaysPhotoStudio/releases/latest"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-foreground transition-colors"
+          >
+            Desktop &amp; plugin builds
           </a>
         </div>
 

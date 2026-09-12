@@ -52,7 +52,13 @@ async function png(svgString, _size) {
 function u16(v) { return Buffer.from([v & 0xff, (v >> 8) & 0xff]) }
 function u32(v) { return Buffer.from([v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff]) }
 
-/** Windows .ico — directory of PNG entries (supported since Vista). */
+/** Windows .ico — directory of PNG entries (supported since Vista).
+ * ICONDIR entry layout is FIXED at 16 bytes: width, height, colorCount,
+ * reserved (1 byte each), planes (u16), bitCount (u16), bytesInRes
+ * (u32), imageOffset (u32). A previous version wrote bitCount as u32,
+ * producing 18-byte entries and offsets that don't match the file —
+ * lenient readers ignored it, but resedit (electron-builder v26's
+ * exe icon embedder) rejects the archive. */
 function buildIco(pngEntries) {
   const count = pngEntries.length
   const header = Buffer.concat([u16(0), u16(1), u16(count)])
@@ -63,7 +69,11 @@ function buildIco(pngEntries) {
   for (const { size, data } of pngEntries) {
     const w = size >= 256 ? 0 : size
     dir.push(Buffer.concat([
-      Buffer.from([w, w, 0, 0]), u16(1), u32(32), u32(data.length), u32(offset),
+      Buffer.from([w, w, 0, 0]), // width, height, colorCount, reserved
+      u16(1),                    // planes
+      u16(32),                   // bit count
+      u32(data.length),          // bytes in resource
+      u32(offset),               // image offset
     ]))
     blobs.push(data)
     offset += data.length
@@ -170,7 +180,7 @@ async function main() {
     const buf = fs.readFileSync(path.join(ROOT, file))
     const ok =
       file.endsWith('.png') ? buf.subarray(1, 4).toString('ascii') === 'PNG' :
-      file.endsWith('.ico') ? buf.readUInt16LE(0) === 0 && buf.readUInt16LE(2) === 1 :
+      file.endsWith('.ico') ? icoValid(buf) :
       file.endsWith('.icns') ? buf.subarray(0, 4).toString('ascii') === 'icns' : false
     if (!ok) failures++
   }
@@ -178,6 +188,24 @@ async function main() {
   console.log(`gen-icons: wrote ${written.length} files, ${failures === 0 ? 'all magic bytes OK' : failures + ' CORRUPT'} (icon-512 = ${pngMeta.width}x${pngMeta.height} PNG)`)
   for (const { file, size } of written) console.log(`  ${file}  (${(size / 1024).toFixed(1)} kB)`)
   if (failures) process.exit(1)
+}
+
+/** Parse the ICO back the way Windows tooling (resedit et al.) does:
+ * 16-byte entries, declared offsets must land exactly on PNG payloads. */
+function icoValid(buf) {
+  if (buf.readUInt16LE(0) !== 0 || buf.readUInt16LE(2) !== 1) return false
+  const count = buf.readUInt16LE(4)
+  let expected = 6 + 16 * count
+  for (let i = 0; i < count; i++) {
+    const base = 6 + 16 * i
+    const size = buf.readUInt32LE(base + 8)
+    const offset = buf.readUInt32LE(base + 12)
+    if (offset !== expected) return false
+    if (buf.subarray(offset, offset + 4).toString('latin1') !== '\x89PNG') return false
+    if (offset + size > buf.length) return false
+    expected = offset + size
+  }
+  return expected === buf.length
 }
 
 main().catch(err => { console.error('gen-icons failed:', err); process.exit(1) })

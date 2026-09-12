@@ -1,9 +1,12 @@
 // ============================================================
 // AI Image Generation — client-side helper for text-to-image.
-// Talks to /api/ai-generate (providers):
+// Server path: POST /api/ai-generate (providers):
 //   pollinations  — free community engine (default, no key,
 //                   auto-retries when busy)
 //   custom        — user's own OpenAI-compatible endpoint
+// When no server exists (static deployment, browser plugin,
+// offline app) the free engine is called directly from the
+// browser instead — pollinations accepts any origin.
 // One image per request; this module loops so callers get
 // progressive results (onImage) and can cancel mid-batch.
 // ============================================================
@@ -101,7 +104,8 @@ export async function aiGenerate(opts: AiGenerateOptions): Promise<string[]> {
   const out: string[] = []
   for (let i = 0; i < count; i++) {
     if (signal?.aborted) break
-    let res: Response
+    let res: Response | null = null
+    let serverApi = true
     try {
       res = await fetch('/api/ai-generate', {
         method: 'POST',
@@ -111,18 +115,80 @@ export async function aiGenerate(opts: AiGenerateOptions): Promise<string[]> {
       })
     } catch (e: any) {
       if (e?.name === 'AbortError') throw e
-      throw new Error('Could not reach the generation service — check your connection and try again')
+      if (provider !== 'pollinations') {
+        throw new Error('Could not reach the generation service — check your connection and try again')
+      }
+      // No server reachable (offline / static deployment / extension
+      // context) — the free engine can be called directly from the
+      // browser (it allows any origin).
+      serverApi = false
     }
-    let data: any = null
-    try { data = await res.json() } catch { /* non-JSON error body */ }
-    if (!res.ok || !data?.image) {
+    if (serverApi && res && (res.status === 404 || res.status === 501)) {
+      // The server app isn't there (static export / plugin build) —
+      // fall back to the direct engine call below.
+      serverApi = false
+    }
+
+    if (serverApi && res) {
+      let data: any = null
+      try { data = await res.json() } catch { /* non-JSON error body */ }
+      if (res.ok && data?.image) {
+        out.push(data.image as string)
+        onImage?.(data.image as string, i, count, { provider: data.provider as string, fallback: !!data.fallback })
+        continue
+      }
       throw new Error(data?.error || `Generation failed (HTTP ${res.status})`)
     }
-    out.push(data.image as string)
-    onImage?.(data.image as string, i, count, { provider: data.provider as string, fallback: !!data.fallback })
+
+    // ---- direct engine fallback (no server) ----
+    const dataUrl = await generateDirect(clean, size, signal)
+    out.push(dataUrl)
+    onImage?.(dataUrl, i, count, { provider: 'pollinations', fallback: true })
   }
   if (out.length === 0 && signal?.aborted) throw new DOMException('Aborted', 'AbortError')
   return out
+}
+
+/** Browser-direct Pollinations call — used when /api/ai-generate is
+ *  unavailable (static hosting, browser plugin, or fully offline
+ *  editor). Retries like the server route: the shared engine is often
+ *  busy. Returns the image as a PNG data-URL. */
+async function generateDirect(prompt: string, size: string, signal?: AbortSignal): Promise<string> {
+  const m = size.match(/^(\d+)x(\d+)$/)
+  const w = m ? Math.min(2880, Math.max(64, Number(m[1]))) : 1024
+  const h = m ? Math.min(2880, Math.max(64, Number(m[2]))) : 1024
+  const ATTEMPTS = 3
+  let lastErr = ''
+  for (let a = 0; a < ATTEMPTS; a++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    const seed = Math.floor(Math.random() * 1e9)
+    const url =
+      `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+      `?width=${w}&height=${h}&nologo=true&seed=${seed}`
+    try {
+      const res = await fetch(url, { signal, mode: 'cors' })
+      if (!res.ok) { lastErr = `engine busy (HTTP ${res.status})`; await sleep(4000); continue }
+      const blob = await res.blob()
+      if (!blob.type.startsWith('image/')) { lastErr = 'engine busy (no image)'; await sleep(4000); continue }
+      return await blobToDataUrl(blob)
+    } catch (e: any) {
+      if (e?.name === 'AbortError') throw e
+      lastErr = 'could not reach the free engine — check your connection'
+      await sleep(3000)
+    }
+  }
+  throw new Error(lastErr || 'generation failed')
+}
+
+function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)) }
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(String(fr.result))
+    fr.onerror = () => reject(new Error('could not read generated image'))
+    fr.readAsDataURL(blob)
+  })
 }
 
 /** data-URL → File (for openFiles(), drag-drop, downloads) — extension
