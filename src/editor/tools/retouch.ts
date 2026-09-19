@@ -262,7 +262,9 @@ function toneOp(kind: 'dodge' | 'burn', x: number, y: number, p: PointerInfo) {
   const r = (opts.size ?? 60) / 2
   const exposure = ((opts.exposure ?? 30) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
   const range = opts.range ?? 'midtones'
-  const burn = kind === 'burn'
+  // Photoshop muscle memory: Alt/Option temporarily swaps Dodge ↔ Burn
+  // without forcing a tool switch or changing the configured range/exposure.
+  const burn = p.alt ? kind === 'dodge' : kind === 'burn'
   const protectTones = opts.protectTones !== false
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {
     const d = region.data
@@ -295,7 +297,9 @@ function spongeOp(x: number, y: number, p: PointerInfo) {
   const opts = getOptions('sponge')
   const r = (opts.size ?? 60) / 2
   const flow = ((opts.flow ?? 30) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
-  const saturate = opts.mode !== 'desaturate'
+  // Alt/Option temporarily reverses Saturate/Desaturate, mirroring the
+  // modifier-driven workflow of the other tonal retouch tools.
+  const saturate = p.alt ? opts.mode === 'desaturate' : opts.mode !== 'desaturate'
   const vibrance = opts.vibrance === true
   const k = 1.6
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {
