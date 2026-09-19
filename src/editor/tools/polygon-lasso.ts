@@ -17,6 +17,16 @@ let hover: { x: number; y: number } | null = null
 let lastShift = false
 let lastAlt = false
 
+function constrainedPoint(p: PointerInfo): { x: number; y: number } {
+  if (!p.shift || !pts.length) return { x: p.docX, y: p.docY }
+  const a = pts[pts.length - 1]
+  const dx = p.docX - a.x, dy = p.docY - a.y
+  const len = Math.hypot(dx, dy)
+  if (len < .001) return { x: p.docX, y: p.docY }
+  const ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4)
+  return { x: a.x + Math.cos(ang) * len, y: a.y + Math.sin(ang) * len }
+}
+
 /** distance from the first vertex in SCREEN pixels (null if < 2 pts) */
 function distToFirstScreen(p: PointerInfo): number | null {
   const doc = engine.activeDoc
@@ -28,7 +38,7 @@ function distToFirstScreen(p: PointerInfo): number | null {
 function commit(mode?: 'new' | 'add' | 'subtract' | 'intersect') {
   if (pts.length < 3) { pts = []; engine.pokeOverlay(); return }
   const opts = getOptions('polygon-lasso')
-  engine.selectPolygon(pts, opts.feather ?? 0, mode ?? opts.mode ?? 'new')
+  engine.selectPolygon(pts, opts.feather ?? 0, mode ?? opts.mode ?? 'new', opts.antiAlias !== false)
   pts = []
   engine.pokeOverlay()
 }
@@ -62,17 +72,19 @@ export const polygonLassoTool: Tool = {
       // modifier while a polygon is active: finish the current one first,
       // then start the next with this click
       commit(mode)
-      pts = [{ x: p.docX, y: p.docY }]
+      const q = constrainedPoint(p)
+      pts = [{ x: q.x, y: q.y }]
       engine.pokeOverlay()
       return
     }
 
-    pts.push({ x: p.docX, y: p.docY })
+    const q = constrainedPoint(p)
+    pts.push(q)
     engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
-    hover = { x: p.docX, y: p.docY }
+    hover = constrainedPoint(p)
     engine.pokeOverlay()
   },
 
