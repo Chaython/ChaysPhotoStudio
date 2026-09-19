@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
@@ -17,6 +17,7 @@ import { FancyScroll } from '@/components/ui/fancy-scroll'
 export function LayersPanel() {
   const layers = useEditorStore(s => s.layers)
   const activeLayerId = useEditorStore(s => s.activeLayerId)
+  const selectedLayerIds = useEditorStore(s => s.selectedLayerIds)
   const tick = useEditorStore(s => s.renderTick)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -27,13 +28,38 @@ export function LayersPanel() {
 
   const doc = engine.activeDoc
   const activeLayer = doc?.layers.find(l => l.id === activeLayerId)
+  const selectedSet = new Set(selectedLayerIds)
+  const selectedLayers = doc?.layers.filter(l => selectedSet.has(l.id)) ?? []
 
   const idxOf = (metaId: string) => layers.findIndex(l => l.id === metaId) // display index (0=top)
   const q = query.trim().toLowerCase()
   const visibleLayers = layers.filter(l => (kindFilter === 'all' || l.kind === kindFilter) && (!q || l.name.toLowerCase().includes(q)))
 
-  const setActive = (id: string) => {
-    if (doc) { doc.activeLayerId = id; engine.emit() }
+  const setActive = (id: string, e: ReactMouseEvent) => {
+    if (!doc) return
+    const order = layers.map(l => l.id) // display order: top → bottom
+    const current = doc.selectedLayerIds?.filter(x => doc.layers.some(l => l.id === x))
+      ?? (doc.activeLayerId ? [doc.activeLayerId] : [])
+
+    if (e.shiftKey && doc.activeLayerId) {
+      const a = order.indexOf(doc.activeLayerId)
+      const b = order.indexOf(id)
+      if (a >= 0 && b >= 0) {
+        const lo = Math.min(a, b), hi = Math.max(a, b)
+        doc.selectedLayerIds = order.slice(lo, hi + 1)
+      } else doc.selectedLayerIds = [id]
+      doc.activeLayerId = id
+    } else if (e.ctrlKey || e.metaKey) {
+      const set = new Set(current)
+      if (set.has(id) && set.size > 1) set.delete(id)
+      else set.add(id)
+      doc.selectedLayerIds = [...set]
+      doc.activeLayerId = set.has(id) ? id : (doc.selectedLayerIds[doc.selectedLayerIds.length - 1] ?? null)
+    } else {
+      doc.activeLayerId = id
+      doc.selectedLayerIds = [id]
+    }
+    engine.emit()
   }
 
   const reorder = (id: string, displayIdx: number) => {
@@ -67,7 +93,11 @@ export function LayersPanel() {
         <span className="text-muted-foreground shrink-0">Blend</span>
         <Select
           value={activeLayer?.blendMode ?? 'normal'}
-          onValueChange={v => { if (activeLayer) engine.setLayerProps(activeLayer.id, { blendMode: v as BlendMode }) }}
+          onValueChange={v => {
+            const targets = selectedLayers.length ? selectedLayers : (activeLayer ? [activeLayer] : [])
+            for (const l of targets) engine.setLayerProps(l.id, { blendMode: v as BlendMode }, { history: false })
+            if (targets.length) { engine.pushHistory(targets.length > 1 ? 'Layer Blend Modes' : 'Layer Blend Mode'); engine.emit() }
+          }}
         >
           <SelectTrigger className="h-6! flex-1 px-1.5 py-0.5 text-[11px]">
             <SelectValue />
@@ -87,8 +117,13 @@ export function LayersPanel() {
           min={0}
           max={100}
           step={1}
-          onValueChange={v => { if (activeLayer) engine.setLayerProps(activeLayer.id, { opacity: v[0] }, { history: false }) }}
-          onValueCommit={() => { if (activeLayer) engine.pushHistory('Layer Opacity') }}
+          onValueChange={v => {
+            const targets = selectedLayers.length ? selectedLayers : (activeLayer ? [activeLayer] : [])
+            for (const l of targets) engine.setLayerProps(l.id, { opacity: v[0] }, { history: false })
+          }}
+          onValueCommit={() => {
+            if (selectedLayers.length || activeLayer) engine.pushHistory(selectedLayers.length > 1 ? 'Layer Opacities' : 'Layer Opacity')
+          }}
           className="flex-1"
         />
         <span className="font-mono w-9 text-right">{Math.round(activeLayer?.opacity ?? 100)}%</span>
@@ -120,10 +155,11 @@ export function LayersPanel() {
             key={meta.id}
             meta={meta}
             tick={tick}
-            active={meta.id === activeLayerId}
+            active={selectedSet.has(meta.id)}
+            primary={meta.id === activeLayerId}
             renaming={renaming === meta.id}
             renameValue={renameValue}
-            onActivate={() => setActive(meta.id)}
+            onActivate={e => setActive(meta.id, e)}
             onToggleVisibility={(solo) => solo ? toggleSolo(meta.id) : engine.setLayerProps(meta.id, { visible: !meta.visible })}
             onStartRename={() => { setRenaming(meta.id); setRenameValue(meta.name) }}
             onRename={v => {
@@ -165,13 +201,14 @@ export function LayersPanel() {
   )
 }
 
-function LayerRow({ meta, tick, active, renaming, renameValue, onActivate, onToggleVisibility, onStartRename, onRename, onRenameChange, onDragStart, onDropAt, onMoveUp, onMoveDown }: {
+function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActivate, onToggleVisibility, onStartRename, onRename, onRenameChange, onDragStart, onDropAt, onMoveUp, onMoveDown }: {
   meta: LayerMeta
   tick: number
   active: boolean
+  primary: boolean
   renaming: boolean
   renameValue: string
-  onActivate(): void
+  onActivate(e: ReactMouseEvent<HTMLDivElement>): void
   onToggleVisibility(solo: boolean): void
   onStartRename(): void
   onRename(v: string): void
@@ -247,7 +284,7 @@ function LayerRow({ meta, tick, active, renaming, renameValue, onActivate, onTog
 
           {/* thumbnails */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            <div className={cn('w-9 h-9 rounded-sm border bg-checker', active && 'ring-1 ring-primary')}>
+            <div className={cn('w-9 h-9 rounded-sm border bg-checker', primary && 'ring-1 ring-primary')}>
               {meta.kind === 'adjustment' && AdjIcon ? (
                 <div className="w-full h-full flex items-center justify-center bg-muted/30">
                   <AdjIcon size={15} className="text-primary" />
