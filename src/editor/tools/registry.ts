@@ -9,6 +9,7 @@ import { measureTool } from './measure'
 import { objectSelectTool, quickSelectTool } from './select-tools'
 import { magicWandTool } from './wand'
 import { brushTool, pencilTool } from './brush'
+import { mixerBrushTool } from './mixer-brush'
 import { penTool } from './pen'
 import { eraserTool } from './eraser'
 import { backgroundEraserTool } from './background-eraser'
@@ -34,6 +35,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'eyedropper': eyedropperTool,
   'brush': brushTool,
   'pencil': pencilTool,
+  'mixer-brush': mixerBrushTool,
   'clone-stamp': cloneStampTool,
   'healing-brush': healingBrushTool,
   'spot-healing': spotHealingTool,
