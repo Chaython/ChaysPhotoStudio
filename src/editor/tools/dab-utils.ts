@@ -16,9 +16,10 @@ import { gaussianBlurImage } from '../image-ops/core'
  */
 export function sourcePointFor(
   x: number, y: number, refX: number, refY: number, srcX: number, srcY: number,
-  rotateRad: number, mirrored: boolean
+  rotateRad: number, mirrored: boolean, sourceScale = 1
 ): { x: number; y: number } {
-  let dx = x - refX, dy = y - refY
+  const scale = Math.max(0.01, Math.abs(sourceScale) || 1)
+  let dx = (x - refX) / scale, dy = (y - refY) / scale
   if (rotateRad) {
     const cos = Math.cos(rotateRad), sin = Math.sin(rotateRad)
     const nx = dx * cos + dy * sin
@@ -38,7 +39,7 @@ export function sourcePointFor(
  */
 export function buildSourceDab(
   source: HTMLCanvasElement, sx: number, sy: number, radius: number, hardness: number,
-  rotateRad = 0, mirrored = false
+  rotateRad = 0, mirrored = false, sourceScale = 1
 ): HTMLCanvasElement | null {
   const r = Math.max(1, radius)
   if (r < 0.5) return null
@@ -52,6 +53,8 @@ export function buildSourceDab(
   ctx.translate(c, c)
   if (rotateRad) ctx.rotate(rotateRad)
   if (mirrored) ctx.scale(-1, 1)
+  const scale = Math.max(0.01, Math.abs(sourceScale) || 1)
+  ctx.scale(scale, scale)
   ctx.drawImage(source, -sx, -sy)
   ctx.restore()
   // radial alpha mask honoring hardness (soft edges like PS clone stamp)
