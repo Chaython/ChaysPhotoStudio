@@ -339,6 +339,8 @@ export function buildLiveDrag(doc: PsDocument, layerId: string): LiveLayerDrag |
   renderLayerRange(doc, 0, idx, below, ctx2d(below))
 
   let stack: HTMLCanvasElement
+  let stackX = 0
+  let stackY = 0
   let movingEnd: number
   let clipMask: HTMLCanvasElement | null = null
   if (base.clipped) {
@@ -390,7 +392,24 @@ export function buildLiveDrag(doc: PsDocument, layerId: string): LiveLayerDrag |
       }
       stack = stackCanvas
     } else {
-      stack = basePrepared
+      // A plain raster layer may be larger than the document and may already
+      // sit partly outside it. prepareLayer() is document-sized, so using it
+      // here clips those hidden pixels out of the live-drag cache. Point at
+      // the original raster canvas instead whenever no document-space
+      // effects/masks need baking; its registration is carried separately.
+      const canUseFullRaster =
+        base.kind === 'raster' && !!base.canvas &&
+        !(base.maskEnabled && base.mask) &&
+        !hasEnabledFX(base.fx) &&
+        !(doc.previewFilter && doc.previewFilter.layerId === base.id) &&
+        !(doc._stroke && doc._strokeLayerId === base.id)
+      if (canUseFullRaster) {
+        stack = base.canvas!
+        stackX = base.offsetX ?? 0
+        stackY = base.offsetY ?? 0
+      } else {
+        stack = basePrepared
+      }
     }
   }
 
@@ -399,7 +418,7 @@ export function buildLiveDrag(doc: PsDocument, layerId: string): LiveLayerDrag |
 
   return {
     layerId, dx: 0, dy: 0,
-    below, stack, above, clipMask,
+    below, stack, stackX, stackY, above, clipMask,
     blendMode: base.blendMode, opacity: base.opacity,
   }
 }
@@ -450,7 +469,11 @@ export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement): 
       sctx.drawImage(ld.clipMask, 0, 0)
       outCtx.drawImage(scratch, 0, 0)
     } else {
-      outCtx.drawImage(ld.stack, Math.round(ld.dx), Math.round(ld.dy))
+      outCtx.drawImage(
+        ld.stack,
+        Math.round((ld.stackX ?? 0) + ld.dx),
+        Math.round((ld.stackY ?? 0) + ld.dy),
+      )
     }
     outCtx.restore()
     outCtx.drawImage(ld.above, 0, 0)
