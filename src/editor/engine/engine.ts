@@ -1302,7 +1302,7 @@ export class Engine {
     this.emitOverlay()
   }
 
-  selectShape(rect: Rect, kind: 'rect' | 'ellipse', feather: number, mode: SelectionCombine) {
+  selectShape(rect: Rect, kind: 'rect' | 'ellipse', feather: number, mode: SelectionCombine, antiAlias = true) {
     const doc = this.activeDoc
     if (!doc) return
     const mask = createCanvas(doc.width, doc.height)
@@ -1313,6 +1313,11 @@ export class Engine {
       c.beginPath()
       c.ellipse(rect.x + rect.w / 2, rect.y + rect.h / 2, Math.abs(rect.w / 2), Math.abs(rect.h / 2), 0, 0, Math.PI * 2)
       c.fill()
+    }
+    if (!antiAlias && kind === 'ellipse') {
+      const md = getImageData(mask)
+      for (let i = 3; i < md.data.length; i += 4) md.data[i] = md.data[i] >= 128 ? 255 : 0
+      putImageData(mask, md)
     }
     if (feather > 0) {
       const f = new Float32Array(doc.width * doc.height)
@@ -1326,7 +1331,7 @@ export class Engine {
     this.setSelectionMask(mask, mode, 'Marquee Selection')
   }
 
-  selectPolygon(points: { x: number; y: number }[], feather: number, mode: SelectionCombine) {
+  selectPolygon(points: { x: number; y: number }[], feather: number, mode: SelectionCombine, antiAlias = true) {
     const doc = this.activeDoc
     if (!doc || points.length < 3) return
     const mask = createCanvas(doc.width, doc.height)
@@ -1337,6 +1342,11 @@ export class Engine {
     for (const p of points.slice(1)) c.lineTo(p.x, p.y)
     c.closePath()
     c.fill()
+    if (!antiAlias) {
+      const md = getImageData(mask)
+      for (let i = 3; i < md.data.length; i += 4) md.data[i] = md.data[i] >= 128 ? 255 : 0
+      putImageData(mask, md)
+    }
     if (feather > 0) {
       const f = new Float32Array(doc.width * doc.height)
       const md = getImageData(mask)
