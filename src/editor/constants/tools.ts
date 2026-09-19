@@ -46,7 +46,7 @@ const exposureCtls: ControlDef[] = [
 
 export const TOOL_DEFS: ToolDef[] = [
   // group 0 — navigation / arrangement
-  { id: 'move', label: 'Move', group: 0, shortcut: 'V', icon: 'Move', defaults: { autoSelect: false } as any, options: [
+  { id: 'move', label: 'Move', group: 0, shortcut: 'V', icon: 'Move', defaults: { autoSelect: true } as any, options: [
     { key: 'autoSelect', label: 'Auto-select layer', type: 'toggle' },
   ]},
   // group 1 — selections
