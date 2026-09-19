@@ -323,6 +323,11 @@ export interface LiveLayerDrag {
   dy: number
   below: HTMLCanvasElement
   stack: HTMLCanvasElement
+  /** Document-space origin of stack's local (0,0). Normally 0/0 for a
+   *  prepared document-sized stack; raster move drags can point directly at
+   *  the full un-clipped layer canvas so off-frame pixels survive re-entry. */
+  stackX?: number
+  stackY?: number
   above: HTMLCanvasElement
   blendMode: string
   opacity: number
