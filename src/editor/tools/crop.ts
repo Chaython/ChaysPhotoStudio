@@ -361,6 +361,8 @@ export const handTool: Tool = {
 // Zoom
 // ============================================================
 let zoomDrag: { lastX: number; moved: boolean } | null = null
+let zoomAreaStart: { x: number; y: number } | null = null
+let zoomArea: Rect | null = null
 
 function zoomAt(p: PointerInfo, factor: number) {
   const doc = engine.activeDoc
@@ -387,11 +389,17 @@ export const zoomTool: Tool = {
     if (opts.scrubby !== false) {
       zoomDrag = { lastX: p.rawX, moved: false }
     } else {
-      const dir = p.alt ? 'out' : opts.mode ?? 'in'
-      zoomAt(p, dir === 'in' ? 1.35 : 1 / 1.35)
+      zoomAreaStart = { x: p.docX, y: p.docY }
+      zoomArea = null
+      engine.pokeOverlay()
     }
   },
   onPointerMove(p: PointerInfo) {
+    if (zoomAreaStart) {
+      zoomArea = rectFromPoints(zoomAreaStart.x, zoomAreaStart.y, p.docX, p.docY)
+      engine.pokeOverlay()
+      return
+    }
     if (!zoomDrag) return
     const dx = p.rawX - zoomDrag.lastX
     if (Math.abs(dx) < 1) return
@@ -400,6 +408,30 @@ export const zoomTool: Tool = {
     zoomAt(p, Math.exp(dx * 0.012))
   },
   onPointerUp(p: PointerInfo) {
+    if (zoomAreaStart) {
+      const r = zoomArea ?? rectFromPoints(zoomAreaStart.x, zoomAreaStart.y, p.docX, p.docY)
+      zoomAreaStart = null
+      zoomArea = null
+      const doc = engine.activeDoc
+      const vp = (window as any).__zphotoViewport
+      const vw = vp?.host?.clientWidth ?? window.innerWidth
+      const vh = vp?.host?.clientHeight ?? window.innerHeight
+      if (doc && r.w * doc.view.zoom >= 6 && r.h * doc.view.zoom >= 6 && !p.alt) {
+        const pad = 24
+        const next = clamp(Math.min((vw - pad * 2) / Math.max(1, r.w), (vh - pad * 2) / Math.max(1, r.h)), .02, 32)
+        doc.view.zoom = next
+        doc.view.panX = (vw - r.w * next) / 2 - r.x * next
+        doc.view.panY = (vh - r.h * next) / 2 - r.y * next
+        doc.view.autoFit = false
+        engine.viewChanged()
+      } else {
+        const opts = getOptions('zoom')
+        const dir = p.alt ? 'out' : opts.mode ?? 'in'
+        zoomAt(p, dir === 'in' ? 1.35 : 1 / 1.35)
+      }
+      engine.pokeOverlay()
+      return
+    }
     if (!zoomDrag) return
     if (!zoomDrag.moved) {
       const opts = getOptions('zoom')
@@ -412,6 +444,17 @@ export const zoomTool: Tool = {
     const doc = engine.activeDoc
     if (doc) zoomAt(p, 1 / doc.view.zoom)
   },
-  onDeactivate() { zoomDrag = null },
-  renderOverlay() {},
+  onDeactivate() { zoomDrag = null; zoomAreaStart = null; zoomArea = null },
+  renderOverlay(ctx, view, w, h, mouse) {
+    void w; void h; void mouse
+    if (!zoomArea) return
+    const x = zoomArea.x * view.zoom + view.panX
+    const y = zoomArea.y * view.zoom + view.panY
+    const rw = zoomArea.w * view.zoom, rh = zoomArea.h * view.zoom
+    ctx.save()
+    ctx.fillStyle = 'rgba(232,163,61,.08)'
+    ctx.fillRect(x, y, rw, rh)
+    ctx.restore()
+    drawDashedRect(ctx, x, y, rw, rh)
+  },
 }
