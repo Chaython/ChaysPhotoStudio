@@ -75,7 +75,7 @@ export const cloneStampTool: Tool = {
       return
     }
 
-    engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100 })
+    engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100, blendMode: opts.blendMode ?? 'normal' })
     st.active = true
     st.last = { x: p.docX, y: p.docY }
     // aligned: keep the persistent anchor (set once after the source is chosen);
