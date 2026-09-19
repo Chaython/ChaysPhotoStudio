@@ -295,6 +295,8 @@ export interface PsDocument {
   height: number
   layers: Layer[]            // index 0 = bottom
   activeLayerId: string | null
+  /** Multi-layer selection. activeLayerId is the primary/anchor layer. */
+  selectedLayerIds?: string[]
   selection: SelectionState | null
   channelView: ChannelView
   savedChannels: SavedChannel[]
