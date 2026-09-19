@@ -273,6 +273,12 @@ export const moveTool: Tool = {
     if (!doc) return
     let dx = Math.round(p.docX - drag.startX)
     let dy = Math.round(p.docY - drag.startY)
+    // Photoshop: Shift constrains a move to the dominant axis. Do this before
+    // snapping so guides/grid still refine the constrained coordinate.
+    if (p.shift) {
+      if (Math.abs(dx) >= Math.abs(dy)) dy = 0
+      else dx = 0
+    }
     // snapping: guides first (grab point), then the grid (layer content edge)
     const prefs = useEditorStore.getState().view
     const x = drag.startX + dx, y = drag.startY + dy
