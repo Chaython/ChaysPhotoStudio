@@ -207,11 +207,24 @@ export function measureTextSpecBounds(spec: TextSpec): Rect {
   ctx.font = `${style}${weight} ${spec.fontSize}px ${spec.fontFamily}`
   const lines = (spec.content || '').split('\n')
   const lh = spec.fontSize * (spec.lineHeight || 1.2)
-  let maxW = spec.fontSize * 0.5
-  for (const line of lines) maxW = Math.max(maxW, ctx.measureText(line || ' ').width)
-  if (spec.tracking) maxW += spec.tracking * Math.max(0, (lines[0] || '').length)
   const padX = spec.fontSize * 0.25
   const padY = spec.fontSize * 0.25
+  if (spec.boxWidth) {
+    // Paragraph layers use their editable frame for hit testing; text may be
+    // clipped or wrapped inside it, so glyph-only bounds would make empty
+    // parts of the text box impossible to reactivate.
+    return {
+      x: spec.x - padX,
+      y: spec.y - padY,
+      w: Math.max(1, spec.boxWidth) + padX * 2,
+      h: Math.max(lh, spec.boxHeight ?? lh * Math.max(1, lines.length)) + padY * 2,
+    }
+  }
+  let maxW = spec.fontSize * 0.5
+  for (const line of lines) {
+    const tracking = (spec.tracking || 0) * Math.max(0, line.length - 1)
+    maxW = Math.max(maxW, ctx.measureText(line || ' ').width + tracking)
+  }
   return {
     x: spec.x - padX,
     y: spec.y - padY,
