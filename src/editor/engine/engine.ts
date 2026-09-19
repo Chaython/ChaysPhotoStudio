@@ -75,6 +75,17 @@ export class Engine {
   /** view-only repaint (pan/zoom re-blit of the cached composite) — no composite */
   viewChanged() { (this.renderer as any)?.viewChanged?.() }
   emit() {
+    // Keep multi-layer selection coherent no matter which subsystem changed
+    // activeLayerId. The active layer is always the primary member.
+    const doc = this.activeDoc
+    if (doc) {
+      const valid = (doc.selectedLayerIds ?? []).filter(id => doc.layers.some(l => l.id === id))
+      if (doc.activeLayerId) {
+        doc.selectedLayerIds = valid.includes(doc.activeLayerId) ? valid : [doc.activeLayerId]
+      } else {
+        doc.selectedLayerIds = []
+      }
+    }
     this.requestRender()
     for (const l of this.listeners) l()
   }
@@ -726,6 +737,13 @@ export class Engine {
       const t = l.text
       // memoize the metrics on the layer — keyed by every spec field that
       // affects measurement (font, size, tracking, content, line height)
+      if (t.boxWidth) {
+        return {
+          x: t.x, y: t.y,
+          w: Math.max(1, t.boxWidth),
+          h: Math.max(t.fontSize * (t.lineHeight || 1.2), t.boxHeight ?? t.fontSize * (t.lineHeight || 1.2)),
+        }
+      }
       const key = `${t.content}|${t.fontSize}|${t.fontFamily}|${t.bold ? 1 : 0}|${t.italic ? 1 : 0}|${t.tracking}|${t.lineHeight}`
       const any = l as any
       if (any._textMetricsKey !== key) {
@@ -734,7 +752,7 @@ export class Engine {
         const lines = t.content.split('\n')
         let maxW = 1
         for (const ln of lines) {
-          const w = ctx.measureText(ln).width + (t.tracking ? t.tracking * ln.length : 0)
+          const w = ctx.measureText(ln).width + (t.tracking ? t.tracking * Math.max(0, ln.length - 1) : 0)
           if (w > maxW) maxW = w
         }
         any._textMetricsKey = key
@@ -743,6 +761,122 @@ export class Engine {
       return { x: t.x, y: t.y, w: any._textMetrics.w, h: any._textMetrics.h }
     }
     return null
+  }
+
+  /** Current transformable multi-layer selection, primary layer first. */
+  selectedLayers(): Layer[] {
+    const doc = this.activeDoc
+    if (!doc) return []
+    const ids = doc.selectedLayerIds?.length
+      ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : [])
+    const set = new Set(ids)
+    const out = doc.layers.filter(l => set.has(l.id) && !l.locked && l.kind !== 'adjustment')
+    const primary = doc.activeLayerId ? out.find(l => l.id === doc.activeLayerId) : undefined
+    return primary ? [primary, ...out.filter(l => l.id !== primary.id)] : out
+  }
+
+  private translateLayerGeometry(layer: Layer, dx: number, dy: number) {
+    if (!dx && !dy) return
+    if (layer.kind === 'raster' && layer.canvas) {
+      layer.offsetX = (layer.offsetX ?? 0) + dx
+      layer.offsetY = (layer.offsetY ?? 0) + dy
+    } else if (layer.kind === 'smart' && layer.transform) {
+      layer.transform = { ...layer.transform, x: layer.transform.x + dx, y: layer.transform.y + dy }
+    } else if (layer.kind === 'text' && layer.text) {
+      layer.text = { ...layer.text, x: layer.text.x + dx, y: layer.text.y + dy }
+    } else if (layer.kind === 'shape' && layer.shape) {
+      layer.shape = { ...layer.shape, x: layer.shape.x + dx, y: layer.shape.y + dy }
+    } else return
+    layer._v++
+  }
+
+  /** Translate several layers as one edit/history step. */
+  translateLayers(ids: string[], dx: number, dy: number, label = 'Move Layers') {
+    const doc = this.activeDoc
+    if (!doc || (!dx && !dy)) return
+    let changed = false
+    for (const id of ids) {
+      const l = this.layerById(id)
+      if (!l || l.locked || l.kind === 'adjustment') continue
+      this.translateLayerGeometry(l, dx, dy)
+      changed = true
+    }
+    if (!changed) return
+    invalidateFlat(doc)
+    this.pushHistory(label)
+    this.emit()
+  }
+
+  /** Align selected layers to their collective bounds, canvas, or primary layer. */
+  alignSelected(
+    kind: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom',
+    reference: 'selection' | 'canvas' | 'primary' = 'selection',
+  ) {
+    const doc = this.activeDoc
+    const layers = this.selectedLayers()
+    if (!doc || !layers.length) return
+    const items = layers
+      .map(layer => ({ layer, rect: this.layerContentRect(layer.id) }))
+      .filter((x): x is { layer: Layer; rect: Rect } => !!x.rect)
+    if (!items.length) return
+    if (reference !== 'canvas' && items.length < 2) return
+
+    let ref: Rect
+    if (reference === 'canvas') ref = { x: 0, y: 0, w: doc.width, h: doc.height }
+    else if (reference === 'primary') ref = items.find(x => x.layer.id === doc.activeLayerId)?.rect ?? items[0].rect
+    else {
+      const x0 = Math.min(...items.map(x => x.rect.x))
+      const y0 = Math.min(...items.map(x => x.rect.y))
+      const x1 = Math.max(...items.map(x => x.rect.x + x.rect.w))
+      const y1 = Math.max(...items.map(x => x.rect.y + x.rect.h))
+      ref = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+    }
+
+    let changed = false
+    for (const { layer, rect } of items) {
+      if (reference === 'primary' && layer.id === doc.activeLayerId) continue
+      let dx = 0, dy = 0
+      if (kind === 'left') dx = ref.x - rect.x
+      else if (kind === 'hcenter') dx = (ref.x + ref.w / 2) - (rect.x + rect.w / 2)
+      else if (kind === 'right') dx = (ref.x + ref.w) - (rect.x + rect.w)
+      else if (kind === 'top') dy = ref.y - rect.y
+      else if (kind === 'vcenter') dy = (ref.y + ref.h / 2) - (rect.y + rect.h / 2)
+      else if (kind === 'bottom') dy = (ref.y + ref.h) - (rect.y + rect.h)
+      if (Math.abs(dx) > .001 || Math.abs(dy) > .001) {
+        this.translateLayerGeometry(layer, dx, dy)
+        changed = true
+      }
+    }
+    if (!changed) return
+    invalidateFlat(doc)
+    this.pushHistory('Align Layers')
+    this.emit()
+  }
+
+  /** Evenly distribute selected layer centers between the outermost layers. */
+  distributeSelected(axis: 'horizontal' | 'vertical') {
+    const doc = this.activeDoc
+    const items = this.selectedLayers()
+      .map(layer => ({ layer, rect: this.layerContentRect(layer.id) }))
+      .filter((x): x is { layer: Layer; rect: Rect } => !!x.rect)
+    if (!doc || items.length < 3) return
+    const center = (r: Rect) => axis === 'horizontal' ? r.x + r.w / 2 : r.y + r.h / 2
+    items.sort((a, b) => center(a.rect) - center(b.rect))
+    const first = center(items[0].rect)
+    const last = center(items[items.length - 1].rect)
+    const step = (last - first) / (items.length - 1)
+    let changed = false
+    for (let i = 1; i < items.length - 1; i++) {
+      const delta = first + step * i - center(items[i].rect)
+      if (Math.abs(delta) <= .001) continue
+      this.translateLayerGeometry(items[i].layer, axis === 'horizontal' ? delta : 0, axis === 'vertical' ? delta : 0)
+      changed = true
+    }
+    if (!changed) return
+    invalidateFlat(doc)
+    this.pushHistory(axis === 'horizontal' ? 'Distribute Layers Horizontally' : 'Distribute Layers Vertically')
+    this.emit()
   }
 
   /** Crop transparent padding from a raster layer without changing its document-space position. */
