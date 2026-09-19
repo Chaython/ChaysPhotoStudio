@@ -250,7 +250,10 @@ export class Viewport {
     // visually continuous; it disappears on release like Photoshop.
     const ld = doc._liveDrag
     if (ld && doc.channelView === 'rgb' && !doc.previewAdjustment && dw > 2 && dh > 2) {
-      const gx = dx + ld.dx * v.zoom, gy = dy + ld.dy * v.zoom
+      const gx = dx + ((ld.stackX ?? 0) + ld.dx) * v.zoom
+      const gy = dy + ((ld.stackY ?? 0) + ld.dy) * v.zoom
+      const gw = ld.stack.width * v.zoom
+      const gh = ld.stack.height * v.zoom
       ctx.save()
       ctx.beginPath()
       ctx.rect(0, 0, w, h)
@@ -268,7 +271,7 @@ export class Viewport {
         ctx.scale(lt.sx, lt.sy)
         ctx.translate(-asx, -asy)
       }
-      ctx.drawImage(ld.stack, gx, gy, dw, dh)
+      ctx.drawImage(ld.stack, gx, gy, gw, gh)
       ctx.restore()
     }
     // border
