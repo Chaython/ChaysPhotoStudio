@@ -130,6 +130,11 @@ export interface ShapeSpec {
   strokeWidth: number
   strokeOpacity?: number
   lineCap?: CanvasLineCap
+  /** Vector stroke pattern retained as editable shape metadata. */
+  dash?: 'solid' | 'dashed' | 'dotted'
+  /** Photoshop-style line endpoint decorations. */
+  arrowStart?: boolean
+  arrowEnd?: boolean
   /** polygon/star point count (3–32); ignored by other shapes */
   sides: number
   /** star inner radius as a percentage of the outer radius */
