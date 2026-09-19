@@ -42,7 +42,8 @@ function currentSourcePoint(docX: number, docY: number) {
   if (!src || !st.ref) return null
   const opts = getOptions('clone-stamp')
   const rot = ((opts.rotate ?? 0) * Math.PI) / 180
-  return sourcePointFor(docX, docY, st.ref.x, st.ref.y, src.x, src.y, rot, opts.mirrored === true)
+  const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
+  return sourcePointFor(docX, docY, st.ref.x, st.ref.y, src.x, src.y, rot, opts.mirrored === true, scale)
 }
 
 export const cloneStampTool: Tool = {
@@ -167,11 +168,12 @@ function dab(x: number, y: number, p: PointerInfo) {
   const r = settings.size / 2
   const rot = ((opts.rotate ?? 0) * Math.PI) / 180
   const mirrored = opts.mirrored === true
+  const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
   const src = engine.cloneSource
   if (!src) return
 
-  const sp = sourcePointFor(x, y, st.ref.x, st.ref.y, src.x, src.y, rot, mirrored)
-  const dabCanvas = buildSourceDab(st.source, sp.x, sp.y, r, settings.hardness, rot, mirrored)
+  const sp = sourcePointFor(x, y, st.ref.x, st.ref.y, src.x, src.y, rot, mirrored, scale)
+  const dabCanvas = buildSourceDab(st.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale)
   if (!dabCanvas) return
   const flow = pressureFlow(p.pressure, p.pointerType === 'pen', settings.flow / 100)
   engine.dab(x, y, (ctx, dx, dy) => {
