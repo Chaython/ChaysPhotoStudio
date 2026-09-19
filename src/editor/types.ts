@@ -17,7 +17,7 @@ export type ToolId =
   | 'move' | 'marquee-rect' | 'marquee-ellipse' | 'lasso' | 'polygon-lasso' | 'magnetic-lasso'
   | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'eyedropper' | 'measure'
   | 'brush' | 'pencil' | 'clone-stamp' | 'healing-brush' | 'spot-healing' | 'patch'
-  | 'eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
+  | 'eraser' | 'background-eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
   | 'dodge' | 'burn' | 'sponge' | 'text' | 'shape' | 'pen' | 'hand' | 'zoom'
 
 export type SelectionCombine = 'new' | 'add' | 'subtract' | 'intersect'
@@ -357,6 +357,11 @@ export interface PointerInfo {
   ctrl: boolean
   meta: boolean
   pressure: number
+  /** Stylus tilt in degrees (-90..90); zero for mouse/touch. */
+  tiltX: number
+  tiltY: number
+  /** Barrel rotation in degrees when the device/browser reports it. */
+  twist: number
   button: number
   pointerType: string
   isStart: boolean
