@@ -30,7 +30,7 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
   ctx.textBaseline = 'alphabetic'
   const lines = spec.content.split('\n')
   const lh = spec.fontSize * (spec.lineHeight || 1.2)
-  const widths = lines.map(l => ctx.measureText(l).width)
+  const widths = lines.map(l => ctx.measureText(l).width + Math.max(0, l.length - 1) * (spec.tracking || 0))
   const maxW = Math.max(...widths, 1)
   const applyAlign = (x: number, lineW: number) => {
     if (spec.align === 'center') return x + (maxW - lineW) / 2
@@ -42,15 +42,38 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
     lines.forEach((line, li) => {
       let x = applyAlign(spec.x, widths[li])
       const y = spec.y + spec.fontSize * 0.85 + li * lh
-      for (const ch of line) {
+      for (let ci = 0; ci < line.length; ci++) {
+        const ch = line[ci]
         ctx.fillText(ch, x, y)
-        x += ctx.measureText(ch).width + spec.tracking
+        x += ctx.measureText(ch).width + (ci < line.length - 1 ? spec.tracking : 0)
       }
     })
   } else {
     lines.forEach((line, li) => {
       ctx.fillText(line, applyAlign(spec.x, widths[li]), spec.y + spec.fontSize * 0.85 + li * lh)
     })
+  }
+
+  // Character decorations stay editable metadata rather than being baked into
+  // raster pixels. Positions are based on the same baseline/leading used above.
+  if (spec.underline || spec.strikethrough) {
+    ctx.save()
+    ctx.strokeStyle = spec.color
+    ctx.lineWidth = Math.max(1, spec.fontSize / 18)
+    for (let li = 0; li < lines.length; li++) {
+      if (!lines[li]) continue
+      const x = applyAlign(spec.x, widths[li])
+      const y = spec.y + spec.fontSize * 0.85 + li * lh
+      if (spec.underline) {
+        const uy = y + Math.max(1, spec.fontSize * 0.08)
+        ctx.beginPath(); ctx.moveTo(x, uy); ctx.lineTo(x + widths[li], uy); ctx.stroke()
+      }
+      if (spec.strikethrough) {
+        const sy = y - spec.fontSize * 0.30
+        ctx.beginPath(); ctx.moveTo(x, sy); ctx.lineTo(x + widths[li], sy); ctx.stroke()
+      }
+    }
+    ctx.restore()
   }
   return c
 }
@@ -61,16 +84,29 @@ export function renderShapeCanvas(doc: PsDocument, spec: ShapeSpec): HTMLCanvasE
   const { shape } = spec
   traceShapePath(ctx, spec)
   if (shape === 'line') {
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
     ctx.strokeStyle = spec.stroke || spec.fill || '#ffffff'
     ctx.lineWidth = spec.strokeWidth || 2
-    ctx.lineCap = 'round'
+    ctx.lineCap = spec.lineCap ?? 'round'
     ctx.stroke()
+    ctx.restore()
   } else {
-    if (spec.fill) { ctx.fillStyle = spec.fill; ctx.fill() }
+    if (spec.fill) {
+      ctx.save()
+      ctx.globalAlpha = Math.max(0, Math.min(1, (spec.fillOpacity ?? 100) / 100))
+      ctx.fillStyle = spec.fill
+      ctx.fill()
+      ctx.restore()
+    }
     if (spec.stroke && spec.strokeWidth > 0) {
+      ctx.save()
+      ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
       ctx.strokeStyle = spec.stroke
       ctx.lineWidth = spec.strokeWidth
+      ctx.lineJoin = 'round'
       ctx.stroke()
+      ctx.restore()
     }
   }
   return c
