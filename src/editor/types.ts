@@ -108,6 +108,8 @@ export interface TextSpec {
   color: string
   bold: boolean
   italic: boolean
+  underline?: boolean
+  strikethrough?: boolean
   align: 'left' | 'center' | 'right'
   lineHeight: number
   tracking: number
@@ -123,8 +125,11 @@ export interface ShapeSpec {
   h: number
   radius: number
   fill: string | null
+  fillOpacity?: number
   stroke: string | null
   strokeWidth: number
+  strokeOpacity?: number
+  lineCap?: CanvasLineCap
   /** polygon/star point count (3–32); ignored by other shapes */
   sides: number
   /** star inner radius as a percentage of the outer radius */
