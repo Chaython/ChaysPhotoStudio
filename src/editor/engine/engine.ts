@@ -2269,7 +2269,8 @@ export class Engine {
     const doc = this.activeDoc
     if (!doc) return
     const rad = (deg * Math.PI) / 180
-    const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad))
+    const rc = Math.cos(rad), rs = Math.sin(rad)
+    const cos = Math.abs(rc), sin = Math.abs(rs)
     const w = Math.round(doc.width * cos + doc.height * sin)
     const h = Math.round(doc.width * sin + doc.height * cos)
     const rotateCanvasPixels = (src: HTMLCanvasElement): HTMLCanvasElement => {
@@ -2302,19 +2303,19 @@ export class Engine {
         // rotate anchor point around old center
         const t = l.transform
         const ox = t.x - doc.width / 2, oy = t.y - doc.height / 2
-        t.x = w / 2 + ox * cos - oy * sin
-        t.y = h / 2 + ox * sin + oy * cos
+        t.x = w / 2 + ox * rc - oy * rs
+        t.y = h / 2 + ox * rs + oy * rc
         t.rotation += rad
       }
       if (l.text) {
         const ox = l.text.x - doc.width / 2, oy = l.text.y - doc.height / 2
-        l.text.x = w / 2 + ox * cos - oy * sin
-        l.text.y = h / 2 + ox * sin + oy * cos
+        l.text.x = w / 2 + ox * rc - oy * rs
+        l.text.y = h / 2 + ox * rs + oy * rc
       }
       if (l.shape) {
         const ox = l.shape.x - doc.width / 2, oy = l.shape.y - doc.height / 2
-        l.shape.x = w / 2 + ox * cos - oy * sin
-        l.shape.y = h / 2 + ox * sin + oy * cos
+        l.shape.x = w / 2 + ox * rc - oy * rs
+        l.shape.y = h / 2 + ox * rs + oy * rc
       }
       l._v++; l._mv++
     }
