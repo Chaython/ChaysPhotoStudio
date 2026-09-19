@@ -1757,15 +1757,39 @@ export class Engine {
     return getFlatComposite(doc)
   }
 
-  sampleColor(x: number, y: number, scope: 'composite' | 'layer' = 'composite'): string | null {
+  sampleColor(
+    x: number, y: number,
+    scope: 'composite' | 'layer' = 'composite',
+    radius = 0,
+  ): string | null {
     const doc = this.activeDoc
     if (!doc) return null
-    const src = scope === 'layer' && this.activeLayer ? this.layerCanvas(this.activeLayer.id) : getFlatComposite(doc)
+    // Layer sampling must be in DOCUMENT space; sampling layer.canvas directly
+    // was wrong as soon as a raster layer had a non-zero move offset.
+    const src = scope === 'layer' && this.activeLayer
+      ? this.layerCanvasDocSpace(this.activeLayer.id)
+      : getFlatComposite(doc)
     if (!src) return null
     const px = clamp(Math.round(x), 0, doc.width - 1)
     const py = clamp(Math.round(y), 0, doc.height - 1)
-    const d = ctx2d(src).getImageData(px, py, 1, 1).data
-    return rgbToHex(d[0], d[1], d[2])
+    const r = clamp(Math.floor(radius), 0, 32)
+    const x0 = clamp(px - r, 0, doc.width - 1)
+    const y0 = clamp(py - r, 0, doc.height - 1)
+    const x1 = clamp(px + r, 0, doc.width - 1)
+    const y1 = clamp(py + r, 0, doc.height - 1)
+    const data = ctx2d(src).getImageData(x0, y0, x1 - x0 + 1, y1 - y0 + 1).data
+    let rr = 0, gg = 0, bb = 0, aa = 0, weight = 0
+    // Alpha-weighted average avoids transparent RGB garbage contaminating
+    // large eyedropper samples around cut-out subjects.
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3] / 255
+      if (a <= 0) continue
+      rr += data[i] * a; gg += data[i + 1] * a; bb += data[i + 2] * a
+      aa += data[i + 3]; weight += a
+    }
+    void aa
+    if (weight <= 0) return null
+    return rgbToHex(rr / weight, gg / weight, bb / weight)
   }
 
   // ================================================== stroke engine (brush/eraser/clone/heal)
@@ -1855,27 +1879,43 @@ export class Engine {
   }
 
   // ================================================== transforms
-  cropTo(rect: Rect) {
+  cropTo(rect: Rect, opts: { deletePixels?: boolean } = {}) {
     const doc = this.activeDoc
     if (!doc) return
-    const x = Math.round(clamp(rect.x, 0, doc.width))
-    const y = Math.round(clamp(rect.y, 0, doc.height))
-    const w = Math.round(clamp(rect.w, 1, doc.width - x))
-    const h = Math.round(clamp(rect.h, 1, doc.height - y))
-    // crop every layer canvas, mask, and re-render smart layers
+    // Photoshop-style crop can extend beyond the current canvas. Negative
+    // origins / oversized crops add transparent canvas instead of being
+    // silently clamped back into the old document.
+    const x = Math.round(rect.x)
+    const y = Math.round(rect.y)
+    const w = Math.max(1, Math.round(rect.w))
+    const h = Math.max(1, Math.round(rect.h))
+    const deletePixels = opts.deletePixels !== false
+
     for (const l of doc.layers) {
-      if (l.canvas) {
-        const c = createCanvas(w, h)
-        // raster canvases may be offset — crop in doc space, then re-register
-        ctx2d(c).drawImage(l.canvas, (l.offsetX ?? 0) - x, (l.offsetY ?? 0) - y)
-        l.canvas = c
-        l.offsetX = 0
-        l.offsetY = 0
+      if (l.canvas && l.kind === 'raster') {
+        if (deletePixels) {
+          // destructive crop: discard raster pixels outside the new frame
+          const next = createCanvas(w, h)
+          ctx2d(next).drawImage(l.canvas, (l.offsetX ?? 0) - x, (l.offsetY ?? 0) - y)
+          l.canvas = next
+          l.offsetX = 0
+          l.offsetY = 0
+        } else {
+          // non-destructive crop: preserve the full raster backing store and
+          // only change its registration relative to the new document frame.
+          l.offsetX = (l.offsetX ?? 0) - x
+          l.offsetY = (l.offsetY ?? 0) - y
+        }
+      } else if (l.canvas) {
+        // derived/cache canvases are rebuilt in the new document space.
+        const next = createCanvas(w, h)
+        ctx2d(next).drawImage(l.canvas, -x, -y)
+        l.canvas = next
       }
       if (l.mask) {
-        const c = createCanvas(w, h)
-        ctx2d(c).drawImage(l.mask, -x, -y)
-        l.mask = c
+        const next = createCanvas(w, h)
+        ctx2d(next).drawImage(l.mask, -x, -y)
+        l.mask = next
       }
       if (l.transform) { l.transform.x -= x; l.transform.y -= y }
       if (l.text) { l.text.x -= x; l.text.y -= y }
@@ -1883,20 +1923,20 @@ export class Engine {
       l._v++; l._mv++
     }
     if (doc.selection) {
-      const c = createCanvas(w, h)
-      ctx2d(c).drawImage(doc.selection.mask, -x, -y)
-      doc.selection = { ...doc.selection, mask: c, _v: doc.selection._v + 1 }
+      const next = createCanvas(w, h)
+      ctx2d(next).drawImage(doc.selection.mask, -x, -y)
+      doc.selection = { ...doc.selection, mask: next, _v: doc.selection._v + 1 }
     }
     for (const ch of doc.savedChannels) {
-      const c = createCanvas(w, h)
-      ctx2d(c).drawImage(ch.mask, -x, -y)
-      ch.mask = c; ch._v++
+      const next = createCanvas(w, h)
+      ctx2d(next).drawImage(ch.mask, -x, -y)
+      ch.mask = next; ch._v++
     }
     doc.width = w; doc.height = h
     doc._epoch++
     invalidateFlat(doc)
-    this.pushHistory('Crop')
-    this.recordStep({ op: 'crop', args: { x, y, w, h }, label: 'Crop' })
+    this.pushHistory(deletePixels ? 'Crop' : 'Crop (Preserve Pixels)')
+    this.recordStep({ op: 'crop', args: { x, y, w, h, deletePixels }, label: 'Crop' })
     this.emit()
   }
 
