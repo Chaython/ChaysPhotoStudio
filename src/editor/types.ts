@@ -113,6 +113,9 @@ export interface TextSpec {
   align: 'left' | 'center' | 'right'
   lineHeight: number
   tracking: number
+  /** Paragraph text uses an editable bounding box; point text leaves these unset. */
+  boxWidth?: number
+  boxHeight?: number
   x: number
   y: number
 }
