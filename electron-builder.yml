@@ -1,7 +1,7 @@
 # Chay's Photo Studio — electron-builder packaging config
 # Build steps (see DISTRIBUTION.md):
 #   bun run icons && bun run build && bun run app:dist
-# CI runs one matrix leg per OS with `--win` / `--mac` / `--linux`.
+# CI builds Windows/Linux x64 plus native macOS x64 and arm64 legs.
 appId: ca.live.chaython.chays-photo-studio
 # NOTE: no apostrophes — electron-builder v26 rejects them in
 # productFilename (install paths / bundle names). The branded name

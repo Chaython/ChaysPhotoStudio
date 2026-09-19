@@ -40,8 +40,8 @@ Distribute**, which:
 
 1. builds the web bundle + icons + static exports (`web` job)
 2. deploys the **static web app to GitHub Pages** (auto-enabled on first run)
-3. packages **Electron installers** on three runners — Windows NSIS
-   (`ChaysPhotoStudio-Setup-*.exe`), macOS universal DMG, Linux AppImage + `.deb`
+3. packages **Electron installers** on native platform/architecture runners — Windows NSIS
+   (`ChaysPhotoStudio-Setup-*.exe`), macOS Intel + Apple Silicon DMGs, Linux AppImage + `.deb`
 4. builds the **Tauri webview shell** per OS (deb/AppImage, NSIS, dmg+app)
 5. zips the **browser plugin** (Chrome + Firefox variants — editor bundled inside)
 6. publishes a **continuous GitHub Release** (prerelease, tagged
@@ -73,10 +73,14 @@ bun run build                 # Next.js standalone build (self-contained)
 bun run app:dev               # dev shell against http://localhost:3000
 bun run app:prepare           # assemble build/electron/app
 bun run app:dist              # package for your current OS
-bun run app:dist:win          # …or explicitly --win / --mac --universal / --linux
+bun run app:dist:win          # Windows x64
+bun run app:dist:mac          # macOS current architecture
+bun run app:dist:mac:x64      # macOS Intel
+bun run app:dist:mac:arm64    # macOS Apple Silicon
+bun run app:dist:linux        # Linux x64
 
 # Browser plugin (self-contained — bundles the whole editor)
-bun run ext:build            # static export + zips into build/extension/
+bun run ext:build            # generates icons, static export, then Chrome + Firefox zips
 
 # Tauri webview shell (requires Rust; uses the OS webview)
 bun run webview:dev                                  # shell on localhost:3000

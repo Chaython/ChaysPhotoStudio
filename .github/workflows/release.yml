@@ -12,7 +12,7 @@
 #   • GitHub Pages deployment of the static webapp
 #     (https://<owner>.github.io/ChaysPhotoStudio) — auto-enabled
 #   • Electron desktop installers (Windows NSIS, macOS dmg
-#     universal, Linux AppImage + deb) — fully offline
+#     (Intel + Apple Silicon), Linux AppImage + deb) — fully offline
 #   • System-webview shell (Tauri: deb/AppImage/dmg/nsis)
 #     — tiny binary hosting the deployed editor URL
 #   • Browser plugin (Chrome MV3 + Firefox variant) — the full
@@ -148,14 +148,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
-          - os: ubuntu-latest
-            builder-args: --linux
-          - os: windows-latest
-            builder-args: --win
-          - os: macos-latest
-            builder-args: --mac --universal
+          - name: linux-x64
+            os: ubuntu-latest
+            builder-args: --linux --x64
+          - name: windows-x64
+            os: windows-latest
+            builder-args: --win --x64
+          - name: macos-x64
+            os: macos-15-intel
+            builder-args: --mac --x64
+          - name: macos-arm64
+            os: macos-latest
+            builder-args: --mac --arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -192,7 +197,7 @@ jobs:
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: electron-${{ matrix.os }}
+          name: electron-${{ matrix.name }}
           path: |
             build/electron/dist/*.exe
             build/electron/dist/*.dmg
@@ -209,13 +214,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
-          - os: ubuntu-latest
+          - name: linux-x64
+            os: ubuntu-latest
+            arch: x64
             bundles: deb,appimage
-          - os: windows-latest
+          - name: windows-x64
+            os: windows-latest
+            arch: x64
             bundles: nsis
-          - os: macos-latest
+          - name: macos-x64
+            os: macos-15-intel
+            arch: x64
+            bundles: dmg,app
+          - name: macos-arm64
+            os: macos-latest
+            arch: arm64
             bundles: dmg,app
     runs-on: ${{ matrix.os }}
     needs: web
@@ -227,6 +241,11 @@ jobs:
           bun-version: latest
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install locked JavaScript tooling
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+        run: bun install --frozen-lockfile
 
       - name: Linux build dependencies (webkit2gtk)
         if: runner.os == 'Linux'
@@ -272,15 +291,28 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Archive macOS .app bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find webview/src-tauri/target/release/bundle -maxdepth 3 -type d -name '*.app' -print -quit)"
+          if [[ -z "$APP_PATH" ]]; then
+            echo "No .app bundle was produced" >&2
+            exit 1
+          fi
+          APP_NAME="$(basename "$APP_PATH" .app)"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "webview/src-tauri/target/release/bundle/${APP_NAME}-${{ matrix.arch }}.app.zip"
+
       - name: Upload webview bundles
         uses: actions/upload-artifact@v4
         with:
-          name: webview-${{ matrix.os }}
+          name: webview-${{ matrix.name }}
           path: |
             webview/src-tauri/target/release/bundle/**/*.deb
             webview/src-tauri/target/release/bundle/**/*.AppImage
             webview/src-tauri/target/release/bundle/**/*.dmg
-            webview/src-tauri/target/release/bundle/**/*.app/**
+            webview/src-tauri/target/release/bundle/**/*.app.zip
             webview/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
 
@@ -352,13 +384,25 @@ jobs:
 
       - name: Flatten into release folder
         run: |
+          set -euo pipefail
           mkdir -p release
-          find dist -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \
-            -o -name '*.deb' -o -name '*.zip' -o -name '*.tar.gz' \
-            -o -name '*.app' \) -exec cp -r {} release/ \; 2>/dev/null || true
-          # .app is a directory bundle (macOS webview shell)
-          find dist -type d -name '*.app' -exec cp -r {} release/ \; 2>/dev/null || true
-          ls -R release | head -50
+          while IFS= read -r -d '' file; do
+            name="$(basename "$file")"
+            dest="release/$name"
+            if [[ -e "$dest" ]]; then
+              if cmp -s "$file" "$dest"; then
+                echo "Skipping duplicate identical asset: $name"
+                continue
+              fi
+              echo "Release asset filename collision: $name" >&2
+              echo "  existing: $dest" >&2
+              echo "  incoming: $file" >&2
+              exit 1
+            fi
+            cp "$file" "$dest"
+          done < <(find dist -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \
+            -o -name '*.deb' -o -name '*.zip' -o -name '*.tar.gz' \) -print0)
+          find release -maxdepth 1 -type f -printf '%f\n' | sort
 
       - name: Generate checksums
         run: |
@@ -383,7 +427,7 @@ jobs:
             | Channel | Assets |
             |---|---|
             | 🌐 Web app (hosted) | https://chaython.github.io/ChaysPhotoStudio/ — deployed from this repo on every push |
-            | 🖥️ Electron desktop (fully offline) | `ChaysPhotoStudio-Setup-*.exe` (Windows) · `ChaysPhotoStudio-*-universal.dmg` (macOS) · `*.AppImage` / `*.deb` (Linux) |
+            | 🖥️ Electron desktop (fully offline) | `ChaysPhotoStudio-Setup-*.exe` (Windows) · `ChaysPhotoStudio-*-x64.dmg` / `ChaysPhotoStudio-*-arm64.dmg` (macOS) · `*.AppImage` / `*.deb` (Linux) |
             | 🪶 Webview shell (tiny, hosts the deployed editor) | `chays-photo-studio-webview_*` bundles |
             | 🧩 Browser plugin (self-contained — the whole editor bundled inside, works offline) | `chays-photo-studio-extension-*.zip` (Chrome) · `chays-photo-studio-extension-firefox-*.zip` |
             | 🏠 Self-hosting / PWA server | `web-standalone.tar.gz` (Node ≥ 20, `node server.js` — installable as an app from the browser) |
