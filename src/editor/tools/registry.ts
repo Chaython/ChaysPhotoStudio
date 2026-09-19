@@ -11,6 +11,7 @@ import { magicWandTool } from './wand'
 import { brushTool, pencilTool } from './brush'
 import { penTool } from './pen'
 import { eraserTool } from './eraser'
+import { backgroundEraserTool } from './background-eraser'
 import { cloneStampTool } from './clone-stamp'
 import { healingBrushTool, spotHealingTool, patchTool } from './healing'
 import { blurTool, sharpenTool, smudgeTool, dodgeTool, burnTool, spongeTool } from './retouch'
@@ -38,6 +39,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'spot-healing': spotHealingTool,
   'patch': patchTool,
   'eraser': eraserTool,
+  'background-eraser': backgroundEraserTool,
   'gradient': gradientTool,
   'paint-bucket': paintBucketTool,
   'blur': blurTool,
