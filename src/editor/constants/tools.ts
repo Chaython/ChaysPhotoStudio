@@ -60,9 +60,10 @@ const paintBlendOptions = [
 
 export const TOOL_DEFS: ToolDef[] = [
   // group 0 — navigation / arrangement
-  { id: 'move', label: 'Move', group: 0, shortcut: 'V', icon: 'Move', defaults: { autoSelect: true, showTransformControls: true } as any, options: [
+  { id: 'move', label: 'Move', group: 0, shortcut: 'V', icon: 'Move', defaults: { autoSelect: true, showTransformControls: true, alignTo: 'selection' } as any, options: [
     { key: 'autoSelect', label: 'Auto-select layer', type: 'toggle' },
     { key: 'showTransformControls', label: 'Show Transform Controls', type: 'toggle' },
+    { key: 'alignTo', label: 'Align To', type: 'select', options: [{ label: 'Selected Layers', value: 'selection' }, { label: 'Primary Layer', value: 'primary' }, { label: 'Canvas', value: 'canvas' }] },
   ]},
   // group 1 — selections
   { id: 'marquee-rect', label: 'Rectangular Marquee', group: 1, shortcut: 'M', icon: 'SquareDashed', cursor: 'crosshair', defaults: { mode: 'new', feather: 0, antiAlias: true, style: 'normal', ratioW: 1, ratioH: 1, fixedW: 100, fixedH: 100 }, options: [selMode, featherCtl, antialiasCtl, { key: 'style', label: 'Style', type: 'select', options: [{ label: 'Normal', value: 'normal' }, { label: 'Fixed Ratio', value: 'ratio' }, { label: 'Fixed Size', value: 'fixed' }] }, { key: 'ratioW', label: 'Ratio W', type: 'number', min: 0.01, max: 1000, step: 0.1 }, { key: 'ratioH', label: 'Ratio H', type: 'number', min: 0.01, max: 1000, step: 0.1 }, { key: 'fixedW', label: 'Fixed W', type: 'number', min: 1, max: 100000, step: 1, unit: 'px' }, { key: 'fixedH', label: 'Fixed H', type: 'number', min: 1, max: 100000, step: 1, unit: 'px' }]},
