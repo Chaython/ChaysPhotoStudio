@@ -12,9 +12,10 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, regionProcess, drawBrushCursor, walkDabs } from './shared'
+import { getOptions, getFgColor, regionProcess, drawBrushCursor, walkDabs } from './shared'
 import { smoothstep } from './dab-utils'
 import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb } from '../utils/canvas'
+import { getFlatComposite } from '../engine/document'
 
 type RetouchId = 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
 type RetouchOp = (x: number, y: number, p: PointerInfo) => void
@@ -103,12 +104,12 @@ function boxBlurRegion(src: Uint8ClampedArray, rw: number, rh: number, rad: numb
 }
 
 // ---------- blur ----------
-function blurOp(x: number, y: number) {
+function blurOp(x: number, y: number, p: PointerInfo) {
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions('blur')
   const r = (opts.size ?? 60) / 2
-  const strength = (opts.strength ?? 60) / 100
+  const strength = ((opts.strength ?? 60) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
   // kernel radius scaled to brush; big brushes sample coarser windows via the
   // sliding window (equivalent to stride sampling but exact)
   const rad = clamp(Math.round(r / 4), 1, 60)
@@ -124,16 +125,17 @@ function blurOp(x: number, y: number) {
       d[j + 1] = src[j + 1] * (1 - f) + bg[i] * f
       d[j + 2] = src[j + 2] * (1 - f) + bb[i] * f
     }
-  })
+  }, opts.hardness ?? 60)
 }
 
 // ---------- sharpen (unsharp mask) ----------
-function sharpenOp(x: number, y: number) {
+function sharpenOp(x: number, y: number, p: PointerInfo) {
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions('sharpen')
   const r = (opts.size ?? 60) / 2
-  const strength = (opts.strength ?? 50) / 100
+  const strength = ((opts.strength ?? 50) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
+  const threshold = Math.max(0, Number(opts.threshold) || 0)
   const rad = clamp(Math.round(r / 10), 1, 4)
   const amount = 0.4 + strength * 1.8
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {
@@ -147,11 +149,13 @@ function sharpenOp(x: number, y: number) {
       for (let c = 0; c < 3; c++) {
         const v = src[j + c]
         const blurC = c === 0 ? br[i] : c === 1 ? bg[i] : bb[i]
-        const sharp = v + (v - blurC) * amount
+        const detail = v - blurC
+        if (Math.abs(detail) < threshold) continue
+        const sharp = v + detail * amount
         d[j + c] = v * (1 - f) + clamp(sharp, 0, 255) * f
       }
     }
-  })
+  }, opts.hardness ?? 60)
 }
 
 // ---------- smudge (multi-tap smear along the drag vector) ----------
@@ -207,8 +211,21 @@ function smudgeTap(x: number, y: number, _p: PointerInfo, getPrev: () => { x: nu
   const ox = l.kind === 'raster' ? (l.offsetX ?? 0) : 0
   const oy = l.kind === 'raster' ? (l.offsetY ?? 0) : 0
   const px = x - ox, py = y - oy, ppx = prev.x - ox, ppy = prev.y - oy
-  // pickup: copy the disk BEHIND the motion vector
-  tctx.drawImage(l.canvas, ppx - c, ppy - c, size, size, 0, 0, size, size)
+  // pickup: Current Layer or a snapshot of the visible composite.
+  const sourceAll = opts.sampleAllLayers === true
+  const source = sourceAll ? getFlatComposite(doc) : l.canvas
+  const sx = sourceAll ? prev.x : ppx
+  const sy = sourceAll ? prev.y : ppy
+  tctx.drawImage(source, sx - c, sy - c, size, size, 0, 0, size, size)
+  if (opts.fingerPainting === true) {
+    // Finger Painting introduces foreground paint into the picked-up color.
+    tctx.save()
+    tctx.globalAlpha = .12 + strength * .18
+    tctx.globalCompositeOperation = 'source-atop'
+    tctx.fillStyle = getFgColor()
+    tctx.fillRect(0, 0, size, size)
+    tctx.restore()
+  }
   // radial alpha mask (hardness) + selection restriction at the destination
   tctx.globalCompositeOperation = 'destination-in'
   const grad = tctx.createRadialGradient(c, c, r * hardness, c, c, r)
@@ -238,12 +255,12 @@ function toneWeight(v: number, range: string): number {
   return smoothstep(40, 85, v) * (1 - smoothstep(170, 215, v))
 }
 
-function toneOp(kind: 'dodge' | 'burn', x: number, y: number) {
+function toneOp(kind: 'dodge' | 'burn', x: number, y: number, p: PointerInfo) {
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions(kind)
   const r = (opts.size ?? 60) / 2
-  const exposure = (opts.exposure ?? 30) / 100
+  const exposure = ((opts.exposure ?? 30) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
   const range = opts.range ?? 'midtones'
   const burn = kind === 'burn'
   const protectTones = opts.protectTones !== false
@@ -268,17 +285,18 @@ function toneOp(kind: 'dodge' | 'burn', x: number, y: number) {
         }
       }
     }
-  })
+  }, opts.hardness ?? 60)
 }
 
 // ---------- sponge (HSV saturation scaling with flow falloff) ----------
-function spongeOp(x: number, y: number) {
+function spongeOp(x: number, y: number, p: PointerInfo) {
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions('sponge')
   const r = (opts.size ?? 60) / 2
-  const flow = (opts.flow ?? 30) / 100
+  const flow = ((opts.flow ?? 30) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
   const saturate = opts.mode !== 'desaturate'
+  const vibrance = opts.vibrance === true
   const k = 1.6
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {
     const d = region.data
@@ -288,18 +306,19 @@ function spongeOp(x: number, y: number) {
       const j = i * 4
       const [hh, ss, vv] = rgbToHsv(d[j], d[j + 1], d[j + 2])
       if (ss <= 0.01) continue
-      const s2 = clamp(saturate ? ss * (1 + k * f) : ss * (1 - k * f), 0, 100)
+      const vf = vibrance && saturate ? f * (1 - ss / 100) : f
+      const s2 = clamp(saturate ? ss * (1 + k * vf) : ss * (1 - k * f), 0, 100)
       const [r2, g2, b2] = hsvToRgb(hh, s2, vv)
       d[j] = d[j] * (1 - f) + r2 * f
       d[j + 1] = d[j + 1] * (1 - f) + g2 * f
       d[j + 2] = d[j + 2] * (1 - f) + b2 * f
     }
-  })
+  }, opts.hardness ?? 60)
 }
 
 export const blurTool: Tool = makeRetouch('blur', blurOp)
 export const sharpenTool: Tool = makeRetouch('sharpen', sharpenOp)
 export const smudgeTool: Tool = makeSmudgeTool()
-export const dodgeTool: Tool = makeRetouch('dodge', (x, y) => toneOp('dodge', x, y))
-export const burnTool: Tool = makeRetouch('burn', (x, y) => toneOp('burn', x, y))
+export const dodgeTool: Tool = makeRetouch('dodge', (x, y, p) => toneOp('dodge', x, y, p))
+export const burnTool: Tool = makeRetouch('burn', (x, y, p) => toneOp('burn', x, y, p))
 export const spongeTool: Tool = makeRetouch('sponge', spongeOp)
