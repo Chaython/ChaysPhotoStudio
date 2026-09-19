@@ -300,6 +300,9 @@ export interface PsDocument {
   _strokeLayerId: string | null
   _strokeErase: boolean
   _strokeOpacity: number
+  /** Photoshop-style painting blend mode applied when the live stroke is
+   * previewed and committed. Erasers still force destination-out. */
+  _strokeBlendMode: BlendMode
   _strokeBbox: Rect | null
   /** stroke content version — bumped per dab so live preview cache keys stay fresh */
   _strokeV: number
