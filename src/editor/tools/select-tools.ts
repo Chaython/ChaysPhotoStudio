@@ -59,8 +59,11 @@ export const objectSelectTool: Tool = {
       try {
         const doc = engine.activeDoc
         if (!doc) return
-        const flat = getFlatComposite(doc)
-        const img = getImageData(flat)
+        const source = opts.sample === 'layer' && engine.activeLayer
+          ? engine.layerCanvasDocSpace(engine.activeLayer.id)
+          : getFlatComposite(doc)
+        if (!source) return
+        const img = getImageData(source)
         let mask = imageOps.objectSelect(
           img,
           Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)
@@ -77,6 +80,9 @@ export const objectSelectTool: Tool = {
           for (let i = 0; i < mask.length; i++) f[i] = mask[i]
           const b = gaussianBlurChannel(f, doc.width, doc.height, Math.max(0.6, feather / 2))
           mask = new Uint8ClampedArray(b)
+        } else if (opts.antiAlias === false) {
+          // Hard-edge mode for pixel art / UI captures.
+          for (let i = 0; i < mask.length; i++) mask[i] = mask[i] >= 128 ? 255 : 0
         }
         engine.setSelectionAlpha(mask, mode, 'Object Selection')
       } finally {
