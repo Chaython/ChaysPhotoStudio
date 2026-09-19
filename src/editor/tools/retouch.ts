@@ -190,7 +190,7 @@ function makeSmudgeTool(): Tool {
   return tool
 }
 
-function smudgeTap(x: number, y: number, _p: PointerInfo, getPrev: () => { x: number; y: number } | null, setPrev: (v: { x: number; y: number }) => void) {
+function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: number; y: number } | null, setPrev: (v: { x: number; y: number }) => void) {
   const layer = engine.activeLayer
   const doc = engine.activeDoc
   if (!layer || !doc) return
@@ -199,8 +199,11 @@ function smudgeTap(x: number, y: number, _p: PointerInfo, getPrev: () => { x: nu
   const prev = getPrev()
   if (!prev) { setPrev({ x, y }); return }
   const opts = getOptions('smudge')
-  const r = (opts.size ?? 50) / 2
-  const strength = clamp((opts.strength ?? 60) / 100, 0.05, 0.95)
+  const pressure = p.pointerType === 'pen' ? clamp(p.pressure, 0, 1) : 1
+  let r = (opts.size ?? 50) / 2
+  if (p.pointerType === 'pen' && opts.pressureSize === true) r *= .25 + .75 * pressure
+  let strength = clamp((opts.strength ?? 60) / 100, 0.05, 0.95)
+  if (p.pointerType === 'pen' && opts.pressureStrength !== false) strength *= .2 + .8 * pressure
   const hardness = clamp((opts.hardness ?? 70) / 100, 0, 0.96)
   const ctx = ctx2d(l.canvas)
   const size = Math.ceil(r * 2) + 2
