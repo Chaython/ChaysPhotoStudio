@@ -24,5 +24,22 @@ export const magicWandTool: Tool = {
       mode: combineMode(p, opts.mode ?? 'new'),
     })
   },
-  renderOverlay(ctx, view, w, h, mouse) { void view; void w; void h; drawCross(ctx, mouse) },
+  renderOverlay(ctx, view, w, h, mouse) {
+    void view; void w; void h
+    drawCross(ctx, mouse)
+    if (!mouse) return
+    const opts = getOptions('magic-wand')
+    const sample = opts.exactPixels ? 'Exact' : `Tol ${Math.round(opts.tolerance ?? 32)}`
+    const source = opts.sample === 'layer' ? 'Layer' : 'Merged'
+    const text = `${sample} · ${opts.contiguous === false ? 'Global' : 'Contig'} · ${source}`
+    ctx.save()
+    ctx.font = '10px ui-monospace, monospace'
+    const tw = ctx.measureText(text).width + 10
+    const x = mouse.x + 12, y = mouse.y + 14
+    ctx.fillStyle = 'rgba(10,10,12,.78)'
+    ctx.fillRect(x, y, tw, 17)
+    ctx.fillStyle = '#f4c47c'
+    ctx.fillText(text, x + 5, y + 12)
+    ctx.restore()
+  },
 }

@@ -200,6 +200,55 @@ function hitSegment(segs: Seg[], pt: Pt, zoom: number): number {
   return -1
 }
 
+function lerpPt(a: Pt, b: Pt, t: number): Pt {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+}
+
+function hitSegmentPoint(pt: Pt, zoom: number): { index: number; t: number } | null {
+  const segs = segments()
+  let best: { index: number; t: number; d: number } | null = null
+  for (let i = 0; i < segs.length; i++) {
+    for (let k = 1; k < 32; k++) {
+      const t = k / 32
+      const q = cubicAt(segs[i], t)
+      const d = Math.hypot(q.x - pt.x, q.y - pt.y) * zoom
+      if (d <= HIT_PX && (!best || d < best.d)) best = { index: i, t, d }
+    }
+  }
+  return best ? { index: best.index, t: best.t } : null
+}
+
+function insertAnchorOnSegment(segIndex: number, t: number): boolean {
+  const n = anchors.length
+  if (n < 2) return false
+  const nextIndex = (segIndex + 1) % n
+  if (nextIndex === 0 && !closed) return false
+  const prev = anchors[segIndex]
+  const next = anchors[nextIndex]
+  if (!prev || !next) return false
+  const s = segBetween(prev, next)
+  const p01 = lerpPt(s.p0, s.p1, t)
+  const p12 = lerpPt(s.p1, s.p2, t)
+  const p23 = lerpPt(s.p2, s.p3, t)
+  const p012 = lerpPt(p01, p12, t)
+  const p123 = lerpPt(p12, p23, t)
+  const mid = lerpPt(p012, p123, t)
+
+  prev.outX = p01.x - prev.x; prev.outY = p01.y - prev.y
+  next.inX = p23.x - next.x; next.inY = p23.y - next.y
+  const made: Anchor = {
+    x: mid.x, y: mid.y,
+    inX: p012.x - mid.x, inY: p012.y - mid.y,
+    outX: p123.x - mid.x, outY: p123.y - mid.y,
+    pair: false,
+  }
+  const insertAt = nextIndex === 0 ? anchors.length : nextIndex
+  anchors.splice(insertAt, 0, made)
+  activeAnchor = insertAt
+  engine.pokeOverlay()
+  return true
+}
+
 // ---------------- anchor editing ----------------
 
 /** Ctrl/Cmd+click: toggle corner ↔ smooth. Smooth handles are auto-generated
@@ -368,10 +417,13 @@ export const penTool: Tool = {
       }
     }
 
-    // 2) Ctrl/Cmd+click an anchor → toggle corner ↔ smooth
+    // 2) Ctrl/Cmd+click: toggle an anchor, or add one on a segment while
+    // preserving the exact Bezier curve via De Casteljau splitting.
     if (p.ctrl || p.meta) {
       const i = hitAnchor(p, zoom)
       if (i >= 0) { toggleAnchorType(i); return }
+      const hit = hitSegmentPoint({ x: p.docX, y: p.docY }, zoom)
+      if (hit && insertAnchorOnSegment(hit.index, hit.t)) return
     }
 
     // 3) grab a visible handle point (active / hovered anchor)

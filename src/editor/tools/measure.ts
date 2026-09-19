@@ -13,7 +13,7 @@
 // ============================================================
 import type { Tool, PointerInfo, ToolId, Vec } from '../types'
 import { engine } from '../engine/engine'
-import { drawCross } from './shared'
+import { drawCross, getOptions } from './shared'
 import { clamp } from '../utils/canvas'
 
 // 'measure' is added to the ToolId union by the Lead when wiring
@@ -52,12 +52,13 @@ function clearMeasurement(): void {
   engine.pokeOverlay()
 }
 
-/** snap the drag angle to 45° increments, preserving length */
-function constrain45(s: Vec, raw: Vec): Vec {
+/** Shift constrains to the selected angular increment, preserving length. */
+function constrainAngle(s: Vec, raw: Vec): Vec {
   const dx = raw.x - s.x, dy = raw.y - s.y
   const len = Math.hypot(dx, dy)
   if (len < 0.001) return raw
-  const step = Math.PI / 4
+  const deg = Math.max(1, Number(getOptions(TOOL_ID).angleSnap) || 45)
+  const step = (deg * Math.PI) / 180
   const snapped = Math.round(Math.atan2(dy, dx) / step) * step
   return { x: s.x + Math.cos(snapped) * len, y: s.y + Math.sin(snapped) * len }
 }
@@ -113,7 +114,7 @@ export const measureTool: Tool = {
   onPointerMove(p: PointerInfo) {
     if (!dragging || !start) return
     const raw = { x: p.docX, y: p.docY }
-    end = p.shift ? constrain45(start, raw) : raw
+    end = p.shift ? constrainAngle(start, raw) : raw
     engine.pokeOverlay()
   },
 
@@ -136,6 +137,8 @@ export const measureTool: Tool = {
     }
     return false
   },
+
+  onDoubleClick() { clearMeasurement() },
 
   onDeactivate() { clearMeasurement() },
 
@@ -209,7 +212,10 @@ function drawMeasurement(ctx: CanvasRenderingContext2D, view: { zoom: number; pa
     const dx = e.x - s.x, dy = e.y - s.y
     const len = Math.hypot(dx, dy)
     const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI
-    const label = `L: ${len.toFixed(1)} px  ∠ ${angleDeg.toFixed(1)}°  ΔX ${Math.round(dx)}  ΔY ${Math.round(dy)}`
+    const showDelta = getOptions(TOOL_ID).showDelta !== false
+    const label = showDelta
+      ? `L: ${len.toFixed(1)} px  ∠ ${angleDeg.toFixed(1)}°  ΔX ${Math.round(dx)}  ΔY ${Math.round(dy)}`
+      : `L: ${len.toFixed(1)} px  ∠ ${angleDeg.toFixed(1)}°`
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace'
     const tw = ctx.measureText(label).width
     const padX = 6, chipH = 16
