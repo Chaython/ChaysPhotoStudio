@@ -78,7 +78,7 @@ export const healingBrushTool: Tool = {
       return
     }
 
-    engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100 })
+    engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100, blendMode: opts.blendMode ?? 'normal' })
     // snapshot the pre-stroke layer AFTER beginStroke (it rasterizes if needed)
     const pre = engine.layerCanvasDocSpace(layer.id)
     hst.orig = pre ? cloneCanvas(pre) : null
