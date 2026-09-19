@@ -32,8 +32,9 @@ interface CloneState {
   source: HTMLCanvasElement | null
   point: ClonePoint | null
   loadedSlot: number
+  loadedDocId: string | null
 }
-const st: CloneState = { active: false, last: null, ref: null, source: null, point: null, loadedSlot: 0 }
+const st: CloneState = { active: false, last: null, ref: null, source: null, point: null, loadedSlot: 0, loadedDocId: null }
 const sourceSlots: CloneSlot[] = Array.from({ length: 5 }, () => ({ docId: null, point: null, ref: null, source: null }))
 
 function requestedSlot(): number {
@@ -43,7 +44,7 @@ function requestedSlot(): number {
 function saveLoadedSlot() {
   const slot = sourceSlots[st.loadedSlot]
   if (!slot) return
-  slot.docId = engine.activeDoc?.id ?? null
+  slot.docId = st.loadedDocId
   slot.point = st.point ? { ...st.point } : null
   slot.ref = st.ref ? { ...st.ref } : null
   slot.source = st.source
@@ -52,9 +53,10 @@ function saveLoadedSlot() {
 function syncSourceSlot() {
   const next = requestedSlot()
   const docId = engine.activeDoc?.id ?? null
-  if (next === st.loadedSlot && sourceSlots[next]?.docId === docId) return
+  if (next === st.loadedSlot && st.loadedDocId === docId) return
   saveLoadedSlot()
   st.loadedSlot = next
+  st.loadedDocId = docId
   const slot = sourceSlots[next]
   if (slot?.docId === docId) {
     st.point = slot.point ? { ...slot.point } : null
