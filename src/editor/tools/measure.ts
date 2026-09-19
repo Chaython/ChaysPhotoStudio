@@ -140,7 +140,11 @@ export const measureTool: Tool = {
 
   onDoubleClick() { clearMeasurement() },
 
-  onDeactivate() { clearMeasurement() },
+  onDeactivate() {
+    // Photoshop's Ruler measurement is useful as a reference while switching
+    // to other tools. Keep it unless the user explicitly disables persistence.
+    if (getOptions(TOOL_ID).persist === false) clearMeasurement()
+  },
 
   renderOverlay(ctx, view, w, h, mouse) {
     if (start && end) {
