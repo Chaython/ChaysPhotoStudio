@@ -110,7 +110,8 @@ export const moveTool: Tool = {
 
     // ---- on-canvas free-transform: grab a handle of the active layer ----
     const target0 = transformableLayerId()
-    if (target0 && !p.ctrl) {
+    const moveOpts = getOptions('move')
+    if (target0 && !p.ctrl && moveOpts.showTransformControls !== false) {
       const r = engine.layerContentRect(target0)
       const layer0 = engine.layerById(target0)!
       const uniformOnly = layer0.kind === 'smart' || layer0.kind === 'text'
@@ -157,7 +158,7 @@ export const moveTool: Tool = {
     // ---- regular move drag ----
     const opts = getOptions('move')
     let target = doc.activeLayerId
-    if (opts.autoSelect || p.ctrl) {
+    if (opts.autoSelect !== false || p.ctrl) {
       const hit = pickLayerAt(p.docX, p.docY)
       if (hit) {
         target = hit
@@ -166,6 +167,15 @@ export const moveTool: Tool = {
       }
     }
     if (!target) return
+
+    // Photoshop muscle memory: Alt/Option-drag duplicates the layer and moves
+    // the duplicate, leaving the original in place. Handle drags already use
+    // Alt for scale-from-center, so duplication only applies to body drags.
+    if (p.alt) {
+      const dup = engine.duplicateLayer(target)
+      if (dup) target = dup.id
+    }
+
     const layer = engine.layerById(target)
     if (!layer || layer.locked || layer.kind === 'adjustment') return
     // build the cached below/stack/above split ONCE — per-frame composites are
@@ -475,7 +485,7 @@ function drawLayerHighlight(
   const uniformOnly = layer.kind === 'smart' || layer.kind === 'text'
   const idleBox = { x: sx0, y: sy0, w: sx1 - sx0, h: sy1 - sy0 }
   const sw = idleBox.w, sh = idleBox.h
-  const canTransform = !layer.locked
+  const canTransform = !layer.locked && getOptions('move').showTransformControls !== false
   let handleScr: { id: HandleId; x: number; y: number }[] = []
   if (canTransform && sw >= 10 && sh >= 10) {
     const mid = sw >= 22 && sh >= 22
