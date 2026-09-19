@@ -11,7 +11,7 @@
 import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
 import { newDrag, getOptions, combineMode, drawDashedRect, drawCross, drawBrushCursor, toolMaskCanvas } from './shared'
-import { getImageData, rectFromPoints, clamp, ctx2d } from '../utils/canvas'
+import { getImageData, rectFromPoints, clamp, ctx2d, createCanvas, getMaskAlpha } from '../utils/canvas'
 import { gaussianBlurChannel } from '../image-ops/core'
 import { getFlatComposite } from '../engine/document'
 import { diskAverageColor, growDisk } from './dab-utils'
@@ -22,8 +22,10 @@ import * as imageOps from '../image-ops'
 // ============================================================
 let drag = newDrag()
 let rect: Rect | null = null
+let objectLasso: { x: number; y: number }[] = []
 let detecting = false
 let detectRect: Rect | null = null
+let detectLasso: { x: number; y: number }[] | null = null
 
 export const objectSelectTool: Tool = {
   id: 'object-select',
@@ -33,12 +35,23 @@ export const objectSelectTool: Tool = {
     if (p.button !== 0) return
     drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
     rect = null
+    objectLasso = getOptions('object-select').geometry === 'lasso' ? [{ x: p.docX, y: p.docY }] : []
     engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
     if (!drag.active) return
-    rect = rectFromPoints(drag.startX, drag.startY, p.docX, p.docY)
+    if (getOptions('object-select').geometry === 'lasso') {
+      const last = objectLasso[objectLasso.length - 1]
+      const step = 1.5 / Math.max(engine.activeDoc?.view.zoom ?? 1, .25)
+      if (!last || Math.hypot(p.docX - last.x, p.docY - last.y) >= step) objectLasso.push({ x: p.docX, y: p.docY })
+      if (objectLasso.length) {
+        const xs = objectLasso.map(q => q.x), ys = objectLasso.map(q => q.y)
+        rect = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+      }
+    } else {
+      rect = rectFromPoints(drag.startX, drag.startY, p.docX, p.docY)
+    }
     engine.pokeOverlay()
   },
 
@@ -46,7 +59,9 @@ export const objectSelectTool: Tool = {
     if (!drag.active) return
     drag.active = false
     const r = rect
+    const lasso = objectLasso.length >= 3 ? objectLasso.slice() : null
     rect = null
+    objectLasso = []
     if (!r || r.w < 4 || r.h < 4) { engine.pokeOverlay(); return }
     const opts = getOptions('object-select')
     const mode = combineMode(p, opts.mode ?? 'new')
@@ -54,6 +69,7 @@ export const objectSelectTool: Tool = {
     // paint: rAF lets the overlay draw, then the timeout runs the work)
     detecting = true
     detectRect = r
+    detectLasso = lasso
     engine.pokeOverlay()
     requestAnimationFrame(() => setTimeout(() => {
       try {
@@ -68,6 +84,18 @@ export const objectSelectTool: Tool = {
           img,
           Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)
         )
+        if (lasso && lasso.length >= 3) {
+          const regionMask = createCanvas(doc.width, doc.height)
+          const mc = ctx2d(regionMask)
+          mc.fillStyle = '#fff'
+          mc.beginPath()
+          mc.moveTo(lasso[0].x, lasso[0].y)
+          for (const q of lasso.slice(1)) mc.lineTo(q.x, q.y)
+          mc.closePath()
+          mc.fill()
+          const allowed = getMaskAlpha(regionMask)
+          for (let i = 0; i < mask.length; i++) if (!allowed[i]) mask[i] = 0
+        }
         const level = opts.level ?? 'balanced'
         if (level !== 'fast') {
           mask = imageOps.refineMask(mask, doc.width, doc.height, level === 'thorough'
@@ -88,6 +116,7 @@ export const objectSelectTool: Tool = {
       } finally {
         detecting = false
         detectRect = null
+        detectLasso = null
         engine.pokeOverlay()
       }
     }, 0))
@@ -96,14 +125,33 @@ export const objectSelectTool: Tool = {
   renderOverlay(ctx, view, w, h, mouse) {
     void w; void h
     const r = detecting ? detectRect : rect
+    const poly = detecting ? detectLasso : objectLasso
     if (r && (drag.active || detecting)) {
       const x = r.x * view.zoom + view.panX
       const y = r.y * view.zoom + view.panY
       const rw = r.w * view.zoom, rh = r.h * view.zoom
-      drawDashedRect(ctx, x, y, rw, rh)
+      if (poly && poly.length >= 2) {
+        ctx.save()
+        ctx.translate(view.panX, view.panY)
+        ctx.scale(view.zoom, view.zoom)
+        ctx.beginPath()
+        ctx.moveTo(poly[0].x, poly[0].y)
+        for (const q of poly.slice(1)) ctx.lineTo(q.x, q.y)
+        if (detecting && poly.length >= 3) ctx.closePath()
+        ctx.strokeStyle = '#fff'
+        ctx.lineWidth = 1 / view.zoom
+        ctx.stroke()
+        ctx.fillStyle = 'rgba(232,163,61,0.12)'
+        if (poly.length >= 3) ctx.fill()
+        ctx.restore()
+      } else {
+        drawDashedRect(ctx, x, y, rw, rh)
+      }
       ctx.save()
-      ctx.fillStyle = 'rgba(232,163,61,0.12)'
-      ctx.fillRect(x, y, rw, rh)
+      if (!(poly && poly.length >= 3)) {
+        ctx.fillStyle = 'rgba(232,163,61,0.12)'
+        ctx.fillRect(x, y, rw, rh)
+      }
       if (detecting) {
         ctx.font = '12px ui-sans-serif, sans-serif'
         ctx.textAlign = 'center'
