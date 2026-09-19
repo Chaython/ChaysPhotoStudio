@@ -25,13 +25,20 @@ let drag = newDrag()
 let gradLine: { x0: number; y0: number; x1: number; y1: number } | null = null
 let gradPreview: HTMLCanvasElement | null = null
 
-function buildStops(type: string, reverse: boolean, transparency = true): [number, string][] {
+function buildStops(type: string, reverse: boolean, transparency = true, opts?: Record<string, any>): [number, string][] {
   const fg = getFgColor(), bg = getBgColor()
   let stops: [number, string][]
   if (type === 'fg-transparent') stops = [[0, fg], [1, transparency ? `${fg.slice(0, 7)}00` : fg]]
   else if (type === 'bw') stops = [[0, '#000000'], [1, '#ffffff']]
   else if (type === 'spectrum') stops = [[0, '#ff0000'], [0.17, '#ffff00'], [0.33, '#00ff00'], [0.5, '#00ffff'], [0.67, '#0000ff'], [0.83, '#ff00ff'], [1, '#ff0000']]
-  else stops = [[0, fg], [1, bg]]
+  else if (type === 'custom') {
+    const mid = clamp((Number(opts?.customMidpoint) || 50) / 100, .01, .99)
+    stops = [
+      [0, String(opts?.customStart || '#000000')],
+      [mid, String(opts?.customMid || '#808080')],
+      [1, String(opts?.customEnd || '#ffffff')],
+    ]
+  } else stops = [[0, fg], [1, bg]]
   return reverse ? stops.map(([p, c]) => [1 - p, c] as [number, string]).reverse() : stops
 }
 
@@ -52,7 +59,7 @@ function applyStops(grad: CanvasGradient, stops: [number, string][]) {
 /** build the gradient fill for a canvas of w×h, line coords in that canvas' space */
 function paintGradient(c: CanvasRenderingContext2D, w: number, h: number, x0: number, y0: number, x1: number, y1: number, opts: Record<string, any>) {
   const mode = opts.mode ?? 'linear'
-  const stops = buildStops(opts.type ?? 'fg-bg', opts.reverse === true, opts.transparency !== false)
+  const stops = buildStops(opts.type ?? 'fg-bg', opts.reverse === true, opts.transparency !== false, opts)
   const angle = Math.atan2(y1 - y0, x1 - x0)
   let grad: CanvasGradient
   if (mode === 'diamond') {
