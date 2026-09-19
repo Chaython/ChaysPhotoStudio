@@ -429,7 +429,8 @@ export class Engine {
     const layer = newLayer('text', spec.content?.split('\n')[0]?.slice(0, 24) || 'Type Layer', doc.width, doc.height)
     layer.text = {
       content: 'Type here', fontFamily: 'Georgia, serif', fontSize: 48, color: '#ffffff',
-      bold: false, italic: false, align: 'left', lineHeight: 1.2, tracking: 0,
+      bold: false, italic: false, underline: false, strikethrough: false,
+      align: 'left', lineHeight: 1.2, tracking: 0,
       x: 40, y: 40, ...spec,
     }
     layer.canvas = null
