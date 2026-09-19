@@ -69,7 +69,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     view: { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
     dirty: false, previewFilter: null, previewAdjustment: null,
-    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
   }
   for (const psd of decoded.psdLayers ?? []) {
     const layer = newLayer('raster', psd.name || 'Layer', width, height)
@@ -222,7 +222,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
     history: { states: [], index: -1 },
     dirty: false, previewFilter: null, previewAdjustment: null,
     frames: Array.isArray(project.doc.frames) ? structuredClone(project.doc.frames) : undefined,
-    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
   }
   const layerIds = new Set<string>()
   for (const sl of project.layers ?? []) {
