@@ -5,9 +5,9 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec,
-  ChannelView, BrushSettings,
+  ChannelView, BrushSettings, BlendMode,
 } from '../types'
-import { TOOL_MAP } from '../constants/tools'
+import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
   createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData,
   hexToRgb, rgbToHex, clamp, drawSoftDab, canvasToBlob, downloadBlob, getMaskAlpha,
@@ -159,7 +159,7 @@ export class Engine {
       history: { states: [], index: -1 },
       dirty: false,
       previewFilter: null, previewAdjustment: null,
-      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
     }
     const bg = newLayer('raster', 'Background', width, height)
     if (opts.fill && opts.fill !== 'transparent') {
@@ -189,7 +189,7 @@ export class Engine {
       history: { states: [], index: -1 },
       dirty: false,
       previewFilter: null, previewAdjustment: null,
-      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
     }
     const layer = newLayer('raster', name.replace(/\.[^.]+$/, ''), canvas.width, canvas.height)
     ctx2d(layer.canvas!).drawImage(canvas, 0, 0)
@@ -262,7 +262,7 @@ export class Engine {
     doc.width = st.width; doc.height = st.height
     doc.channelView = st.channelView
     doc.savedChannels = st.savedChannels.map((c: any) => ({ ...c }))
-    doc._stroke = null; doc._strokeLayerId = null; doc._strokeBbox = null
+    doc._stroke = null; doc._strokeLayerId = null; doc._strokeBlendMode = 'normal'; doc._strokeBbox = null
     doc.previewFilter = null; doc.previewAdjustment = null
     doc._epoch++
     invalidateFlat(doc)
@@ -1803,7 +1803,7 @@ export class Engine {
   }
 
   // ================================================== stroke engine (brush/eraser/clone/heal)
-  beginStroke(layerId: string, opts: { opacity?: number; erase?: boolean } = {}) {
+  beginStroke(layerId: string, opts: { opacity?: number; erase?: boolean; blendMode?: BlendMode | string } = {}) {
     const doc = this.activeDoc
     if (!doc) return
     let layer = this.layerById(layerId)
@@ -1818,6 +1818,7 @@ export class Engine {
     doc._strokeLayerId = layerId
     doc._strokeErase = !!opts.erase
     doc._strokeOpacity = (opts.opacity ?? 100) / 100
+    doc._strokeBlendMode = (opts.blendMode && BLEND_GCO[opts.blendMode as BlendMode] ? opts.blendMode : 'normal') as BlendMode
     doc._strokeBbox = null
     doc._strokeV = (doc._strokeV || 0) + 1
     this.requestRender()
@@ -1865,6 +1866,9 @@ export class Engine {
       c.save()
       c.globalAlpha = doc._strokeOpacity
       if (doc._strokeErase) c.globalCompositeOperation = 'destination-out'
+      else {
+        try { c.globalCompositeOperation = BLEND_GCO[doc._strokeBlendMode] || 'source-over' } catch { /* noop */ }
+      }
       c.drawImage(stroke, sx, sy)
       c.restore()
     }
