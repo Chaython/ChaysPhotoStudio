@@ -169,7 +169,10 @@ function makeEraser(): Tool {
     }
     lastDab = { x, y }
 
-    const radius = settings.size / 2
+    let radius = settings.size / 2
+    if (p && p.pointerType === 'pen' && opts.pressureSize === true) {
+      radius *= 0.25 + 0.75 * clamp(p.pressure, 0, 1)
+    }
 
     // ---- flow (pen pressure → opacity; mouse/touch full flow) ----
     let flow = clamp(settings.flow / 100, 0, 1)
