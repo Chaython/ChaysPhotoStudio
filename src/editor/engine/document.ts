@@ -20,6 +20,50 @@ export function newLayer(kind: LayerKind, name: string, w: number, h: number): L
   }
 }
 
+function measuredTextWidth(ctx: CanvasRenderingContext2D, text: string, tracking: number): number {
+  return ctx.measureText(text).width + Math.max(0, text.length - 1) * tracking
+}
+
+function wrapTextRows(ctx: CanvasRenderingContext2D, spec: TextSpec): string[] {
+  const raw = (spec.content || '').split('\n')
+  const width = spec.boxWidth
+  if (!width || width <= 1) return raw
+
+  const tracking = Number(spec.tracking) || 0
+  const out: string[] = []
+  const pushLongWord = (word: string) => {
+    let part = ''
+    for (const ch of word) {
+      const next = part + ch
+      if (part && measuredTextWidth(ctx, next, tracking) > width) {
+        out.push(part)
+        part = ch
+      } else part = next
+    }
+    if (part) out.push(part)
+  }
+
+  for (const paragraph of raw) {
+    if (!paragraph) { out.push(''); continue }
+    const words = paragraph.trim().split(/\s+/)
+    let line = ''
+    for (const word of words) {
+      const candidate = line ? line + ' ' + word : word
+      if (measuredTextWidth(ctx, candidate, tracking) <= width) {
+        line = candidate
+        continue
+      }
+      if (line) out.push(line)
+      if (measuredTextWidth(ctx, word, tracking) > width) {
+        pushLongWord(word)
+        line = ''
+      } else line = word
+    }
+    if (line) out.push(line)
+  }
+  return out.length ? out : ['']
+}
+
 export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasElement {
   const c = createCanvas(doc.width, doc.height)
   const ctx = ctx2d(c)
@@ -28,24 +72,34 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
   ctx.font = `${style}${weight} ${spec.fontSize}px ${spec.fontFamily}`
   ctx.fillStyle = spec.color
   ctx.textBaseline = 'alphabetic'
-  const lines = spec.content.split('\n')
+
+  const lines = wrapTextRows(ctx, spec)
+  const tracking = Number(spec.tracking) || 0
   const lh = spec.fontSize * (spec.lineHeight || 1.2)
-  const widths = lines.map(l => ctx.measureText(l).width + Math.max(0, l.length - 1) * (spec.tracking || 0))
+  const widths = lines.map(l => measuredTextWidth(ctx, l, tracking))
   const maxW = Math.max(...widths, 1)
+  const areaW = Math.max(1, spec.boxWidth ?? maxW)
   const applyAlign = (x: number, lineW: number) => {
-    if (spec.align === 'center') return x + (maxW - lineW) / 2
-    if (spec.align === 'right') return x + (maxW - lineW)
+    if (spec.align === 'center') return x + (areaW - lineW) / 2
+    if (spec.align === 'right') return x + (areaW - lineW)
     return x
   }
-  if (spec.tracking) {
-    // manual letter spacing
+
+  ctx.save()
+  if (spec.boxWidth && spec.boxHeight) {
+    ctx.beginPath()
+    ctx.rect(spec.x, spec.y, Math.max(1, spec.boxWidth), Math.max(1, spec.boxHeight))
+    ctx.clip()
+  }
+
+  if (tracking) {
     lines.forEach((line, li) => {
       let x = applyAlign(spec.x, widths[li])
       const y = spec.y + spec.fontSize * 0.85 + li * lh
       for (let ci = 0; ci < line.length; ci++) {
         const ch = line[ci]
         ctx.fillText(ch, x, y)
-        x += ctx.measureText(ch).width + (ci < line.length - 1 ? spec.tracking : 0)
+        x += ctx.measureText(ch).width + (ci < line.length - 1 ? tracking : 0)
       }
     })
   } else {
@@ -54,10 +108,7 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
     })
   }
 
-  // Character decorations stay editable metadata rather than being baked into
-  // raster pixels. Positions are based on the same baseline/leading used above.
   if (spec.underline || spec.strikethrough) {
-    ctx.save()
     ctx.strokeStyle = spec.color
     ctx.lineWidth = Math.max(1, spec.fontSize / 18)
     for (let li = 0; li < lines.length; li++) {
@@ -73,8 +124,8 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
         ctx.beginPath(); ctx.moveTo(x, sy); ctx.lineTo(x + widths[li], sy); ctx.stroke()
       }
     }
-    ctx.restore()
   }
+  ctx.restore()
   return c
 }
 
