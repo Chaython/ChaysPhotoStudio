@@ -45,6 +45,28 @@ function editTextLayer(layerId: string) {
   } catch { /* non-browser context */ }
 }
 
+let textDrag = newDrag()
+let textFrame: { x: number; y: number; w: number; h: number } | null = null
+
+function createTextLayerAt(x: number, y: number, box?: { w: number; h: number }) {
+  const opts = getOptions('text')
+  const layer = engine.addTextLayer({
+    x: Math.round(x), y: Math.round(y),
+    fontSize: opts.size ?? 48,
+    fontFamily: opts.family ?? 'Georgia, serif',
+    color: opts.color ?? getFgColor(),
+    bold: !!opts.bold, italic: !!opts.italic,
+    underline: !!opts.underline, strikethrough: !!opts.strikethrough,
+    align: opts.align ?? 'left',
+    lineHeight: Math.max(.5, Number(opts.lineHeight) || 1.2),
+    tracking: Number(opts.tracking) || 0,
+    boxWidth: box ? Math.max(20, Math.round(box.w)) : undefined,
+    boxHeight: box ? Math.max(20, Math.round(box.h)) : undefined,
+    content: '',
+  })
+  if (layer) editTextLayer(layer.id)
+}
+
 export const textTool: Tool = {
   id: 'text',
   cursor: 'text',
@@ -55,27 +77,45 @@ export const textTool: Tool = {
     if (!doc) return
     const opts = getOptions('text')
 
-    // click on existing text bounds → activate that layer for editing
+    // Clicking an existing point/paragraph text frame activates it for editing.
     const hit = textLayerAt(p.docX, p.docY)
     if (hit) {
       editTextLayer(hit)
       return
     }
 
-    // create a new text layer with EMPTY content so the inline editor opens
-    const layer = engine.addTextLayer({
-      x: Math.round(p.docX), y: Math.round(p.docY),
-      fontSize: opts.size ?? 48,
-      fontFamily: opts.family ?? 'Georgia, serif',
-      color: opts.color ?? getFgColor(),
-      bold: !!opts.bold, italic: !!opts.italic,
-      underline: !!opts.underline, strikethrough: !!opts.strikethrough,
-      align: opts.align ?? 'left',
-      lineHeight: Math.max(.5, Number(opts.lineHeight) || 1.2),
-      tracking: Number(opts.tracking) || 0,
-      content: '',
-    })
-    if (layer) editTextLayer(layer.id)
+    if (opts.mode === 'paragraph') {
+      textDrag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
+      textFrame = null
+      engine.pokeOverlay()
+      return
+    }
+
+    createTextLayerAt(p.docX, p.docY)
+  },
+
+  onPointerMove(p: PointerInfo) {
+    if (!textDrag.active) return
+    textFrame = rectFromPoints(textDrag.startX, textDrag.startY, p.docX, p.docY)
+    engine.pokeOverlay()
+  },
+
+  onPointerUp(p: PointerInfo) {
+    if (!textDrag.active) return
+    textDrag.active = false
+    const opts = getOptions('text')
+    let r = textFrame ?? rectFromPoints(textDrag.startX, textDrag.startY, p.docX, p.docY)
+    textFrame = null
+    if (r.w < 10 || r.h < 10) {
+      r = {
+        x: textDrag.startX,
+        y: textDrag.startY,
+        w: Math.max(20, Number(opts.boxWidth) || 320),
+        h: Math.max(20, Number(opts.boxHeight) || 180),
+      }
+    }
+    createTextLayerAt(r.x, r.y, { w: r.w, h: r.h })
+    engine.pokeOverlay()
   },
 
   onDoubleClick(p: PointerInfo) {
@@ -83,8 +123,44 @@ export const textTool: Tool = {
     if (hit) editTextLayer(hit)
   },
 
+  onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && textDrag.active) {
+      textDrag.active = false
+      textFrame = null
+      engine.pokeOverlay()
+      return true
+    }
+    return false
+  },
+
+  onDeactivate() {
+    textDrag.active = false
+    textFrame = null
+  },
+
   renderOverlay(ctx, view, w, h, mouse) {
-    void view; void w; void h
+    void w; void h
+    if (textDrag.active && textFrame) {
+      const x = textFrame.x * view.zoom + view.panX
+      const y = textFrame.y * view.zoom + view.panY
+      const rw = textFrame.w * view.zoom
+      const rh = textFrame.h * view.zoom
+      ctx.save()
+      ctx.fillStyle = 'rgba(232,163,61,.08)'
+      ctx.fillRect(x, y, rw, rh)
+      ctx.restore()
+      drawDashedRect(ctx, x, y, rw, rh)
+      ctx.save()
+      ctx.font = '11px ui-monospace, monospace'
+      ctx.fillStyle = 'rgba(0,0,0,.78)'
+      const label = `${Math.round(textFrame.w)} × ${Math.round(textFrame.h)} px`
+      const tw = ctx.measureText(label).width + 12
+      ctx.fillRect(x, y - 20, tw, 16)
+      ctx.fillStyle = '#e8a33d'
+      ctx.fillText(label, x + 6, y - 8)
+      ctx.restore()
+      return
+    }
     if (mouse) {
       // I-beam-ish marker: cross + baseline ticks
       ctx.save()
