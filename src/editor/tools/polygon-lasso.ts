@@ -23,7 +23,9 @@ function constrainedPoint(p: PointerInfo): { x: number; y: number } {
   const dx = p.docX - a.x, dy = p.docY - a.y
   const len = Math.hypot(dx, dy)
   if (len < .001) return { x: p.docX, y: p.docY }
-  const ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4)
+  const deg = Math.max(1, Number(getOptions('polygon-lasso').angleSnap) || 45)
+  const step = deg * Math.PI / 180
+  const ang = Math.round(Math.atan2(dy, dx) / step) * step
   return { x: a.x + Math.cos(ang) * len, y: a.y + Math.sin(ang) * len }
 }
 
