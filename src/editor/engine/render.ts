@@ -417,6 +417,9 @@ export class Viewport {
       rawX: sx, rawY: sy,
       shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey,
       pressure: (e as PointerEvent).pressure && (e as PointerEvent).pressure > 0 ? (e as PointerEvent).pressure : 0.5,
+      tiltX: Number.isFinite((e as PointerEvent).tiltX) ? (e as PointerEvent).tiltX : 0,
+      tiltY: Number.isFinite((e as PointerEvent).tiltY) ? (e as PointerEvent).tiltY : 0,
+      twist: Number.isFinite((e as PointerEvent).twist) ? (e as PointerEvent).twist : 0,
       button: e.button, pointerType: (e as PointerEvent).pointerType ?? 'mouse',
       isStart, isEnd,
     }
