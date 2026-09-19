@@ -1,7 +1,7 @@
 import type { Tool, PointerInfo, ViewportState, Rect } from '../types'
 import { engine } from '../engine/engine'
 import { buildLiveDrag } from '../engine/document'
-import { newDrag, drawCross, pickLayerAt } from './shared'
+import { newDrag, drawCross, pickLayerAt, getOptions } from './shared'
 import { snapToGuides } from '../engine/guides'
 import { useEditorStore } from '../store'
 import { clamp } from '../utils/canvas'
@@ -155,7 +155,7 @@ export const moveTool: Tool = {
     }
 
     // ---- regular move drag ----
-    const opts = { autoSelect: false }
+    const opts = getOptions('move')
     let target = doc.activeLayerId
     if (opts.autoSelect || p.ctrl) {
       const hit = pickLayerAt(p.docX, p.docY)
