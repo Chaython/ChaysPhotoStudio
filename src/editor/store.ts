@@ -252,6 +252,7 @@ interface EditorStore {
   activeDocId: string | null
   layers: LayerMeta[]
   activeLayerId: string | null
+  selectedLayerIds: string[]
   historyIndex: number
   historyLabels: string[]
   channelView: ChannelView
@@ -376,6 +377,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   activeDocId: null,
   layers: [],
   activeLayerId: null,
+  selectedLayerIds: [],
   historyIndex: -1,
   historyLabels: [],
   channelView: 'rgb',
@@ -723,6 +725,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         thumbV: l._v + l._mv,
       })) : [],
       activeLayerId: doc?.activeLayerId ?? null,
+      selectedLayerIds: doc
+        ? ((doc.selectedLayerIds?.filter(id => doc.layers.some(l => l.id === id)).length
+            ? doc.selectedLayerIds!.filter(id => doc.layers.some(l => l.id === id))
+            : (doc.activeLayerId ? [doc.activeLayerId] : [])))
+        : [],
       historyIndex: doc?.history.index ?? -1,
       historyLabels: doc?.history.states.map(h => h.label) ?? [],
       channelView: doc?.channelView ?? 'rgb',
