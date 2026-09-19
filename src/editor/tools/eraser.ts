@@ -24,7 +24,7 @@ import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import { clamp } from '../utils/canvas'
 import {
-  getOptions, brushSettingsFrom, walkDabs,
+  getOptions, brushSettingsFrom, walkDabs, pencilDab,
   symmetricPoints, drawSymmetryOverlay, ema,
 } from './shared'
 import { getTip, drawTipCursor, tipExtentMul, ERASER_TIP_IDS } from './brush-tips'
@@ -127,8 +127,9 @@ function makeEraser(): Tool {
       const doc = engine.activeDoc
       const opts = getOptions('eraser')
       if (!mouse) return
-      // shape-aware cursor for the current erase tip
-      drawTipCursor(ctx, mouse, opts.size ?? 40, view.zoom, tipFor(opts), dabAngle(opts), clamp(opts.roundness ?? 100, 10, 100))
+      // Pencil/Block modes use hard geometric cursors; Brush mode uses the selected tip.
+      const mode = opts.mode ?? 'brush'
+      drawTipCursor(ctx, mouse, opts.size ?? 40, view.zoom, mode === 'brush' ? tipFor(opts) : 'round-hard', dabAngle(opts), mode === 'block' ? 100 : clamp(opts.roundness ?? 100, 10, 100))
       // tiny amber dot at each symmetric cursor position
       if (!doc || !opts.symmetry || opts.symmetry === 'off') return
       const docX = (mouse.x - view.panX) / view.zoom
@@ -172,7 +173,7 @@ function makeEraser(): Tool {
 
     // ---- flow (pen pressure → opacity; mouse/touch full flow) ----
     let flow = clamp(settings.flow / 100, 0, 1)
-    if (p && p.pointerType === 'pen') flow *= 0.3 + 0.7 * clamp(p.pressure, 0, 1)
+    if (p && p.pointerType === 'pen' && opts.pressure !== false) flow *= 0.3 + 0.7 * clamp(p.pressure, 0, 1)
     if (flow <= 0) return
 
     // ---- tip: erase dabs draw in WHITE (destination-out on commit) ----
@@ -181,7 +182,18 @@ function makeEraser(): Tool {
     const roundness = clamp(opts.roundness ?? 100, 10, 100)
     const extent = tipExtentMul(tip.id)
 
+    const mode = opts.mode ?? 'brush'
     const drawFn = (ctx: CanvasRenderingContext2D, dx: number, dy: number) => {
+      if (mode === 'pencil') {
+        pencilDab(ctx, dx, dy, radius, '#ffffff')
+        return
+      }
+      if (mode === 'block') {
+        const side = Math.max(1, Math.round(radius * 2))
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(Math.round(dx - side / 2), Math.round(dy - side / 2), side, side)
+        return
+      }
       tip.drawDab(ctx, dx, dy, {
         size: radius * 2,
         hardness: settings.hardness,
