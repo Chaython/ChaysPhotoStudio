@@ -280,16 +280,15 @@ export const spotHealingTool: Tool = {
     const mask = spotMask
     spotMask = null
 
-    const l = engine.mutateLayerPixels(layer.id)
-    if (!l?.canvas) return
-    // heal in DOC space (masks are doc-sized): bake the offset into a work
-    // copy, then write the patch back through the offset — off-canvas pixels
-    // in the layer canvas survive untouched
-    const ox = l.offsetX ?? 0, oy = l.offsetY ?? 0
+    const outputNew = opts.output === 'new'
+    const sourceLayer = engine.layerCanvasDocSpace(layer.id)
+    if (!sourceLayer) return
+    // Heal in DOC space. Sample All Layers controls only the source pixels;
+    // the final healed patch is masked before it reaches the destination, so
+    // sampling the composite never flattens unrelated layers into this one.
     const work = opts.sampleAllLayers === true
       ? cloneCanvas(getFlatComposite(doc))
-      : createCanvas(doc.width, doc.height)
-    if (opts.sampleAllLayers !== true) ctx2d(work).drawImage(l.canvas, ox, oy)
+      : cloneCanvas(sourceLayer)
     const img = getImageData(work)
 
     // hardness-aware mask, dilated 1px so edge pixels get resampled
@@ -319,18 +318,31 @@ export const spotHealingTool: Tool = {
       store.setProgress(null)
     }
 
-    // commit through a patch canvas so the selection mask is respected
+    // Isolate ONLY the healed footprint. This is critical when Sample All
+    // Layers is enabled: the composite is a sampling source, never a flatten.
     const patch = createCanvas(doc.width, doc.height)
     putImageData(patch, img)
-    const pc = ctx2d(patch)
-    if (doc.selection) {
-      pc.globalCompositeOperation = 'destination-in'
-      pc.drawImage(doc.selection.mask, 0, 0)
-      pc.globalCompositeOperation = 'source-over'
+    const alphaMask = createCanvas(doc.width, doc.height)
+    const amd = new ImageData(doc.width, doc.height)
+    for (let i = 0, j = 3; i < m.length; i++, j += 4) {
+      amd.data[j] = m[i]
     }
-    ctx2d(l.canvas).drawImage(patch, -ox, -oy)
-    engine.pushHistory('Spot Healing')
-    engine.emit()
+    putImageData(alphaMask, amd)
+    const pc = ctx2d(patch)
+    pc.globalCompositeOperation = 'destination-in'
+    pc.drawImage(alphaMask, 0, 0)
+    if (doc.selection) pc.drawImage(doc.selection.mask, 0, 0)
+    pc.globalCompositeOperation = 'source-over'
+
+    if (outputNew) {
+      engine.addRasterLayer('Spot Healing', { canvas: patch })
+    } else {
+      const l = engine.mutateLayerPixels(layer.id)
+      if (!l?.canvas) return
+      ctx2d(l.canvas).drawImage(patch, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
+      engine.pushHistory('Spot Healing')
+      engine.emit()
+    }
   },
 
     renderOverlay(ctx, view, w, h, mouse) {
@@ -629,7 +641,7 @@ function commitPatch() {
 
   // snapshot the ORIGINAL pixels before mutation (source comes from here)
   // — doc-space so the lasso/region math below (doc coords) aligns
-  const layerCv = engine.layerCanvasDocSpace(layer.id)
+  const layerCv = opts.sampleAllLayers === true ? getFlatComposite(doc) : engine.layerCanvasDocSpace(layer.id)
   if (!layerCv) { resetPatch(); return }
   const before = cloneCanvas(layerCv)
 
