@@ -63,9 +63,12 @@ function buildGradient(): void {
   dropGradient()
   const doc = engine.activeDoc
   if (!doc) return
-  const flat = getFlatComposite(doc)
-  if (!flat) return
-  let work = flat
+  const opts = getOptions(TOOL_ID)
+  const sampled = opts.sample === 'layer' && engine.activeLayer
+    ? engine.layerCanvasDocSpace(engine.activeLayer.id)
+    : getFlatComposite(doc)
+  if (!sampled) return
+  let work = sampled
   let scale = 1
   const mp = doc.width * doc.height
   if (mp > 12_000_000) {
@@ -188,7 +191,7 @@ function commit(modeArg?: SelectionCombine): void {
   const opts = getOptions(TOOL_ID)
   if (points.length >= 3) {
     const mode = modeArg ?? combineMode({ shift: lastShift, alt: lastAlt }, opts.mode ?? 'new')
-    engine.selectPolygon(points, optFeather(), mode)
+    engine.selectPolygon(points, optFeather(), mode, opts.antiAlias !== false)
   }
   points = []
   lastDir = null
@@ -263,6 +266,16 @@ export const magneticLassoTool: Tool = {
   onKeyDown(e: KeyboardEvent) {
     if (e.key === 'Enter') { if (points.length >= 3) { commit(); return true } }
     if (e.key === 'Escape') { if (points.length) { cancel(); return true } }
+    if ((e.key === 'Backspace' || e.key === 'Delete') && points.length > 1) {
+      // Magnetic Lasso stores a dense interpolated path, so remove roughly
+      // one frequency step rather than a single invisible 1.5px vertex.
+      e.preventDefault()
+      const n = Math.max(2, Math.ceil(optFrequency() / INTERP_STEP))
+      points.splice(Math.max(1, points.length - n))
+      lastDir = null
+      engine.pokeOverlay()
+      return true
+    }
     return false
   },
 
