@@ -13,6 +13,7 @@ import { engine } from '../engine/engine'
 import { getOptions, getFgColor, getBgColor, drawCross, newDrag } from './shared'
 import { createCanvas, ctx2d, getImageData, putImageData, hexToRgb, clamp } from '../utils/canvas'
 import { floodFillMask, gaussianBlurChannel } from '../image-ops/core'
+import { perceptualWandMask } from '../image-ops/wand'
 import { ditherGradient } from './dab-utils'
 import { getFlatComposite } from '../engine/document'
 import { BLEND_GCO } from '../constants/tools'
@@ -243,14 +244,31 @@ export const paintBucketTool: Tool = {
     const cx = clamp(Math.round(p.docX), 0, doc.width - 1)
     const cy = clamp(Math.round(p.docY), 0, doc.height - 1)
 
-    let fillMask = floodFillMask(img, cx, cy, { tolerance: opts.tolerance ?? 32, contiguous: opts.contiguous !== false })
+    let fillMask = opts.perceptual !== false
+      ? perceptualWandMask(img, cx, cy, {
+          tolerance: opts.tolerance ?? 32,
+          contiguous: opts.contiguous !== false,
+          diagonal: opts.diagonal === true,
+          antiAlias: opts.antiAlias !== false,
+          sampleRadius: 1,
+          edgeAware: 20,
+          adaptive: true,
+        })
+      : floodFillMask(img, cx, cy, {
+          // Legacy raw RGB matcher retained for pixel-art / exact workflows.
+          tolerance: Math.round((opts.tolerance ?? 32) * 2.55),
+          contiguous: opts.contiguous !== false,
+        })
     const has = fillMask.some(v => v > 0)
     if (!has) return
 
-    if (opts.antiAlias !== false) {
+    // Optional post-smoothing is intentionally separate from anti-aliasing:
+    // AA softens only the boundary; Smooth removes tiny one-pixel stair steps.
+    const smooth = Math.max(0, Number(opts.smooth) || 0)
+    if (smooth > 0 || (opts.perceptual === false && opts.antiAlias !== false)) {
       const f = new Float32Array(fillMask.length)
       for (let i = 0; i < fillMask.length; i++) f[i] = fillMask[i]
-      const soft = gaussianBlurChannel(f, doc.width, doc.height, 0.6)
+      const soft = gaussianBlurChannel(f, doc.width, doc.height, smooth > 0 ? Math.max(.6, smooth * .65) : .6)
       fillMask = new Uint8ClampedArray(soft)
     }
 
