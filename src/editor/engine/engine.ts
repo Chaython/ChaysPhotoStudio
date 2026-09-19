@@ -446,7 +446,9 @@ export class Engine {
     const layer = newLayer('shape', 'Shape Layer', doc.width, doc.height)
     layer.shape = {
       shape: 'rect', x: 0, y: 0, w: 100, h: 100, radius: 12,
-      fill: '#e8a33d', stroke: null, strokeWidth: 4, sides: 5, starInset: 45, ...spec,
+      fill: '#e8a33d', fillOpacity: 100, stroke: null, strokeWidth: 4, strokeOpacity: 100,
+      lineCap: 'round', dash: 'solid', arrowStart: false, arrowEnd: false,
+      sides: 5, starInset: 45, ...spec,
     }
     layer.canvas = null
     doc.layers.push(layer)
