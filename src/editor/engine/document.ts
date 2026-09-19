@@ -78,6 +78,30 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
   return c
 }
 
+function applyShapeDash(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {
+  if (spec.dash === 'dashed') ctx.setLineDash([Math.max(1, spec.strokeWidth) * 3, Math.max(1, spec.strokeWidth) * 2])
+  else if (spec.dash === 'dotted') ctx.setLineDash([Math.max(1, spec.strokeWidth) * .25, Math.max(1, spec.strokeWidth) * 1.8])
+  else ctx.setLineDash([])
+}
+
+function strokeLineArrows(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {
+  if (spec.shape !== 'line' || (!spec.arrowStart && !spec.arrowEnd)) return
+  const x0 = spec.x, y0 = spec.y, x1 = spec.x + spec.w, y1 = spec.y + spec.h
+  const angle = Math.atan2(y1 - y0, x1 - x0)
+  const len = Math.max(8, (spec.strokeWidth || 2) * 4)
+  const spread = Math.PI / 7
+  const draw = (x: number, y: number, a: number) => {
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x - Math.cos(a - spread) * len, y - Math.sin(a - spread) * len)
+    ctx.moveTo(x, y)
+    ctx.lineTo(x - Math.cos(a + spread) * len, y - Math.sin(a + spread) * len)
+    ctx.stroke()
+  }
+  if (spec.arrowEnd) draw(x1, y1, angle)
+  if (spec.arrowStart) draw(x0, y0, angle + Math.PI)
+}
+
 export function renderShapeCanvas(doc: PsDocument, spec: ShapeSpec): HTMLCanvasElement {
   const c = createCanvas(doc.width, doc.height)
   const ctx = ctx2d(c)
@@ -89,7 +113,10 @@ export function renderShapeCanvas(doc: PsDocument, spec: ShapeSpec): HTMLCanvasE
     ctx.strokeStyle = spec.stroke || spec.fill || '#ffffff'
     ctx.lineWidth = spec.strokeWidth || 2
     ctx.lineCap = spec.lineCap ?? 'round'
+    applyShapeDash(ctx, spec)
     ctx.stroke()
+    ctx.setLineDash([])
+    strokeLineArrows(ctx, spec)
     ctx.restore()
   } else {
     if (spec.fill) {
@@ -105,7 +132,9 @@ export function renderShapeCanvas(doc: PsDocument, spec: ShapeSpec): HTMLCanvasE
       ctx.strokeStyle = spec.stroke
       ctx.lineWidth = spec.strokeWidth
       ctx.lineJoin = 'round'
+      applyShapeDash(ctx, spec)
       ctx.stroke()
+      ctx.setLineDash([])
       ctx.restore()
     }
   }
