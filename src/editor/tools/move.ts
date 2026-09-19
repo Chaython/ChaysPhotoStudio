@@ -11,6 +11,8 @@ let drag = newDrag()
 let live: LiveLayerDrag | null = null
 /** layer ids moved by this drag (a clipstack base drags its children too) */
 let movingIds: string[] = []
+/** Full-composite live path for dragging a true multi-layer selection. */
+let groupMove: { ids: string[]; lastDx: number; lastDy: number } | null = null
 
 // ---------- on-canvas free-transform drag state ----------
 type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
@@ -178,6 +180,23 @@ export const moveTool: Tool = {
 
     const layer = engine.layerById(target)
     if (!layer || layer.locked || layer.kind === 'adjustment') return
+
+    // If the clicked/active layer is part of a multi-layer selection, drag the
+    // whole selection together. The single-layer below/stack/above cache can't
+    // represent arbitrary non-contiguous stacks, so groups use the exact full
+    // composite while moving and commit one history entry on release.
+    const selected = (doc.selectedLayerIds ?? []).filter(id => {
+      const l = engine.layerById(id)
+      return !!l && !l.locked && l.kind !== 'adjustment'
+    })
+    if (!p.alt && selected.length > 1 && selected.includes(target)) {
+      movingIds = selected
+      groupMove = { ids: selected, lastDx: 0, lastDy: 0 }
+      drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
+      engine.requestRender()
+      return
+    }
+
     // build the cached below/stack/above split ONCE — per-frame composites are
     // then 3 drawImages instead of the full pipeline (60fps drag)
     const ld = buildLiveDrag(doc, target)
@@ -268,6 +287,36 @@ export const moveTool: Tool = {
       return
     }
 
+    if (drag.active && groupMove) {
+      const doc = engine.activeDoc
+      if (!doc) return
+      let dx = Math.round(p.docX - drag.startX)
+      let dy = Math.round(p.docY - drag.startY)
+      if (p.shift) {
+        if (Math.abs(dx) >= Math.abs(dy)) dy = 0
+        else dx = 0
+      }
+      const prefs = useEditorStore.getState().view
+      if (prefs.snapGuides && doc.guides?.length) {
+        const s = snapToGuides(doc, doc.view, drag.startX + dx, drag.startY + dy, 8)
+        dx = Math.round(s.x - drag.startX)
+        dy = Math.round(s.y - drag.startY)
+      }
+      if (prefs.snapGrid && (prefs.gridSize ?? 0) > 0) {
+        const gs = prefs.gridSize as number
+        dx = Math.round(dx / gs) * gs
+        dy = Math.round(dy / gs) * gs
+      }
+      const incX = dx - groupMove.lastDx
+      const incY = dy - groupMove.lastDy
+      if (incX || incY) {
+        engine.translateLayersPreview(groupMove.ids, incX, incY)
+        groupMove.lastDx = dx
+        groupMove.lastDy = dy
+      }
+      return
+    }
+
     if (!drag.active || !live) return
     const doc = engine.activeDoc
     if (!doc) return
@@ -338,6 +387,19 @@ export const moveTool: Tool = {
       return
     }
 
+    if (drag.active && groupMove) {
+      const moved = Math.hypot(groupMove.lastDx, groupMove.lastDy) > 0.5
+      drag.active = false
+      const ids = groupMove.ids
+      groupMove = null
+      movingIds = []
+      if (moved) {
+        engine.pushHistory(ids.length > 1 ? 'Move Layers' : 'Move')
+        engine.emit()
+      } else engine.requestRender()
+      return
+    }
+
     if (!drag.active || !live) return
     const doc = engine.activeDoc
     // use the last APPLIED offset (guide/grid snapping included) — the raw
@@ -404,6 +466,16 @@ export const moveTool: Tool = {
   onKeyDown(e: KeyboardEvent) {
     // Escape cancels an in-flight free-transform drag (preview only — the
     // layer was never touched)
+    if (e.key === 'Escape' && groupMove) {
+      if (groupMove.lastDx || groupMove.lastDy) {
+        engine.translateLayersPreview(groupMove.ids, -groupMove.lastDx, -groupMove.lastDy)
+      }
+      drag.active = false
+      groupMove = null
+      movingIds = []
+      engine.requestRender()
+      return true
+    }
     if (e.key === 'Escape' && tdrag) {
       const doc = engine.activeDoc
       if (doc) doc._liveDrag = null
