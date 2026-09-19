@@ -33,10 +33,17 @@ function publish(): void {
   const g = window as any
   if (start && end) {
     const dx = end.x - start.x, dy = end.y - start.y
+    const length = Math.hypot(dx, dy)
+    const opts = getOptions(TOOL_ID)
+    const unit = String(opts.unit ?? 'px')
+    const ppu = Math.max(.001, Number(opts.pixelsPerUnit) || 1)
     g.__zphotoMeasure = {
-      length: Math.hypot(dx, dy),
+      length,
       angleDeg: (Math.atan2(dy, dx) * 180) / Math.PI,
       dx, dy,
+      unit,
+      calibratedLength: unit === 'px' ? length : length / ppu,
+      pixelsPerUnit: ppu,
     }
   } else {
     g.__zphotoMeasure = null
@@ -217,9 +224,13 @@ function drawMeasurement(ctx: CanvasRenderingContext2D, view: { zoom: number; pa
     const len = Math.hypot(dx, dy)
     const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI
     const showDelta = getOptions(TOOL_ID).showDelta !== false
+    const opts = getOptions(TOOL_ID)
+    const unit = String(opts.unit ?? 'px')
+    const ppu = Math.max(.001, Number(opts.pixelsPerUnit) || 1)
+    const calibrated = unit === 'px' ? '' : ` / ${(len / ppu).toFixed(2)} ${unit}`
     const label = showDelta
-      ? `L: ${len.toFixed(1)} px  ∠ ${angleDeg.toFixed(1)}°  ΔX ${Math.round(dx)}  ΔY ${Math.round(dy)}`
-      : `L: ${len.toFixed(1)} px  ∠ ${angleDeg.toFixed(1)}°`
+      ? `L: ${len.toFixed(1)} px${calibrated}  ∠ ${angleDeg.toFixed(1)}°  ΔX ${Math.round(dx)}  ΔY ${Math.round(dy)}`
+      : `L: ${len.toFixed(1)} px${calibrated}  ∠ ${angleDeg.toFixed(1)}°`
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace'
     const tw = ctx.measureText(label).width
     const padX = 6, chipH = 16
