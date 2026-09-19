@@ -25,6 +25,8 @@ let cropRect: Rect | null = null
 let cropStartRect: Rect | null = null
 let cropMode: CropMode = 'new'
 let cropHandle: CropHandle | null = null
+let straightenStart: { x: number; y: number } | null = null
+let straightenEnd: { x: number; y: number } | null = null
 
 function ratioValue(raw: unknown): number | null {
   if (!raw || raw === 'free') return null
@@ -126,6 +128,13 @@ export const cropTool: Tool = {
   onPointerDown(p: PointerInfo) {
     const doc = engine.activeDoc
     if (!doc || p.button !== 0) return
+    if (getOptions('crop').straighten === true) {
+      straightenStart = { x: p.docX, y: p.docY }
+      straightenEnd = { x: p.docX, y: p.docY }
+      cropDrag.active = false
+      engine.pokeOverlay()
+      return
+    }
     if (cropRect) {
       const hit = hitCrop(p, cropRect, doc.view.zoom)
       if (hit) {
@@ -145,6 +154,11 @@ export const cropTool: Tool = {
   },
 
   onPointerMove(p: PointerInfo) {
+    if (straightenStart) {
+      straightenEnd = { x: p.docX, y: p.docY }
+      engine.pokeOverlay()
+      return
+    }
     if (!cropDrag.active) return
     if (cropMode === 'move' && cropStartRect) {
       const dx = p.docX - cropDrag.startX, dy = p.docY - cropDrag.startY
@@ -158,6 +172,22 @@ export const cropTool: Tool = {
   },
 
   onPointerUp() {
+    if (straightenStart && straightenEnd) {
+      const dx = straightenEnd.x - straightenStart.x
+      const dy = straightenEnd.y - straightenStart.y
+      const len = Math.hypot(dx, dy)
+      straightenStart = null
+      straightenEnd = null
+      if (len >= 4) {
+        const deg = Math.atan2(dy, dx) * 180 / Math.PI
+        if (Math.abs(deg) >= 0.01) engine.rotateCanvas(-deg)
+        const doc = engine.activeDoc
+        if (doc) cropRect = { x: 0, y: 0, w: doc.width, h: doc.height }
+      }
+      useEditorStore.getState().setToolOption('crop', 'straighten', false)
+      engine.pokeOverlay()
+      return
+    }
     cropDrag.active = false
     cropStartRect = null
     cropHandle = null
@@ -166,6 +196,13 @@ export const cropTool: Tool = {
   onDoubleClick() { commitCrop() },
 
   onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && straightenStart) {
+      straightenStart = null
+      straightenEnd = null
+      useEditorStore.getState().setToolOption('crop', 'straighten', false)
+      engine.pokeOverlay()
+      return true
+    }
     if (e.key === 'Enter' && cropRect) { commitCrop(); return true }
     if (e.key === 'Escape' && cropRect) {
       cropRect = null; cropStartRect = null; cropHandle = null; cropDrag.active = false
@@ -175,6 +212,28 @@ export const cropTool: Tool = {
   },
 
   renderOverlay(ctx, view, w, h, mouse) {
+    if (straightenStart && straightenEnd) {
+      const ax = straightenStart.x * view.zoom + view.panX
+      const ay = straightenStart.y * view.zoom + view.panY
+      const bx = straightenEnd.x * view.zoom + view.panX
+      const by = straightenEnd.y * view.zoom + view.panY
+      const deg = Math.atan2(straightenEnd.y - straightenStart.y, straightenEnd.x - straightenStart.x) * 180 / Math.PI
+      ctx.save()
+      ctx.strokeStyle = '#e8a33d'
+      ctx.lineWidth = 2
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
+      ctx.fillStyle = 'rgba(0,0,0,.75)'
+      const label = `${deg.toFixed(2)}°`
+      ctx.font = '11px ui-monospace, monospace'
+      const tw = ctx.measureText(label).width + 10
+      const mx = (ax + bx) / 2, my = (ay + by) / 2
+      ctx.fillRect(mx - tw / 2, my - 22, tw, 17)
+      ctx.fillStyle = '#fff'
+      ctx.textAlign = 'center'
+      ctx.fillText(label, mx, my - 10)
+      ctx.restore()
+      return
+    }
     const r = cropRect
     if (!r) {
       drawCross(ctx, mouse)
@@ -184,7 +243,7 @@ export const cropTool: Tool = {
       ctx.fillStyle = '#fff'
       ctx.font = '12px sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText('Drag crop · Alt from center · Enter / double-click applies', w / 2, h - 19)
+      ctx.fillText(getOptions('crop').straighten === true ? 'Drag along a horizon/edge to straighten' : 'Drag crop · Alt from center · Enter / double-click applies', w / 2, h - 19)
       ctx.restore()
       return
     }
@@ -256,6 +315,8 @@ export const cropTool: Tool = {
     cropDrag.active = false
     cropStartRect = null
     cropHandle = null
+    straightenStart = null
+    straightenEnd = null
   },
 }
 
