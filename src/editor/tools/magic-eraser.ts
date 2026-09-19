@@ -9,9 +9,9 @@
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, drawCross } from './shared'
-import { createCanvas, ctx2d, getImageData, putImageData, clamp } from '../utils/canvas'
+import { createCanvas, ctx2d, getImageData, putImageData, clamp, cloneCanvas } from '../utils/canvas'
 import { perceptualWandMask } from '../image-ops/wand'
-import { getFlatComposite } from '../engine/document'
+import { getFlatComposite, invalidateFlat } from '../engine/document'
 
 export const magicEraserTool: Tool = {
   id: 'magic-eraser',
@@ -66,11 +66,38 @@ export const magicEraserTool: Tool = {
       mc.globalCompositeOperation = 'source-over'
     }
 
+    const eraseOpacity = clamp((Number(opts.opacity) || 100) / 100, 0.01, 1)
+
+    if (opts.output === 'mask') {
+      // Non-destructive mode: hide the matched region in the layer mask while
+      // leaving the source pixels untouched. Existing masks are preserved and
+      // further reduced by this erase operation.
+      if (layer.mask) layer.mask = cloneCanvas(layer.mask)
+      else {
+        layer.mask = createCanvas(doc.width, doc.height)
+        const lc = ctx2d(layer.mask)
+        lc.fillStyle = '#fff'
+        lc.fillRect(0, 0, doc.width, doc.height)
+      }
+      layer.maskEnabled = true
+      const lc = ctx2d(layer.mask)
+      lc.save()
+      lc.globalAlpha = eraseOpacity
+      lc.globalCompositeOperation = 'destination-out'
+      lc.drawImage(mask, 0, 0)
+      lc.restore()
+      layer._mv++
+      invalidateFlat(doc)
+      engine.pushHistory('Magic Eraser Mask')
+      engine.emit()
+      return
+    }
+
     const target = engine.mutateLayerPixels(layer.id)
     if (!target?.canvas) return
     const tc = ctx2d(target.canvas)
     tc.save()
-    tc.globalAlpha = clamp((Number(opts.opacity) || 100) / 100, 0.01, 1)
+    tc.globalAlpha = eraseOpacity
     tc.globalCompositeOperation = 'destination-out'
     tc.drawImage(mask, -(target.offsetX ?? 0), -(target.offsetY ?? 0))
     tc.restore()
