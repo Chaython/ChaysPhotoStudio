@@ -2,6 +2,23 @@
 
 Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
+## 1.2.0
+
+- Windows Electron releases now include a separate `ChaysPhotoStudio-Portable-<version>-x64.exe` no-install build alongside the normal NSIS setup executable; local scripts can build both together or either target independently.
+- Repaired the multi-platform release pipeline: Tauri now uses the valid `GraphicsAndDesign` bundle category, embeds the static editor by default, and no longer depends on GitHub Pages to launch.
+- Added `dist:validate` CI preflight checks for Tauri categories, bundle targets, icons, identifiers, and package/Cargo/Tauri version agreement so distribution metadata failures are caught before matrix builds start.
+- GitHub Pages deployment is now opt-in with `ENABLE_GITHUB_PAGES=true` after selecting GitHub Actions as the Pages source; a Pages permission/configuration problem no longer marks normal distribution builds red.
+- Updated first-party GitHub Actions to current Node 24-compatible major versions and pinned Linux CI/release runners to Ubuntu 24.04 instead of the moving `ubuntu-latest` label.
+- Added automatic local crash recovery backed by IndexedDB, plus a real **Recent & Recovery** browser with restore/delete/clear controls.
+- Project format v2 now preserves animation frames, active selections, saved channels, guides, and per-document view state while remaining backward-compatible with v1 project files.
+- **Save Project** now saves back to the same file on browsers with the File System Access API; added **Save Project As…** (`Ctrl+Shift+S`) with the normal download fallback elsewhere.
+- Added **File > New from Clipboard** for instant screenshot/image workflows.
+- Expanded vector shapes with triangle, configurable polygon, and configurable star tools, including point count, star inset, and optional strokes.
+- Layers panel now supports live name search and type filters, plus Alt-click eye-icon solo/restore behavior for fast compositing.
+- Added **Trim Layer to Content** to remove transparent raster padding without moving the layer in document space.
+- Added one-click WebP and JPEG quick exports alongside PNG.
+- Dirty documents now warn before closing a document or the browser/app window, complementing autosave recovery.
+
 ## 1.1.3
 
 - Fixed the welcome screen's "Download source (ZIP)" link: on deployments without the bundled project archive (GitHub Pages, browser plugin) it pointed at a repository URL that never existed — it now downloads the always-current source archive of the default branch.

@@ -202,9 +202,14 @@ export class Engine {
     return doc
   }
 
-  closeDocument(id: string) {
+  closeDocument(id: string, force = false) {
     const idx = this.docs.findIndex(d => d.id === id)
     if (idx < 0) return
+    const doc = this.docs[idx]
+    if (!force && doc.dirty && typeof window !== 'undefined') {
+      const ok = window.confirm(`Close “${doc.name}” without saving?\n\nAn autosave recovery snapshot may exist, but you should save important work explicitly.`)
+      if (!ok) return
+    }
     this.docs.splice(idx, 1)
     if (this._activeId === id) {
       this._activeId = this.docs[Math.min(idx, this.docs.length - 1)]?.id ?? null
@@ -441,7 +446,7 @@ export class Engine {
     const layer = newLayer('shape', 'Shape Layer', doc.width, doc.height)
     layer.shape = {
       shape: 'rect', x: 0, y: 0, w: 100, h: 100, radius: 12,
-      fill: '#e8a33d', stroke: null, strokeWidth: 4, ...spec,
+      fill: '#e8a33d', stroke: null, strokeWidth: 4, sides: 5, starInset: 45, ...spec,
     }
     layer.canvas = null
     doc.layers.push(layer)
@@ -735,6 +740,46 @@ export class Engine {
       return { x: t.x, y: t.y, w: any._textMetrics.w, h: any._textMetrics.h }
     }
     return null
+  }
+
+  /** Crop transparent padding from a raster layer without changing its document-space position. */
+  trimLayerToContent(id?: string): boolean {
+    const doc = this.activeDoc
+    const target = id ? this.layerById(id) : this.activeLayer
+    if (!doc || !target) return false
+    if (target.kind !== 'raster' || !target.canvas) {
+      this.ui?.toast('Trim Layer works on raster layers — rasterize first', 'info')
+      return false
+    }
+    const src = target.canvas
+    const data = getImageData(src).data
+    let minX = src.width, minY = src.height, maxX = -1, maxY = -1
+    for (let y = 0; y < src.height; y++) {
+      for (let x = 0; x < src.width; x++) {
+        if (data[(y * src.width + x) * 4 + 3] === 0) continue
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+    if (maxX < 0) { this.ui?.toast('Layer is fully transparent', 'info'); return false }
+    if (minX === 0 && minY === 0 && maxX === src.width - 1 && maxY === src.height - 1) {
+      this.ui?.toast('Layer is already trimmed', 'info')
+      return false
+    }
+    const layer = this.mutateLayerPixels(target.id)
+    if (!layer?.canvas) return false
+    const out = createCanvas(maxX - minX + 1, maxY - minY + 1)
+    ctx2d(out).drawImage(layer.canvas, -minX, -minY)
+    layer.canvas = out
+    layer.offsetX = (layer.offsetX ?? 0) + minX
+    layer.offsetY = (layer.offsetY ?? 0) + minY
+    layer._v++
+    invalidateFlat(doc)
+    this.pushHistory('Trim Layer to Content')
+    this.emit()
+    return true
   }
 
   /** "Expand to Fill Frame" / smart-fill the empty space around a layer:

@@ -14,6 +14,7 @@ import { LayerStylesDialog } from './layer-styles-dialog'
 import { ObjectDetectDialog } from './object-detect-dialog'
 import { ShortcutsDialog } from './shortcuts-dialog'
 import { ToolbarCustomizeDialog } from './toolbar-dialog'
+import { RecoveryDialog } from './recovery-dialog'
 import {
   ColorRangeDialog, SelectMaskDialog, ContentAwareFillDialog, BatchDialog,
   ScriptConsoleDialog, AboutDialog,
@@ -64,6 +65,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'shortcuts': ShortcutsDialog,
   'customize-toolbar': ToolbarCustomizeDialog,
   'about': AboutDialog,
+  'recovery': RecoveryDialog,
   // schema-driven dialogs
   ...Object.fromEntries(ADJUSTMENT_TYPES.map(t => [t, GenericAdjustmentDialog])),
   ...Object.fromEntries(FILTER_TYPES.map(t => [t, GenericFilterDialog])),

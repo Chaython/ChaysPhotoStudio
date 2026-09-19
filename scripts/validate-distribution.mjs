@@ -12,6 +12,7 @@ const ok = msg => console.log(`dist:validate: ${msg}`)
 const pkg = readJson('package.json')
 const tauri = readJson('webview/src-tauri/tauri.conf.json')
 const cargoText = fs.readFileSync(path.join(ROOT, 'webview/src-tauri/Cargo.toml'), 'utf8')
+const electronBuilderText = fs.readFileSync(path.join(ROOT, 'electron-builder.yml'), 'utf8')
 const cargoPkg = cargoText.match(/\[package\][\s\S]*?\nversion\s*=\s*"([^"]+)"/)
 const cargoVersion = cargoPkg?.[1]
 
@@ -55,8 +56,20 @@ for (const icon of tauri.bundle?.icon ?? []) {
 }
 if ((tauri.bundle?.icon ?? []).length) ok(`found ${tauri.bundle.icon.length} Tauri bundle icons`)
 
-const requiredScripts = ['build','app:prepare','ext:build','webview:config','webview:build','dist:validate']
+const requiredScripts = ['build','app:prepare','app:dist:win','app:dist:win:setup','app:dist:win:portable','ext:build','webview:config','webview:build','dist:validate']
 for (const name of requiredScripts) if (!pkg.scripts?.[name]) fail(`missing package script: ${name}`)
+
+
+// Windows releases must offer both a conventional installer and a no-install
+// portable executable. Keep this check dependency-free so malformed distro
+// metadata fails before the expensive matrix jobs begin.
+if (!/target:\s*nsis\b/.test(electronBuilderText)) fail('electron-builder Windows NSIS target is missing')
+if (!/target:\s*portable\b/.test(electronBuilderText)) fail('electron-builder Windows portable target is missing')
+if (!/^portable:\s*$/m.test(electronBuilderText) || !/ChaysPhotoStudio-Portable-\$\{version\}-\$\{arch\}\.\$\{ext\}/.test(electronBuilderText)) {
+  fail('electron-builder portable artifactName is missing or unexpected')
+} else {
+  ok('Electron Windows setup + portable targets are configured')
+}
 
 for (const rel of [
   'electron-builder.yml',

@@ -5,6 +5,7 @@ import { createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData, hexT
 import * as imageOps from '../image-ops'
 import { applyLayerFX, hasEnabledFX } from './layer-fx'
 import { glCompositeDocument } from './gl/gl-composite'
+import { traceShapePath } from './shape-path'
 
 // ---------- factories ----------
 export function newLayer(kind: LayerKind, name: string, w: number, h: number): Layer {
@@ -57,24 +58,8 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
 export function renderShapeCanvas(doc: PsDocument, spec: ShapeSpec): HTMLCanvasElement {
   const c = createCanvas(doc.width, doc.height)
   const ctx = ctx2d(c)
-  const { x, y, w, h, shape } = spec
-  ctx.beginPath()
-  if (shape === 'ellipse') {
-    ctx.ellipse(x + w / 2, y + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2)
-  } else if (shape === 'line') {
-    ctx.moveTo(x, y)
-    ctx.lineTo(x + w, y + h)
-  } else if (shape === 'rounded-rect') {
-    const r = Math.min(spec.radius, Math.abs(w) / 2, Math.abs(h) / 2)
-    ctx.moveTo(x + r, y)
-    ctx.arcTo(x + w, y, x + w, y + h, r)
-    ctx.arcTo(x + w, y + h, x, y + h, r)
-    ctx.arcTo(x, y + h, x, y, r)
-    ctx.arcTo(x, y, x + w, y, r)
-    ctx.closePath()
-  } else {
-    ctx.rect(x, y, w, h)
-  }
+  const { shape } = spec
+  traceShapePath(ctx, spec)
   if (shape === 'line') {
     ctx.strokeStyle = spec.stroke || spec.fill || '#ffffff'
     ctx.lineWidth = spec.strokeWidth || 2

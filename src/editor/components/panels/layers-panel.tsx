@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import { Input } from '@/components/ui/input'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { BLEND_MODES } from '../../constants/tools'
 import { useEditorStore, type LayerMeta } from '../../store'
@@ -19,12 +20,17 @@ export function LayersPanel() {
   const tick = useEditorStore(s => s.renderTick)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [query, setQuery] = useState('')
+  const [kindFilter, setKindFilter] = useState('all')
   const dragId = useRef<string | null>(null)
+  const soloBackup = useRef<Record<string, boolean> | null>(null)
 
   const doc = engine.activeDoc
   const activeLayer = doc?.layers.find(l => l.id === activeLayerId)
 
   const idxOf = (metaId: string) => layers.findIndex(l => l.id === metaId) // display index (0=top)
+  const q = query.trim().toLowerCase()
+  const visibleLayers = layers.filter(l => (kindFilter === 'all' || l.kind === kindFilter) && (!q || l.name.toLowerCase().includes(q)))
 
   const setActive = (id: string) => {
     if (doc) { doc.activeLayerId = id; engine.emit() }
@@ -35,6 +41,22 @@ export function LayersPanel() {
     if (!doc) return
     const arrIdx = doc.layers.length - 1 - displayIdx
     engine.reorderLayer(id, arrIdx)
+  }
+
+  const toggleSolo = (id: string) => {
+    if (!doc) return
+    const backup = soloBackup.current
+    if (backup) {
+      for (const l of doc.layers) if (l.id in backup) l.visible = backup[l.id]
+      soloBackup.current = null
+      engine.pushHistory('Restore Layer Visibility')
+      engine.emit()
+      return
+    }
+    soloBackup.current = Object.fromEntries(doc.layers.map(l => [l.id, l.visible]))
+    for (const l of doc.layers) l.visible = l.id === id
+    engine.pushHistory('Solo Layer')
+    engine.emit()
   }
 
   return (
@@ -72,10 +94,29 @@ export function LayersPanel() {
         <span className="font-mono w-9 text-right">{Math.round(activeLayer?.opacity ?? 100)}%</span>
       </div>
 
+      {/* fast layer search/filter — important once real projects reach dozens of layers */}
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b bg-panel/40">
+        <Icons.Search size={12} className="text-muted-foreground shrink-0" aria-hidden />
+        <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Find layer…" className="h-6 min-w-0 flex-1 text-[10px] px-2" />
+        <Select value={kindFilter} onValueChange={setKindFilter}>
+          <SelectTrigger className="h-6! w-24 px-1.5 py-0 text-[10px]"><SelectValue /></SelectTrigger>
+          <SelectContent className="z-50">
+            <SelectItem value="all" className="text-[10px]">All</SelectItem>
+            <SelectItem value="raster" className="text-[10px]">Pixels</SelectItem>
+            <SelectItem value="smart" className="text-[10px]">Smart</SelectItem>
+            <SelectItem value="text" className="text-[10px]">Text</SelectItem>
+            <SelectItem value="shape" className="text-[10px]">Shapes</SelectItem>
+            <SelectItem value="adjustment" className="text-[10px]">Adjust</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* layer list */}
       <FancyScroll className="flex-1 min-h-0" role="list" aria-label="Layers">
-        {layers.map((meta, displayIdx) => (
-          <LayerRow
+        {visibleLayers.map(meta => {
+          const displayIdx = idxOf(meta.id)
+          return (
+            <LayerRow
             key={meta.id}
             meta={meta}
             tick={tick}
@@ -83,6 +124,7 @@ export function LayersPanel() {
             renaming={renaming === meta.id}
             renameValue={renameValue}
             onActivate={() => setActive(meta.id)}
+            onToggleVisibility={(solo) => solo ? toggleSolo(meta.id) : engine.setLayerProps(meta.id, { visible: !meta.visible })}
             onStartRename={() => { setRenaming(meta.id); setRenameValue(meta.name) }}
             onRename={v => {
               engine.setLayerProps(meta.id, { name: v })
@@ -96,9 +138,11 @@ export function LayersPanel() {
             }}
             onMoveUp={displayIdx > 0 ? () => engine.moveLayerBy(meta.id, 1) : undefined}
             onMoveDown={displayIdx < layers.length - 1 ? () => engine.moveLayerBy(meta.id, -1) : undefined}
-          />
-        ))}
+            />
+          )
+        })}
         {!layers.length && <div className="p-4 text-[11px] text-muted-foreground text-center">No layers</div>}
+        {!!layers.length && !visibleLayers.length && <div className="p-4 text-[11px] text-muted-foreground text-center">No layers match this filter</div>}
       </FancyScroll>
 
       {/* footer buttons */}
@@ -121,13 +165,14 @@ export function LayersPanel() {
   )
 }
 
-function LayerRow({ meta, tick, active, renaming, renameValue, onActivate, onStartRename, onRename, onRenameChange, onDragStart, onDropAt, onMoveUp, onMoveDown }: {
+function LayerRow({ meta, tick, active, renaming, renameValue, onActivate, onToggleVisibility, onStartRename, onRename, onRenameChange, onDragStart, onDropAt, onMoveUp, onMoveDown }: {
   meta: LayerMeta
   tick: number
   active: boolean
   renaming: boolean
   renameValue: string
   onActivate(): void
+  onToggleVisibility(solo: boolean): void
   onStartRename(): void
   onRename(v: string): void
   onRenameChange(v: string): void
@@ -193,7 +238,8 @@ function LayerRow({ meta, tick, active, renaming, renameValue, onActivate, onSta
           {/* visibility */}
           <button
             className={cn('w-4 flex-shrink-0', meta.visible ? 'text-foreground' : 'text-muted-foreground/40')}
-            onClick={e => { e.stopPropagation(); engine.setLayerProps(meta.id, { visible: !meta.visible }) }}
+            onClick={e => { e.stopPropagation(); onToggleVisibility(e.altKey) }}
+            title="Click: show/hide · Alt-click: solo/restore layers"
             aria-label={meta.visible ? 'Hide layer' : 'Show layer'}
           >
             <Icons.Eye size={13} />
@@ -282,6 +328,7 @@ function LayerRow({ meta, tick, active, renaming, renameValue, onActivate, onSta
         {meta.hasMask && <ContextMenuItem onClick={() => engine.deleteLayerMask(meta.id, false)}><Icons.Trash2 /> Delete Mask</ContextMenuItem>}
         <ContextMenuItem onClick={() => engine.toggleClipping(meta.id)}><Icons.CornerDownRight /> Toggle Clipping</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.rasterizeLayer(meta.id)}><Icons.Grid2x2 /> Rasterize</ContextMenuItem>
+        <ContextMenuItem onClick={() => engine.trimLayerToContent(meta.id)}><Icons.ScanLine /> Trim to Content</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.mergeDown(meta.id)}><Icons.Combine /> Merge Down</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.deleteLayer(meta.id)} className="text-destructive"><Icons.Trash2 className="text-destructive" /> Delete Layer</ContextMenuItem>
       </ContextMenuContent>

@@ -17,7 +17,7 @@ import type { ToolId } from '../../types'
 import {
   ImagePlus, FilePlus2, Sparkles, Layers, Lasso, ArrowRight, CloudUpload, Keyboard,
   ScanSearch, Bandage, Palette, Workflow, Timer, Sliders,
-  Loader2, RefreshCw, Download, Ban, MonitorDown,
+  Loader2, RefreshCw, RotateCcw, Download, Ban, MonitorDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -143,7 +143,7 @@ export function WelcomeScreen() {
         <AiGeneratorCard />
 
         {/* ================= primary actions ================= */}
-        <div className="mt-3 grid sm:grid-cols-3 gap-2.5">
+        <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           <WelcomeAction
             icon={ImagePlus}
             title="Open Image"
@@ -156,6 +156,12 @@ export function WelcomeScreen() {
             title="New Document"
             desc="Presets & custom sizes"
             onClick={() => openDialog('new-doc')}
+          />
+          <WelcomeAction
+            icon={RotateCcw}
+            title="Recover Work"
+            desc="Autosaves & recent sessions"
+            onClick={() => openDialog('recovery')}
           />
           <WelcomeAction
             icon={Sparkles}

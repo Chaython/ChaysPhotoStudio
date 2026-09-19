@@ -14,6 +14,7 @@ import { engine } from '../engine/engine'
 import { getOptions, getFgColor, newDrag, drawCross, drawDashedRect } from './shared'
 import { measureTextSpecBounds } from './dab-utils'
 import { rectFromPoints } from '../utils/canvas'
+import { traceShapePath } from '../engine/shape-path'
 
 // ============================================================
 // Type tool
@@ -135,8 +136,10 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
         w: Math.round(vec.x1 - vec.x0), h: Math.round(vec.y1 - vec.y0),
         radius: 0,
         fill: null,
-        stroke: opts.stroke ?? null,
+        stroke: opts.stroke ?? '#ffffff',
         strokeWidth: opts.strokeWidth ?? 4,
+        sides: opts.sides ?? 5,
+        starInset: opts.starInset ?? 45,
       }
     }
     return {
@@ -144,37 +147,17 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
       x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h),
       radius: opts.radius ?? 12,
       fill: opts.fill ?? '#e8a33d',
-      stroke: opts.stroke ?? null,
+      stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null,
       strokeWidth: opts.strokeWidth ?? 4,
+      sides: opts.sides ?? 5,
+      starInset: opts.starInset ?? 45,
     }
   }
   // live preview path
   if (isLine) {
-    return { shape: 'line', x: vec.x0, y: vec.y0, w: vec.x1 - vec.x0, h: vec.y1 - vec.y0, radius: 0, fill: null, stroke: opts.stroke ?? null, strokeWidth: opts.strokeWidth ?? 4 }
+    return { shape: 'line', x: vec.x0, y: vec.y0, w: vec.x1 - vec.x0, h: vec.y1 - vec.y0, radius: 0, fill: null, stroke: opts.stroke ?? '#ffffff', strokeWidth: opts.strokeWidth ?? 4, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
   }
-  return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', stroke: opts.stroke ?? null, strokeWidth: opts.strokeWidth ?? 4 }
-}
-
-/** draw a shape path (same geometry as renderShapeCanvas) onto any ctx */
-function traceShapePath(c: CanvasRenderingContext2D, spec: ShapeSpec) {
-  const { x, y, w, h, shape } = spec
-  c.beginPath()
-  if (shape === 'ellipse') {
-    c.ellipse(x + w / 2, y + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2)
-  } else if (shape === 'line') {
-    c.moveTo(x, y)
-    c.lineTo(x + w, y + h)
-  } else if (shape === 'rounded-rect') {
-    const rr = Math.min(spec.radius, Math.abs(w / 2), Math.abs(h / 2))
-    c.moveTo(x + rr, y)
-    c.arcTo(x + w, y, x + w, y + h, rr)
-    c.arcTo(x + w, y + h, x, y + h, rr)
-    c.arcTo(x, y + h, x, y, rr)
-    c.arcTo(x, y, x + w, y, rr)
-    c.closePath()
-  } else {
-    c.rect(x, y, w, h)
-  }
+  return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null, strokeWidth: opts.strokeWidth ?? 4, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
 }
 
 export const shapeTool: Tool = {

@@ -1,9 +1,8 @@
 // File IO: open images, place layers, project save/load, export
 import { engine } from './engine'
 import { useEditorStore } from '../store'
-import { fileToCanvas, createCanvas, ctx2d, downloadBlob, canvasToBlob, cloneCanvas } from '../utils/canvas'
+import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid } from '../utils/canvas'
 import { newLayer } from './document'
-import { uid } from '../utils/canvas'
 import type { Layer, PsDocument } from '../types'
 import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId } from '../formats'
@@ -22,9 +21,7 @@ async function sniffFormat(file: File): Promise<ImportFormatId | null> {
   }
 }
 
-/** decode a file to a single canvas through the full pipeline:
- *  codec formats straight to our decoders, the rest native-first with a
- *  decodeFile fallback (e.g. 16-bit TIFFs the browser can't read) */
+/** decode a file to a single canvas through the full pipeline */
 async function decodeToCanvas(file: File): Promise<HTMLCanvasElement> {
   const format = await sniffFormat(file)
   if (format && CODEC_FORMATS.includes(format)) return (await decodeFile(file)).canvas
@@ -39,15 +36,12 @@ export async function openFiles(files: File[], asLayer = false) {
   const store = useEditorStore.getState()
   for (const file of files) {
     if (file.name.endsWith('.zproj.json')) { await openProjectFile(file); continue }
-    // accept by magic bytes OR declared MIME type (some formats have none)
     const format = await sniffFormat(file)
     if (!format && !file.type.startsWith('image/')) {
       store.pushToast(`Skipped ${file.name} — not an image`, 'error')
       continue
     }
     try {
-      // layered PSD → full document rebuild (one raster layer per PSD layer);
-      // PSD-as-layer / flat PSD falls through to the composite canvas
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded); continue }
@@ -55,11 +49,8 @@ export async function openFiles(files: File[], asLayer = false) {
         continue
       }
       const canvas = await decodeToCanvas(file)
-      if (asLayer && engine.activeDoc) {
-        engine.addLayerFromCanvas(canvas, file.name.replace(/\.[^.]+$/, ''))
-      } else {
-        engine.addCanvasDocument(canvas, file.name)
-      }
+      if (asLayer && engine.activeDoc) engine.addLayerFromCanvas(canvas, file.name.replace(/\.[^.]+$/, ''))
+      else engine.addCanvasDocument(canvas, file.name)
     } catch (err) {
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
       store.pushToast(`Failed to open ${file.name}${why}`, 'error')
@@ -67,10 +58,7 @@ export async function openFiles(files: File[], asLayer = false) {
   }
 }
 
-/** build a document from decoded PSD layers: one raster layer per PSD
- *  layer, kept in its original rect (canvas-space offsets preserve
- *  off-canvas pixels), with opacity / blend mode / visibility / clipping
- *  / mask carried over. Layers arrive bottom-first = doc order. */
+/** build a document from decoded PSD layers */
 function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   const { width, height } = decoded
   const doc: PsDocument = {
@@ -85,22 +73,17 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   }
   for (const psd of decoded.psdLayers ?? []) {
     const layer = newLayer('raster', psd.name || 'Layer', width, height)
-    // PSD layer canvas = layer rect; register it in canvas space at
-    // (left, top) exactly like the engine's native raster offsets
     layer.canvas = psd.canvas
     layer.offsetX = psd.left
     layer.offsetY = psd.top
-    layer.opacity = Math.round(psd.opacity)          // 0..100 on both sides
+    layer.opacity = Math.round(psd.opacity)
     layer.blendMode = (psd.blendMode || 'normal') as Layer['blendMode']
     layer.visible = psd.visible
     layer.clipped = !!psd.clipped
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
     doc.layers.push(layer as Layer)
   }
-  if (!doc.layers.length) {
-    // PSD had no decodable layer rects — fall back to the composite
-    return engine.addCanvasDocument(decoded.canvas, name)
-  }
+  if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name)
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
   engine.docs.push(doc)
   engine.setActiveDocument(doc.id)
@@ -121,21 +104,38 @@ export async function placeImageAsSmartLayer(file: File) {
 }
 
 // ---------- project format ----------
-interface SerializedLayer {
+export interface SerializedLayer {
   props: Record<string, any>
-  canvas?: string    // dataURL
+  canvas?: string
   mask?: string
   source?: string
 }
 
-export async function saveProject() {
-  const store = useEditorStore.getState()
-  const doc = engine.activeDoc
-  if (!doc) return
+export interface SerializedProject {
+  format: 'z-photo-project'
+  version: 1 | 2
+  doc: {
+    name: string
+    width: number
+    height: number
+    channelView?: string
+    guides?: any[]
+    view?: { zoom: number; panX: number; panY: number }
+    frames?: any[]
+    activeLayerId?: string | null
+  }
+  layers: SerializedLayer[]
+  selection?: { bounds: any; mask: string } | null
+  savedChannels?: { id: string; name: string; mask: string }[]
+}
+
+const projectHandles = new Map<string, any>()
+
+export function serializeProject(doc: PsDocument): SerializedProject {
   const toDataURL = (c: HTMLCanvasElement) => c.toDataURL('image/png')
   const layers: SerializedLayer[] = doc.layers.map(l => ({
     props: {
-      id: uid(), name: l.name, kind: l.kind, visible: l.visible, opacity: l.opacity,
+      id: l.id, name: l.name, kind: l.kind, visible: l.visible, opacity: l.opacity,
       blendMode: l.blendMode, locked: l.locked, clipped: l.clipped, maskEnabled: l.maskEnabled,
       transform: l.transform, smartFilters: l.smartFilters,
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
@@ -145,14 +145,57 @@ export async function saveProject() {
     mask: l.mask ? toDataURL(l.mask) : undefined,
     source: l.source ? toDataURL(l.source) : undefined,
   }))
-  const project = {
-    format: 'z-photo-project', version: 1,
-    doc: { name: doc.name, width: doc.width, height: doc.height, channelView: doc.channelView, guides: doc.guides ?? [] },
+  return {
+    format: 'z-photo-project', version: 2,
+    doc: {
+      name: doc.name, width: doc.width, height: doc.height,
+      channelView: doc.channelView, guides: doc.guides ?? [], view: { ...doc.view },
+      frames: doc.frames ? structuredClone(doc.frames) : undefined, activeLayerId: doc.activeLayerId,
+    },
     layers,
+    selection: doc.selection ? { bounds: { ...doc.selection.bounds }, mask: toDataURL(doc.selection.mask) } : null,
+    savedChannels: doc.savedChannels.map(ch => ({ id: ch.id, name: ch.name, mask: toDataURL(ch.mask) })),
   }
-  const blob = new Blob([JSON.stringify(project)], { type: 'application/json' })
-  downloadBlob(blob, `${doc.name}.zproj.json`)
-  store.pushToast('Project saved', 'success')
+}
+
+function projectFileName(doc: PsDocument) {
+  const base = doc.name.replace(/\.zproj\.json$/i, '').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Untitled'
+  return `${base}.zproj.json`
+}
+
+/** Save to the same File System Access handle when available. `saveAs` forces a picker.
+ *  Browsers without the API keep the download fallback. */
+export async function saveProject(opts: { saveAs?: boolean } = {}) {
+  const store = useEditorStore.getState()
+  const doc = engine.activeDoc
+  if (!doc) return
+  const json = JSON.stringify(serializeProject(doc))
+  const blob = new Blob([json], { type: 'application/json' })
+  const picker = (window as any).showSaveFilePicker as undefined | ((options: any) => Promise<any>)
+  try {
+    if (picker) {
+      let handle = opts.saveAs ? null : projectHandles.get(doc.id)
+      if (!handle) {
+        handle = await picker({
+          suggestedName: projectFileName(doc),
+          types: [{ description: "Chay's Photo Studio Project", accept: { 'application/json': ['.zproj.json'] } }],
+        })
+      }
+      const writable = await handle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+      projectHandles.set(doc.id, handle)
+    } else {
+      downloadBlob(blob, projectFileName(doc))
+    }
+    doc.dirty = false
+    engine.emit()
+    window.dispatchEvent(new CustomEvent('chays:project-saved', { detail: doc.id }))
+    store.pushToast(opts.saveAs ? 'Project saved as new file' : 'Project saved', 'success')
+  } catch (err: any) {
+    if (err?.name === 'AbortError') return
+    store.pushToast(`Project save failed${err?.message ? ` — ${err.message}` : ''}`, 'error')
+  }
 }
 
 async function dataURLToCanvas(url: string): Promise<HTMLCanvasElement> {
@@ -164,54 +207,107 @@ async function dataURLToCanvas(url: string): Promise<HTMLCanvasElement> {
   return c
 }
 
+export async function openSerializedProject(project: SerializedProject, label = 'Open Project'): Promise<PsDocument> {
+  if (project.format !== 'z-photo-project') throw new Error('Unsupported project format')
+  const { name, width, height, channelView } = project.doc
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) throw new Error('Invalid project dimensions')
+  const doc: PsDocument = {
+    id: uid(), name, width, height,
+    layers: [], activeLayerId: null, selection: null,
+    channelView: (channelView ?? 'rgb') as PsDocument['channelView'], savedChannels: [],
+    guides: Array.isArray(project.doc.guides) ? project.doc.guides : [],
+    view: project.doc.view && Number.isFinite(project.doc.view.zoom)
+      ? { ...project.doc.view }
+      : { zoom: 1, panX: 0, panY: 0 },
+    history: { states: [], index: -1 },
+    dirty: false, previewFilter: null, previewAdjustment: null,
+    frames: Array.isArray(project.doc.frames) ? structuredClone(project.doc.frames) : undefined,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+  }
+  const layerIds = new Set<string>()
+  for (const sl of project.layers ?? []) {
+    const layer = newLayer(sl.props.kind ?? 'raster', sl.props.name ?? 'Layer', width, height)
+    const requestedId = typeof sl.props.id === 'string' && sl.props.id ? sl.props.id : layer.id
+    layer.id = layerIds.has(requestedId) ? uid() : requestedId
+    layerIds.add(layer.id)
+    Object.assign(layer, {
+      name: sl.props.name, kind: sl.props.kind, visible: sl.props.visible ?? true,
+      opacity: sl.props.opacity ?? 100, blendMode: sl.props.blendMode ?? 'normal',
+      locked: !!sl.props.locked, clipped: !!sl.props.clipped,
+      maskEnabled: sl.props.maskEnabled ?? true,
+      transform: sl.props.transform ?? null,
+      smartFilters: sl.props.smartFilters ?? [],
+      adjustment: sl.props.adjustment ?? null,
+      text: sl.props.text ?? null, shape: sl.props.shape ? { sides: 5, starInset: 45, ...sl.props.shape } : null,
+      blendIf: sl.props.blendIf ?? null,
+      fx: sl.props.fx ?? null,
+      offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
+      origin: sl.props.origin ?? null,
+    })
+    if (sl.canvas) layer.canvas = await dataURLToCanvas(sl.canvas)
+    if (sl.mask) layer.mask = await dataURLToCanvas(sl.mask)
+    if (sl.source) layer.source = await dataURLToCanvas(sl.source)
+    if (layer.kind === 'raster' && !layer.canvas) layer.canvas = createCanvas(width, height)
+    layer._v = 1; layer._mv = 1
+    doc.layers.push(layer as Layer)
+  }
+  if (!doc.layers.length) doc.layers.push(newLayer('raster', 'Layer 1', width, height))
+
+  if (project.selection?.mask) {
+    doc.selection = {
+      bounds: project.selection.bounds,
+      mask: await dataURLToCanvas(project.selection.mask),
+      _v: 1, _pathsV: -1, _paths: null,
+    }
+  }
+  if (Array.isArray(project.savedChannels)) {
+    for (const ch of project.savedChannels) {
+      if (!ch?.mask) continue
+      doc.savedChannels.push({ id: ch.id || uid(), name: ch.name || 'Channel', mask: await dataURLToCanvas(ch.mask), _v: 1 })
+    }
+  }
+
+  doc.activeLayerId = project.doc.activeLayerId && doc.layers.some(l => l.id === project.doc.activeLayerId)
+    ? project.doc.activeLayerId
+    : doc.layers[doc.layers.length - 1].id
+  engine.docs.push(doc)
+  engine.setActiveDocument(doc.id)
+  engine.pushHistory(label, doc)
+  doc.dirty = false
+  engine.emit()
+  return doc
+}
+
 export async function openProjectFile(file: File) {
   const store = useEditorStore.getState()
   try {
-    const text = await file.text()
-    const project = JSON.parse(text)
-    if (project.format !== 'z-photo-project') throw new Error('bad format')
-    const { name, width, height, channelView } = project.doc
-    const doc: PsDocument = {
-      id: uid(), name, width, height,
-      layers: [], activeLayerId: null, selection: null,
-      channelView: channelView ?? 'rgb', savedChannels: [],
-      guides: Array.isArray(project.doc.guides) ? project.doc.guides : [],
-      view: { zoom: 1, panX: 0, panY: 0 },
-      history: { states: [], index: -1 },
-      dirty: false, previewFilter: null, previewAdjustment: null,
-      _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
-    }
-    for (const sl of project.layers as SerializedLayer[]) {
-      const layer = newLayer(sl.props.kind ?? 'raster', sl.props.name ?? 'Layer', width, height)
-      Object.assign(layer, {
-        name: sl.props.name, kind: sl.props.kind, visible: sl.props.visible ?? true,
-        opacity: sl.props.opacity ?? 100, blendMode: sl.props.blendMode ?? 'normal',
-        locked: !!sl.props.locked, clipped: !!sl.props.clipped,
-        maskEnabled: sl.props.maskEnabled ?? true,
-        transform: sl.props.transform ?? null,
-        smartFilters: sl.props.smartFilters ?? [],
-        adjustment: sl.props.adjustment ?? null,
-        text: sl.props.text ?? null, shape: sl.props.shape ?? null,
-        blendIf: sl.props.blendIf ?? null,
-        fx: sl.props.fx ?? null,
-        offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
-        origin: sl.props.origin ?? null,
-      })
-      if (sl.canvas) layer.canvas = await dataURLToCanvas(sl.canvas)
-      if (sl.mask) layer.mask = await dataURLToCanvas(sl.mask)
-      if (sl.source) layer.source = await dataURLToCanvas(sl.source)
-      if (layer.kind === 'raster' && !layer.canvas) layer.canvas = createCanvas(width, height)
-      layer._v = 1; layer._mv = 1
-      doc.layers.push(layer as Layer)
-    }
-    if (!doc.layers.length) doc.layers.push(newLayer('raster', 'Layer 1', width, height))
-    doc.activeLayerId = doc.layers[doc.layers.length - 1].id
-    engine.docs.push(doc)
-    engine.setActiveDocument(doc.id)
-    engine.pushHistory('Open Project', doc)
-    engine.emit()
-    store.pushToast(`Project ${name} loaded`, 'success')
-  } catch {
-    store.pushToast('Could not open project file', 'error')
+    const project = JSON.parse(await file.text()) as SerializedProject
+    const doc = await openSerializedProject(project)
+    store.pushToast(`Project ${doc.name} loaded`, 'success')
+  } catch (err) {
+    const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
+    store.pushToast(`Could not open project file${why}`, 'error')
   }
+}
+
+/** Photoshop-style File > New from Clipboard. */
+export async function newDocumentFromClipboard(): Promise<boolean> {
+  const store = useEditorStore.getState()
+  try {
+    if (!navigator.clipboard?.read) throw new Error('Clipboard image access is not supported by this browser')
+    const items = await navigator.clipboard.read()
+    for (const item of items) {
+      const type = item.types.find(t => t.startsWith('image/'))
+      if (!type) continue
+      const blob = await item.getType(type)
+      const canvas = await fileToCanvas(blob)
+      engine.addCanvasDocument(canvas, 'Clipboard')
+      store.pushToast('Created a new document from the clipboard', 'success')
+      return true
+    }
+    store.pushToast('The clipboard does not contain an image', 'info')
+  } catch (err) {
+    store.pushToast(err instanceof Error ? err.message : 'Could not read the clipboard', 'error')
+  }
+  return false
 }

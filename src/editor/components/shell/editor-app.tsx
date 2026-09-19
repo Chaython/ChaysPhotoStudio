@@ -15,6 +15,7 @@ import { useKeyboardShortcuts } from '../../keyboard-shortcuts'
 import { useEditorStore } from '../../store'
 import { engine } from '../../engine/engine'
 import { openFiles, placeImageAsSmartLayer } from '../../engine/io'
+import { startAutoSave } from '../../engine/autosave'
 import { dataUrlToCanvas } from '../../image-ops'
 import { getViewport, setCursorCallbacks } from '../../engine/render'
 import { TOOL_DEFS } from '../../constants/tools'
@@ -52,6 +53,7 @@ export function EditorApp() {
     }
     engine.loadPersistedActions()
     const unsub = engine.onChange(sync)
+    const stopAutoSave = startAutoSave()
     setCursorCallbacks({
       onCursorMove: (x, y) => {
         // lightweight status update — direct store set to avoid full sync
@@ -61,7 +63,22 @@ export function EditorApp() {
         }
       },
     })
-    return unsub
+    return () => {
+      unsub()
+      stopAutoSave()
+    }
+  }, [])
+
+  // Protect unsaved work from accidental tab/window closes. Browsers display
+  // their own confirmation text for beforeunload.
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (!engine.docs.some(d => d.dirty)) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
   }, [])
 
   // drag & drop files (window-level, the app's single drop entry point):

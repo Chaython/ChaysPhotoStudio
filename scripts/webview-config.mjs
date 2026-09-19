@@ -1,38 +1,56 @@
 #!/usr/bin/env node
 // Writes webview/src-tauri/tauri.conf.release.json — a Tauri config
-// overlay (deep-merged by `tauri build --config`) that points the
-// shell at the deployed editor URL for release builds.
-//   WEBVIEW_APP_URL=https://your-host.example.com node scripts/webview-config.mjs
-// Default (no env): http://localhost:3000 — handy for local testing
-// against the dev server.
+// overlay (deep-merged by `tauri build --config`).
+//
+// Release default: embed the local static export so installers work offline
+// and do not depend on GitHub Pages being enabled.
+// Optional thin-shell override:
+//   WEBVIEW_APP_URL=https://studio.example.com node scripts/webview-config.mjs
+// Optional local-dist override:
+//   WEBVIEW_FRONTEND_DIST=../../some/export node scripts/webview-config.mjs
 import fs from 'node:fs'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
-const OUT = path.join(ROOT, 'webview/src-tauri/tauri.conf.release.json')
+const SRC_TAURI = path.join(ROOT, 'webview/src-tauri')
+const OUT = path.join(SRC_TAURI, 'tauri.conf.release.json')
 
-const raw = (process.env.WEBVIEW_APP_URL || 'http://localhost:3000').trim()
-let url
-try {
-  url = new URL(raw)
-} catch {
-  console.error(`webview-config: WEBVIEW_APP_URL is not a valid URL: ${raw}`)
-  process.exit(1)
-}
-if (!/^https?:$/.test(url.protocol)) {
-  console.error(`webview-config: WEBVIEW_APP_URL must be http(s), got ${raw}`)
-  process.exit(1)
-}
-if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-  console.warn('webview-config: WARNING — building against a localhost URL; the shipped app will need that server running. Set WEBVIEW_APP_URL to your deployed editor for real releases.')
+const appUrl = (process.env.WEBVIEW_APP_URL || '').trim()
+const localDist = (process.env.WEBVIEW_FRONTEND_DIST || '../../build/webapp-export').trim()
+
+let frontendDist
+if (appUrl) {
+  let url
+  try {
+    url = new URL(appUrl)
+  } catch {
+    console.error(`webview-config: WEBVIEW_APP_URL is not a valid URL: ${appUrl}`)
+    process.exit(1)
+  }
+  if (!/^https?:$/.test(url.protocol)) {
+    console.error(`webview-config: WEBVIEW_APP_URL must be http(s), got ${appUrl}`)
+    process.exit(1)
+  }
+  frontendDist = url.toString().replace(/\/+$/, '')
+  console.log(`webview-config: remote thin-shell frontend → ${frontendDist}`)
+} else {
+  if (!localDist) {
+    console.error('webview-config: WEBVIEW_FRONTEND_DIST cannot be empty when WEBVIEW_APP_URL is unset')
+    process.exit(1)
+  }
+
+  const resolved = path.resolve(SRC_TAURI, localDist)
+  const index = path.join(resolved, 'index.html')
+  const nextAssets = path.join(resolved, '_next')
+  if (!fs.existsSync(index) || !fs.existsSync(nextAssets)) {
+    console.error(`webview-config: embedded frontend is incomplete: ${resolved}`)
+    console.error('webview-config: expected index.html and _next/. Run `node scripts/export-webapp.mjs plugin` first.')
+    process.exit(1)
+  }
+  frontendDist = localDist.replace(/\\/g, '/')
+  console.log(`webview-config: embedded frontend → ${frontendDist}`)
 }
 
-const overlay = {
-  build: {
-    // release shell hosts the deployed editor; devUrl stays out of
-    // release configs (it is a `tauri dev`-only setting).
-    frontendDist: url.toString().replace(/\/+$/, ''),
-  },
-}
+const overlay = { build: { frontendDist } }
 fs.writeFileSync(OUT, JSON.stringify(overlay, null, 2) + '\n')
-console.log(`webview-config: release frontendDist → ${overlay.build.frontendDist}`)
+console.log(`webview-config: wrote ${path.relative(ROOT, OUT)}`)

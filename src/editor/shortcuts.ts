@@ -31,7 +31,7 @@ import { useEditorStore } from './store'
 // ---------- command ids ----------
 export type CommandId =
   // File
-  | 'newDoc' | 'open' | 'save' | 'export'
+  | 'newDoc' | 'open' | 'save' | 'saveAs' | 'export'
   // Edit
   | 'undo' | 'redo' | 'copy' | 'copyMerged' | 'cut' | 'paste'
   | 'fillFg' | 'fillBg' | 'clearSelection' | 'invert'
@@ -76,6 +76,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'newDoc', label: 'New Document…', section: 'File', defaultCombo: 'ctrl+n', run: () => openDlg('new-doc') },
   { id: 'open', label: 'Open…', section: 'File', defaultCombo: 'ctrl+o', run: () => pickImages() },
   { id: 'save', label: 'Save Project', section: 'File', defaultCombo: 'ctrl+s', run: () => void saveProject() },
+  { id: 'saveAs', label: 'Save Project As…', section: 'File', defaultCombo: 'ctrl+shift+s', run: () => void saveProject({ saveAs: true }) },
   { id: 'export', label: 'Export As…', section: 'File', defaultCombo: 'ctrl+shift+alt+e', run: () => openDlg('export') },
   // ---- Edit ----
   { id: 'undo', label: 'Undo', section: 'Edit', defaultCombo: 'ctrl+z', run: () => engine.undo() },

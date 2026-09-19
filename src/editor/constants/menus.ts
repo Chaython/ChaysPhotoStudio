@@ -2,7 +2,7 @@
 import { engine } from '../engine/engine'
 import { getFlatComposite } from '../engine/document'
 import { useEditorStore } from '../store'
-import { openFiles, placeImageAsSmartLayer, saveProject } from '../engine/io'
+import { newDocumentFromClipboard, openFiles, placeImageAsSmartLayer, saveProject } from '../engine/io'
 import { pluginManager } from '../plugins/plugin-manager'
 import { importGimpBrushFile } from '../plugins/brush-presets'
 import { importGimpGradientFile } from '../plugins/gradient-presets'
@@ -27,6 +27,7 @@ export interface MenuItem {
 const sc = (id: CommandId) => () => formatCombo(commandCombo(id))
 
 const S = (run?: () => void): MenuItem => ({ id: 'sep', separator: true, run })
+const exportBaseName = (name: string) => name.replace(/\.zproj\.json$/i, '').replace(/\.[^.]+$/, '') || 'Untitled'
 
 function fileInput(accept: string, multiple: boolean, cb: (files: FileList) => void) {
   const input = document.createElement('input')
@@ -190,18 +191,28 @@ export const MENUS: MenuItem[][] = [
   // ================= FILE =================
   [
     { id: 'file-new', label: 'New…', shortcut: sc('newDoc'), run: () => openDlg('new-doc') },
+    { id: 'file-new-clipboard', label: 'New from Clipboard', run: () => { void newDocumentFromClipboard() } },
     { id: 'file-open', label: 'Open…', shortcut: sc('open'), run: () => fileInput('image/*,.zproj.json', true, files => openFiles(Array.from(files))) },
     { id: 'file-open-as-layer', label: 'Open as Layer…', run: () => fileInput('image/*', true, files => openFiles(Array.from(files), true)) },
     { id: 'file-place', label: 'Place (Smart Object)…', run: () => fileInput('image/*', false, files => placeImageAsSmartLayer(files[0])) },
     { id: 'file-ai-generate', label: 'AI Generate Image…', run: () => openDlg('ai-generate') },
     S(),
-    { id: 'file-open-recent', label: 'Open Recent', enabled: () => false },
+    { id: 'file-open-recent', label: 'Recent & Recovery…', run: () => openDlg('recovery') },
     S(),
-    { id: 'file-save-project', label: 'Save Project (.zproj.json)', shortcut: sc('save'), run: () => saveProject() },
+    { id: 'file-save-project', label: 'Save Project', shortcut: sc('save'), run: () => { void saveProject() } },
+    { id: 'file-save-project-as', label: 'Save Project As…', shortcut: sc('saveAs'), run: () => { void saveProject({ saveAs: true }) } },
     { id: 'file-export', label: 'Export As…', shortcut: sc('export'), run: () => openDlg('export') },
     { id: 'file-quick-export', label: 'Quick Export PNG', run: async () => {
       const doc = engine.activeDoc
-      if (doc) await engine.exportActive({ format: 'png', quality: 100, scale: 1, fileName: doc.name })
+      if (doc) await engine.exportActive({ format: 'png', quality: 100, scale: 1, fileName: exportBaseName(doc.name) })
+    } },
+    { id: 'file-quick-export-webp', label: 'Quick Export WebP', run: async () => {
+      const doc = engine.activeDoc
+      if (doc) await engine.exportActive({ format: 'webp', quality: 92, scale: 1, fileName: exportBaseName(doc.name) })
+    } },
+    { id: 'file-quick-export-jpeg', label: 'Quick Export JPEG', run: async () => {
+      const doc = engine.activeDoc
+      if (doc) await engine.exportActive({ format: 'jpeg', quality: 92, scale: 1, fileName: exportBaseName(doc.name) })
     } },
     S(),
     { id: 'file-close', label: 'Close', run: () => { const d = engine.activeDoc; if (d) engine.closeDocument(d.id) } },
@@ -287,6 +298,7 @@ export const MENUS: MenuItem[][] = [
     S(),
     { id: 'layer-style', label: 'Layer Style…', run: () => openDlg('layer-styles', { layerId: engine.activeLayer?.id }) },
     { id: 'layer-expand-frame', label: 'Expand to Fill Frame', run: () => { const l = engine.activeLayer; if (l) engine.expandLayerToFrame(l.id) } },
+    { id: 'layer-trim-content', label: 'Trim Layer to Content', run: () => { const l = engine.activeLayer; if (l) engine.trimLayerToContent(l.id) } },
     S(),
     { id: 'layer-rasterize', label: 'Rasterize Layer', run: () => engine.rasterizeLayer() },
     { id: 'layer-merge-down', label: 'Merge Down', shortcut: sc('mergeDown'), run: () => engine.mergeDown() },

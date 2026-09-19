@@ -1,7 +1,7 @@
 # Chay's Photo Studio — electron-builder packaging config
 # Build steps (see DISTRIBUTION.md):
 #   bun run icons && bun run build && bun run app:dist
-# CI builds Windows/Linux x64 plus native macOS x64 and arm64 legs.
+# CI builds Windows x64 setup + portable, Linux x64, and native macOS x64/arm64 legs.
 appId: ca.live.chaython.chays-photo-studio
 # NOTE: no apostrophes — electron-builder v26 rejects them in
 # productFilename (install paths / bundle names). The branded name
@@ -41,6 +41,9 @@ win:
     - target: nsis
       arch:
         - x64
+    - target: portable
+      arch:
+        - x64
 nsis:
   oneClick: false
   perMachine: false
@@ -48,6 +51,12 @@ nsis:
   createDesktopShortcut: always
   shortcutName: Chays Photo Studio
   artifactName: ChaysPhotoStudio-Setup-${version}.${ext}
+
+# Single-file Windows build that requires no installation. It is published
+# alongside the NSIS setup executable so users can choose either format.
+portable:
+  artifactName: ChaysPhotoStudio-Portable-${version}-${arch}.${ext}
+  requestExecutionLevel: user
 
 mac:
   icon: build/icons/icon.icns

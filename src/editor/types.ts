@@ -116,7 +116,7 @@ export interface TextSpec {
 }
 
 export interface ShapeSpec {
-  shape: 'rect' | 'rounded-rect' | 'ellipse' | 'line'
+  shape: 'rect' | 'rounded-rect' | 'ellipse' | 'triangle' | 'polygon' | 'star' | 'line'
   x: number
   y: number
   w: number
@@ -125,6 +125,10 @@ export interface ShapeSpec {
   fill: string | null
   stroke: string | null
   strokeWidth: number
+  /** polygon/star point count (3–32); ignored by other shapes */
+  sides: number
+  /** star inner radius as a percentage of the outer radius */
+  starInset: number
 }
 
 export interface BlendIfSlider { lo: number; loSoft: number; hi: number; hiSoft: number }
@@ -396,7 +400,7 @@ export type DialogType =
   | 'plugin-manager' | 'ai-generate'
   | 'layer-styles'
   | 'detect-objects'
-  | 'customize-toolbar'
+  | 'customize-toolbar' | 'recovery'
 
 export interface DialogInstance {
   id: string

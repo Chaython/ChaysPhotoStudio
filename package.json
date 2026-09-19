@@ -1,6 +1,6 @@
 {
   "name": "chays-photo-studio",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "private": true,
   "description": "Chay's Photo Studio — a Photoshop-class raster image editor that runs fully in your browser. Free for consumer and education use.",
   "author": {
@@ -24,15 +24,18 @@
     "app:prepare": "node scripts/prepare-electron-app.mjs",
     "app:dist": "node scripts/prepare-electron-app.mjs && electron-builder --config electron-builder.yml --publish never",
     "app:dist:win": "node scripts/prepare-electron-app.mjs && electron-builder --win --config electron-builder.yml --publish never",
+    "app:dist:win:setup": "node scripts/prepare-electron-app.mjs && electron-builder --win nsis --x64 --config electron-builder.yml --publish never",
+    "app:dist:win:portable": "node scripts/prepare-electron-app.mjs && electron-builder --win portable --x64 --config electron-builder.yml --publish never",
     "app:dist:mac": "node scripts/prepare-electron-app.mjs && electron-builder --mac --config electron-builder.yml --publish never",
     "app:dist:linux": "node scripts/prepare-electron-app.mjs && electron-builder --linux --config electron-builder.yml --publish never",
     "ext:build": "node scripts/gen-icons.mjs && node scripts/build-extension.mjs",
     "webview:config": "node scripts/webview-config.mjs",
-    "webview:dev": "node scripts/webview-config.mjs && cd webview/src-tauri && bunx @tauri-apps/cli dev",
-    "webview:build": "node scripts/webview-config.mjs && cd webview/src-tauri && bunx @tauri-apps/cli build --config tauri.conf.release.json",
+    "webview:dev": "cd webview/src-tauri && bunx @tauri-apps/cli dev",
+    "webview:build": "node scripts/export-webapp.mjs plugin && node scripts/webview-config.mjs && cd webview/src-tauri && bunx @tauri-apps/cli build --config tauri.conf.release.json",
     "dist:all": "node scripts/gen-icons.mjs && next build && node scripts/post-build.mjs && node scripts/prepare-electron-app.mjs && node scripts/build-extension.mjs",
     "app:dist:mac:x64": "node scripts/prepare-electron-app.mjs && electron-builder --mac --x64 --config electron-builder.yml --publish never",
-    "app:dist:mac:arm64": "node scripts/prepare-electron-app.mjs && electron-builder --mac --arm64 --config electron-builder.yml --publish never"
+    "app:dist:mac:arm64": "node scripts/prepare-electron-app.mjs && electron-builder --mac --arm64 --config electron-builder.yml --publish never",
+    "dist:validate": "node scripts/validate-distribution.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

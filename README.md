@@ -30,6 +30,14 @@ bun run dev          # http://localhost:3000
 | `.github/workflows/` | CI + automated multi-channel release pipeline |
 | `prisma/` + `db/` | Local SQLite schema (via Prisma) |
 
+## v1.2 editing workflow upgrades
+
+- **Crash recovery:** dirty documents are autosaved locally in IndexedDB and can be restored from **Recent & Recovery**.
+- **Safer projects:** project v2 preserves selections, saved channels, guides, animation frames, view state, and the active layer; supported browsers also get true **Save** / **Save As** behavior.
+- **Faster compositing:** search/filter large layer stacks, Alt-click a layer eye to solo/restore visibility, and trim transparent padding without moving artwork.
+- **Richer vector shapes:** triangle, polygon, and star layers with configurable points, inset, fill, and stroke.
+- **Quicker ingest/export:** create a document directly from the clipboard and quick-export PNG, JPEG, or WebP.
+
 ## Distribution channels
 
 The same codebase ships five ways — see **[DISTRIBUTION.md](DISTRIBUTION.md)** for the
@@ -37,8 +45,8 @@ full matrix, GitHub release automation, and per-channel build instructions:
 
 1. **Web** (self-hosted bundle)
 2. **PWA** — installable straight from the browser (offline shell included)
-3. **Electron** — full offline desktop app with file associations (`bun run app:dist`)
-4. **Tauri webview** — tiny desktop shell hosting the deployed editor (`bun run webview:build`)
+3. **Electron** — full offline desktop app; Windows ships both an installer and a no-install portable EXE (`bun run app:dist`)
+4. **Tauri webview** — lightweight native shell using the system webview; embeds the static editor by default (`bun run webview:build`)
 5. **Browser plugin** — right-click any image → *Edit image in Chay's Photo Studio* (`bun run ext:build`)
 
 Build everything at once:

@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Chays Photo Studio",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "identifier": "ca.live.chaython.chays-photo-studio.webview",
   "build": {
     "devUrl": "http://localhost:3000",
-    "frontendDist": "http://localhost:3000"
+    "frontendDist": "../../build/webapp-export"
   },
   "app": {
     "windows": [
@@ -40,8 +40,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "category": "Graphics",
+    "category": "GraphicsAndDesign",
     "shortDescription": "Photoshop-class image editor",
-    "longDescription": "Chay's Photo Studio \u2014 a Photoshop-class raster image editor that runs in a native system webview. Free for consumer and education use; commercial licensing: chaython@live.ca."
+    "longDescription": "Chay's Photo Studio — a Photoshop-class raster image editor that runs in a native system webview. Free for consumer and education use; commercial licensing: chaython@live.ca."
   }
 }
