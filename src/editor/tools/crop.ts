@@ -28,6 +28,12 @@ let cropHandle: CropHandle | null = null
 
 function ratioValue(raw: unknown): number | null {
   if (!raw || raw === 'free') return null
+  if (raw === 'custom') {
+    const opts = getOptions('crop')
+    const a = Math.max(0.001, Number(opts.ratioW) || 1)
+    const b = Math.max(0.001, Number(opts.ratioH) || 1)
+    return a / b
+  }
   const [a, b] = String(raw).split(':').map(Number)
   return a > 0 && b > 0 ? a / b : null
 }
@@ -271,24 +277,38 @@ function eyedropRadius(): number {
   return Math.max(0, Math.floor(((Number(getOptions('eyedropper').radius) || 1) - 1) / 2))
 }
 
+let eyedropDragging = false
+let eyedropToBackground = false
+
+function sampleEyedropper(p: PointerInfo, commit: boolean) {
+  const opts = getOptions('eyedropper')
+  const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite', eyedropRadius())
+  if (!hex) return
+  eyedropPreview = hex
+  if (commit) {
+    const store = useEditorStore.getState()
+    if (eyedropToBackground) store.setBgColor(hex)
+    else store.setFgColor(hex)
+  }
+  engine.pokeOverlay()
+}
+
 export const eyedropperTool: Tool = {
   id: 'eyedropper',
   cursor: 'crosshair',
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
-    const opts = getOptions('eyedropper')
-    const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite', eyedropRadius())
-    if (!hex) return
-    const store = useEditorStore.getState()
-    if (p.alt) store.setBgColor(hex)
-    else store.setFgColor(hex)
+    eyedropDragging = true
+    eyedropToBackground = p.alt
+    sampleEyedropper(p, true)
   },
   onPointerMove(p: PointerInfo) {
-    const opts = getOptions('eyedropper')
-    const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite', eyedropRadius())
-    if (hex) { eyedropPreview = hex; engine.pokeOverlay() }
+    // Photoshop samples continuously while the mouse is held; hover still
+    // updates the preview chip without changing the foreground/background.
+    sampleEyedropper(p, eyedropDragging)
   },
-  onDeactivate() { eyedropPreview = null },
+  onPointerUp() { eyedropDragging = false },
+  onDeactivate() { eyedropPreview = null; eyedropDragging = false },
   renderOverlay(ctx, view, w, h, mouse) {
     void view; void w; void h
     if (mouse && eyedropPreview) {
