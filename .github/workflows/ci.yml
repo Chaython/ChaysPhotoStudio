@@ -91,5 +91,6 @@ jobs:
           test -f build/electron/app/server.js
           test -f build/extension/unpacked/manifest.json
           test -f build/extension/firefox/manifest.json
-          test -f "build/extension/chays-photo-studio-extension-v$(node -p \"require('./package.json').version\").zip"
-          test -f "build/extension/chays-photo-studio-extension-firefox-v$(node -p \"require('./package.json').version\").zip"
+          VERSION="$(node -p "require('./package.json').version")"
+          test -f "build/extension/chays-photo-studio-extension-v${VERSION}.zip"
+          test -f "build/extension/chays-photo-studio-extension-firefox-v${VERSION}.zip"
