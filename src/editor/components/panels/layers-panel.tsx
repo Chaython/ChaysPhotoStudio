@@ -18,6 +18,7 @@ export function LayersPanel() {
   const layers = useEditorStore(s => s.layers)
   const activeLayerId = useEditorStore(s => s.activeLayerId)
   const selectedLayerIds = useEditorStore(s => s.selectedLayerIds)
+  const alignTo = useEditorStore(s => (s.toolOptions.move?.alignTo ?? 'selection') as 'selection' | 'canvas' | 'primary')
   const tick = useEditorStore(s => s.renderTick)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -128,6 +129,25 @@ export function LayersPanel() {
         />
         <span className="font-mono w-9 text-right">{Math.round(activeLayer?.opacity ?? 100)}%</span>
       </div>
+
+      {selectedLayers.length > 1 && (
+        <div className="flex items-center gap-0.5 px-2 py-1 border-b bg-panel/35" title={`Align ${selectedLayers.length} selected layers to ${alignTo}`}>
+          <span className="text-[10px] text-muted-foreground mr-1 tabular-nums">{selectedLayers.length} selected</span>
+          <PanelBtn title="Align left" icon="AlignHorizontalJustifyStart" onClick={() => engine.alignSelected('left', alignTo)} />
+          <PanelBtn title="Align horizontal centers" icon="AlignHorizontalJustifyCenter" onClick={() => engine.alignSelected('hcenter', alignTo)} />
+          <PanelBtn title="Align right" icon="AlignHorizontalJustifyEnd" onClick={() => engine.alignSelected('right', alignTo)} />
+          <PanelBtn title="Align top" icon="AlignVerticalJustifyStart" onClick={() => engine.alignSelected('top', alignTo)} />
+          <PanelBtn title="Align vertical centers" icon="AlignVerticalJustifyCenter" onClick={() => engine.alignSelected('vcenter', alignTo)} />
+          <PanelBtn title="Align bottom" icon="AlignVerticalJustifyEnd" onClick={() => engine.alignSelected('bottom', alignTo)} />
+          {selectedLayers.length >= 3 && (
+            <>
+              <span className="w-px h-4 bg-border mx-0.5" />
+              <PanelBtn title="Distribute horizontal centers" icon="GalleryHorizontal" onClick={() => engine.distributeSelected('horizontal')} />
+              <PanelBtn title="Distribute vertical centers" icon="GalleryVertical" onClick={() => engine.distributeSelected('vertical')} />
+            </>
+          )}
+        </div>
+      )}
 
       {/* fast layer search/filter — important once real projects reach dozens of layers */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b bg-panel/40">
