@@ -65,6 +65,12 @@ export const objectSelectTool: Tool = {
           img,
           Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)
         )
+        const level = opts.level ?? 'balanced'
+        if (level !== 'fast') {
+          mask = imageOps.refineMask(mask, doc.width, doc.height, level === 'thorough'
+            ? { radius: 2, smooth: 3, contrast: 10, feather: 0.4, shiftEdge: 0 }
+            : { radius: 1, smooth: 1, contrast: 5, feather: 0.2, shiftEdge: 0 })
+        }
         const feather = opts.feather ?? 1
         if (feather > 0) {
           const f = new Float32Array(mask.length)
@@ -113,6 +119,7 @@ let qsMask: HTMLCanvasElement | null = null
 let qsImg: ImageData | null = null
 let qsAlpha: Uint8ClampedArray | null = null
 let lastDab: { x: number; y: number } | null = null
+let qsCombineMode: 'new' | 'add' | 'subtract' | 'intersect' = 'new'
 
 export const quickSelectTool: Tool = {
   id: 'quick-select',
@@ -121,11 +128,17 @@ export const quickSelectTool: Tool = {
   onPointerDown(p: PointerInfo) {
     const doc = engine.activeDoc
     if (!doc || p.button !== 0) return
-    // cache the composite ImageData once per stroke
-    const flat = getFlatComposite(doc)
-    qsImg = getImageData(flat)
+    const opts = getOptions('quick-select')
+    // Cache the chosen sampling source once per stroke. Current-layer sampling
+    // is useful for cut-out work; Composite matches Photoshop's Sample All Layers.
+    const source = opts.sample === 'layer' && engine.activeLayer
+      ? engine.layerCanvasDocSpace(engine.activeLayer.id)
+      : getFlatComposite(doc)
+    if (!source) return
+    qsImg = getImageData(source)
     qsMask = toolMaskCanvas()
     qsAlpha = new Uint8ClampedArray(doc.width * doc.height)
+    qsCombineMode = combineMode(p, opts.mode ?? 'new')
     qsActive = true
     lastDab = { x: p.docX, y: p.docY }
     qsGrow(p.docX, p.docY)
@@ -156,8 +169,12 @@ export const quickSelectTool: Tool = {
         out = new Uint8ClampedArray(b)
       }
     }
+    if (opts.autoEnhance === true) {
+      const doc = engine.activeDoc
+      if (doc) out = imageOps.refineMask(out, doc.width, doc.height, { radius: 1.5, smooth: 2, contrast: 8, feather: .3, shiftEdge: -2 })
+    }
     const has = out.some(v => v > 0)
-    if (has) engine.setSelectionAlpha(out, opts.mode ?? 'new', 'Quick Selection')
+    if (has) engine.setSelectionAlpha(out, qsCombineMode, 'Quick Selection')
     qsMask = null; qsImg = null; qsAlpha = null; lastDab = null
   },
 
