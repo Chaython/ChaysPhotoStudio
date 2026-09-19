@@ -315,7 +315,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       } else {
         st.strokeColor = null
       }
-      engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100 })
+      engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100, blendMode: opts.blendMode ?? 'normal' })
       st.active = true
       // image stamp resolved LIVE at stroke start (Task 7-A); held for the whole stroke
       st.stamp = resolveStamp(opts)
