@@ -228,6 +228,7 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
     } else {
       ctx.save()
       ctx.globalAlpha = doc._strokeOpacity
+      try { ctx.globalCompositeOperation = BLEND_GCO[doc._strokeBlendMode] || 'source-over' } catch { /* noop */ }
       ctx.drawImage(doc._stroke, 0, 0)
       ctx.restore()
     }
