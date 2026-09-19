@@ -69,6 +69,7 @@ export const textTool: Tool = {
       fontFamily: opts.family ?? 'Georgia, serif',
       color: opts.color ?? getFgColor(),
       bold: !!opts.bold, italic: !!opts.italic,
+      underline: !!opts.underline, strikethrough: !!opts.strikethrough,
       align: opts.align ?? 'left',
       lineHeight: Math.max(.5, Number(opts.lineHeight) || 1.2),
       tracking: Number(opts.tracking) || 0,
@@ -146,8 +147,11 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
         w: Math.round(vec.x1 - vec.x0), h: Math.round(vec.y1 - vec.y0),
         radius: 0,
         fill: null,
+        fillOpacity: 0,
         stroke: opts.stroke ?? '#ffffff',
         strokeWidth: opts.strokeWidth ?? 4,
+        strokeOpacity: opts.strokeOpacity ?? 100,
+        lineCap: opts.lineCap ?? 'round',
         sides: opts.sides ?? 5,
         starInset: opts.starInset ?? 45,
       }
@@ -157,17 +161,20 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
       x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h),
       radius: opts.radius ?? 12,
       fill: opts.fill ?? '#e8a33d',
+      fillOpacity: opts.fillOpacity ?? 100,
       stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null,
       strokeWidth: opts.strokeWidth ?? 4,
+      strokeOpacity: opts.strokeOpacity ?? 100,
+      lineCap: opts.lineCap ?? 'round',
       sides: opts.sides ?? 5,
       starInset: opts.starInset ?? 45,
     }
   }
   // live preview path
   if (isLine) {
-    return { shape: 'line', x: vec.x0, y: vec.y0, w: vec.x1 - vec.x0, h: vec.y1 - vec.y0, radius: 0, fill: null, stroke: opts.stroke ?? '#ffffff', strokeWidth: opts.strokeWidth ?? 4, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
+    return { shape: 'line', x: vec.x0, y: vec.y0, w: vec.x1 - vec.x0, h: vec.y1 - vec.y0, radius: 0, fill: null, fillOpacity: 0, stroke: opts.stroke ?? '#ffffff', strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
   }
-  return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null, strokeWidth: opts.strokeWidth ?? 4, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
+  return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', fillOpacity: opts.fillOpacity ?? 100, stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null, strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
 }
 
 export const shapeTool: Tool = {
@@ -216,21 +223,25 @@ export const shapeTool: Tool = {
       traceShapePath(ctx, spec)
       if (spec.shape === 'line') {
         ctx.strokeStyle = spec.stroke || spec.fill || '#e8a33d'
+        ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
         // WYSIWYG doc-space width, clamped so it stays visible at any zoom
         ctx.lineWidth = Math.max(spec.strokeWidth ?? 4, 1.5 / view.zoom)
-        ctx.lineCap = 'round'
+        ctx.lineCap = spec.lineCap ?? 'round'
         ctx.stroke()
+        ctx.globalAlpha = 1
       } else {
         if (spec.fill) {
           ctx.fillStyle = spec.fill
-          ctx.globalAlpha = 0.4
+          ctx.globalAlpha = 0.4 * Math.max(0, Math.min(1, (spec.fillOpacity ?? 100) / 100))
           ctx.fill()
           ctx.globalAlpha = 1
         }
         if (spec.stroke) {
           ctx.strokeStyle = spec.stroke
+          ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
           ctx.lineWidth = spec.strokeWidth ?? 4
           ctx.stroke()
+          ctx.globalAlpha = 1
         }
       }
       ctx.restore()
