@@ -791,6 +791,24 @@ export class Engine {
     layer._v++
   }
 
+  /** Live multi-layer translation used by the Move tool. No history entry or
+   * listener churn; caller commits one history state on pointer-up. */
+  translateLayersPreview(ids: string[], dx: number, dy: number) {
+    const doc = this.activeDoc
+    if (!doc || (!dx && !dy)) return
+    let changed = false
+    for (const id of ids) {
+      const l = this.layerById(id)
+      if (!l || l.locked || l.kind === 'adjustment') continue
+      this.translateLayerGeometry(l, dx, dy)
+      changed = true
+    }
+    if (changed) {
+      invalidateFlat(doc)
+      this.requestRender()
+    }
+  }
+
   /** Translate several layers as one edit/history step. */
   translateLayers(ids: string[], dx: number, dy: number, label = 'Move Layers') {
     const doc = this.activeDoc
