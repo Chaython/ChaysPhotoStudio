@@ -152,6 +152,9 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
         strokeWidth: opts.strokeWidth ?? 4,
         strokeOpacity: opts.strokeOpacity ?? 100,
         lineCap: opts.lineCap ?? 'round',
+        dash: opts.dash ?? 'solid',
+        arrowStart: opts.arrowStart === true,
+        arrowEnd: opts.arrowEnd === true,
         sides: opts.sides ?? 5,
         starInset: opts.starInset ?? 45,
       }
@@ -166,15 +169,36 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
       strokeWidth: opts.strokeWidth ?? 4,
       strokeOpacity: opts.strokeOpacity ?? 100,
       lineCap: opts.lineCap ?? 'round',
+      dash: opts.dash ?? 'solid',
+      arrowStart: opts.arrowStart === true,
+      arrowEnd: opts.arrowEnd === true,
       sides: opts.sides ?? 5,
       starInset: opts.starInset ?? 45,
     }
   }
   // live preview path
   if (isLine) {
-    return { shape: 'line', x: vec.x0, y: vec.y0, w: vec.x1 - vec.x0, h: vec.y1 - vec.y0, radius: 0, fill: null, fillOpacity: 0, stroke: opts.stroke ?? '#ffffff', strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
+    return { shape: 'line', x: vec.x0, y: vec.y0, w: vec.x1 - vec.x0, h: vec.y1 - vec.y0, radius: 0, fill: null, fillOpacity: 0, stroke: opts.stroke ?? '#ffffff', strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', dash: opts.dash ?? 'solid', arrowStart: opts.arrowStart === true, arrowEnd: opts.arrowEnd === true, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
   }
-  return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', fillOpacity: opts.fillOpacity ?? 100, stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null, strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
+  return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', fillOpacity: opts.fillOpacity ?? 100, stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null, strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', dash: opts.dash ?? 'solid', arrowStart: false, arrowEnd: false, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
+}
+
+function drawArrowheads(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {
+  if (spec.shape !== 'line' || (!spec.arrowStart && !spec.arrowEnd)) return
+  const x0 = spec.x, y0 = spec.y, x1 = spec.x + spec.w, y1 = spec.y + spec.h
+  const angle = Math.atan2(y1 - y0, x1 - x0)
+  const len = Math.max(8, (spec.strokeWidth ?? 4) * 4)
+  const spread = Math.PI / 7
+  const draw = (x: number, y: number, a: number) => {
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x - Math.cos(a - spread) * len, y - Math.sin(a - spread) * len)
+    ctx.moveTo(x, y)
+    ctx.lineTo(x - Math.cos(a + spread) * len, y - Math.sin(a + spread) * len)
+    ctx.stroke()
+  }
+  if (spec.arrowEnd) draw(x1, y1, angle)
+  if (spec.arrowStart) draw(x0, y0, angle + Math.PI)
 }
 
 export const shapeTool: Tool = {
@@ -227,7 +251,12 @@ export const shapeTool: Tool = {
         // WYSIWYG doc-space width, clamped so it stays visible at any zoom
         ctx.lineWidth = Math.max(spec.strokeWidth ?? 4, 1.5 / view.zoom)
         ctx.lineCap = spec.lineCap ?? 'round'
+        if (spec.dash === 'dashed') ctx.setLineDash([ctx.lineWidth * 3, ctx.lineWidth * 2])
+        else if (spec.dash === 'dotted') ctx.setLineDash([ctx.lineWidth * .25, ctx.lineWidth * 1.8])
+        else ctx.setLineDash([])
         ctx.stroke()
+        drawArrowheads(ctx, spec)
+        ctx.setLineDash([])
         ctx.globalAlpha = 1
       } else {
         if (spec.fill) {
@@ -240,7 +269,11 @@ export const shapeTool: Tool = {
           ctx.strokeStyle = spec.stroke
           ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
           ctx.lineWidth = spec.strokeWidth ?? 4
+          if (spec.dash === 'dashed') ctx.setLineDash([ctx.lineWidth * 3, ctx.lineWidth * 2])
+          else if (spec.dash === 'dotted') ctx.setLineDash([ctx.lineWidth * .25, ctx.lineWidth * 1.8])
+          else ctx.setLineDash([])
           ctx.stroke()
+          ctx.setLineDash([])
           ctx.globalAlpha = 1
         }
       }
