@@ -201,7 +201,8 @@ export function pickLayerAt(docX: number, docY: number): string | null {
  *  cx/cy are DOC coordinates — translated into the layer's canvas space. */
 export function regionProcess(
   layerId: string, cx: number, cy: number, radius: number,
-  fn: (region: ImageData, falloff: Float32Array, rw: number, rh: number) => void
+  fn: (region: ImageData, falloff: Float32Array, rw: number, rh: number) => void,
+  hardness = 55,
 ) {
   const layer = engine.layerById(layerId)
   const doc = engine.activeDoc
@@ -223,7 +224,11 @@ export function regionProcess(
     for (let x = 0; x < rw; x++) {
       const dx = x0 + x - ccx, dy = y0 + y - ccy
       const d = Math.hypot(dx, dy) / r
-      falloff[y * rw + x] = clamp(1 - (d - 0.55) / 0.45, 0, 1)
+      // Photoshop-style hardness: 0% begins fading from the center, 100%
+      // stays hard almost to the brush edge. The previous fixed 55% profile
+      // made every retouch tool's Hardness option cosmetic only.
+      const inner = clamp(hardness / 100, 0, 0.98)
+      falloff[y * rw + x] = d <= inner ? 1 : clamp(1 - (d - inner) / Math.max(0.02, 1 - inner), 0, 1)
     }
   }
   // selection restrict (mask is doc-space — sample the doc-space region rect)
