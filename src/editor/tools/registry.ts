@@ -13,6 +13,7 @@ import { mixerBrushTool } from './mixer-brush'
 import { penTool } from './pen'
 import { eraserTool } from './eraser'
 import { backgroundEraserTool } from './background-eraser'
+import { magicEraserTool } from './magic-eraser'
 import { cloneStampTool } from './clone-stamp'
 import { healingBrushTool, spotHealingTool, patchTool } from './healing'
 import { blurTool, sharpenTool, smudgeTool, dodgeTool, burnTool, spongeTool } from './retouch'
@@ -42,6 +43,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'patch': patchTool,
   'eraser': eraserTool,
   'background-eraser': backgroundEraserTool,
+  'magic-eraser': magicEraserTool,
   'gradient': gradientTool,
   'paint-bucket': paintBucketTool,
   'blur': blurTool,
