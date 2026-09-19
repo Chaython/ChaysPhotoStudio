@@ -126,9 +126,17 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     return getTip(id) ? id : 'round-soft'
   }
 
-  /** effective per-dab angle: angleFollow → EMA travel direction + offset */
-  function dabAngle(opts: Record<string, any>): number {
+  /** Effective per-dab angle. Pen barrel rotation wins when enabled,
+   * then pen tilt direction, then stroke-direction follow, then the static
+   * brush angle. Mouse/touch remain unchanged. */
+  function dabAngle(opts: Record<string, any>, p?: PointerInfo | null): number {
     const offset = clamp(opts.angle ?? 0, -360, 720)
+    if (p?.pointerType === 'pen') {
+      if (opts.twistAngle === true && Math.abs(p.twist) > 0.01) return p.twist + offset
+      if (opts.tiltAngle === true && Math.hypot(p.tiltX, p.tiltY) > 1) {
+        return Math.atan2(p.tiltY, p.tiltX) / RAD + offset
+      }
+    }
     if (opts.angleFollow === true && st.hasDir) {
       return Math.atan2(st.dirY, st.dirX) / RAD + offset
     }
@@ -222,8 +230,12 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       : baseColor
 
     const tip = kind === 'brush' && !st.stamp ? getTip(st.tipId) : undefined
-    const tipAngle = tip?.rotatable ? dabAngle(opts) : 0
-    const roundness = clamp(opts.roundness ?? 100, 10, 100)
+    const tipAngle = tip?.rotatable ? dabAngle(opts, p) : 0
+    let roundness = clamp(opts.roundness ?? 100, 10, 100)
+    if (kind === 'brush' && p?.pointerType === 'pen' && opts.tiltRoundness === true) {
+      const tilt = clamp(Math.hypot(p.tiltX, p.tiltY) / 90, 0, 1)
+      roundness = clamp(roundness * (1 - tilt * 0.72), 10, 100)
+    }
 
     const drawFn: (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void = kind === 'pencil'
       ? (ctx, dx, dy) => pencilDab(ctx, dx, dy, radius, color)
