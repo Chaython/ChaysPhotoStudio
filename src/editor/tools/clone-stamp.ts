@@ -16,6 +16,13 @@ import { buildSourceDab, sourcePointFor, pressureFlow } from './dab-utils'
 import { cloneCanvas } from '../utils/canvas'
 import { getFlatComposite } from '../engine/document'
 
+interface ClonePoint { x: number; y: number; layerId: string | null }
+interface CloneSlot {
+  docId: string | null
+  point: ClonePoint | null
+  ref: { x: number; y: number } | null
+  source: HTMLCanvasElement | null
+}
 interface CloneState {
   active: boolean
   last: { x: number; y: number } | null
@@ -23,8 +30,43 @@ interface CloneState {
   ref: { x: number; y: number } | null
   /** snapshot of the canvas we sample from (taken at Alt+click) */
   source: HTMLCanvasElement | null
+  point: ClonePoint | null
+  loadedSlot: number
 }
-const st: CloneState = { active: false, last: null, ref: null, source: null }
+const st: CloneState = { active: false, last: null, ref: null, source: null, point: null, loadedSlot: 0 }
+const sourceSlots: CloneSlot[] = Array.from({ length: 5 }, () => ({ docId: null, point: null, ref: null, source: null }))
+
+function requestedSlot(): number {
+  return Math.max(0, Math.min(4, Math.round(Number(getOptions('clone-stamp').sourceSlot) || 1) - 1))
+}
+
+function saveLoadedSlot() {
+  const slot = sourceSlots[st.loadedSlot]
+  if (!slot) return
+  slot.docId = engine.activeDoc?.id ?? null
+  slot.point = st.point ? { ...st.point } : null
+  slot.ref = st.ref ? { ...st.ref } : null
+  slot.source = st.source
+}
+
+function syncSourceSlot() {
+  const next = requestedSlot()
+  const docId = engine.activeDoc?.id ?? null
+  if (next === st.loadedSlot && sourceSlots[next]?.docId === docId) return
+  saveLoadedSlot()
+  st.loadedSlot = next
+  const slot = sourceSlots[next]
+  if (slot?.docId === docId) {
+    st.point = slot.point ? { ...slot.point } : null
+    st.ref = slot.ref ? { ...slot.ref } : null
+    st.source = slot.source
+  } else {
+    st.point = null
+    st.ref = null
+    st.source = null
+  }
+  engine.cloneSource = st.point ? { ...st.point } : null
+}
 
 /** snapshot of the sampling source: composite when requested, else the layer
  *  (doc-space so sampling at doc coordinates stays correct on offset layers) */
@@ -38,7 +80,7 @@ function resolveSourceCanvas(layerId: string): HTMLCanvasElement | null {
 }
 
 function currentSourcePoint(docX: number, docY: number) {
-  const src = engine.cloneSource
+  const src = st.point
   if (!src || !st.ref) return null
   const opts = getOptions('clone-stamp')
   const rot = ((opts.rotate ?? 0) * Math.PI) / 180
@@ -51,26 +93,31 @@ export const cloneStampTool: Tool = {
   requiresLayer: true,
   cursor: 'none',
 
+  onActivate() { syncSourceSlot() },
+
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
     const doc = engine.activeDoc
     const layer = engine.activeLayer
     if (!doc || !layer) return
+    syncSourceSlot()
     const opts = getOptions('clone-stamp')
 
     if (p.alt) {
       // ---- set clone source ----
       const src = resolveSourceCanvas(layer.id)
       if (!src) return
-      engine.cloneSource = { x: p.docX, y: p.docY, layerId: layer.id }
+      st.point = { x: p.docX, y: p.docY, layerId: layer.id }
+      engine.cloneSource = { ...st.point }
       st.source = src
       st.ref = null // next stroke re-establishes the offset anchor
-      engine.ui?.toast('Clone source set', 'info')
+      saveLoadedSlot()
+      engine.ui?.toast(`Clone source #${st.loadedSlot + 1} set`, 'info')
       engine.requestRender()
       return
     }
 
-    if (!engine.cloneSource || !st.source) {
+    if (!st.point || !st.source) {
       engine.ui?.toast('Alt+click to set a clone source first', 'info')
       return
     }
@@ -81,6 +128,7 @@ export const cloneStampTool: Tool = {
     // aligned: keep the persistent anchor (set once after the source is chosen);
     // non-aligned: source resets to the clone source at each stroke start
     if (opts.aligned === false || !st.ref) st.ref = { x: p.docX, y: p.docY }
+    saveLoadedSlot()
     dab(p.docX, p.docY, p)
   },
 
@@ -102,9 +150,10 @@ export const cloneStampTool: Tool = {
 
   renderOverlay(ctx, view, w, h, mouse) {
     void w; void h
+    syncSourceSlot()
     const opts = getOptions('clone-stamp')
     const size = opts.size ?? 60
-    const src = engine.cloneSource
+    const src = st.point
 
     // ---- source crosshair marker ----
     if (src && st.source) {
@@ -155,7 +204,7 @@ export const cloneStampTool: Tool = {
     const opts = getOptions('clone-stamp')
     const size = opts.size ?? 60
     if (st.active) drawBrushCursor(ctx, mouse, size, view.zoom)
-    else if (engine.cloneSource && st.source) drawBrushCursor(ctx, mouse, size, view.zoom)
+    else if (st.point && st.source) drawBrushCursor(ctx, mouse, size, view.zoom)
     else drawCross(ctx, mouse)
   },
 }
@@ -169,7 +218,7 @@ function dab(x: number, y: number, p: PointerInfo) {
   const rot = ((opts.rotate ?? 0) * Math.PI) / 180
   const mirrored = opts.mirrored === true
   const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
-  const src = engine.cloneSource
+  const src = st.point
   if (!src) return
 
   const sp = sourcePointFor(x, y, st.ref.x, st.ref.y, src.x, src.y, rot, mirrored, scale)
