@@ -75,7 +75,7 @@ function buildGradient(): void {
     const k = Math.sqrt(mp / 4_000_000)
     const w = Math.max(1, Math.round(doc.width / k))
     const h = Math.max(1, Math.round(doc.height / k))
-    work = resampleCanvas(flat, w, h)
+    work = resampleCanvas(sampled, w, h)
     scale = doc.width / w
   }
   const img = getImageData(work)
