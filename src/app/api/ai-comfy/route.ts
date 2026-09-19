@@ -39,7 +39,7 @@ function replaceTokens(value: any, vars: Record<string, string>): any {
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
-  const m = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s)
+  const m = dataUrl.match(/^data:([^;,]+)?(;base64)?,([\\s\\S]*)$/)
   if (!m) throw new Error('Invalid input image data')
   const mime = m[1] || 'image/png'
   const buf = m[2] ? Buffer.from(m[3], 'base64') : Buffer.from(decodeURIComponent(m[3]), 'utf8')
