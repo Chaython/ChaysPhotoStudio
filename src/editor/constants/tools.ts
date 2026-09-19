@@ -110,7 +110,8 @@ export const TOOL_DEFS: ToolDef[] = [
   ] },
 
   // group 5 — retouching
-  { id: 'magic-eraser', label: 'Magic Eraser', group: 4, shortcut: 'E', icon: 'WandSparkles', cursor: 'crosshair', requiresLayer: true, defaults: { tolerance: 32, opacity: 100, contiguous: true, antiAlias: true, sampleAllLayers: false, sampleRadius: 0, edgeAware: 20, exactPixels: false }, options: [
+  { id: 'magic-eraser', label: 'Magic Eraser', group: 4, shortcut: 'E', icon: 'WandSparkles', cursor: 'crosshair', requiresLayer: true, defaults: { tolerance: 32, opacity: 100, contiguous: true, antiAlias: true, sampleAllLayers: false, sampleRadius: 0, edgeAware: 20, exactPixels: false, output: 'pixels' }, options: [
+    { key: 'output', label: 'Output', type: 'select', options: [{ label: 'Erase Pixels', value: 'pixels' }, { label: 'Layer Mask', value: 'mask' }], hint: 'Layer Mask hides the matched region non-destructively' },
     { key: 'tolerance', label: 'Tolerance', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
     { key: 'opacity', label: 'Opacity', type: 'slider', min: 1, max: 100, step: 1, unit: '%' },
     { key: 'contiguous', label: 'Contiguous', type: 'toggle' },
