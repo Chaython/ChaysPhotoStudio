@@ -40,7 +40,7 @@ import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import { clamp } from '../utils/canvas'
 import {
-  getOptions, brushSettingsFrom, getFgColor, walkDabs, softDab, pencilDab, drawBrushCursor,
+  getOptions, brushSettingsFrom, getFgColor, getBgColor, walkDabs, softDab, pencilDab, drawBrushCursor,
   symmetricPoints, drawSymmetryOverlay, ema,
 } from './shared'
 import { getActiveId, getById, getCachedStampCanvas, warmPreset } from '../plugins/brush-presets'
@@ -88,6 +88,8 @@ interface StrokeState {
   dirY: number
   /** true once a travel direction has been measured this stroke */
   hasDir: boolean
+  /** Pencil Auto Erase resolves the stroke color once at pointer-down. */
+  strokeColor: string | null
 }
 
 function makeBrush(kind: 'brush' | 'pencil'): Tool {
@@ -96,6 +98,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     active: false, last: null, filtered: null, prevRaw: null, traveled: 0, speed: 0,
     lastT: 0, lastP: null, airbrushPos: null, airbrushTimer: null, stamp: null,
     tipId: 'round-soft', palette: null, lastDab: null, dirX: 1, dirY: 0, hasDir: false,
+    strokeColor: null,
   }
 
   // ---------- option readers (re-read mid-stroke so the options bar is live) ----------
@@ -188,7 +191,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     if (fadeMul <= 0) return // stroke fully faded out
 
     // ---- pen pressure → flow (mouse/touch gets full flow) ----
-    const pressureMul = p && p.pointerType === 'pen'
+    const pressureMul = p && p.pointerType === 'pen' && opts.pressureFlow !== false
       ? 0.3 + 0.7 * clamp(p.pressure, 0, 1)
       : 1
 
@@ -213,9 +216,10 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     }
 
     // ---- per-dab color: jittered palette entry or the fg color ----
+    const baseColor = kind === 'pencil' ? (st.strokeColor ?? getFgColor()) : getFgColor()
     const color = (kind === 'brush' && !st.stamp && st.palette && st.palette.length > 0)
       ? st.palette[Math.floor(Math.random() * st.palette.length)]
-      : getFgColor()
+      : baseColor
 
     const tip = kind === 'brush' && !st.stamp ? getTip(st.tipId) : undefined
     const tipAngle = tip?.rotatable ? dabAngle(opts) : 0
@@ -304,6 +308,13 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       const layer = engine.activeLayer
       if (!doc || !layer) return
       const opts = getOptions(toolId)
+      if (kind === 'pencil') {
+        const fg = getFgColor()
+        const sampled = opts.autoErase === true ? engine.sampleColor(p.docX, p.docY, 'layer', 0) : null
+        st.strokeColor = sampled && sampled.toLowerCase() === fg.toLowerCase() ? getBgColor() : fg
+      } else {
+        st.strokeColor = null
+      }
       engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100 })
       st.active = true
       // image stamp resolved LIVE at stroke start (Task 7-A); held for the whole stroke
@@ -376,6 +387,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       st.palette = null
       st.lastDab = null
       st.hasDir = false
+      st.strokeColor = null
       engine.endStroke(kind === 'pencil' ? 'Pencil Stroke' : 'Brush Stroke')
     },
 
@@ -394,6 +406,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
         st.palette = null
         st.lastDab = null
         st.hasDir = false
+        st.strokeColor = null
         engine.endStroke(kind === 'pencil' ? 'Pencil Stroke' : 'Brush Stroke')
       }
     },

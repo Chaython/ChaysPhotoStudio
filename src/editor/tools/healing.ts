@@ -136,7 +136,9 @@ export const healingBrushTool: Tool = {
     if (src && mouse && hst.ref) {
       const docX = (mouse.x - view.panX) / view.zoom
       const docY = (mouse.y - view.panY) / view.zoom
-      const sp = sourcePointFor(docX, docY, hst.ref.x, hst.ref.y, src.x, src.y, 0, false)
+      const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
+      const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
+      const sp = sourcePointFor(docX, docY, hst.ref.x, hst.ref.y, src.x, src.y, rot, opts.mirrored === true, scale)
       const gx = sp.x * view.zoom + view.panX
       const gy = sp.y * view.zoom + view.panY
       const r = Math.max(2, (size / 2) * view.zoom)
@@ -169,10 +171,13 @@ function healDab(x: number, y: number, p: PointerInfo) {
   const opts = getOptions('healing-brush')
   const settings = brushSettingsFrom(opts)
   const r = settings.size / 2
-  const sp = sourcePointFor(x, y, hst.ref.x, hst.ref.y, src.x, src.y, 0, false)
-  const dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness)
+  const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
+  const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
+  const mirrored = opts.mirrored === true
+  const sp = sourcePointFor(x, y, hst.ref.x, hst.ref.y, src.x, src.y, rot, mirrored, scale)
+  const dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale)
   if (!dabCanvas) return
-  const flow = pressureFlow(p.pressure, p.pointerType === 'pen', settings.flow / 100)
+  const flow = pressureFlow(p.pressure, p.pointerType === 'pen' && opts.pressure !== false, settings.flow / 100)
   engine.dab(x, y, (ctx, dx, dy) => {
     ctx.drawImage(dabCanvas, dx - dabCanvas.width / 2, dy - dabCanvas.height / 2)
   }, flow)
@@ -186,7 +191,8 @@ function commitHeal() {
       const opts = getOptions('healing-brush')
       const settings = brushSettingsFrom(opts)
       const r = settings.size / 2
-      const lowR = Math.max(3, Math.round(settings.size / 3))
+      const diffusion = clamp(Number(opts.diffusion) || 5, 1, 7)
+      const lowR = Math.max(2, Math.round(settings.size * (0.10 + diffusion * 0.045)))
 
       // stroke bbox padded by brush radius + blur radius
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
@@ -280,8 +286,10 @@ export const spotHealingTool: Tool = {
     // copy, then write the patch back through the offset — off-canvas pixels
     // in the layer canvas survive untouched
     const ox = l.offsetX ?? 0, oy = l.offsetY ?? 0
-    const work = createCanvas(doc.width, doc.height)
-    ctx2d(work).drawImage(l.canvas, ox, oy)
+    const work = opts.sampleAllLayers === true
+      ? cloneCanvas(getFlatComposite(doc))
+      : createCanvas(doc.width, doc.height)
+    if (opts.sampleAllLayers !== true) ctx2d(work).drawImage(l.canvas, ox, oy)
     const img = getImageData(work)
 
     // hardness-aware mask, dilated 1px so edge pixels get resampled
@@ -640,7 +648,8 @@ function commitPatch() {
   // copy the source region (translated) masked by the lasso
   const tmp = createCanvas(doc.width, doc.height)
   const tc = ctx2d(tmp)
-  tc.drawImage(before, dx, dy)
+  // Destination stays in place; the dragged offset points at the source.
+  tc.drawImage(before, -dx, -dy)
   tc.globalCompositeOperation = 'destination-in'
   tc.drawImage(lassoMask, 0, 0)
   tc.globalCompositeOperation = 'source-over'
@@ -664,7 +673,8 @@ function commitPatch() {
       const maskRegion = ctx2d(lassoMask).getImageData(region.x, region.y, region.w, region.h)
       const restrict = new Uint8ClampedArray(region.w * region.h)
       for (let i = 0, j = 3; i < restrict.length; i++, j += 4) restrict[i] = maskRegion.data[j]
-      const lowR = Math.max(3, Math.round(Math.min(lassoBBox.w, lassoBBox.h) / 8))
+      const diffusion = clamp(Number(opts.diffusion) || 5, 1, 7)
+      const lowR = Math.max(2, Math.round(Math.min(lassoBBox.w, lassoBBox.h) * (0.04 + diffusion * 0.012)))
       frequencyHeal(target, base, restrict, lowR)
       rc.putImageData(target, region.x, region.y)
     }

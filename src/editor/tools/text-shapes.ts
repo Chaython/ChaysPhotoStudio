@@ -70,6 +70,8 @@ export const textTool: Tool = {
       color: opts.color ?? getFgColor(),
       bold: !!opts.bold, italic: !!opts.italic,
       align: opts.align ?? 'left',
+      lineHeight: Math.max(.5, Number(opts.lineHeight) || 1.2),
+      tracking: Number(opts.tracking) || 0,
       content: '',
     })
     if (layer) editTextLayer(layer.id)
@@ -111,6 +113,11 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
   const isLine = opts.shape === 'line'
   let r = rectFromPoints(drag.startX, drag.startY, p.docX, p.docY)
   let vec = { x0: drag.startX, y0: drag.startY, x1: p.docX, y1: p.docY }
+  if (p.alt && !isLine) {
+    const dx = Math.abs(p.docX - drag.startX), dy = Math.abs(p.docY - drag.startY)
+    r = { x: drag.startX - dx, y: drag.startY - dy, w: dx * 2, h: dy * 2 }
+    vec = { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h }
+  }
   if (p.shift) {
     if (isLine) {
       // constrain the line to 45° increments
@@ -121,9 +128,12 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
       r = rectFromPoints(vec.x0, vec.y0, vec.x1, vec.y1)
     } else {
       const s = Math.max(r.w, r.h)
-      const sx = p.docX >= drag.startX ? 1 : -1
-      const sy = p.docY >= drag.startY ? 1 : -1
-      r = { x: sx > 0 ? drag.startX : drag.startX - s, y: sy > 0 ? drag.startY : drag.startY - s, w: s, h: s }
+      if (p.alt) r = { x: drag.startX - s / 2, y: drag.startY - s / 2, w: s, h: s }
+      else {
+        const sx = p.docX >= drag.startX ? 1 : -1
+        const sy = p.docY >= drag.startY ? 1 : -1
+        r = { x: sx > 0 ? drag.startX : drag.startX - s, y: sy > 0 ? drag.startY : drag.startY - s, w: s, h: s }
+      }
       vec = { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h }
     }
   }

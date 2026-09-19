@@ -15,6 +15,7 @@ import { createCanvas, ctx2d, getImageData, putImageData, hexToRgb, clamp } from
 import { floodFillMask, gaussianBlurChannel } from '../image-ops/core'
 import { ditherGradient } from './dab-utils'
 import { getFlatComposite } from '../engine/document'
+import { BLEND_GCO } from '../constants/tools'
 
 // ============================================================
 // Gradient
@@ -23,10 +24,10 @@ let drag = newDrag()
 let gradLine: { x0: number; y0: number; x1: number; y1: number } | null = null
 let gradPreview: HTMLCanvasElement | null = null
 
-function buildStops(type: string, reverse: boolean): [number, string][] {
+function buildStops(type: string, reverse: boolean, transparency = true): [number, string][] {
   const fg = getFgColor(), bg = getBgColor()
   let stops: [number, string][]
-  if (type === 'fg-transparent') stops = [[0, fg], [1, `${fg.slice(0, 7)}00`]]
+  if (type === 'fg-transparent') stops = [[0, fg], [1, transparency ? `${fg.slice(0, 7)}00` : fg]]
   else if (type === 'bw') stops = [[0, '#000000'], [1, '#ffffff']]
   else if (type === 'spectrum') stops = [[0, '#ff0000'], [0.17, '#ffff00'], [0.33, '#00ff00'], [0.5, '#00ffff'], [0.67, '#0000ff'], [0.83, '#ff00ff'], [1, '#ff0000']]
   else stops = [[0, fg], [1, bg]]
@@ -50,10 +51,35 @@ function applyStops(grad: CanvasGradient, stops: [number, string][]) {
 /** build the gradient fill for a canvas of w×h, line coords in that canvas' space */
 function paintGradient(c: CanvasRenderingContext2D, w: number, h: number, x0: number, y0: number, x1: number, y1: number, opts: Record<string, any>) {
   const mode = opts.mode ?? 'linear'
-  const stops = buildStops(opts.type ?? 'fg-bg', opts.reverse === true)
+  const stops = buildStops(opts.type ?? 'fg-bg', opts.reverse === true, opts.transparency !== false)
   const angle = Math.atan2(y1 - y0, x1 - x0)
   let grad: CanvasGradient
-  if (mode === 'radial') {
+  if (mode === 'diamond') {
+    const dist = Math.max(1, Math.hypot(x1 - x0, y1 - y0))
+    const ca = (x1 - x0) / dist, sa = (y1 - y0) / dist
+    const parsed = stops.map(([p, color]) => {
+      const mm = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(color)
+      const hex = mm?.[1] ?? '000000', ah = mm?.[2] ?? 'ff'
+      return { p, r: parseInt(hex.slice(0, 2), 16), g: parseInt(hex.slice(2, 4), 16), b: parseInt(hex.slice(4, 6), 16), a: parseInt(ah, 16) }
+    }).sort((a, b) => a.p - b.p)
+    const img = c.createImageData(w, h)
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+      const rx = xx - x0, ry = yy - y0
+      const u = (rx * ca + ry * sa) / dist
+      const v = (-rx * sa + ry * ca) / dist
+      const t = clamp(Math.abs(u) + Math.abs(v), 0, 1)
+      let a = parsed[0], b = parsed[parsed.length - 1]
+      for (let k = 1; k < parsed.length; k++) if (t <= parsed[k].p) { a = parsed[k - 1]; b = parsed[k]; break }
+      const q = b.p === a.p ? 0 : clamp((t - a.p) / (b.p - a.p), 0, 1)
+      const j = (yy * w + xx) * 4
+      img.data[j] = a.r + (b.r - a.r) * q
+      img.data[j + 1] = a.g + (b.g - a.g) * q
+      img.data[j + 2] = a.b + (b.b - a.b) * q
+      img.data[j + 3] = a.a + (b.a - a.a) * q
+    }
+    c.putImageData(img, 0, 0)
+    return
+  } else if (mode === 'radial') {
     grad = c.createRadialGradient(x0, y0, 0, x0, y0, Math.max(1, Math.hypot(x1 - x0, y1 - y0)))
     applyStops(grad, stops)
   } else if (mode === 'angle') {
@@ -152,6 +178,7 @@ export const gradientTool: Tool = {
     const c = ctx2d(l.canvas)
     c.save()
     c.globalAlpha = (opts.opacity ?? 100) / 100
+    try { c.globalCompositeOperation = BLEND_GCO[opts.blendMode] || 'source-over' } catch { /* noop */ }
     // tmp is doc-space — align to the layer's offset registration
     c.drawImage(tmp, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
     c.restore()
@@ -220,17 +247,19 @@ export const paintBucketTool: Tool = {
     const has = fillMask.some(v => v > 0)
     if (!has) return
 
-    // soften the fill mask edge ~1px (gaussian on the alpha) to avoid jaggies
-    const f = new Float32Array(fillMask.length)
-    for (let i = 0; i < fillMask.length; i++) f[i] = fillMask[i]
-    const soft = gaussianBlurChannel(f, doc.width, doc.height, 0.6)
-    fillMask = new Uint8ClampedArray(soft)
+    if (opts.antiAlias !== false) {
+      const f = new Float32Array(fillMask.length)
+      for (let i = 0; i < fillMask.length; i++) f[i] = fillMask[i]
+      const soft = gaussianBlurChannel(f, doc.width, doc.height, 0.6)
+      fillMask = new Uint8ClampedArray(soft)
+    }
 
     const l = engine.mutateLayerPixels(layer.id)
     if (!l?.canvas) return
 
     // build fill layer: foreground color with the softened mask as alpha
-    const [r, g, b] = hexToRgb(getFgColor())
+    const fillColor = p.alt || opts.fill === 'background' ? getBgColor() : getFgColor()
+    const [r, g, b] = hexToRgb(fillColor)
     const id = new ImageData(doc.width, doc.height)
     for (let i = 0; i < fillMask.length; i++) {
       const a = fillMask[i]
@@ -250,6 +279,7 @@ export const paintBucketTool: Tool = {
     const c = ctx2d(l.canvas)
     c.save()
     c.globalAlpha = (opts.opacity ?? 100) / 100
+    try { c.globalCompositeOperation = BLEND_GCO[opts.blendMode] || 'source-over' } catch { /* noop */ }
     // tmp is doc-space — align to the layer's offset registration
     c.drawImage(tmp, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
     c.restore()
