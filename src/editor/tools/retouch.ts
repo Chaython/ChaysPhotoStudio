@@ -246,19 +246,26 @@ function toneOp(kind: 'dodge' | 'burn', x: number, y: number) {
   const exposure = (opts.exposure ?? 30) / 100
   const range = opts.range ?? 'midtones'
   const burn = kind === 'burn'
+  const protectTones = opts.protectTones !== false
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {
     const d = region.data
     for (let i = 0; i < rw * rh; i++) {
       const f = falloff[i] * exposure
       if (f <= 0.01) continue
       const j = i * 4
-      // per-channel proportional application (protects overall hue balance)
-      for (let c = 0; c < 3; c++) {
-        const v = d[j + c]
-        const w = toneWeight(v, range)
-        if (w <= 0.001) continue
-        const target = burn ? v - v * f * w : v + (255 - v) * f * w
-        d[j + c] = clamp(target, 0, 255)
+      if (protectTones) {
+        const lum = d[j] * .2126 + d[j + 1] * .7152 + d[j + 2] * .0722
+        const wgt = toneWeight(lum, range)
+        if (wgt <= .001) continue
+        const targetLum = burn ? lum - lum * f * wgt : lum + (255 - lum) * f * wgt
+        const gain = targetLum / Math.max(1, lum)
+        d[j] = clamp(d[j] * gain, 0, 255); d[j + 1] = clamp(d[j + 1] * gain, 0, 255); d[j + 2] = clamp(d[j + 2] * gain, 0, 255)
+      } else {
+        for (let c = 0; c < 3; c++) {
+          const v = d[j + c], wgt = toneWeight(v, range)
+          if (wgt <= 0.001) continue
+          d[j + c] = clamp(burn ? v - v * f * wgt : v + (255 - v) * f * wgt, 0, 255)
+        }
       }
     }
   })

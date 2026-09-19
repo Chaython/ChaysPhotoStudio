@@ -18,4 +18,11 @@ contextBridge.exposeInMainWorld('chaysPhotoStudio', {
     ipcRenderer.on('chays:menu-command', listener)
     return () => ipcRenderer.removeListener('chays:menu-command', listener)
   },
+  // Desktop-only native image-processing bridge. The renderer never receives
+  // process/child_process access; it can only invoke these audited commands.
+  nativeTools: {
+    info: () => ipcRenderer.invoke('chays:native-tools:info'),
+    runGmic: (payload) => ipcRenderer.invoke('chays:native-tools:gmic', payload),
+    runGegl: (payload) => ipcRenderer.invoke('chays:native-tools:gegl', payload),
+  },
 })

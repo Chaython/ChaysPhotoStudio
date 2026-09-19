@@ -26,7 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Puzzle, Brush, Blend, Upload, Trash2, Play, Sparkles, BookOpen, Info, Check,
-  FileJson, ChevronDown, Lock, CircleAlert,
+  FileJson, ChevronDown, Lock, CircleAlert, Terminal, RefreshCw, ShieldCheck,
 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
@@ -36,6 +36,10 @@ import * as brushPresets from '../../plugins/brush-presets'
 import * as gradientPresets from '../../plugins/gradient-presets'
 import type { DialogProps } from './generic-dialogs'
 import { cn } from '@/lib/utils'
+import { nativeToolInfo, runNativeGegl, runNativeGmic } from '../../plugins/native-host'
+import { dataUrlToCanvas } from '../../image-ops'
+import { getFlatComposite } from '../../engine/document'
+import type { PluginPermission } from '../../plugins/plugin-types'
 
 // ---- the honest "what can/can't import" note ----
 function CompatibilityNote() {
@@ -46,9 +50,8 @@ function CompatibilityNote() {
         <span className="text-foreground font-medium">What can import:</span> GIMP brushes
         (<span className="font-mono">.gbr</span>) and gradients (<span className="font-mono">.ggr</span>) parse
         natively, and Chay's Photo JS plugins run in a sandboxed worker.
-        <span className="text-foreground font-medium"> What can&apos;t:</span> Photoshop{' '}
-        <span className="font-mono">.8bf</span> plugins are x86 native DLLs — impossible in a browser — and GIMP
-        Script-Fu is TinyScheme. Plugins are arbitrary JavaScript with pixel access:{' '}
+        <span className="text-foreground font-medium"> Desktop bridges:</span> Electron can run installed G’MIC and GEGL filters through a sandboxed IPC bridge.{' '}
+        <span className="text-foreground font-medium"> Legacy limits:</span> Photoshop <span className="font-mono">.8bf</span> and full GIMP PDB/Script-Fu require native compatibility runtimes and are reported rather than falsely claimed as drop-in compatible. Plugins are arbitrary JavaScript with pixel access:{' '}
         <span className="text-foreground">run only plugins you trust.</span>
       </p>
     </div>
@@ -133,6 +136,21 @@ function pickPluginFile(onPick: (file: File) => void): void {
   input.click()
 }
 
+function pickUxpPlugin(onPick: (manifest: File, code: File) => void): void {
+  const input = document.createElement('input')
+  input.type = 'file'; input.multiple = true; input.accept = '.json,.js'
+  input.onchange = () => {
+    const files = [...(input.files ?? [])]
+    const manifest = files.find(f => f.name.toLowerCase() === 'manifest.json') || files.find(f => f.name.toLowerCase().endsWith('.json'))
+    const code = files.find(f => f.name.toLowerCase().endsWith('.js'))
+    if (manifest && code) onPick(manifest, code)
+    else useEditorStore.getState().pushToast('Select the UXP manifest.json and its main JavaScript file together', 'error')
+  }
+  input.click()
+}
+
+const ALL_PLUGIN_PERMISSIONS: PluginPermission[] = ['document.read','document.write','layer.read','layer.write','selection.read','selection.write','editor.commands','ui.toast','storage','network','native.process']
+
 function PluginsTab() {
   const [tick, setTick] = useState(0)
   const [running, setRunning] = useState<string | null>(null)
@@ -166,13 +184,23 @@ function PluginsTab() {
     }
   }
 
+  const installUxp = async (manifest: File, code: File) => {
+    try {
+      const p = await pluginManager.installUxp(await manifest.text(), await code.text(), code.name.replace(/\.js$/i, ''))
+      if (p) pushToast(`Imported Photoshop UXP plugin “${p.manifest.name}”`, 'success')
+    } catch (err) { pushToast(err instanceof Error ? err.message : 'UXP import failed', 'error') }
+  }
+
   if (!plugins.length) {
     return (
       <div className="space-y-3">
         <CompatibilityNote />
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="secondary" onClick={() => pickPluginFile(installFile)}>
-            <Upload size={13} className="mr-1.5" /> Install from File…
+            <Upload size={13} className="mr-1.5" /> Install Chay Plugin…
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => pickUxpPlugin(installUxp)}>
+            <FileJson size={13} className="mr-1.5" /> Import Photoshop UXP…
           </Button>
           <Button size="sm" onClick={installSamples}>
             <Sparkles size={13} className="mr-1.5" /> Install Sample Plugins
@@ -235,6 +263,20 @@ function PluginsTab() {
                 </Button>
               </div>
             </div>
+            {p.compatibility && (
+              <div className="mt-2 rounded border border-border/70 bg-background/30 p-2 text-[9px]">
+                <div className="flex items-center justify-between"><span className="font-medium uppercase tracking-wide text-muted-foreground">{p.compatibility.ecosystem}</span><span className="text-primary">API coverage estimate {p.compatibility.coverage}%</span></div>
+                {p.compatibility.supported.length > 0 && <div className="mt-1 text-emerald-400">Supported: {p.compatibility.supported.join(', ')}</div>}
+                {p.compatibility.unsupported.length > 0 && <div className="mt-1 text-amber-400">Unsupported: {p.compatibility.unsupported.join(', ')}</div>}
+                {p.compatibility.warnings.map((w, i) => <div key={i} className="mt-1 text-muted-foreground">{w}</div>)}
+              </div>
+            )}
+            <Collapsible>
+              <CollapsibleTrigger className="mt-2 flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground"><ShieldCheck size={10}/>Permissions</CollapsibleTrigger>
+              <CollapsibleContent className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 rounded border border-border/60 p-2">
+                {ALL_PLUGIN_PERMISSIONS.map(perm => { const checked = (p.grantedPermissions ?? p.manifest.permissions ?? []).includes(perm); return <label key={perm} className="flex items-center gap-1 text-[9px]"><input type="checkbox" checked={checked} onChange={e => { const cur = new Set(p.grantedPermissions ?? p.manifest.permissions ?? []); e.target.checked ? cur.add(perm) : cur.delete(perm); void pluginManager.setPermissions(p.manifest.id, [...cur] as PluginPermission[]) }}/><span className={perm === 'native.process' || perm === 'network' ? 'text-amber-400' : ''}>{perm}</span></label> })}
+              </CollapsibleContent>
+            </Collapsible>
             {p.commands.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {p.commands.map(c => (
@@ -490,6 +532,43 @@ function GradientsTab() {
 }
 
 // ============================================================
+// Desktop native filters — optional G'MIC / GEGL bridges
+// ============================================================
+function NativeFiltersTab() {
+  const [info, setInfo] = useState<{ electron:boolean; gmic:boolean; gegl:boolean; gmicVersion?:string; geglVersion?:string }>({ electron:false, gmic:false, gegl:false })
+  const [gmicArgs, setGmicArgs] = useState('-fx_sharpen 1')
+  const [geglOp, setGeglOp] = useState('unsharp-mask')
+  const [geglArgs, setGeglArgs] = useState('')
+  const [busy, setBusy] = useState(false)
+  const pushToast = useEditorStore(s => s.pushToast)
+  const refresh = () => void nativeToolInfo().then(setInfo)
+  useEffect(() => { refresh() }, [])
+
+  const applyResult = async (dataUrl: string, name: string) => {
+    const c = await dataUrlToCanvas(dataUrl)
+    engine.addLayerFromCanvas(c, name)
+  }
+  const source = () => {
+    const doc = engine.activeDoc
+    if (!doc) throw new Error('Open a document first')
+    return getFlatComposite(doc).toDataURL('image/png')
+  }
+  const split = (text: string) => text.match(/(?:[^\s"]+|"[^"]*")+/g)?.map(v => v.replace(/^"|"$/g,'')) ?? []
+  const runGmic = async () => { setBusy(true); try { const out = await runNativeGmic(source(), split(gmicArgs)); await applyResult(out, 'G’MIC Result'); pushToast('G’MIC result added as a new layer', 'success') } catch (e) { pushToast(e instanceof Error ? e.message : 'G’MIC failed', 'error') } finally { setBusy(false) } }
+  const runGegl = async () => { setBusy(true); try { const out = await runNativeGegl(source(), geglOp.trim(), split(geglArgs)); await applyResult(out, `GEGL — ${geglOp}`); pushToast('GEGL result added as a new layer', 'success') } catch (e) { pushToast(e instanceof Error ? e.message : 'GEGL failed', 'error') } finally { setBusy(false) } }
+
+  return <div className="space-y-3">
+    <div className="flex items-center justify-between rounded border border-border bg-panel/40 p-2.5"><div><div className="text-[11px] font-medium">Desktop native filter host</div><div className="text-[9px] text-muted-foreground">Available only in Electron. Commands execute in the main process with argv isolation and temporary PNG files.</div></div><Button size="sm" variant="ghost" onClick={refresh}><RefreshCw size={12}/></Button></div>
+    {!info.electron && <div className="rounded border border-dashed border-border p-3 text-[10px] text-muted-foreground">Open the Electron build to use installed G’MIC/GEGL binaries. Browser and extension builds keep these controls disabled.</div>}
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="rounded border border-border p-2.5"><div className="flex items-center justify-between"><span className="text-[11px] font-medium">G’MIC</span><span className={info.gmic?'text-emerald-400 text-[9px]':'text-muted-foreground text-[9px]'}>{info.gmic ? 'detected' : 'not found'}</span></div><div className="mt-1 truncate text-[9px] text-muted-foreground" title={info.gmicVersion}>{info.gmicVersion || 'Install gmic or set CHAYS_GMIC_PATH'}</div><input value={gmicArgs} onChange={e=>setGmicArgs(e.target.value)} className="mt-2 h-8 w-full rounded border border-border bg-background px-2 font-mono text-[10px]" placeholder="-fx_sharpen 1"/><Button className="mt-2" size="sm" disabled={!info.gmic||busy} onClick={()=>void runGmic()}><Play size={11} className="mr-1"/>Apply to composite</Button></div>
+      <div className="rounded border border-border p-2.5"><div className="flex items-center justify-between"><span className="text-[11px] font-medium">GEGL</span><span className={info.gegl?'text-emerald-400 text-[9px]':'text-muted-foreground text-[9px]'}>{info.gegl ? 'detected' : 'not found'}</span></div><div className="mt-1 truncate text-[9px] text-muted-foreground" title={info.geglVersion}>{info.geglVersion || 'Install gegl or set CHAYS_GEGL_PATH'}</div><input value={geglOp} onChange={e=>setGeglOp(e.target.value)} className="mt-2 h-8 w-full rounded border border-border bg-background px-2 font-mono text-[10px]" placeholder="unsharp-mask"/><input value={geglArgs} onChange={e=>setGeglArgs(e.target.value)} className="mt-1 h-8 w-full rounded border border-border bg-background px-2 font-mono text-[10px]" placeholder="radius=2 amount=0.7"/><Button className="mt-2" size="sm" disabled={!info.gegl||busy||!geglOp.trim()} onClick={()=>void runGegl()}><Play size={11} className="mr-1"/>Apply to composite</Button></div>
+    </div>
+    <div className="flex items-start gap-1.5 text-[9px] text-muted-foreground"><Terminal size={11} className="mt-0.5"/>Results are imported as a new layer, so native filters remain undoable/non-destructive to the source layer. Argument text is split into argv and never passed through a shell.</div>
+  </div>
+}
+
+// ============================================================
 // dialog
 // ============================================================
 
@@ -502,7 +581,7 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </DialogTitle>
       </DialogHeader>
       <Tabs defaultValue="plugins" className="py-1">
-        <TabsList className="grid w-full grid-cols-3 h-8">
+        <TabsList className="grid w-full grid-cols-4 h-8">
           <TabsTrigger value="plugins" className="text-[11px] gap-1.5">
             <Puzzle size={11} /> Plugins
           </TabsTrigger>
@@ -511,6 +590,9 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
           </TabsTrigger>
           <TabsTrigger value="gradients" className="text-[11px] gap-1.5">
             <Blend size={11} /> Gradients
+          </TabsTrigger>
+          <TabsTrigger value="native" className="text-[11px] gap-1.5">
+            <Terminal size={11} /> Desktop Filters
           </TabsTrigger>
         </TabsList>
         <TabsContent value="plugins" className="mt-3">
@@ -521,6 +603,9 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </TabsContent>
         <TabsContent value="gradients" className="mt-3">
           <GradientsTab />
+        </TabsContent>
+        <TabsContent value="native" className="mt-3">
+          <NativeFiltersTab />
         </TabsContent>
       </Tabs>
       <DialogFooter>

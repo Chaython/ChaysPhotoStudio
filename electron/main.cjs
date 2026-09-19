@@ -10,12 +10,14 @@
 // Also relays image files launched via file association / "Open
 // with" / macOS open-file to the renderer over IPC.
 // ============================================================
-const { app, BrowserWindow, Menu, shell, session } = require('electron')
-const { spawn } = require('node:child_process')
+const { app, BrowserWindow, Menu, shell, session, ipcMain } = require('electron')
+const { spawn, execFile } = require('node:child_process')
 const http = require('node:http')
 const fs = require('node:fs')
 const net = require('node:net')
 const path = require('node:path')
+const os = require('node:os')
+const crypto = require('node:crypto')
 
 const DEV_URL = process.env.CHAYS_DEV_URL || 'http://localhost:3000'
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?|avif|tga|ico|psd)$/i
@@ -91,6 +93,100 @@ function startPackagedServer() {
     })
     return waitForServer(url).then(() => url)
   })
+}
+
+
+// ---------- optional native filter bridge ----------
+// G'MIC/GEGL are deliberately external optional dependencies. We never invoke
+// a shell: renderer arguments are passed as argv to execFile, input/output are
+// temporary PNG files, and only data:image payloads are accepted.
+const NATIVE_TIMEOUT_MS = 5 * 60 * 1000
+const MAX_NATIVE_IMAGE_BYTES = 256 * 1024 * 1024
+
+function commandCandidates(kind) {
+  if (kind === 'gmic') return [process.env.CHAYS_GMIC_PATH, 'gmic', process.platform === 'win32' ? 'gmic.exe' : null].filter(Boolean)
+  return [process.env.CHAYS_GEGL_PATH, 'gegl', process.platform === 'win32' ? 'gegl.exe' : null].filter(Boolean)
+}
+
+function execFileP(file, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { windowsHide: true, timeout: NATIVE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
+      if (err) { err.stderr = stderr; return reject(err) }
+      resolve({ stdout: String(stdout || ''), stderr: String(stderr || '') })
+    })
+  })
+}
+
+async function findNativeTool(kind) {
+  for (const candidate of commandCandidates(kind)) {
+    try {
+      const args = kind === 'gmic' ? ['-version'] : ['--version']
+      const r = await execFileP(candidate, args, { timeout: 10000 })
+      const version = (r.stdout || r.stderr).split(/\r?\n/).find(Boolean) || candidate
+      return { path: candidate, version: version.trim() }
+    } catch { /* try next */ }
+  }
+  return null
+}
+
+function decodeDataImage(value) {
+  if (typeof value !== 'string') throw new Error('Native filter input must be a data URL')
+  const m = value.match(/^data:image\/[a-z0-9.+-]+;base64,([A-Za-z0-9+/=\r\n]+)$/i)
+  if (!m) throw new Error('Only base64 image data URLs are accepted')
+  const buf = Buffer.from(m[1].replace(/\s/g, ''), 'base64')
+  if (!buf.length || buf.length > MAX_NATIVE_IMAGE_BYTES) throw new Error('Native filter image is empty or too large')
+  return buf
+}
+
+async function withNativeImage(imageDataUrl, fn) {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'chays-photo-native-'))
+  const input = path.join(dir, 'input.png')
+  const output = path.join(dir, 'output.png')
+  try {
+    await fs.promises.writeFile(input, decodeDataImage(imageDataUrl), { mode: 0o600 })
+    const meta = await fn(input, output)
+    const result = await fs.promises.readFile(output)
+    if (!result.length || result.length > MAX_NATIVE_IMAGE_BYTES) throw new Error('Native filter returned an invalid image')
+    return { image: `data:image/png;base64,${result.toString('base64')}`, stderr: meta?.stderr || '' }
+  } finally {
+    await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+function cleanArgv(items, max = 128) {
+  if (!Array.isArray(items)) return []
+  return items.slice(0, max).map(v => String(v)).filter(v => v.length <= 4096 && !v.includes('\0'))
+}
+
+async function installNativeToolIpc() {
+  let cached = null
+  async function info(refresh = false) {
+    if (!cached || refresh) {
+      const [gmic, gegl] = await Promise.all([findNativeTool('gmic'), findNativeTool('gegl')])
+      cached = { electron: true, gmic: !!gmic, gegl: !!gegl, gmicVersion: gmic?.version, geglVersion: gegl?.version, gmicPath: gmic?.path, geglPath: gegl?.path }
+    }
+    return cached
+  }
+  ipcMain.handle('chays:native-tools:info', () => info())
+  ipcMain.handle('chays:native-tools:gmic', async (_event, payload) => {
+    const state = await info()
+    if (!state.gmicPath) throw new Error('G’MIC was not found. Install gmic or set CHAYS_GMIC_PATH.')
+    const args = cleanArgv(payload?.args)
+    return withNativeImage(payload?.image, async (input, output) => {
+      // G'MIC accepts an image filename as input, followed by commands, then -o output.
+      return execFileP(state.gmicPath, [input, ...args, '-o', output])
+    })
+  })
+  ipcMain.handle('chays:native-tools:gegl', async (_event, payload) => {
+    const state = await info()
+    if (!state.geglPath) throw new Error('GEGL was not found. Install gegl or set CHAYS_GEGL_PATH.')
+    const operation = String(payload?.operation || '').trim()
+    if (!/^[a-z0-9][a-z0-9_.:-]*$/i.test(operation)) throw new Error('Invalid GEGL operation name')
+    const args = cleanArgv(payload?.args, 64)
+    // GEGL chain syntax: gegl input -o output -- operation property=value ...
+    return withNativeImage(payload?.image, (input, output) => execFileP(state.geglPath, [input, '-o', output, '--', operation, ...args]))
+  })
+  return info(true)
 }
 
 // ---------- file-open relay ----------
@@ -238,6 +334,7 @@ if (!gotLock) {
   // deny all permission prompts (camera/geolocation/etc.) — an editor needs none
   app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler(_wc => false)
+    await installNativeToolIpc().catch(err => console.warn('[native-tools]', err?.message || err))
 
     buildMenu()
     createWindow()

@@ -397,7 +397,7 @@ export type DialogType =
   | 'color-range' | 'select-mask' | 'content-aware-fill' | 'batch' | 'script-console'
   | 'shortcuts' | 'about' | 'vanishing-point' | 'ai-upscale'
   | 'liquify' | 'content-aware-scale' | 'match-color'
-  | 'plugin-manager' | 'ai-generate'
+  | 'plugin-manager' | 'ai-generate' | 'ai-tools'
   | 'layer-styles'
   | 'detect-objects'
   | 'customize-toolbar' | 'recovery'

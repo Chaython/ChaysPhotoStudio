@@ -196,6 +196,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'file-open-as-layer', label: 'Open as Layer…', run: () => fileInput('image/*', true, files => openFiles(Array.from(files), true)) },
     { id: 'file-place', label: 'Place (Smart Object)…', run: () => fileInput('image/*', false, files => placeImageAsSmartLayer(files[0])) },
     { id: 'file-ai-generate', label: 'AI Generate Image…', run: () => openDlg('ai-generate') },
+    { id: 'file-ai-tools', label: 'AI Tools & ComfyUI…', run: () => openDlg('ai-tools') },
     S(),
     { id: 'file-open-recent', label: 'Recent & Recovery…', run: () => openDlg('recovery') },
     S(),

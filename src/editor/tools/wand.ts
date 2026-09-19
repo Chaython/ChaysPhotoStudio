@@ -14,6 +14,13 @@ export const magicWandTool: Tool = {
       diagonal: opts.diagonal === true,
       sample: opts.sample ?? 'composite',
       antiAlias: opts.antiAlias !== false,
+      sampleRadius: opts.sampleRadius ?? 1,
+      edgeAware: opts.edgeAware ?? 35,
+      adaptive: opts.adaptive !== false,
+      matchAlpha: opts.matchAlpha === true,
+      exactPixels: opts.exactPixels === true,
+      feather: opts.feather ?? 0,
+      smooth: opts.smooth ?? 0,
       mode: combineMode(p, opts.mode ?? 'new'),
     })
   },

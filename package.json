@@ -1,8 +1,8 @@
 {
   "name": "chays-photo-studio",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
-  "description": "Chay's Photo Studio — a Photoshop-class raster image editor that runs fully in your browser. Free for consumer and education use.",
+  "description": "Chay's Photo Studio \u2014 a Photoshop-class raster image editor that runs fully in your browser. Free for consumer and education use.",
   "author": {
     "name": "Chaython Meredith",
     "email": "chaython@live.ca"

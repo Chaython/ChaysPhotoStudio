@@ -6,6 +6,7 @@ import { GenericAdjustmentDialog, GenericFilterDialog, type DialogProps } from '
 import { NewDocDialog, ImageSizeDialog, CanvasSizeDialog, ExportDialog, TransformDialog } from './doc-dialogs'
 import { AiUpscaleDialog } from './ai-upscale-dialog'
 import { AiGenerateDialog } from './ai-generate-dialog'
+import { AiToolsDialog } from './ai-tools-dialog'
 import { LiquifyDialog } from './liquify-dialog'
 import { ContentAwareScaleDialog } from './content-aware-scale-dialog'
 import { MatchColorDialog } from './match-color-dialog'
@@ -48,6 +49,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'image-size': ImageSizeDialog,
   'ai-upscale': AiUpscaleDialog,
   'ai-generate': AiGenerateDialog,
+  'ai-tools': AiToolsDialog,
   'liquify': LiquifyDialog,
   'content-aware-scale': ContentAwareScaleDialog,
   'match-color': MatchColorDialog,

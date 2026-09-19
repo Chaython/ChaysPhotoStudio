@@ -25,6 +25,7 @@ import { createCanvas, ctx2d, getImageData, putImageData, cloneCanvas, clamp, ge
 import { dilateMask, gaussianBlurChannel } from '../image-ops/core'
 import { useEditorStore } from '../store'
 import * as imageOps from '../image-ops'
+import { getFlatComposite } from '../engine/document'
 
 /** rect clamped to doc bounds */
 function clampedRect(r: Rect, w: number, h: number): Rect {
@@ -62,7 +63,7 @@ export const healingBrushTool: Tool = {
 
     if (p.alt) {
       // ---- set healing source (layer snapshot, doc-space) ----
-      const c = engine.layerCanvasDocSpace(layer.id)
+      const c = opts.sample === 'composite' ? getFlatComposite(doc) : engine.layerCanvasDocSpace(layer.id)
       if (!c) return
       engine.cloneSource = { x: p.docX, y: p.docY, layerId: layer.id }
       hst.source = cloneCanvas(c)

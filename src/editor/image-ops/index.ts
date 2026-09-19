@@ -118,3 +118,6 @@ export { seamCarve, boxResampleMask, type SeamCarveOptions, type SeamCarveResult
 
 // ---- core primitives (kept in the public surface for the engine/tools) ----
 export { floodFillMask, computeHistogram } from './core'
+
+// ---- perceptual Magic Wand / Select Similar ----
+export { perceptualWandMask, type PerceptualWandOptions } from './wand'

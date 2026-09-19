@@ -10,7 +10,7 @@ import type {
 import { TOOL_MAP } from '../constants/tools'
 import {
   createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData,
-  hexToRgb, rgbToHex, clamp, drawSoftDab, canvasToBlob, downloadBlob,
+  hexToRgb, rgbToHex, clamp, drawSoftDab, canvasToBlob, downloadBlob, getMaskAlpha,
 } from '../utils/canvas'
 import {
   compositeDocument, getFlatComposite, invalidateFlat, newLayer,
@@ -1349,7 +1349,21 @@ export class Engine {
     this.setSelectionMask(mask, mode, 'Lasso Selection')
   }
 
-  magicWand(x: number, y: number, opts: { tolerance: number; contiguous: boolean; sample: 'composite' | 'layer'; mode: SelectionCombine; antiAlias?: boolean; diagonal?: boolean }) {
+  magicWand(x: number, y: number, opts: {
+    tolerance: number
+    contiguous: boolean
+    sample: 'composite' | 'layer'
+    mode: SelectionCombine
+    antiAlias?: boolean
+    diagonal?: boolean
+    sampleRadius?: number
+    edgeAware?: number
+    adaptive?: boolean
+    matchAlpha?: boolean
+    exactPixels?: boolean
+    feather?: number
+    smooth?: number
+  }) {
     const doc = this.activeDoc
     if (!doc) return
     const src = opts.sample === 'layer' && this.activeLayer ? this.layerCanvasDocSpace(this.activeLayer.id) : getFlatComposite(doc)
@@ -1357,7 +1371,24 @@ export class Engine {
     const img = getImageData(src)
     const cx = clamp(Math.round(x), 0, doc.width - 1)
     const cy = clamp(Math.round(y), 0, doc.height - 1)
-    const mask = imageOps.floodFillMask(img, cx, cy, { tolerance: opts.tolerance, contiguous: opts.contiguous, antiAlias: opts.antiAlias, diagonal: opts.diagonal })
+    let mask = imageOps.perceptualWandMask(img, cx, cy, {
+      tolerance: opts.tolerance,
+      contiguous: opts.contiguous,
+      antiAlias: opts.antiAlias,
+      diagonal: opts.diagonal,
+      sampleRadius: opts.sampleRadius,
+      edgeAware: opts.edgeAware,
+      adaptive: opts.adaptive,
+      matchAlpha: opts.matchAlpha,
+      exactPixels: opts.exactPixels,
+    })
+    if ((opts.smooth ?? 0) > 0 || (opts.feather ?? 0) > 0) {
+      const temp = selectionFromMask(maskCanvasFromAlpha(mask, doc.width, doc.height))
+      let refined = temp
+      if ((opts.smooth ?? 0) > 0) refined = modifySelection(refined, 'smooth', opts.smooth ?? 0) ?? refined
+      if ((opts.feather ?? 0) > 0) refined = modifySelection(refined, 'feather', opts.feather ?? 0) ?? refined
+      mask = getMaskAlpha(refined.mask)
+    }
     this.setSelectionAlpha(mask, opts.mode, 'Magic Wand')
   }
 

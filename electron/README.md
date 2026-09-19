@@ -21,3 +21,16 @@ Full build/sign/release instructions: see [`DISTRIBUTION.md`](../DISTRIBUTION.md
 executable. The release filename is
 `ChaysPhotoStudio-Portable-<version>-x64.exe`. Portable builds intentionally do
 not create shortcuts, registry uninstall entries, or file associations.
+
+## Optional G'MIC / GEGL desktop filters
+
+The Electron build can use an existing system installation of **G'MIC** and/or **GEGL** from **Plugin Manager → Desktop Filters**. They are optional; the editor works normally without either executable.
+
+Discovery checks `gmic` / `gegl` on `PATH`. You can override either executable explicitly before launching:
+
+```powershell
+$env:CHAYS_GMIC_PATH = 'C:\Tools\gmic\gmic.exe'
+$env:CHAYS_GEGL_PATH = 'C:\Program Files\GEGL\bin\gegl.exe'
+```
+
+Native filters are not executed in the renderer. Electron writes the current composite to a private temporary PNG, invokes the executable with `execFile` argument arrays (never a shell command string), reads the resulting PNG, removes the temporary directory, and imports the result as a new layer.

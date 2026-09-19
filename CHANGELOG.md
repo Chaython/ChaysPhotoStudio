@@ -2,6 +2,19 @@
 
 Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
+## 1.3.0
+
+- Rebuilt Magic Wand around a perceptual Lab region-grower with sample averaging, adaptive region color, edge protection, global/non-contiguous matching, anti-aliased grayscale output, smoothing/feathering, transparency matching, diagonal connectivity, composite/layer sampling, and a new Pixel Exact RGBA mode for sprites/icons.
+- Selection workflows now share the grayscale mask/refinement pipeline across Magic Wand, Quick Selection, Object Selection, Color Range and Select & Mask.
+- Added local AI-assist tools that always output editable layers: Depth Map, Denoise Assist, Depth Relight, and Vector Trace Guide, alongside Select Subject, Remove Background, Smart Remove and Smart Upscale.
+- ComfyUI now stores separate workflows for inpaint, outpaint, upscale, depth, denoise, face restoration, relighting, colorization, vectorization, captioning and a custom recipe instead of forcing every task through one workflow slot.
+- Added a real Electron native-filter bridge for optional installed G’MIC and GEGL executables. Filters run through audited IPC using temporary PNGs and `execFile` argv isolation (no shell interpolation) and return results as new layers.
+- Plugin Manager now includes a Desktop Filters tab with G’MIC/GEGL detection, command execution and version reporting.
+- Added Photoshop UXP import from manifest + JavaScript, compatibility diagnostics, per-plugin permission controls, plugin-scoped persistent storage, permission-gated network fetch, and a broader `batchPlay` subset (layers, merge/flatten/rasterize, image/canvas size, rotate and flip).
+- Closed a plugin sandbox gap where worker code could use global `fetch` without requesting the `network` permission; plugin fetch now goes through the audited host RPC path.
+- Expanded Clone Stamp and Healing Brush sampling to Current Layer or Composite, and added Protect Tones to Dodge/Burn to preserve chroma while adjusting luminance.
+- Existing GIMP `.gbr` brush and `.ggr` gradient import remains integrated; Electron users can now bridge the wider GIMP/GEGL/G’MIC processing ecosystem without pretending full libgimp/PDB/Script-Fu compatibility exists.
+
 ## 1.2.0
 
 - Windows Electron releases now include a separate `ChaysPhotoStudio-Portable-<version>-x64.exe` no-install build alongside the normal NSIS setup executable; local scripts can build both together or either target independently.
