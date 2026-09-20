@@ -74,6 +74,51 @@ function edgeStrength(d: Uint8ClampedArray, rw: number, rh: number, x: number, y
   return best
 }
 
+function decontaminateFringe(
+  d: Uint8ClampedArray,
+  rw: number,
+  rh: number,
+  allowed: Uint8Array,
+  falloff: Float32Array,
+  sample: RGB,
+  amountPct: number,
+  tolerance: number,
+) {
+  const amount = clamp(amountPct / 100, 0, 1)
+  if (amount <= 0) return
+  const src = new Uint8ClampedArray(d)
+  const around = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]] as const
+  for (let y = 0; y < rh; y++) {
+    for (let x = 0; x < rw; x++) {
+      const i = y * rw + x
+      if (!allowed[i] || falloff[i] <= 0) continue
+      const j = i * 4
+      const surviving = 1 - falloff[i]
+      // Fully erased pixels don't need color cleanup. Concentrate on the
+      // anti-aliased/fringe band that remains visible after the alpha cut.
+      if (surviving <= .01) continue
+      let rr = 0, gg = 0, bb = 0, n = 0
+      for (const [ox, oy] of around) {
+        const xx = x + ox, yy = y + oy
+        if (xx < 0 || yy < 0 || xx >= rw || yy >= rh) continue
+        const ni = yy * rw + xx
+        if (allowed[ni]) continue
+        const nj = ni * 4
+        if (src[nj + 3] < 24) continue
+        // Prefer neighbors that are demonstrably foreground rather than a
+        // second anti-aliased sample of the background being removed.
+        if (colorDistance(src[nj], src[nj + 1], src[nj + 2], sample) <= Math.max(3, tolerance * .65)) continue
+        rr += src[nj]; gg += src[nj + 1]; bb += src[nj + 2]; n++
+      }
+      if (!n) continue
+      const strength = amount * clamp(falloff[i] * 1.4, 0, 1)
+      d[j] = src[j] * (1 - strength) + (rr / n) * strength
+      d[j + 1] = src[j + 1] * (1 - strength) + (gg / n) * strength
+      d[j + 2] = src[j + 2] * (1 - strength) + (bb / n) * strength
+    }
+  }
+}
+
 function contiguousComponent(match: Uint8Array, rw: number, rh: number, falloff: Float32Array): Uint8Array {
   const out = new Uint8Array(match.length)
   let sx = clamp(Math.floor(rw / 2), 0, rw - 1)
@@ -153,6 +198,11 @@ function dab(x: number, y: number, p: PointerInfo) {
     }
 
     const allowed = limits === 'contiguous' ? contiguousComponent(match, rw, rh, falloff) : match
+    decontaminateFringe(
+      d, rw, rh, allowed, falloff, sample,
+      Number(opts.decontaminate) || 0,
+      tolerance,
+    )
     let localChanged = false
     for (let i = 0; i < allowed.length; i++) {
       if (!allowed[i]) continue
