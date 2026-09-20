@@ -141,12 +141,13 @@ export const measureTool: Tool = {
   onPointerUp() {
     if (!dragging) return
     dragging = false
-    // a click without a meaningful drag clears the previous measurement
     const len = start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0
-    if (len < 0.5) {
-      start = null
-      end = null
+    if (len >= 0.5 && start && end) {
+      segments.push({ a: { ...start }, b: { ...end } })
+      if (getOptions(TOOL_ID).chain !== true && segments.length > 1) segments = [segments[segments.length - 1]]
     }
+    start = null
+    end = null
     publish()
     engine.pokeOverlay()
   },
