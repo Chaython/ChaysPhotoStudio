@@ -653,51 +653,67 @@ function commitPatch() {
   const layer = engine.activeLayer
   if (!doc || !layer || !lassoMask || !lassoBBox || !lassoPath) { resetPatch(); return }
   const opts = getOptions('patch')
+  const direction = opts.direction === 'destination' ? 'destination' : 'source'
 
-  // snapshot the ORIGINAL pixels before mutation (source comes from here)
-  // — doc-space so the lasso/region math below (doc coords) aligns
-  const layerCv = opts.sampleAllLayers === true ? getFlatComposite(doc) : engine.layerCanvasDocSpace(layer.id)
-  if (!layerCv) { resetPatch(); return }
-  const before = cloneCanvas(layerCv)
+  // Sampling source and output destination are deliberately separate. When
+  // Sample All Layers is enabled we sample the flattened composite, but write
+  // only the healed patch into the active layer — never flatten other layers.
+  const activeBefore = engine.layerCanvasDocSpace(layer.id)
+  const sampled = opts.sampleAllLayers === true ? getFlatComposite(doc) : activeBefore
+  if (!activeBefore || !sampled) { resetPatch(); return }
+  const targetBefore = cloneCanvas(activeBefore)
+  const sourceBefore = cloneCanvas(sampled)
 
   const l = engine.mutateLayerPixels(layer.id)
   if (!l?.canvas) { resetPatch(); return }
 
   const dx = Math.round(moveDelta.x), dy = Math.round(moveDelta.y)
   if (Math.abs(dx) + Math.abs(dy) < 1) {
-    // no drag — treat as cancel but keep the lasso for a retry
     moveStart = null
     moveDelta = { x: 0, y: 0 }
     engine.requestRender()
     return
   }
 
-  // copy the source region (translated) masked by the lasso
+  const targetMask = direction === 'source'
+    ? cloneCanvas(lassoMask)
+    : (() => {
+        const m = createCanvas(doc.width, doc.height)
+        ctx2d(m).drawImage(lassoMask!, dx, dy)
+        return m
+      })()
+
+  // Build only the patch pixels. Source mode samples from the dragged-to area
+  // and writes back into the original lasso. Destination mode carries the
+  // originally selected good pixels to the dragged destination.
   const tmp = createCanvas(doc.width, doc.height)
   const tc = ctx2d(tmp)
-  // Destination stays in place; the dragged offset points at the source.
-  tc.drawImage(before, -dx, -dy)
+  if (direction === 'source') tc.drawImage(sourceBefore, -dx, -dy)
+  else tc.drawImage(sourceBefore, dx, dy)
   tc.globalCompositeOperation = 'destination-in'
-  tc.drawImage(lassoMask, 0, 0)
+  tc.drawImage(targetMask, 0, 0)
   tc.globalCompositeOperation = 'source-over'
 
-  // composited candidate = original + masked copy
-  const result = cloneCanvas(before)
+  const result = cloneCanvas(targetBefore)
   const rc = ctx2d(result)
   rc.drawImage(tmp, 0, 0)
 
+  const targetBBox: Rect = direction === 'source'
+    ? { ...lassoBBox }
+    : { x: lassoBBox.x + dx, y: lassoBBox.y + dy, w: lassoBBox.w, h: lassoBBox.h }
+
   if (opts.heal !== 'texture') {
-    // frequency matching: blend the destination's low frequency into the patch
+    // Match low-frequency color/lighting to the destination while retaining
+    // the sampled high-frequency texture.
     const pad = Math.max(4, Math.round(Math.min(lassoBBox.w, lassoBBox.h) / 6))
     const region = clampedRect(
-      { x: Math.min(lassoBBox.x, lassoBBox.x + dx) - pad, y: Math.min(lassoBBox.y, lassoBBox.y + dy) - pad,
-        w: lassoBBox.w + Math.abs(dx) + pad * 2, h: lassoBBox.h + Math.abs(dy) + pad * 2 },
+      { x: targetBBox.x - pad, y: targetBBox.y - pad, w: targetBBox.w + pad * 2, h: targetBBox.h + pad * 2 },
       doc.width, doc.height
     )
     if (region.w > 0 && region.h > 0) {
       const target = rc.getImageData(region.x, region.y, region.w, region.h)
-      const base = ctx2d(before).getImageData(region.x, region.y, region.w, region.h)
-      const maskRegion = ctx2d(lassoMask).getImageData(region.x, region.y, region.w, region.h)
+      const base = ctx2d(targetBefore).getImageData(region.x, region.y, region.w, region.h)
+      const maskRegion = ctx2d(targetMask).getImageData(region.x, region.y, region.w, region.h)
       const restrict = new Uint8ClampedArray(region.w * region.h)
       for (let i = 0, j = 3; i < restrict.length; i++, j += 4) restrict[i] = maskRegion.data[j]
       const diffusion = clamp(Number(opts.diffusion) || 5, 1, 7)
@@ -707,11 +723,24 @@ function commitPatch() {
     }
   }
 
-  // draw the healed region back into the layer (outside the lasso the heal
-  // diff is ~0, so writing the full region rect is safe) — through the offset
-  ctx2d(l.canvas).drawImage(result, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
+  // Respect any active selection in addition to the patch lasso.
+  if (doc.selection) {
+    const diff = createCanvas(doc.width, doc.height)
+    const dc = ctx2d(diff)
+    dc.drawImage(result, 0, 0)
+    dc.globalCompositeOperation = 'destination-in'
+    dc.drawImage(doc.selection.mask, 0, 0)
+    dc.globalCompositeOperation = 'source-over'
+    const final = cloneCanvas(targetBefore)
+    ctx2d(final).drawImage(diff, 0, 0)
+    ctx2d(l.canvas).clearRect(0, 0, l.canvas.width, l.canvas.height)
+    ctx2d(l.canvas).drawImage(final, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
+  } else {
+    ctx2d(l.canvas).clearRect(0, 0, l.canvas.width, l.canvas.height)
+    ctx2d(l.canvas).drawImage(result, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
+  }
 
   resetPatch()
-  engine.pushHistory('Patch')
+  engine.pushHistory(direction === 'destination' ? 'Patch Destination' : 'Patch Source')
   engine.emit()
 }
