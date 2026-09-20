@@ -2228,6 +2228,57 @@ export class Engine {
     this.emitOverlay()
   }
 
+  addMeasurement(entry: {
+    name?: string
+    segments: { a: { x: number; y: number }; b: { x: number; y: number } }[]
+    unit: 'px' | 'mm' | 'cm' | 'in'
+    pixelsPerUnit: number
+  }): string | null {
+    const doc = this.activeDoc
+    if (!doc || !entry.segments.length) return null
+    if (!doc.measurements) doc.measurements = []
+    const id = uid()
+    const segments = entry.segments.map(s => ({ a: { ...s.a }, b: { ...s.b } }))
+    const totalLengthPx = segments.reduce((sum, s) => sum + Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y), 0)
+    doc.measurements.push({
+      id,
+      name: entry.name?.trim() || `Measurement ${doc.measurements.length + 1}`,
+      segments,
+      unit: entry.unit,
+      pixelsPerUnit: Math.max(.001, entry.pixelsPerUnit || 1),
+      totalLengthPx,
+      createdAt: Date.now(),
+    })
+    doc.dirty = true
+    this.emit()
+    return id
+  }
+
+  renameMeasurement(id: string, name: string) {
+    const doc = this.activeDoc
+    const item = doc?.measurements?.find(m => m.id === id)
+    if (!doc || !item || !name.trim()) return
+    item.name = name.trim()
+    doc.dirty = true
+    this.emit()
+  }
+
+  removeMeasurement(id: string) {
+    const doc = this.activeDoc
+    if (!doc?.measurements?.some(m => m.id === id)) return
+    doc.measurements = doc.measurements.filter(m => m.id !== id)
+    doc.dirty = true
+    this.emit()
+  }
+
+  clearMeasurements() {
+    const doc = this.activeDoc
+    if (!doc?.measurements?.length) return
+    doc.measurements = []
+    doc.dirty = true
+    this.emit()
+  }
+
   // ================================================== GPU acceleration state
   isGpuEnabled(): boolean { return isGlEnabled() }
   isGpuActive(): boolean { return glAvailable() }
