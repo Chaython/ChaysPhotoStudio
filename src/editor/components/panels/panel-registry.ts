@@ -6,7 +6,7 @@
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2,
+  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders,
 } from 'lucide-react'
 import { LayersPanel } from './layers-panel'
 import { HistoryPanel, NavigatorPanel, HistogramPanel } from './history-navigator-histogram'
@@ -17,10 +17,11 @@ import { CloneSourcePanel } from './clone-source-panel'
 import { InfoPanel } from './info-panel'
 import { PathsPanel } from './paths-panel'
 import { PatternsPanel } from './patterns-panel'
+import { ToolPresetsPanel } from './tool-presets-panel'
 
 export type PanelId =
   | 'color' | 'layers' | 'channels' | 'history' | 'actions'
-  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns'
+  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns' | 'tool-presets'
 
 export interface PanelDef {
   id: PanelId
@@ -91,6 +92,10 @@ export const PANELS: PanelDef[] = [
   },
   {
     id: 'patterns', label: 'Patterns', icon: Grid2X2, render: PatternsPanel,
+    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
+  },
+  {
+    id: 'tool-presets', label: 'Presets', icon: Sliders, render: ToolPresetsPanel,
     defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
   },
 ]
