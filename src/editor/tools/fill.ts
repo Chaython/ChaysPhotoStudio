@@ -25,6 +25,135 @@ let drag = newDrag()
 let gradLine: { x0: number; y0: number; x1: number; y1: number } | null = null
 let gradPreview: HTMLCanvasElement | null = null
 
+function colorWithOpacity(color: string, opacity: number, transparency: boolean): string {
+  let h = String(color || '#000000').replace('#', '').trim()
+  if (h.length === 3) h = h.split('').map(ch => ch + ch).join('')
+  h = (h.slice(0, 6) || '000000').padEnd(6, '0')
+  if (!transparency) return `#${h}`
+  const a = clamp(Math.round(clamp(opacity, 0, 100) * 2.55), 0, 255)
+  return `#${h}${a.toString(16).padStart(2, '0')}`
+}
+
+interface GradientStopRGBA {
+  p: number
+  r: number
+  g: number
+  b: number
+  a: number
+  h: number
+  s: number
+  l: number
+}
+
+function rgbToHslLocal(r: number, g: number, b: number): [number, number, number] {
+  let rr = r / 255, gg = g / 255, bb = b / 255
+  const max = Math.max(rr, gg, bb), min = Math.min(rr, gg, bb)
+  const l = (max + min) / 2
+  const d = max - min
+  if (d < 1e-9) return [0, 0, l]
+  const s = d / (1 - Math.abs(2 * l - 1))
+  let h: number
+  if (max === rr) h = 60 * (((gg - bb) / d) % 6)
+  else if (max === gg) h = 60 * (((bb - rr) / d) + 2)
+  else h = 60 * (((rr - gg) / d) + 4)
+  if (h < 0) h += 360
+  return [h, s, l]
+}
+
+function hslToRgbLocal(h: number, s: number, l: number): [number, number, number] {
+  h = ((h % 360) + 360) % 360
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  let rr = 0, gg = 0, bb = 0
+  if (h < 60) [rr, gg] = [c, x]
+  else if (h < 120) [rr, gg] = [x, c]
+  else if (h < 180) [gg, bb] = [c, x]
+  else if (h < 240) [gg, bb] = [x, c]
+  else if (h < 300) [rr, bb] = [x, c]
+  else [rr, bb] = [c, x]
+  return [(rr + m) * 255, (gg + m) * 255, (bb + m) * 255]
+}
+
+function parsedStops(stops: [number, string][]): GradientStopRGBA[] {
+  return stops.map(([p, color]) => {
+    const mm = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(color)
+    const hex = mm?.[1] ?? '000000'
+    const ah = mm?.[2] ?? 'ff'
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    const [h, s, l] = rgbToHslLocal(r, g, b)
+    return { p, r, g, b, a: parseInt(ah, 16), h, s, l }
+  }).sort((a, b) => a.p - b.p)
+}
+
+function interpolateGradientStop(stops: GradientStopRGBA[], t: number, hsl: boolean): [number, number, number, number] {
+  t = clamp(t, 0, 1)
+  let a = stops[0], b = stops[stops.length - 1]
+  for (let k = 1; k < stops.length; k++) {
+    if (t <= stops[k].p) { a = stops[k - 1]; b = stops[k]; break }
+  }
+  const q = b.p === a.p ? 0 : clamp((t - a.p) / (b.p - a.p), 0, 1)
+  if (!hsl) {
+    return [
+      a.r + (b.r - a.r) * q,
+      a.g + (b.g - a.g) * q,
+      a.b + (b.b - a.b) * q,
+      a.a + (b.a - a.a) * q,
+    ]
+  }
+  const dh = ((b.h - a.h + 540) % 360) - 180
+  const hh = a.h + dh * q
+  const ss = a.s + (b.s - a.s) * q
+  const ll = a.l + (b.l - a.l) * q
+  const [r, g, bl] = hslToRgbLocal(hh, ss, ll)
+  return [r, g, bl, a.a + (b.a - a.a) * q]
+}
+
+function paintManualGradient(
+  c: CanvasRenderingContext2D,
+  w: number, h: number,
+  x0: number, y0: number, x1: number, y1: number,
+  mode: string,
+  stops: [number, string][],
+  hsl: boolean,
+) {
+  const parsed = parsedStops(stops)
+  const dx = x1 - x0, dy = y1 - y0
+  const dist = Math.max(1, Math.hypot(dx, dy))
+  const dist2 = Math.max(1, dx * dx + dy * dy)
+  const ca = dx / dist, sa = dy / dist
+  const baseAngle = Math.atan2(dy, dx)
+  const img = c.createImageData(w, h)
+  for (let yy = 0; yy < h; yy++) {
+    for (let xx = 0; xx < w; xx++) {
+      const rx = xx - x0, ry = yy - y0
+      let t: number
+      if (mode === 'radial') t = Math.hypot(rx, ry) / dist
+      else if (mode === 'angle') {
+        const a = Math.atan2(ry, rx)
+        t = ((a - baseAngle) / (Math.PI * 2) + 1) % 1
+      } else if (mode === 'reflected') {
+        t = Math.abs((rx * dx + ry * dy) / dist2)
+      } else if (mode === 'diamond') {
+        const u = (rx * ca + ry * sa) / dist
+        const v = (-rx * sa + ry * ca) / dist
+        t = Math.abs(u) + Math.abs(v)
+      } else {
+        t = (rx * dx + ry * dy) / dist2
+      }
+      const [r, g, b, a] = interpolateGradientStop(parsed, t, hsl)
+      const j = (yy * w + xx) * 4
+      img.data[j] = r
+      img.data[j + 1] = g
+      img.data[j + 2] = b
+      img.data[j + 3] = a
+    }
+  }
+  c.putImageData(img, 0, 0)
+}
+
 function buildStops(type: string, reverse: boolean, transparency = true, opts?: Record<string, any>): [number, string][] {
   const fg = getFgColor(), bg = getBgColor()
   let stops: [number, string][]
@@ -34,9 +163,9 @@ function buildStops(type: string, reverse: boolean, transparency = true, opts?: 
   else if (type === 'custom') {
     const mid = clamp((Number(opts?.customMidpoint) || 50) / 100, .01, .99)
     stops = [
-      [0, String(opts?.customStart || '#000000')],
-      [mid, String(opts?.customMid || '#808080')],
-      [1, String(opts?.customEnd || '#ffffff')],
+      [0, colorWithOpacity(String(opts?.customStart || '#000000'), Number(opts?.customStartOpacity ?? 100), transparency)],
+      [mid, colorWithOpacity(String(opts?.customMid || '#808080'), Number(opts?.customMidOpacity ?? 100), transparency)],
+      [1, colorWithOpacity(String(opts?.customEnd || '#ffffff'), Number(opts?.customEndOpacity ?? 100), transparency)],
     ]
   } else stops = [[0, fg], [1, bg]]
   return reverse ? stops.map(([p, c]) => [1 - p, c] as [number, string]).reverse() : stops
@@ -61,6 +190,10 @@ function paintGradient(c: CanvasRenderingContext2D, w: number, h: number, x0: nu
   const mode = opts.mode ?? 'linear'
   const stops = buildStops(opts.type ?? 'fg-bg', opts.reverse === true, opts.transparency !== false, opts)
   const angle = Math.atan2(y1 - y0, x1 - x0)
+  if (opts.interpolation === 'hsl') {
+    paintManualGradient(c, w, h, x0, y0, x1, y1, mode, stops, true)
+    return
+  }
   let grad: CanvasGradient
   if (mode === 'diamond') {
     const dist = Math.max(1, Math.hypot(x1 - x0, y1 - y0))
