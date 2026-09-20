@@ -249,8 +249,14 @@ export class Engine {
     const h = doc.history
     h.states = h.states.slice(0, h.index + 1)
     h.states.push(st)
-    while (h.states.length > MAX_HISTORY) h.states.shift()
+    while (h.states.length > MAX_HISTORY) {
+      h.states.shift()
+      if (typeof doc.historyBrushSourceIndex === 'number') doc.historyBrushSourceIndex--
+    }
     h.index = h.states.length - 1
+    if (typeof doc.historyBrushSourceIndex === 'number') {
+      doc.historyBrushSourceIndex = clamp(doc.historyBrushSourceIndex, 0, Math.max(0, h.states.length - 1))
+    }
     doc.dirty = true
   }
 
