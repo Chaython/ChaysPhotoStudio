@@ -5,7 +5,7 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec,
-  ChannelView, BrushSettings, BlendMode,
+  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
@@ -269,6 +269,7 @@ export class Engine {
       width: doc.width, height: doc.height,
       channelView: doc.channelView,
       savedChannels: doc.savedChannels.map(c => ({ ...c })),
+      savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
     }
   }
 
@@ -279,6 +280,9 @@ export class Engine {
     doc.width = st.width; doc.height = st.height
     doc.channelView = st.channelView
     doc.savedChannels = st.savedChannels.map((c: any) => ({ ...c }))
+    doc.savedPaths = Array.isArray(st.savedPaths)
+      ? st.savedPaths.map((p: any) => ({ ...p, anchors: Array.isArray(p.anchors) ? p.anchors.map((a: any) => ({ ...a })) : [] }))
+      : []
     doc._stroke = null; doc._strokeLayerId = null; doc._strokeBlendMode = 'normal'; doc._strokeBbox = null
     doc.previewFilter = null; doc.previewAdjustment = null
     doc._epoch++
@@ -1440,6 +1444,91 @@ export class Engine {
     invalidateFlat(doc)
     this.pushHistory('Toggle Smart Filter')
     this.emit()
+  }
+
+  // ================================================== paths
+  addSavedPath(path: Omit<SavedPath, 'id'> & { id?: string }, label = 'New Path'): SavedPath | null {
+    const doc = this.activeDoc
+    if (!doc) return null
+    const made: SavedPath = {
+      id: path.id || uid(),
+      name: path.name || `Path ${(doc.savedPaths?.length ?? 0) + 1}`,
+      anchors: path.anchors.map((a: PathAnchor) => ({ ...a })),
+      closed: !!path.closed,
+      visible: path.visible !== false,
+    }
+    doc.savedPaths = [...(doc.savedPaths ?? []), made]
+    this.pushHistory(label)
+    this.emit()
+    return made
+  }
+
+  updateSavedPath(id: string, patch: Partial<Omit<SavedPath, 'id' | 'anchors'>> & { anchors?: PathAnchor[] }, label = 'Edit Path') {
+    const doc = this.activeDoc
+    if (!doc) return
+    const paths = doc.savedPaths ?? []
+    const i = paths.findIndex(p => p.id === id)
+    if (i < 0) return
+    const next = paths.slice()
+    next[i] = {
+      ...next[i],
+      ...patch,
+      anchors: patch.anchors ? patch.anchors.map(a => ({ ...a })) : next[i].anchors.map(a => ({ ...a })),
+    }
+    doc.savedPaths = next
+    this.pushHistory(label)
+    this.emit()
+  }
+
+  duplicateSavedPath(id: string): SavedPath | null {
+    const doc = this.activeDoc
+    const src = doc?.savedPaths?.find(p => p.id === id)
+    if (!doc || !src) return null
+    return this.addSavedPath({
+      name: `${src.name} copy`,
+      anchors: src.anchors.map(a => ({ ...a })),
+      closed: src.closed,
+      visible: src.visible,
+    }, 'Duplicate Path')
+  }
+
+  deleteSavedPath(id: string) {
+    const doc = this.activeDoc
+    if (!doc?.savedPaths?.some(p => p.id === id)) return
+    doc.savedPaths = doc.savedPaths.filter(p => p.id !== id)
+    this.pushHistory('Delete Path')
+    this.emit()
+  }
+
+  savedPathToSelection(id: string, mode: SelectionCombine = 'new') {
+    const doc = this.activeDoc
+    const path = doc?.savedPaths?.find(p => p.id === id)
+    if (!doc || !path || path.anchors.length < 2) return
+    const mask = createCanvas(doc.width, doc.height)
+    const c = ctx2d(mask)
+    const a = path.anchors
+    c.fillStyle = '#fff'
+    c.beginPath()
+    c.moveTo(a[0].x, a[0].y)
+    for (let i = 1; i < a.length; i++) {
+      const p0 = a[i - 1], p1 = a[i]
+      c.bezierCurveTo(
+        p0.x + p0.outX, p0.y + p0.outY,
+        p1.x + p1.inX, p1.y + p1.inY,
+        p1.x, p1.y,
+      )
+    }
+    if (path.closed && a.length >= 2) {
+      const p0 = a[a.length - 1], p1 = a[0]
+      c.bezierCurveTo(
+        p0.x + p0.outX, p0.y + p0.outY,
+        p1.x + p1.inX, p1.y + p1.inY,
+        p1.x, p1.y,
+      )
+      c.closePath()
+    }
+    c.fill()
+    this.setSelectionMask(mask, mode, 'Path Selection')
   }
 
   // ================================================== selection
