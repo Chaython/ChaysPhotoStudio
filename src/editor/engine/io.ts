@@ -126,6 +126,7 @@ export interface SerializedProject {
     activeLayerId?: string | null
     historyBrushSourceIndex?: number
     colorSamplers?: { id: string; x: number; y: number }[]
+    savedPaths?: import('../types').SavedPath[]
   }
   layers: SerializedLayer[]
   selection?: { bounds: any; mask: string } | null
@@ -156,6 +157,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       frames: doc.frames ? structuredClone(doc.frames) : undefined, activeLayerId: doc.activeLayerId,
       historyBrushSourceIndex: doc.historyBrushSourceIndex ?? 0,
       colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
+      savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
     },
     layers,
     selection: doc.selection ? { bounds: { ...doc.selection.bounds }, mask: toDataURL(doc.selection.mask) } : null,
@@ -231,6 +233,24 @@ export async function openSerializedProject(project: SerializedProject, label = 
           .filter(s => s && Number.isFinite(s.x) && Number.isFinite(s.y))
           .slice(0, 10)
           .map(s => ({ id: typeof s.id === 'string' ? s.id : uid(), x: Number(s.x), y: Number(s.y) }))
+      : [],
+    savedPaths: Array.isArray(project.doc.savedPaths)
+      ? project.doc.savedPaths
+          .filter(p => p && Array.isArray(p.anchors))
+          .map(p => ({
+            id: typeof p.id === 'string' && p.id ? p.id : uid(),
+            name: typeof p.name === 'string' && p.name ? p.name : 'Path',
+            closed: !!p.closed,
+            visible: p.visible !== false,
+            anchors: p.anchors
+              .filter(a => a && Number.isFinite(a.x) && Number.isFinite(a.y))
+              .map(a => ({
+                x: Number(a.x), y: Number(a.y),
+                inX: Number(a.inX) || 0, inY: Number(a.inY) || 0,
+                outX: Number(a.outX) || 0, outY: Number(a.outY) || 0,
+                pair: a.pair !== false,
+              })),
+          }))
       : [],
     dirty: false, previewFilter: null, previewAdjustment: null,
     frames: Array.isArray(project.doc.frames) ? structuredClone(project.doc.frames) : undefined,
