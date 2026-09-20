@@ -11,6 +11,7 @@ import {
   getOptions, getBgColor, getFgColor, regionProcess, walkDabs, drawBrushCursor,
 } from './shared'
 import { clamp, ctx2d, hexToRgb, rgbToHsv, hsvToRgb } from '../utils/canvas'
+import { rgbToLab } from '../image-ops/color'
 
 type RGB = [number, number, number]
 
@@ -42,7 +43,15 @@ function sampleForDab(id: string, x: number, y: number): RGB | null {
   return pixelAtDoc(id, x, y) ?? lockedSample
 }
 
-function colorDistance(r: number, g: number, b: number, ref: RGB): number {
+function colorDistance(r: number, g: number, b: number, ref: RGB, perceptual: boolean): number {
+  if (perceptual) {
+    const a = [0, 0, 0], bb = [0, 0, 0]
+    rgbToLab(r, g, b, a)
+    rgbToLab(ref[0], ref[1], ref[2], bb)
+    const dL = a[0] - bb[0], da = a[1] - bb[1], db = a[2] - bb[2]
+    // Delta-E-ish 0..100 control space.
+    return Math.min(100, Math.sqrt(dL * dL + da * da + db * db))
+  }
   const dr = r - ref[0], dg = g - ref[1], db = b - ref[2]
   return Math.sqrt(dr * dr * .2126 + dg * dg * .7152 + db * db * .0722) / 2.55
 }
@@ -104,7 +113,9 @@ function dab(x: number, y: number, p: PointerInfo) {
   if (!lockedSample) lockedSample = sample
 
   const [fr, fg, fb] = hexToRgb(getFgColor())
-  const [fh, fs] = rgbToHsv(fr, fg, fb)
+  const [fh, fs, fv] = rgbToHsv(fr, fg, fb)
+  const mode = String(opts.mode ?? 'color')
+  const perceptual = opts.perceptual !== false
   const tolerance = clamp(Number(opts.tolerance) || 0, 0, 100)
   const opacity = clamp((Number(opts.opacity) || 100) / 100, 0, 1)
   const limits = String(opts.limits ?? 'find-edges')
@@ -122,15 +133,20 @@ function dab(x: number, y: number, p: PointerInfo) {
           const edge = edgeStrength(d, rw, rh, px, py)
           threshold *= 1 - Math.min(.6, edge / 100 * .6)
         }
-        if (colorDistance(d[j], d[j + 1], d[j + 2], sample) <= threshold) match[i] = 1
+        if (colorDistance(d[j], d[j + 1], d[j + 2], sample, perceptual) <= threshold) match[i] = 1
       }
     }
     const allowed = limits === 'contiguous' ? contiguousComponent(match, rw, rh, falloff) : match
     for (let i = 0; i < allowed.length; i++) {
       if (!allowed[i]) continue
       const j = i * 4
-      const [, , vv] = rgbToHsv(d[j], d[j + 1], d[j + 2])
-      const [rr, gg, bb] = hsvToRgb(fh, fs, vv)
+      const [oh, os, ov] = rgbToHsv(d[j], d[j + 1], d[j + 2])
+      let nh = oh, ns = os, nv = ov
+      if (mode === 'hue') nh = fh
+      else if (mode === 'saturation') ns = fs
+      else if (mode === 'luminosity') nv = fv
+      else { nh = fh; ns = fs } // Color mode preserves original brightness.
+      const [rr, gg, bb] = hsvToRgb(nh, ns, nv)
       const a = falloff[i] * opacity
       if (a <= .001) continue
       d[j] = d[j] * (1 - a) + rr * a
