@@ -126,7 +126,62 @@ async function runUxpBatchPlay(descriptors: any[]): Promise<any[]> {
       out.push({})
     } else if (obj === 'flip') {
       const axis = String(d.axis?._value ?? d.axis ?? 'horizontal').toLowerCase()
-      engine.flipCanvas(axis.includes('vertical') ? 'vertical' : 'horizontal'); out.push({})
+      const targetLayer = Array.isArray(d?._target) && d._target.some((t: any) => t?._ref === 'layer')
+      if (targetLayer && layer) engine.flipLayer(layer.id, axis.includes('vertical') ? 'vertical' : 'horizontal')
+      else engine.flipCanvas(axis.includes('vertical') ? 'vertical' : 'horizontal')
+      out.push({})
+    } else if (obj === 'show' || obj === 'hide') {
+      if (layer) engine.setLayerProps(layer.id, { visible: obj === 'show' }, { label: 'UXP Plugin' })
+      out.push({})
+    } else if (obj === 'selectAll') {
+      engine.selectAll(); out.push({})
+    } else if (obj === 'deselect' || obj === 'setd') {
+      engine.deselect(); out.push({})
+    } else if (obj === 'inverse' || obj === 'inverseSelection') {
+      engine.invertSelection(); out.push({})
+    } else if (obj === 'feather') {
+      const px = Number(d.radius?._value ?? d.radius ?? d.feather?._value ?? d.feather ?? 0)
+      if (px > 0) engine.selectionModify('feather', px)
+      out.push({})
+    } else if (obj === 'expand') {
+      const px = Number(d.by?._value ?? d.by ?? d.radius?._value ?? d.radius ?? 0)
+      if (px > 0) engine.selectionModify('grow', px)
+      out.push({})
+    } else if (obj === 'contract') {
+      const px = Number(d.by?._value ?? d.by ?? d.radius?._value ?? d.radius ?? 0)
+      if (px > 0) engine.selectionModify('contract', px)
+      out.push({})
+    } else if (obj === 'crop') {
+      const n = (v: any) => typeof v === 'number' ? v : Number(v?._value ?? v?.value ?? v)
+      const b = d.to ?? d.bounds ?? d
+      let left = n(b.left ?? b.x), top = n(b.top ?? b.y)
+      let right = n(b.right), bottom = n(b.bottom)
+      const width = n(b.width), height = n(b.height)
+      if (!Number.isFinite(left)) left = doc.selection?.bounds.x ?? 0
+      if (!Number.isFinite(top)) top = doc.selection?.bounds.y ?? 0
+      if (!Number.isFinite(right)) right = Number.isFinite(width) ? left + width : (doc.selection ? doc.selection.bounds.x + doc.selection.bounds.w : doc.width)
+      if (!Number.isFinite(bottom)) bottom = Number.isFinite(height) ? top + height : (doc.selection ? doc.selection.bounds.y + doc.selection.bounds.h : doc.height)
+      if (right > left && bottom > top) engine.cropTo({ x: left, y: top, w: right - left, h: bottom - top }, { deletePixels: d.delete === true })
+      out.push({ width: doc.width, height: doc.height })
+    } else if (obj === 'move' && layer) {
+      const to = d.to ?? {}
+      const targetIndex = Number(to._index ?? to.index)
+      if (Number.isFinite(targetIndex)) {
+        // Photoshop layer indices are effectively top-oriented in many
+        // descriptors; accept both explicit index and relative ordinal forms.
+        engine.reorderLayer(layer.id, Math.max(0, Math.min(doc.layers.length - 1, Math.round(targetIndex))))
+      } else {
+        const delta = d.delta ?? d.offset ?? {}
+        const x = Number(delta.horizontal?._value ?? delta.horizontal ?? delta.x?._value ?? delta.x ?? 0)
+        const y = Number(delta.vertical?._value ?? delta.vertical ?? delta.y?._value ?? delta.y ?? 0)
+        if (Number.isFinite(x) && Number.isFinite(y) && (x || y)) engine.moveLayerPixels(layer.id, x, y)
+      }
+      out.push({})
+    } else if (obj === 'selectNoLayers') {
+      doc.activeLayerId = null
+      doc.selectedLayerIds = []
+      engine.emit()
+      out.push({})
     } else {
       throw new Error(`Unsupported UXP batchPlay action: ${obj || '(unknown)'}`)
     }
