@@ -40,6 +40,7 @@ for (const appDir of appDirs) {
     path.join('.next', 'server'),
     path.join('.next', 'static'),
     'public',
+    path.join('server_modules', 'next', 'package.json'),
   ]
   for (const rel of required) {
     if (!fs.existsSync(path.join(appDir, rel))) fail(`missing ${path.relative(ROOT, path.join(appDir, rel))}`)
@@ -50,5 +51,8 @@ for (const appDir of appDirs) {
   const names = fs.readdirSync(chunks)
   if (!names.some(n => n.endsWith('.js'))) fail(`no JavaScript chunks in ${path.relative(ROOT, chunks)}`)
   if (!names.some(n => n.endsWith('.css'))) fail(`no CSS chunks in ${path.relative(ROOT, chunks)}`)
-  console.log(`verify-electron-package: OK — ${path.relative(ROOT, appDir)} (${names.length} top-level chunks)`)
+  if (fs.existsSync(path.join(appDir, 'node_modules'))) {
+    fail(`unexpected prunable node_modules remained in ${path.relative(ROOT, appDir)}`)
+  }
+  console.log(`verify-electron-package: OK — ${path.relative(ROOT, appDir)} (${names.length} top-level chunks; traced runtime preserved)`)
 }
