@@ -567,13 +567,49 @@ function finalizeLasso() {
   for (let i = 0, j = 3; i < b.length; i++, j += 4) md.data[j] = b[i]
   putImageData(mask, md)
   lassoMask = mask
+  const patchOpts = getOptions('patch')
+  if (patchOpts.heal === 'pattern') {
+    commitPatternPatch()
+    return
+  }
   patchPhase = 'moving'
   moveDelta = { x: 0, y: 0 }
-  const direction = getOptions('patch').direction ?? 'source'
+  const direction = patchOpts.direction ?? 'source'
   engine.ui?.toast(direction === 'destination'
     ? 'Now drag the selected good pixels over the destination and release'
     : 'Now drag the patch to a source area and release', 'info')
   engine.requestRender()
+}
+
+function commitPatternPatch() {
+  const doc = engine.activeDoc
+  const layer = engine.activeLayer
+  if (!doc || !layer || !lassoMask) { resetPatch(); return }
+  const opts = getOptions('patch')
+  const l = engine.mutateLayerPixels(layer.id)
+  if (!l?.canvas) { resetPatch(); return }
+
+  const pattern = createCanvas(doc.width, doc.height)
+  const pc = ctx2d(pattern)
+  paintBuiltinPattern(pc, doc.width, doc.height, {
+    kind: String(opts.pattern ?? 'checker'),
+    scale: clamp((Number(opts.patternScale) || 100) / 100, .25, 4),
+    offsetX: Number(opts.patternOffsetX) || 0,
+    offsetY: Number(opts.patternOffsetY) || 0,
+    fg: getFgColor(),
+    bg: getBgColor(),
+    originX: 0,
+    originY: 0,
+  })
+  pc.globalCompositeOperation = 'destination-in'
+  pc.drawImage(lassoMask, 0, 0)
+  if (doc.selection) pc.drawImage(doc.selection.mask, 0, 0)
+  pc.globalCompositeOperation = 'source-over'
+
+  ctx2d(l.canvas).drawImage(pattern, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
+  resetPatch()
+  engine.pushHistory('Patch Pattern')
+  engine.emit()
 }
 
 export const patchTool: Tool = {
