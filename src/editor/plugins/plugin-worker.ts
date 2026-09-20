@@ -112,6 +112,51 @@ function makePluginDataFile(name, zphoto) {
   }
 }
 
+function makeUxpImageData(payload) {
+  const raw = payload && (payload.data ?? payload.rgba)
+  const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw || [])
+  const width = Number(payload && payload.width) || 0
+  const height = Number(payload && payload.height) || 0
+  const imageData = {
+    width, height,
+    colorSpace: 'RGB',
+    colorProfile: 'sRGB IEC61966-2.1',
+    components: 4,
+    componentSize: 8,
+    hasAlpha: true,
+    async getData() { return bytes.slice() },
+    dispose() {},
+  }
+  return {
+    imageData,
+    sourceBounds: payload && payload.sourceBounds ? payload.sourceBounds : { left: 0, top: 0, right: width, bottom: height },
+    width, height,
+    colorSpace: imageData.colorSpace,
+    components: imageData.components,
+    componentSize: imageData.componentSize,
+    hasAlpha: true,
+    async getData() { return bytes.slice() },
+    dispose() {},
+  }
+}
+
+async function normalizeUxpImageData(value) {
+  const src = value && value.imageData ? value.imageData : value
+  if (!src) throw new Error('photoshop.imaging.putPixels requires imageData')
+  let data
+  if (typeof src.getData === 'function') data = await src.getData()
+  else data = src.data ?? src.rgba
+  const bytes = data instanceof Uint8Array || data instanceof Uint8ClampedArray
+    ? new Uint8Array(data)
+    : new Uint8Array(data || [])
+  const width = Number(src.width ?? value.width) || 0
+  const height = Number(src.height ?? value.height) || 0
+  if (width < 1 || height < 1 || bytes.length < width * height * 4) {
+    throw new Error('photoshop.imaging imageData must contain 8-bit RGBA pixels')
+  }
+  return { width, height, data: bytes.slice(0, width * height * 4) }
+}
+
 function makeUxpRequire(zphoto) {
   const entrypoints = {
     setup(spec) {
@@ -129,6 +174,22 @@ function makeUxpRequire(zphoto) {
   const photoshop = {
     action: { batchPlay: (descriptors, _options) => rpc('uxp.batchPlay', [descriptors || []]) },
     core: { executeAsModal: (fn, _options) => Promise.resolve().then(() => fn({ hostControl: {} })) },
+    imaging: {
+      async getPixels(options = {}) {
+        return makeUxpImageData(await rpc('uxp.imaging.getPixels', [options || {}]))
+      },
+      async putPixels(options = {}) {
+        const image = await normalizeUxpImageData(options.imageData ?? options)
+        return rpc('uxp.imaging.putPixels', [{ ...options, imageData: image }])
+      },
+      async getSelection(options = {}) {
+        return makeUxpImageData(await rpc('uxp.imaging.getSelection', [options || {}]))
+      },
+      async putSelection(options = {}) {
+        const image = await normalizeUxpImageData(options.imageData ?? options)
+        return rpc('uxp.imaging.putSelection', [{ ...options, imageData: image }])
+      },
+    },
     app: {
       get activeDocument() {
         // UXP's real DOM is synchronous. We expose the subset as async methods
