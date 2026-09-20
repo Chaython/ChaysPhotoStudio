@@ -2192,6 +2192,11 @@ export class Engine {
       ctx2d(next).drawImage(ch.mask, -x, -y)
       ch.mask = next; ch._v++
     }
+    if (doc.colorSamplers?.length) {
+      doc.colorSamplers = doc.colorSamplers
+        .map(s => ({ ...s, x: s.x - x, y: s.y - y }))
+        .filter(s => s.x >= 0 && s.y >= 0 && s.x < w && s.y < h)
+    }
     doc.width = w; doc.height = h
     doc._epoch++
     invalidateFlat(doc)
@@ -2232,6 +2237,11 @@ export class Engine {
       if (l.shape) { l.shape.x += dx; l.shape.y += dy }
       l._v++; l._mv++
     }
+    if (doc.colorSamplers?.length) {
+      doc.colorSamplers = doc.colorSamplers
+        .map(s => ({ ...s, x: s.x + dx, y: s.y + dy }))
+        .filter(s => s.x >= 0 && s.y >= 0 && s.x < w && s.y < h)
+    }
     doc.width = w; doc.height = h
     doc._epoch++
     invalidateFlat(doc)
@@ -2263,6 +2273,9 @@ export class Engine {
     }
     for (const ch of doc.savedChannels) {
       ch.mask = resampleCanvas(ch.mask, w, h); ch._v++
+    }
+    if (doc.colorSamplers?.length) {
+      doc.colorSamplers = doc.colorSamplers.map(s => ({ ...s, x: s.x * sx, y: s.y * sy }))
     }
     doc.width = Math.round(w); doc.height = Math.round(h)
     doc._epoch++
@@ -2342,6 +2355,9 @@ export class Engine {
       ch.mask = await imageOps.lanczosResample(ch.mask, w, h)
       ch._v++
     }
+    if (doc.colorSamplers?.length) {
+      doc.colorSamplers = doc.colorSamplers.map(s => ({ ...s, x: s.x * sx, y: s.y * sy }))
+    }
     doc.width = w; doc.height = h
     doc._epoch++
     invalidateFlat(doc)
@@ -2413,6 +2429,12 @@ export class Engine {
     if (doc.selection) {
       doc.selection = { ...doc.selection, mask: rotateCanvasPixels(doc.selection.mask), _v: doc.selection._v + 1 }
     }
+    if (doc.colorSamplers?.length) {
+      doc.colorSamplers = doc.colorSamplers.map(s => {
+        const ox = s.x - doc.width / 2, oy = s.y - doc.height / 2
+        return { ...s, x: w / 2 + ox * rc - oy * rs, y: h / 2 + ox * rs + oy * rc }
+      })
+    }
     doc.width = w; doc.height = h
     doc._epoch++
     invalidateFlat(doc)
@@ -2448,6 +2470,13 @@ export class Engine {
       l._v++; l._mv++
     }
     if (doc.selection) doc.selection = { ...doc.selection, mask: flip(doc.selection.mask), _v: doc.selection._v + 1 }
+    if (doc.colorSamplers?.length) {
+      doc.colorSamplers = doc.colorSamplers.map(s => ({
+        ...s,
+        x: dir === 'horizontal' ? doc.width - 1 - s.x : s.x,
+        y: dir === 'vertical' ? doc.height - 1 - s.y : s.y,
+      }))
+    }
     doc._epoch++
     invalidateFlat(doc)
     this.pushHistory(`Flip Canvas ${dir}`)
