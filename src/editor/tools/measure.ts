@@ -68,6 +68,30 @@ function clearMeasurement(): void {
   engine.pokeOverlay()
 }
 
+export function saveCurrentMeasurement(name?: string): string | null {
+  const active = start && end ? [{ a: { ...start }, b: { ...end } }] : []
+  const all = [...segments.map(s => ({ a: { ...s.a }, b: { ...s.b } })), ...active]
+  if (!all.length) {
+    engine.ui?.toast('Draw a ruler measurement first', 'info')
+    return null
+  }
+  const opts = getOptions(TOOL_ID)
+  const unitRaw = String(opts.unit ?? 'px')
+  const unit = (unitRaw === 'mm' || unitRaw === 'cm' || unitRaw === 'in' ? unitRaw : 'px') as 'px' | 'mm' | 'cm' | 'in'
+  const id = engine.addMeasurement({
+    name,
+    segments: all,
+    unit,
+    pixelsPerUnit: Math.max(.001, Number(opts.pixelsPerUnit) || 1),
+  })
+  if (id) engine.ui?.toast('Measurement saved to Info panel', 'success')
+  return id
+}
+
+export function hasCurrentMeasurement(): boolean {
+  return segments.length > 0 || !!(start && end)
+}
+
 /** Shift constrains to the selected angular increment, preserving length. */
 function constrainAngle(s: Vec, raw: Vec): Vec {
   const dx = raw.x - s.x, dy = raw.y - s.y
