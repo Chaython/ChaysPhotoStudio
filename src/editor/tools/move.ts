@@ -517,26 +517,44 @@ export const moveTool: Tool = {
 
   onPointerUp(p: PointerInfo) {
     // ---- free-transform commit ----
-    if (tdrag && live) {
+    if (tdrag && (live || groupTransform)) {
       const doc = engine.activeDoc
       const t = tdrag
+      const gt = groupTransform
       const moved = Math.abs(t.sx - 1) > 0.002 || Math.abs(t.sy - 1) > 0.002 || Math.abs(t.rotation) > 0.002
       if (doc) doc._liveDrag = null
-      live = null
-      tdrag = null
-      if (moved && doc) {
-        // base first (history entry), then any clipped children (coalesced —
-        // they transform with their base under the same gesture map)
-        const pax = t.mode === 'rotate' ? t.cx : t.ax
-        const pay = t.mode === 'rotate' ? t.cy : t.ay
-        for (let i = 0; i < movingIds.length; i++) {
-          engine.directTransformLayer(movingIds[i], {
-            sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay,
-          }, { skipHistory: i > 0 })
+
+      if (gt) {
+        if (moved && doc) {
+          // Preview already transformed every layer from its clean snapshot;
+          // committing only records ONE history state.
+          engine.pushHistory(gt.ids.length > 1 ? 'Free Transform Layers' : 'Free Transform')
+          engine.emit()
+        } else {
+          for (const snapshot of gt.snapshots) restoreTransformSnapshot(snapshot)
+          engine.requestRender()
         }
+        groupTransform = null
+        live = null
+        tdrag = null
       } else {
-        engine.requestRender()
+        live = null
+        tdrag = null
+        if (moved && doc) {
+          // base first (history entry), then any clipped children (coalesced —
+          // they transform with their base under the same gesture map)
+          const pax = t.mode === 'rotate' ? t.cx : t.ax
+          const pay = t.mode === 'rotate' ? t.cy : t.ay
+          for (let i = 0; i < movingIds.length; i++) {
+            engine.directTransformLayer(movingIds[i], {
+              sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay,
+            }, { skipHistory: i > 0 })
+          }
+        } else {
+          engine.requestRender()
+        }
       }
+
       movingIds = []
       smartGuideX = smartGuideY = null
       return
@@ -636,6 +654,10 @@ export const moveTool: Tool = {
     }
     if (e.key === 'Escape' && tdrag) {
       const doc = engine.activeDoc
+      if (groupTransform) {
+        for (const snapshot of groupTransform.snapshots) restoreTransformSnapshot(snapshot)
+        groupTransform = null
+      }
       if (doc) doc._liveDrag = null
       live = null
       tdrag = null
