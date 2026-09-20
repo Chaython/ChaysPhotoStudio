@@ -49,6 +49,9 @@ interface HealState {
   dabs: { x: number; y: number }[]
 }
 const hst: HealState = { active: false, last: null, ref: null, source: null, orig: null, dabs: [] }
+let healConnectFrom: { x: number; y: number } | null = null
+let healConnectDocId: string | null = null
+let healConnectLayerId: string | null = null
 
 function buildHealingPatternDab(x: number, y: number, radius: number, hardness: number, opts: Record<string, any>) {
   const side = Math.max(4, Math.ceil(radius * 2) + 4)
@@ -114,9 +117,27 @@ export const healingBrushTool: Tool = {
     hst.orig = pre ? cloneCanvas(pre) : null
     hst.active = true
     hst.last = { x: p.docX, y: p.docY }
-    hst.dabs = [{ x: p.docX, y: p.docY }]
+    hst.dabs = []
     if (!patternMode && (opts.aligned === false || !hst.ref)) hst.ref = { x: p.docX, y: p.docY }
-    healDab(p.docX, p.docY, p)
+
+    const canConnect = p.shift && healConnectFrom && healConnectDocId === doc.id && healConnectLayerId === layer.id
+    if (canConnect && healConnectFrom) {
+      const settings = brushSettingsFrom(opts)
+      const spacing = Math.max(1, settings.size * settings.spacing)
+      const line = walkDabs(healConnectFrom.x, healConnectFrom.y, p.docX, p.docY, spacing)
+      for (const q of line) {
+        healDab(q.x, q.y, p)
+        hst.dabs.push(q)
+      }
+      const tail = line[line.length - 1]
+      if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) {
+        healDab(p.docX, p.docY, p)
+        hst.dabs.push({ x: p.docX, y: p.docY })
+      }
+    } else {
+      healDab(p.docX, p.docY, p)
+      hst.dabs.push({ x: p.docX, y: p.docY })
+    }
   },
 
   onPointerMove(p: PointerInfo) {
@@ -137,12 +158,22 @@ export const healingBrushTool: Tool = {
 
   onPointerUp() {
     if (!hst.active) return
+    const docId = engine.activeDoc?.id ?? null
+    const layerId = engine.activeLayer?.id ?? null
+    if (hst.last && docId && layerId) {
+      healConnectFrom = { ...hst.last }
+      healConnectDocId = docId
+      healConnectLayerId = layerId
+    }
     hst.active = false
     hst.last = null
     commitHeal()
   },
 
   onDeactivate() {
+    healConnectFrom = null
+    healConnectDocId = null
+    healConnectLayerId = null
     if (!hst.active) return
     hst.active = false
     hst.last = null
