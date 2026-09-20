@@ -320,6 +320,18 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
                 <canvas ref={maskRef} width={24} height={24} className="w-6 h-6" />
               </div>
             )}
+            {meta.hasVectorMask && (
+              <button
+                className={cn(
+                  'w-6 h-6 rounded-sm border grid place-items-center bg-muted/30 text-primary',
+                  !meta.vectorMaskEnabled && 'opacity-40',
+                )}
+                title={meta.vectorMaskEnabled ? 'Vector mask enabled · click to disable' : 'Vector mask disabled · click to enable'}
+                onClick={e => { e.stopPropagation(); engine.toggleVectorMask(meta.id) }}
+              >
+                <Icons.PenTool size={12} />
+              </button>
+            )}
           </div>
 
           {/* name + badges */}
@@ -385,6 +397,8 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
         <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, false)}><Icons.Square /> Add Mask (Reveal All)</ContextMenuItem>
         {meta.hasMask && <ContextMenuItem onClick={() => engine.deleteLayerMask(meta.id, true)}><Icons.Stamp /> Apply Mask</ContextMenuItem>}
         {meta.hasMask && <ContextMenuItem onClick={() => engine.deleteLayerMask(meta.id, false)}><Icons.Trash2 /> Delete Mask</ContextMenuItem>}
+        {meta.hasVectorMask && <ContextMenuItem onClick={() => engine.toggleVectorMask(meta.id)}><Icons.PenTool /> {meta.vectorMaskEnabled ? 'Disable' : 'Enable'} Vector Mask</ContextMenuItem>}
+        {meta.hasVectorMask && <ContextMenuItem onClick={() => engine.deleteVectorMask(meta.id)}><Icons.Trash2 /> Delete Vector Mask</ContextMenuItem>}
         <ContextMenuItem onClick={() => engine.toggleClipping(meta.id)}><Icons.CornerDownRight /> Toggle Clipping</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.rasterizeLayer(meta.id)}><Icons.Grid2x2 /> Rasterize</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.trimLayerToContent(meta.id)}><Icons.ScanLine /> Trim to Content</ContextMenuItem>
