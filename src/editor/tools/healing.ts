@@ -507,7 +507,10 @@ function finalizeLasso() {
   lassoMask = mask
   patchPhase = 'moving'
   moveDelta = { x: 0, y: 0 }
-  engine.ui?.toast('Now drag the patch to a source area and release', 'info')
+  const direction = getOptions('patch').direction ?? 'source'
+  engine.ui?.toast(direction === 'destination'
+    ? 'Now drag the selected good pixels over the destination and release'
+    : 'Now drag the patch to a source area and release', 'info')
   engine.requestRender()
 }
 
@@ -594,18 +597,27 @@ export const patchTool: Tool = {
       ctx.lineWidth = 1 / view.zoom
       ctx.setLineDash([4 / view.zoom, 3 / view.zoom])
       ctx.stroke(lassoPath)
-      // ghost: source preview at the dragged location
+      // Ghost preview mirrors the actual commit direction.
+      // Source mode: moved outline samples the pixels UNDER the moved outline.
+      // Destination mode: the originally selected pixels travel with the outline.
       const ghostLayer = engine.activeLayer
       const layerCv = ghostLayer ? engine.layerCanvas(ghostLayer.id) : null
       if (layerCv && ghostLayer) {
-        // raster canvases may be offset — register the ghost at its doc rect
         const gox = ghostLayer.kind === 'raster' ? (ghostLayer.offsetX ?? 0) : 0
         const goy = ghostLayer.kind === 'raster' ? (ghostLayer.offsetY ?? 0) : 0
+        const direction = getOptions('patch').direction ?? 'source'
         ctx.save()
         ctx.translate(dx, dy)
         ctx.clip(lassoPath)
         ctx.globalAlpha = 0.55
-        ctx.drawImage(layerCv, gox, goy)
+        if (direction === 'source') {
+          // Keep image coordinates stationary while only the clip path moves.
+          ctx.translate(-dx, -dy)
+          ctx.drawImage(layerCv, gox, goy)
+        } else {
+          // Carry the selected source pixels with the dragged patch.
+          ctx.drawImage(layerCv, gox, goy)
+        }
         ctx.restore()
       }
       ctx.save()
@@ -623,9 +635,12 @@ export const patchTool: Tool = {
       ctx.font = '11px ui-sans-serif, sans-serif'
       ctx.textAlign = 'center'
       ctx.fillStyle = 'rgba(0,0,0,0.75)'
-      ctx.fillText('drag to source · release to apply · Esc cancels', hx + 1, hy + 1)
+      const hint = (getOptions('patch').direction ?? 'source') === 'destination'
+        ? 'drag to destination · release to apply · Esc cancels'
+        : 'drag to source · release to apply · Esc cancels'
+      ctx.fillText(hint, hx + 1, hy + 1)
       ctx.fillStyle = '#4ec9b0'
-      ctx.fillText('drag to source · release to apply · Esc cancels', hx, hy)
+      ctx.fillText(hint, hx, hy)
       ctx.restore()
     } else {
       drawCross(ctx, mouse)
