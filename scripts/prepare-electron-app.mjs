@@ -26,6 +26,18 @@ must(path.join(ROOT, 'build/icons/icon.ico'), 'run `node scripts/gen-icons.mjs` 
 fs.rmSync(DEST, { recursive: true, force: true })
 fs.cpSync(SRC, DEST, { recursive: true })
 
+// electron-builder treats any directory literally named "node_modules" as
+// application dependencies and applies its dependency pruning rules even when
+// it lives under extraResources. The Next standalone server is already traced
+// and complete, so preserve that runtime verbatim under a neutral directory
+// name and expose it through NODE_PATH when the packaged server is launched.
+const tracedModules = path.join(DEST, 'node_modules')
+const serverModules = path.join(DEST, 'server_modules')
+must(tracedModules, 'standalone output is missing traced node_modules')
+fs.rmSync(serverModules, { recursive: true, force: true })
+fs.renameSync(tracedModules, serverModules)
+must(path.join(serverModules, 'next', 'package.json'), 'standalone output is missing the Next runtime')
+
 // quick inventory for the build log
 const count = (dir) => {
   let n = 0
