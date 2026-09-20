@@ -133,15 +133,37 @@ export function CloneSourcePanel() {
         </label>
       </div>
 
+      <div className="grid grid-cols-[72px_1fr_46px] items-center gap-x-2 gap-y-1.5">
+        <label className="text-muted-foreground">Overlay</label>
+        <input
+          type="range" min={0} max={100} step={1}
+          value={Number(opts.overlayOpacity) || 0}
+          onChange={e => set('overlayOpacity', Number(e.target.value))}
+          className="w-full"
+        />
+        <span className="text-right tabular-nums">{Math.round(Number(opts.overlayOpacity) || 0)}%</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1.5">
+        <label className="flex items-center gap-1.5 rounded border border-border px-2 py-1.5 cursor-pointer">
+          <input type="checkbox" checked={opts.overlayAutoHide !== false} onChange={e => set('overlayAutoHide', e.target.checked)} />
+          <span>Auto Hide</span>
+        </label>
+        <label className="flex items-center gap-1.5 rounded border border-border px-2 py-1.5 cursor-pointer">
+          <input type="checkbox" checked={opts.overlayInvert === true} onChange={e => set('overlayInvert', e.target.checked)} />
+          <span>Invert</span>
+        </label>
+      </div>
+
       <button
         className="flex items-center justify-center gap-1.5 rounded border border-border px-2 py-1.5 hover:bg-accent"
-        onClick={() => { set('scale', 100); set('rotate', 0); set('mirrored', false) }}
+        onClick={() => { set('scale', 100); set('rotate', 0); set('mirrored', false); set('overlayOpacity', 65); set('overlayAutoHide', true); set('overlayInvert', false) }}
       >
         <RotateCcw size={12} /> Reset transform
       </button>
 
       <div className="text-[10px] leading-relaxed text-muted-foreground">
-        Scale, rotation and flip affect the sampled source non-destructively. Aligned keeps the source offset between strokes.
+        Scale, rotation, flip and overlay settings are remembered independently for each source slot. Aligned keeps the source offset between strokes.
       </div>
     </div>
   )
