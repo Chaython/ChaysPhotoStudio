@@ -37,6 +37,12 @@ function ratioValue(raw: unknown): number | null {
     const b = Math.max(0.001, Number(opts.ratioH) || 1)
     return a / b
   }
+  if (raw === 'target') {
+    const opts = getOptions('crop')
+    const a = Math.max(1, Number(opts.targetWidth) || 1)
+    const b = Math.max(1, Number(opts.targetHeight) || 1)
+    return a / b
+  }
   const [a, b] = String(raw).split(':').map(Number)
   return a > 0 && b > 0 ? a / b : null
 }
@@ -302,7 +308,11 @@ export const cropTool: Tool = {
     ctx.restore()
 
     ctx.save()
-    const label = `${Math.round(r.w)} × ${Math.round(r.h)} px`
+    const cropOpts = getOptions('crop')
+    const targetText = cropOpts.ratio === 'target'
+      ? ` → ${Math.max(1, Math.round(Number(cropOpts.targetWidth) || 1))} × ${Math.max(1, Math.round(Number(cropOpts.targetHeight) || 1))} px`
+      : ''
+    const label = `${Math.round(r.w)} × ${Math.round(r.h)} px${targetText}`
     ctx.font = '11px monospace'
     const tw = ctx.measureText(label).width + 12
     ctx.fillStyle = 'rgba(0,0,0,0.72)'
@@ -328,7 +338,13 @@ function commitCrop() {
   cropRect = null
   if (r.w < 1 || r.h < 1) { engine.pokeOverlay(); return }
   const opts = getOptions('crop')
-  engine.cropTo(r, { deletePixels: opts.deletePixels !== false })
+  const target = opts.ratio === 'target'
+    ? {
+        targetW: Math.max(1, Math.round(Number(opts.targetWidth) || r.w)),
+        targetH: Math.max(1, Math.round(Number(opts.targetHeight) || r.h)),
+      }
+    : {}
+  engine.cropTo(r, { deletePixels: opts.deletePixels !== false, ...target })
 }
 
 // ============================================================
