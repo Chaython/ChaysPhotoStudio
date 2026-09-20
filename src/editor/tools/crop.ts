@@ -341,6 +341,38 @@ function eyedropRadius(): number {
 let eyedropDragging = false
 let eyedropToBackground = false
 
+function hexRgb(hex: string): [number, number, number] {
+  const s = hex.replace('#', '')
+  const n = Number.parseInt(s.length === 3 ? s.split('').map(ch => ch + ch).join('') : s, 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function rgbHsl(r: number, g: number, b: number): [number, number, number] {
+  let rr = r / 255, gg = g / 255, bb = b / 255
+  const max = Math.max(rr, gg, bb), min = Math.min(rr, gg, bb)
+  let h = 0, s = 0
+  const l = (max + min) / 2
+  const d = max - min
+  if (d > 1e-9) {
+    s = d / (1 - Math.abs(2 * l - 1))
+    if (max === rr) h = 60 * (((gg - bb) / d) % 6)
+    else if (max === gg) h = 60 * (((bb - rr) / d) + 2)
+    else h = 60 * (((rr - gg) / d) + 4)
+    if (h < 0) h += 360
+  }
+  return [h, s * 100, l * 100]
+}
+
+function eyedropHudText(hex: string): string[] {
+  const [r, g, b] = hexRgb(hex)
+  const [h, s, l] = rgbHsl(r, g, b)
+  const mode = String(getOptions('eyedropper').hud ?? 'all')
+  if (mode === 'hex') return [hex.toUpperCase()]
+  if (mode === 'rgb') return [`RGB ${r}, ${g}, ${b}`]
+  if (mode === 'hsl') return [`HSL ${Math.round(h)}°, ${Math.round(s)}%, ${Math.round(l)}%`]
+  return [hex.toUpperCase(), `RGB ${r}, ${g}, ${b}`, `HSL ${Math.round(h)}°, ${Math.round(s)}%, ${Math.round(l)}%`]
+}
+
 function sampleEyedropper(p: PointerInfo, commit: boolean) {
   const opts = getOptions('eyedropper')
   const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite', eyedropRadius())
@@ -373,15 +405,25 @@ export const eyedropperTool: Tool = {
   renderOverlay(ctx, view, w, h, mouse) {
     void view; void w; void h
     if (mouse && eyedropPreview) {
+      const lines = eyedropHudText(eyedropPreview)
       ctx.save()
       ctx.font = '10px ui-monospace, monospace'
-      ctx.fillStyle = 'rgba(10,10,12,.82)'
-      ctx.fillRect(mouse.x + 11, mouse.y - 33, 78, 25)
+      const lineH = 13
+      const textW = Math.max(...lines.map(t => ctx.measureText(t).width))
+      const boxW = Math.max(98, textW + 37)
+      const boxH = Math.max(25, 8 + lines.length * lineH)
+      const bx = mouse.x + 11
+      const by = mouse.y - boxH - 8
+      ctx.fillStyle = 'rgba(10,10,12,.88)'
+      ctx.fillRect(bx, by, boxW, boxH)
+      // sampled-color ring + swatch make subtle changes visible over the image
       ctx.fillStyle = eyedropPreview
-      ctx.fillRect(mouse.x + 15, mouse.y - 29, 17, 17)
-      ctx.strokeStyle = '#fff'; ctx.strokeRect(mouse.x + 14.5, mouse.y - 29.5, 18, 18)
+      ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 8, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke()
+      ctx.fillRect(bx + 4, by + 5, 20, 20)
+      ctx.strokeRect(bx + 3.5, by + 4.5, 21, 21)
       ctx.fillStyle = '#fff'
-      ctx.fillText(eyedropPreview.toUpperCase(), mouse.x + 37, mouse.y - 17)
+      for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 30, by + 13 + i * lineH)
       ctx.restore()
     }
     drawCross(ctx, mouse)
