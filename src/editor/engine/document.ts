@@ -380,7 +380,7 @@ function applyAdjustmentLayerOver(target: HTMLCanvasElement, layer: Layer) {
 
 // ---------- layer preparation (cached) ----------
 export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement | null {
-  const cacheKey = `${doc._epoch}|${layer._v}|${layer._mv}|${layer.maskEnabled ? 1 : 0}|${doc.previewFilter && doc.previewFilter.layerId === layer.id ? JSON.stringify(doc.previewFilter) : ''}|${doc._strokeLayerId === layer.id ? `st${doc._strokeV}` : ''}|${layer.fx ? 'fx' : ''}`
+  const cacheKey = `${doc._epoch}|${layer._v}|${layer._mv}|${layer.maskEnabled ? 1 : 0}|vm${layer.vectorMask?.enabled === false ? 0 : layer.vectorMask ? 1 : 0}|${doc.previewFilter && doc.previewFilter.layerId === layer.id ? JSON.stringify(doc.previewFilter) : ''}|${doc._strokeLayerId === layer.id ? `st${doc._strokeV}` : ''}|${layer.fx ? 'fx' : ''}`
   const anyLayer = layer as any
   if (anyLayer._cacheKey === cacheKey && anyLayer._cache) return anyLayer._cache
 
@@ -452,6 +452,38 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   if (layer.maskEnabled && layer.mask) {
     ctx.globalCompositeOperation = 'destination-in'
     ctx.drawImage(layer.mask, 0, 0)
+    ctx.globalCompositeOperation = 'source-over'
+  }
+
+  // vector mask — rasterized at composition time, so the underlying layer
+  // remains fully editable and the path can be changed without touching pixels.
+  if (layer.vectorMask?.enabled !== false && layer.vectorMask?.anchors?.length >= 2) {
+    const vm = createCanvas(doc.width, doc.height)
+    const vc = ctx2d(vm)
+    const a = layer.vectorMask.anchors
+    vc.fillStyle = '#fff'
+    vc.beginPath()
+    vc.moveTo(a[0].x, a[0].y)
+    for (let i = 1; i < a.length; i++) {
+      const p0 = a[i - 1], p1 = a[i]
+      vc.bezierCurveTo(
+        p0.x + p0.outX, p0.y + p0.outY,
+        p1.x + p1.inX, p1.y + p1.inY,
+        p1.x, p1.y,
+      )
+    }
+    if (layer.vectorMask.closed && a.length >= 2) {
+      const p0 = a[a.length - 1], p1 = a[0]
+      vc.bezierCurveTo(
+        p0.x + p0.outX, p0.y + p0.outY,
+        p1.x + p1.inX, p1.y + p1.inY,
+        p1.x, p1.y,
+      )
+      vc.closePath()
+    }
+    vc.fill()
+    ctx.globalCompositeOperation = 'destination-in'
+    ctx.drawImage(vm, 0, 0)
     ctx.globalCompositeOperation = 'source-over'
   }
 
