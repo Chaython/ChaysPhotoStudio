@@ -6,7 +6,7 @@
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info,
+  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool,
 } from 'lucide-react'
 import { LayersPanel } from './layers-panel'
 import { HistoryPanel, NavigatorPanel, HistogramPanel } from './history-navigator-histogram'
@@ -15,10 +15,11 @@ import { ChannelsPanel, AdjustmentsPanel, ActionsPanel, PropertiesPanel } from '
 import { TimelinePanel } from './timeline-panel'
 import { CloneSourcePanel } from './clone-source-panel'
 import { InfoPanel } from './info-panel'
+import { PathsPanel } from './paths-panel'
 
 export type PanelId =
   | 'color' | 'layers' | 'channels' | 'history' | 'actions'
-  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info'
+  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths'
 
 export interface PanelDef {
   id: PanelId
@@ -82,6 +83,10 @@ export const PANELS: PanelDef[] = [
   {
     id: 'info', label: 'Info', icon: Info, render: InfoPanel,
     defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
+  },
+  {
+    id: 'paths', label: 'Paths', icon: PenTool, render: PathsPanel,
+    defaultFloat: { w: 286, h: 420 }, minFloat: { w: 230, h: 260 }, dockSlot: 'tab',
   },
 ]
 
