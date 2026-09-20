@@ -244,7 +244,8 @@ export async function openSerializedProject(project: SerializedProject, label = 
       ? project.doc.measurements
           .filter(m => m && Array.isArray(m.segments))
           .map(m => {
-            const unit = m.unit === 'mm' || m.unit === 'cm' || m.unit === 'in' ? m.unit : 'px'
+            const unit: import('../types').SavedMeasurement['unit'] =
+              m.unit === 'mm' || m.unit === 'cm' || m.unit === 'in' ? m.unit : 'px'
             const segments = m.segments
               .filter((s: any) => s?.a && s?.b && Number.isFinite(s.a.x) && Number.isFinite(s.a.y) && Number.isFinite(s.b.x) && Number.isFinite(s.b.y))
               .map((s: any) => ({
