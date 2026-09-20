@@ -11,7 +11,7 @@ import { getOptions, drawCross } from './shared'
 import {
   createCanvas, ctx2d, cloneCanvas, getImageData, putImageData, clamp,
 } from '../utils/canvas'
-import { getFlatComposite, invalidateFlat } from '../engine/document'
+import { getFlatComposite, invalidateFlat, newLayer } from '../engine/document'
 import { gaussianBlurChannel } from '../image-ops/core'
 import { frequencyHeal } from './dab-utils'
 import * as imageOps from '../image-ops'
@@ -191,6 +191,37 @@ async function commitMove() {
         frequencyHeal(target, baseData, restrict, lowR)
         rc.putImageData(target, region.x, region.y)
       }
+    }
+
+    if (opts.output === 'new') {
+      // Keep the source layer pristine. Build a transparent effect layer that
+      // contains only the healed source footprint (Move) and destination
+      // footprint. This avoids copying the flattened sampling source into the
+      // new layer when Sample All Layers is enabled.
+      const effectMask = cloneCanvas(destinationMask)
+      if (mode === 'move') {
+        const emc = ctx2d(effectMask)
+        emc.globalCompositeOperation = 'lighter'
+        emc.drawImage(sourceMask, 0, 0)
+        emc.globalCompositeOperation = 'source-over'
+      }
+      const overlay = cloneCanvas(result)
+      const oc = ctx2d(overlay)
+      oc.globalCompositeOperation = 'destination-in'
+      oc.drawImage(effectMask, 0, 0)
+      oc.globalCompositeOperation = 'source-over'
+
+      const out = newLayer('raster', mode === 'move' ? 'Content-Aware Move' : 'Content-Aware Extend', doc.width, doc.height)
+      ctx2d(out.canvas!).drawImage(overlay, 0, 0)
+      const idx = doc.layers.findIndex(l => l.id === layer.id)
+      doc.layers.splice(idx >= 0 ? idx + 1 : doc.layers.length, 0, out)
+      doc.activeLayerId = out.id
+      doc.selectedLayerIds = [out.id]
+      invalidateFlat(doc)
+      engine.pushHistory(mode === 'move' ? 'Content-Aware Move (New Layer)' : 'Content-Aware Extend (New Layer)')
+      engine.emit()
+      reset()
+      return
     }
 
     const l = engine.mutateLayerPixels(layer.id)
