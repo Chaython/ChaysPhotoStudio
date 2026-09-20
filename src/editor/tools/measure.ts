@@ -59,9 +59,10 @@ function publish(): void {
 }
 
 function clearMeasurement(): void {
-  if (!start && !end) return
+  if (!start && !end && !segments.length) return
   start = null
   end = null
+  segments = []
   dragging = false
   publish()
   engine.pokeOverlay()
@@ -120,9 +121,12 @@ export const measureTool: Tool = {
 
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
-    start = { x: p.docX, y: p.docY }
-    end = null
+    const chain = getOptions(TOOL_ID).chain === true
+    if (!chain) segments = []
+    start = chain && segments.length ? { ...segments[segments.length - 1].b } : { x: p.docX, y: p.docY }
+    end = { ...start }
     dragging = true
+    publish()
     engine.pokeOverlay()
   },
 
@@ -130,6 +134,7 @@ export const measureTool: Tool = {
     if (!dragging || !start) return
     const raw = { x: p.docX, y: p.docY }
     end = p.shift ? constrainAngle(start, raw) : raw
+    publish()
     engine.pokeOverlay()
   },
 
