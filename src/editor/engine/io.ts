@@ -126,6 +126,7 @@ export interface SerializedProject {
     activeLayerId?: string | null
     historyBrushSourceIndex?: number
     colorSamplers?: { id: string; x: number; y: number }[]
+    measurements?: import('../types').SavedMeasurement[]
     savedPaths?: import('../types').SavedPath[]
   }
   layers: SerializedLayer[]
@@ -158,6 +159,10 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       frames: doc.frames ? structuredClone(doc.frames) : undefined, activeLayerId: doc.activeLayerId,
       historyBrushSourceIndex: doc.historyBrushSourceIndex ?? 0,
       colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
+      measurements: (doc.measurements ?? []).map(m => ({
+        ...m,
+        segments: m.segments.map(s => ({ a: { ...s.a }, b: { ...s.b } })),
+      })),
       savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
     },
     layers,
@@ -234,6 +239,29 @@ export async function openSerializedProject(project: SerializedProject, label = 
           .filter(s => s && Number.isFinite(s.x) && Number.isFinite(s.y))
           .slice(0, 10)
           .map(s => ({ id: typeof s.id === 'string' ? s.id : uid(), x: Number(s.x), y: Number(s.y) }))
+      : [],
+    measurements: Array.isArray(project.doc.measurements)
+      ? project.doc.measurements
+          .filter(m => m && Array.isArray(m.segments))
+          .map(m => {
+            const unit = m.unit === 'mm' || m.unit === 'cm' || m.unit === 'in' ? m.unit : 'px'
+            const segments = m.segments
+              .filter((s: any) => s?.a && s?.b && Number.isFinite(s.a.x) && Number.isFinite(s.a.y) && Number.isFinite(s.b.x) && Number.isFinite(s.b.y))
+              .map((s: any) => ({
+                a: { x: Number(s.a.x), y: Number(s.a.y) },
+                b: { x: Number(s.b.x), y: Number(s.b.y) },
+              }))
+            return {
+              id: typeof m.id === 'string' && m.id ? m.id : uid(),
+              name: typeof m.name === 'string' && m.name ? m.name : 'Measurement',
+              segments,
+              unit,
+              pixelsPerUnit: Math.max(.001, Number(m.pixelsPerUnit) || 1),
+              totalLengthPx: segments.reduce((sum: number, s: any) => sum + Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y), 0),
+              createdAt: Number.isFinite(m.createdAt) ? Number(m.createdAt) : Date.now(),
+            }
+          })
+          .filter(m => m.segments.length > 0)
       : [],
     savedPaths: Array.isArray(project.doc.savedPaths)
       ? project.doc.savedPaths
