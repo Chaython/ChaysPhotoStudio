@@ -433,10 +433,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const current = { ...(s.toolOptions[tool] ?? {}) }
 
     if (tool === 'clone-stamp') {
-      const fallback = { rotate: 0, scale: 100, mirrored: false }
+      const fallback = { rotate: 0, scale: 100, mirrored: false, showOverlay: true, overlayOpacity: 50 }
       const transforms = { ...(current.sourceTransforms ?? {}) }
 
-      if (key === 'rotate' || key === 'scale' || key === 'mirrored') {
+      if (key === 'rotate' || key === 'scale' || key === 'mirrored' || key === 'showOverlay' || key === 'overlayOpacity') {
         const slot = String(Math.max(1, Math.min(5, Math.round(Number(current.sourceSlot) || 1))))
         transforms[slot] = { ...(transforms[slot] ?? fallback), [key]: value }
         return {
@@ -459,6 +459,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
               rotate: tr.rotate ?? 0,
               scale: tr.scale ?? 100,
               mirrored: tr.mirrored === true,
+              showOverlay: tr.showOverlay !== false,
+              overlayOpacity: Number.isFinite(tr.overlayOpacity) ? tr.overlayOpacity : 50,
               sourceTransforms: transforms,
             },
           },
