@@ -1,5 +1,5 @@
 'use client'
-// Panel registry — single source of truth for the 9 right-dock panels.
+// Panel registry — single source of truth for dockable/floating editor panels.
 // The dock renders tabs from this list; FloatingPanels renders windows from it.
 // NOTE: this module imports panel components (which import the store) — keep it
 // free of store imports to avoid a circular dependency.
