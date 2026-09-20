@@ -1,4 +1,4 @@
-import type { Tool, PointerInfo, ViewportState, Rect } from '../types'
+import type { Tool, PointerInfo, ViewportState, Rect, Layer } from '../types'
 import { engine } from '../engine/engine'
 import { buildLiveDrag } from '../engine/document'
 import { newDrag, drawCross, pickLayerAt, getOptions } from './shared'
@@ -90,6 +90,56 @@ interface TransformDrag {
 }
 
 let tdrag: TransformDrag | null = null
+
+interface GroupTransformState {
+  ids: string[]
+  snapshots: Layer[]
+  rect: Rect
+}
+let groupTransform: GroupTransformState | null = null
+
+function snapshotTransformLayer(layer: Layer): Layer {
+  return {
+    ...layer,
+    transform: layer.transform ? { ...layer.transform } : null,
+    text: layer.text ? { ...layer.text } : null,
+    shape: layer.shape ? {
+      ...layer.shape,
+      pathAnchors: layer.shape.pathAnchors?.map(a => ({ ...a })),
+    } : null,
+    smartFilters: layer.smartFilters.map(sf => ({ ...sf, params: { ...sf.params } })),
+    vectorMask: layer.vectorMask ? {
+      ...layer.vectorMask,
+      anchors: layer.vectorMask.anchors.map(a => ({ ...a })),
+    } : null,
+    fx: layer.fx ? { ...layer.fx } : null,
+    // canvas/source/mask are intentionally retained by reference. Preview
+    // transforms REPLACE them rather than mutating these source canvases.
+    canvas: layer.canvas,
+    source: layer.source,
+    mask: layer.mask,
+  }
+}
+
+function restoreTransformSnapshot(snapshot: Layer) {
+  const layer = engine.layerById(snapshot.id)
+  if (!layer) return
+  const restored = snapshotTransformLayer(snapshot)
+  Object.assign(layer, restored)
+  ;(layer as any)._cache = null
+  ;(layer as any)._cacheKey = ''
+}
+
+function selectedTransformIds(): string[] {
+  const doc = engine.activeDoc
+  if (!doc?.activeLayerId) return []
+  const ids = (doc.selectedLayerIds ?? []).filter(id => {
+    const l = engine.layerById(id)
+    return !!l && !l.locked && l.kind !== 'adjustment'
+  })
+  return ids.length > 1 && ids.includes(doc.activeLayerId) ? ids : []
+}
+
 /** handle currently hovered (cursor management) */
 let hoverHandle: HandleId | null = null
 let lastCursorCss = ''
