@@ -107,8 +107,8 @@ export const TOOL_DEFS: ToolDef[] = [
     { key: 'sampling', label: 'Sampling', type: 'select', options: [{ label: 'Continuous', value: 'continuous' }, { label: 'Once', value: 'once' }, { label: 'Background Swatch', value: 'background' }] },
     { key: 'limits', label: 'Limits', type: 'select', options: [{ label: 'Discontiguous', value: 'discontiguous' }, { label: 'Contiguous', value: 'contiguous' }, { label: 'Find Edges', value: 'find-edges' }] },
     { key: 'pressureSize', label: 'Pen Pressure → Size', type: 'toggle' },
-  ] },  { id: 'history-brush', label: 'History Brush', group: 4, shortcut: 'Y', icon: 'Brush', cursor: 'none', requiresLayer: true, defaults: { size: 45, hardness: 75, opacity: 100, flow: 100, spacing: 15, source: 'previous', pressureFlow: true, pressureSize: false }, options: [
-    { key: 'source', label: 'Source', type: 'select', options: [{ label: 'Previous History State', value: 'previous' }, { label: 'Original State', value: 'original' }] },
+  ] },  { id: 'history-brush', label: 'History Brush', group: 4, shortcut: 'Y', icon: 'Brush', cursor: 'none', requiresLayer: true, defaults: { size: 45, hardness: 75, opacity: 100, flow: 100, spacing: 15, source: 'marked', pressureFlow: true, pressureSize: false }, options: [
+    { key: 'source', label: 'Source', type: 'select', options: [{ label: 'Marked History Source', value: 'marked' }, { label: 'Previous History State', value: 'previous' }, { label: 'Original State', value: 'original' }] },
     { key: 'size', label: 'Size', type: 'slider', min: 1, max: 500, step: 1, unit: 'px' },
     { key: 'hardness', label: 'Hardness', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
     { key: 'opacity', label: 'Opacity', type: 'slider', min: 1, max: 100, step: 1, unit: '%' },
@@ -117,8 +117,8 @@ export const TOOL_DEFS: ToolDef[] = [
     { key: 'pressureFlow', label: 'Pen Pressure → Flow', type: 'toggle' },
     { key: 'pressureSize', label: 'Pen Pressure → Size', type: 'toggle' },
   ] },
-  { id: 'art-history-brush', label: 'Art History Brush', group: 4, shortcut: 'Y', icon: 'Brush', cursor: 'none', requiresLayer: true, defaults: { size: 38, opacity: 100, flow: 70, spacing: 18, source: 'previous', style: 'tight-medium', area: 50, tolerance: 0, pressureFlow: true, pressureSize: false }, options: [
-    { key: 'source', label: 'Source', type: 'select', options: [{ label: 'Previous History State', value: 'previous' }, { label: 'Original State', value: 'original' }] },
+  { id: 'art-history-brush', label: 'Art History Brush', group: 4, shortcut: 'Y', icon: 'Brush', cursor: 'none', requiresLayer: true, defaults: { size: 38, opacity: 100, flow: 70, spacing: 18, source: 'marked', style: 'tight-medium', area: 50, tolerance: 0, pressureFlow: true, pressureSize: false }, options: [
+    { key: 'source', label: 'Source', type: 'select', options: [{ label: 'Marked History Source', value: 'marked' }, { label: 'Previous History State', value: 'previous' }, { label: 'Original State', value: 'original' }] },
     { key: 'style', label: 'Style', type: 'select', options: [{ label: 'Tight Short', value: 'tight-short' }, { label: 'Tight Medium', value: 'tight-medium' }, { label: 'Loose Medium', value: 'loose-medium' }, { label: 'Loose Long', value: 'loose-long' }, { label: 'Curl', value: 'curl' }] },
     { key: 'size', label: 'Brush Size', type: 'slider', min: 2, max: 300, step: 1, unit: 'px' },
     { key: 'area', label: 'Area', type: 'slider', min: 1, max: 200, step: 1, unit: '%' },
