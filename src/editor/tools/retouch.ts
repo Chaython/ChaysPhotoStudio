@@ -39,7 +39,30 @@ function makeRetouch(
   // per-tool stroke state (closure — no cross-tool leakage)
   let active = false
   let last: { x: number; y: number } | null = null
+  let airPos: { x: number; y: number } | null = null
+  let airPointer: PointerInfo | null = null
+  let airTimer: ReturnType<typeof setInterval> | null = null
   let mutated = false
+
+  const stopAirbrush = () => {
+    if (airTimer) clearInterval(airTimer)
+    airTimer = null
+    airPos = null
+    airPointer = null
+  }
+
+  const startAirbrush = () => {
+    const opts = getOptions(id)
+    if (!(id === 'dodge' || id === 'burn' || id === 'sponge') || opts.airbrush !== true) return
+    stopAirbrush()
+    airTimer = setInterval(() => {
+      if (!active || !airPos || !airPointer) return
+      op(airPos.x, airPos.y, airPointer)
+      const doc = engine.activeDoc
+      if (doc) invalidateFlat(doc)
+      engine.requestRender()
+    }, 75)
+  }
   const tool: Tool = {
     id,
     requiresLayer: true,
@@ -71,14 +94,19 @@ function makeRetouch(
       mutated = true
       active = true
       last = { x: p.docX, y: p.docY }
+      airPos = { x: p.docX, y: p.docY }
+      airPointer = p
       onStart?.()
       op(p.docX, p.docY, p)
+      startAirbrush()
       invalidateFlat(doc)
       engine.requestRender()
     },
     onPointerMove(p: PointerInfo) {
       if (!active || !last) return
       const opts = getOptions(id)
+      airPos = { x: p.docX, y: p.docY }
+      airPointer = p
       const spacing = Math.max(2, (opts.size ?? 60) / 6)
       for (const d of walkDabs(last.x, last.y, p.docX, p.docY, spacing)) op(d.x, d.y, p)
       if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
@@ -90,6 +118,7 @@ function makeRetouch(
       if (!active) return
       active = false
       last = null
+      stopAirbrush()
       onEnd?.()
       if (mutated) {
         engine.pushHistory(`${id[0].toUpperCase()}${id.slice(1)} Tool`)
@@ -99,9 +128,10 @@ function makeRetouch(
       retouchContext = null
     },
     onDeactivate() {
-      if (!active) { retouchContext = null; return }
+      if (!active) { stopAirbrush(); retouchContext = null; return }
       active = false
       last = null
+      stopAirbrush()
       onEnd?.()
       if (mutated) {
         engine.pushHistory(`${id[0].toUpperCase()}${id.slice(1)} Tool`)
