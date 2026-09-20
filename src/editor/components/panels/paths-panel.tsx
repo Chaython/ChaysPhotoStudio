@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Copy, Eye, EyeOff, MousePointer2, PenTool, Trash2 } from 'lucide-react'
+import { Copy, Eye, EyeOff, MousePointer2, PenTool, ShieldCheck, Trash2 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import type { SavedPath } from '../../types'
@@ -95,21 +95,32 @@ export function PathsPanel() {
         })}
       </div>
 
-      <div className="grid grid-cols-2 gap-1">
+      <div className="grid grid-cols-3 gap-1">
         <button
-          className="flex items-center justify-center gap-1 rounded border border-border px-1.5 py-1.5 hover:bg-accent disabled:opacity-40"
+          className="flex items-center justify-center gap-1 rounded border border-border px-1 py-1.5 hover:bg-accent disabled:opacity-40"
           disabled={!selected}
           onClick={() => selected && engine.savedPathToSelection(selected.id, 'new')}
           title="Load path as a selection"
         >
-          <MousePointer2 size={11} /> Selection
+          <MousePointer2 size={11} /> Select
         </button>
         <button
-          className="flex items-center justify-center gap-1 rounded border border-border px-1.5 py-1.5 hover:bg-accent disabled:opacity-40"
+          className="flex items-center justify-center gap-1 rounded border border-border px-1 py-1.5 hover:bg-accent disabled:opacity-40"
+          disabled={!selected || !engine.activeLayer || engine.activeLayer.kind === 'adjustment'}
+          onClick={() => {
+            if (!selected || !engine.activeLayer) return
+            engine.addVectorMaskFromPath(engine.activeLayer.id, selected.id)
+          }}
+          title="Use this path as a non-destructive vector mask on the active layer"
+        >
+          <ShieldCheck size={11} /> V.Mask
+        </button>
+        <button
+          className="flex items-center justify-center gap-1 rounded border border-border px-1 py-1.5 hover:bg-accent disabled:opacity-40"
           disabled={!selected}
           onClick={() => selected && engine.duplicateSavedPath(selected.id)}
         >
-          <Copy size={11} /> Duplicate
+          <Copy size={11} /> Copy
         </button>
       </div>
 
@@ -136,7 +147,7 @@ export function PathsPanel() {
       </div>
 
       <div className="text-[9px] leading-relaxed text-muted-foreground">
-        Double-click a path to edit it. Saved paths persist in project files and can be converted to selections without rasterizing.
+        Double-click a path to edit it. Saved paths persist in project files, convert to selections, or become editable non-destructive vector masks.
       </div>
     </div>
   )
