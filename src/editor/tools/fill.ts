@@ -17,6 +17,7 @@ import { perceptualWandMask } from '../image-ops/wand'
 import { ditherGradient } from './dab-utils'
 import { getFlatComposite } from '../engine/document'
 import { BLEND_GCO } from '../constants/tools'
+import { paintBuiltinPattern } from './patterns'
 
 // ============================================================
 // Gradient
@@ -370,57 +371,14 @@ function paintBucketPattern(
   opts: Record<string, any>,
   swapColors: boolean,
 ) {
-  const scale = clamp((Number(opts.patternScale) || 100) / 100, .25, 4)
-  const tileSize = Math.max(4, Math.round(16 * scale))
-  const tile = createCanvas(tileSize, tileSize)
-  const tc = ctx2d(tile)
-  const fg = swapColors ? getBgColor() : getFgColor()
-  const bg = swapColors ? getFgColor() : getBgColor()
-  const kind = String(opts.pattern ?? 'checker')
-  tc.fillStyle = bg
-  tc.fillRect(0, 0, tileSize, tileSize)
-
-  if (kind === 'checker') {
-    const half = tileSize / 2
-    tc.fillStyle = fg
-    tc.fillRect(0, 0, half, half)
-    tc.fillRect(half, half, tileSize - half, tileSize - half)
-  } else if (kind === 'diagonal') {
-    tc.strokeStyle = fg
-    tc.lineWidth = Math.max(1, tileSize * .22)
-    tc.lineCap = 'square'
-    for (let x = -tileSize; x <= tileSize * 2; x += tileSize / 2) {
-      tc.beginPath()
-      tc.moveTo(x, tileSize)
-      tc.lineTo(x + tileSize, 0)
-      tc.stroke()
-    }
-  } else if (kind === 'dots') {
-    tc.fillStyle = fg
-    const rr = Math.max(1, tileSize * .16)
-    for (const [x, y] of [[tileSize * .25, tileSize * .25], [tileSize * .75, tileSize * .75]]) {
-      tc.beginPath()
-      tc.arc(x, y, rr, 0, Math.PI * 2)
-      tc.fill()
-    }
-  } else {
-    tc.strokeStyle = fg
-    tc.lineWidth = Math.max(1, tileSize * .10)
-    tc.beginPath()
-    tc.moveTo(0, 0); tc.lineTo(tileSize, 0)
-    tc.moveTo(0, 0); tc.lineTo(0, tileSize)
-    tc.stroke()
-  }
-
-  const pattern = ctx.createPattern(tile, 'repeat')
-  if (!pattern) return
-  const ox = Number(opts.patternOffsetX) || 0
-  const oy = Number(opts.patternOffsetY) || 0
-  ctx.save()
-  ctx.translate(ox, oy)
-  ctx.fillStyle = pattern
-  ctx.fillRect(-ox, -oy, w, h)
-  ctx.restore()
+  paintBuiltinPattern(ctx, w, h, {
+    kind: String(opts.pattern ?? 'checker'),
+    scale: clamp((Number(opts.patternScale) || 100) / 100, .25, 4),
+    offsetX: Number(opts.patternOffsetX) || 0,
+    offsetY: Number(opts.patternOffsetY) || 0,
+    fg: swapColors ? getBgColor() : getFgColor(),
+    bg: swapColors ? getFgColor() : getBgColor(),
+  })
 }
 
 // ============================================================
