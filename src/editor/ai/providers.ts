@@ -7,7 +7,7 @@ export const AI_PROVIDERS: AiProviderDescriptor[] = [
   {
     id: 'builtin', name: 'Built-in / Local', kind: 'builtin', local: true,
     description: 'Private on-device selections, masks, content-aware remove, smart upscale, depth, denoise, relight and vector-trace assists using the editor engine.',
-    capabilities: ['select-subject', 'remove-background', 'smart-remove', 'upscale', 'depth', 'denoise', 'relight', 'vectorize'],
+    capabilities: ['select-subject', 'remove-background', 'smart-remove', 'upscale', 'depth', 'denoise', 'restore-face', 'relight', 'colorize', 'vectorize'],
   },
   {
     id: 'comfyui', name: 'ComfyUI', kind: 'comfyui', local: true,
