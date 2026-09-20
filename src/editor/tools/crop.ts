@@ -5,6 +5,7 @@ import { getOptions, newDrag, drawCross, drawDashedRect } from './shared'
 import { rectFromPoints, clamp } from '../utils/canvas'
 import { useEditorStore } from '../store'
 import { snapToGuides } from '../engine/guides'
+import { colorReadoutLines } from './color-readout'
 
 function snapPoint(x: number, y: number): { x: number; y: number } {
   const doc = engine.activeDoc
@@ -341,38 +342,6 @@ function eyedropRadius(): number {
 let eyedropDragging = false
 let eyedropToBackground = false
 
-function hexRgb(hex: string): [number, number, number] {
-  const s = hex.replace('#', '')
-  const n = Number.parseInt(s.length === 3 ? s.split('').map(ch => ch + ch).join('') : s, 16)
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
-}
-
-function rgbHsl(r: number, g: number, b: number): [number, number, number] {
-  let rr = r / 255, gg = g / 255, bb = b / 255
-  const max = Math.max(rr, gg, bb), min = Math.min(rr, gg, bb)
-  let h = 0, s = 0
-  const l = (max + min) / 2
-  const d = max - min
-  if (d > 1e-9) {
-    s = d / (1 - Math.abs(2 * l - 1))
-    if (max === rr) h = 60 * (((gg - bb) / d) % 6)
-    else if (max === gg) h = 60 * (((bb - rr) / d) + 2)
-    else h = 60 * (((rr - gg) / d) + 4)
-    if (h < 0) h += 360
-  }
-  return [h, s * 100, l * 100]
-}
-
-function eyedropHudText(hex: string): string[] {
-  const [r, g, b] = hexRgb(hex)
-  const [h, s, l] = rgbHsl(r, g, b)
-  const mode = String(getOptions('eyedropper').hud ?? 'all')
-  if (mode === 'hex') return [hex.toUpperCase()]
-  if (mode === 'rgb') return [`RGB ${r}, ${g}, ${b}`]
-  if (mode === 'hsl') return [`HSL ${Math.round(h)}°, ${Math.round(s)}%, ${Math.round(l)}%`]
-  return [hex.toUpperCase(), `RGB ${r}, ${g}, ${b}`, `HSL ${Math.round(h)}°, ${Math.round(s)}%, ${Math.round(l)}%`]
-}
-
 function sampleEyedropper(p: PointerInfo, commit: boolean) {
   const opts = getOptions('eyedropper')
   const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite', eyedropRadius())
@@ -405,7 +374,7 @@ export const eyedropperTool: Tool = {
   renderOverlay(ctx, view, w, h, mouse) {
     void view; void w; void h
     if (mouse && eyedropPreview) {
-      const lines = eyedropHudText(eyedropPreview)
+      const lines = colorReadoutLines(eyedropPreview, String(getOptions('eyedropper').hud ?? 'all'))
       ctx.save()
       ctx.font = '10px ui-monospace, monospace'
       const lineH = 13
