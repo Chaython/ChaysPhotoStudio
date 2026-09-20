@@ -45,6 +45,7 @@ import {
 } from './shared'
 import { getActiveId, getById, getCachedStampCanvas, warmPreset } from '../plugins/brush-presets'
 import { getTip, drawTipCursor, jitterPalette, tipExtentMul } from './brush-tips'
+import { useEditorStore } from '../store'
 
 /** airbrush build-up: stamp cadence (ms) and flow reduction while stationary */
 const AIRBRUSH_INTERVAL_MS = 50
@@ -215,6 +216,8 @@ interface StrokeState {
   hasDir: boolean
   /** Pencil Auto Erase resolves the stroke color once at pointer-down. */
   strokeColor: string | null
+  /** Photoshop Shift-click anchor retained between strokes. */
+  lastStrokeEnd: { x: number; y: number } | null
 }
 
 function makeBrush(kind: 'brush' | 'pencil'): Tool {
@@ -223,7 +226,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     active: false, last: null, filtered: null, prevRaw: null, traveled: 0, speed: 0,
     lastT: 0, lastP: null, airbrushPos: null, airbrushTimer: null, stamp: null,
     tipId: 'round-soft', palette: null, lastDab: null, dirX: 1, dirY: 0, hasDir: false,
-    strokeColor: null,
+    strokeColor: null, lastStrokeEnd: null,
   }
 
   // ---------- option readers (re-read mid-stroke so the options bar is live) ----------
@@ -445,6 +448,16 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       const doc = engine.activeDoc
       const layer = engine.activeLayer
       if (!doc || !layer) return
+
+      // Photoshop muscle memory: Alt/Option temporarily invokes Eyedropper
+      // without switching tools or creating a paint history entry.
+      if (p.alt) {
+        const hex = engine.sampleColor(p.docX, p.docY, 'composite', 0)
+        if (hex) useEditorStore.getState().setFgColor(hex)
+        engine.pokeOverlay()
+        return
+      }
+
       const opts = getOptions(toolId)
       if (kind === 'pencil') {
         const fg = getFgColor()
@@ -463,9 +476,10 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       st.palette = kind === 'brush' && !st.stamp && clamp(opts.jitter ?? 0, 0, 100) > 0
         ? jitterPalette(getFgColor(), opts.jitter ?? 0)
         : null
+      const lineFrom = p.shift ? st.lastStrokeEnd : null
       st.filtered = { x: p.docX, y: p.docY } // reset the lazy-brush filter
-      st.last = { x: p.docX, y: p.docY }
-      st.prevRaw = { x: p.docX, y: p.docY }
+      st.last = lineFrom ? { ...lineFrom } : { x: p.docX, y: p.docY }
+      st.prevRaw = lineFrom ? { ...lineFrom } : { x: p.docX, y: p.docY }
       st.traveled = 0
       st.speed = 0
       st.lastT = performance.now()
@@ -475,7 +489,17 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       st.dirY = 0
       st.hasDir = false
       st.airbrushPos = { x: p.docX, y: p.docY }
-      stampDab(p.docX, p.docY, p)
+
+      if (lineFrom) {
+        const spacing = strokeSpacing(opts, st.stamp)
+        st.traveled = Math.hypot(p.docX - lineFrom.x, p.docY - lineFrom.y)
+        for (const d of walkDabs(lineFrom.x, lineFrom.y, p.docX, p.docY, spacing)) stampDab(d.x, d.y, p)
+        // walkDabs may omit an exact short endpoint; always stamp the click.
+        stampDab(p.docX, p.docY, p)
+        st.last = { x: p.docX, y: p.docY }
+      } else {
+        stampDab(p.docX, p.docY, p)
+      }
       if (opts.airbrush === true) startAirbrush()
     },
 
@@ -514,6 +538,8 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     onPointerUp() {
       if (!st.active) return
       stopAirbrush()
+      if (st.filtered) st.lastStrokeEnd = { ...st.filtered }
+      else if (st.lastP) st.lastStrokeEnd = { x: st.lastP.docX, y: st.lastP.docY }
       st.active = false
       st.last = null
       st.filtered = null
