@@ -21,7 +21,11 @@ function historySource(layerId: string): HTMLCanvasElement | null {
   const opts = getOptions('art-history-brush')
   const states = doc.history.states
   if (!states.length) return null
-  const index = opts.source === 'original' ? 0 : Math.max(0, doc.history.index - 1)
+  const index = opts.source === 'original'
+    ? 0
+    : opts.source === 'previous'
+      ? Math.max(0, doc.history.index - 1)
+      : Math.max(0, Math.min(states.length - 1, doc.historyBrushSourceIndex ?? 0))
   const state = states[index]
   const layer = state?.layers.find(l => l.id === layerId)
   if (!layer?.canvas || layer.kind !== 'raster') return null
