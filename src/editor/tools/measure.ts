@@ -168,12 +168,17 @@ export const measureTool: Tool = {
   },
 
   renderOverlay(ctx, view, w, h, mouse) {
-    if (start && end) {
-      drawMeasurement(ctx, view, w, h)
+    if (segments.length || (start && end)) {
+      for (let i = 0; i < segments.length; i++) {
+        const show = i === segments.length - 1 && !(start && end)
+        drawMeasurement(ctx, view, w, h, segments[i].a, segments[i].b, show)
+      }
+      if (start && end) drawMeasurement(ctx, view, w, h, start, end, true)
+      if (!dragging) drawCross(ctx, mouse)
       return
     }
     drawCross(ctx, mouse)
-    if (!start && !end) {
+    if (!start && !end && !segments.length) {
       // idle hint (crop-tool style bottom strip)
       ctx.save()
       ctx.fillStyle = 'rgba(0,0,0,0.55)'
@@ -187,8 +192,11 @@ export const measureTool: Tool = {
   },
 }
 
-function drawMeasurement(ctx: CanvasRenderingContext2D, view: { zoom: number; panX: number; panY: number }, w: number, h: number): void {
-  const s = start!, e = end!
+function drawMeasurement(
+  ctx: CanvasRenderingContext2D,
+  view: { zoom: number; panX: number; panY: number },
+  w: number, h: number, s: Vec, e: Vec, showLabel = true,
+): void {
   const ax = s.x * view.zoom + view.panX, ay = s.y * view.zoom + view.panY
   const bx = e.x * view.zoom + view.panX, by = e.y * view.zoom + view.panY
   const lenScreen = Math.hypot(bx - ax, by - ay)
@@ -233,7 +241,7 @@ function drawMeasurement(ctx: CanvasRenderingContext2D, view: { zoom: number; pa
   }
 
   // label chip near the midpoint (only once the line is readable)
-  if (lenScreen > 12) {
+  if (showLabel && lenScreen > 12) {
     const dx = e.x - s.x, dy = e.y - s.y
     const len = Math.hypot(dx, dy)
     const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI
