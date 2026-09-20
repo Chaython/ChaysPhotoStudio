@@ -15,7 +15,7 @@ export type BlendMode =
 // ---------- Tools ----------
 export type ToolId =
   | 'move' | 'marquee-rect' | 'marquee-ellipse' | 'lasso' | 'polygon-lasso' | 'magnetic-lasso'
-  | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'eyedropper' | 'measure'
+  | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'eyedropper' | 'color-sampler' | 'measure'
   | 'brush' | 'pencil' | 'mixer-brush' | 'color-replacement' | 'history-brush' | 'art-history-brush' | 'clone-stamp' | 'pattern-stamp' | 'healing-brush' | 'spot-healing' | 'patch' | 'content-aware-move' | 'red-eye'
   | 'eraser' | 'background-eraser' | 'magic-eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
   | 'dodge' | 'burn' | 'sponge' | 'text' | 'shape' | 'pen' | 'hand' | 'zoom'
@@ -318,6 +318,8 @@ export interface PsDocument {
   previewAdjustment: { type: AdjustmentType; params: Record<string, any> } | null
   /** document guides (rulers) — view-state, not undo-tracked */
   guides: Guide[]
+  /** Persistent numbered Color Sampler points, stored in document coordinates. */
+  colorSamplers?: { id: string; x: number; y: number }[]
   /** frame animation — absent/empty = static document */
   frames?: AnimFrame[]
   _epoch: number
