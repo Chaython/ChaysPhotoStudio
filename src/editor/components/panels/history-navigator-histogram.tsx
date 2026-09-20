@@ -67,17 +67,16 @@ export function HistoryPanel() {
     if (!doc || !h || !h.states.length) return
     h.states = [h.states[h.index]]
     h.index = 0
-    doc.historyBrushSourceIndex = 0
-    engine.emit()
+    engine.setHistoryBrushSource(0)
     useEditorStore.getState().pushToast('History cleared', 'info')
   }
 
   const setBrushSource = (i: number) => {
     const doc = engine.activeDoc
     if (!doc?.history.states[i]) return
-    doc.historyBrushSourceIndex = i
-    engine.emit()
-    useEditorStore.getState().pushToast(`History Brush source: ${doc.history.states[i].label}`, 'info')
+    const label = doc.history.states[i].label
+    engine.setHistoryBrushSource(i)
+    useEditorStore.getState().pushToast(`History Brush source: ${label}`, 'info')
   }
 
   const brushSource = (() => {
