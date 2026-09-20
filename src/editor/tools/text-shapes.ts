@@ -13,7 +13,7 @@ import type { Tool, PointerInfo, ShapeSpec } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, newDrag, drawCross, drawDashedRect } from './shared'
 import { measureTextSpecBounds } from './dab-utils'
-import { rectFromPoints } from '../utils/canvas'
+import { rectFromPoints, createCanvas, ctx2d } from '../utils/canvas'
 import { traceShapePath } from '../engine/shape-path'
 
 // ============================================================
@@ -265,6 +265,94 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
   return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', fillOpacity: opts.fillOpacity ?? 100, stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null, strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', strokeAlign: opts.strokeAlign ?? 'center', dash: opts.dash ?? 'solid', dashLength: opts.dashLength ?? 12, gapLength: opts.gapLength ?? 8, arrowStart: false, arrowEnd: false, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
 }
 
+function applyPreviewDash(ctx: CanvasRenderingContext2D, spec: ShapeSpec, width: number) {
+  if (spec.dash === 'dashed') ctx.setLineDash([width * 3, width * 2])
+  else if (spec.dash === 'dotted') ctx.setLineDash([width * .25, width * 1.8])
+  else if (spec.dash === 'custom') ctx.setLineDash([Math.max(1, spec.dashLength ?? 12), Math.max(1, spec.gapLength ?? 8)])
+  else ctx.setLineDash([])
+}
+
+function drawShapePreview(
+  ctx: CanvasRenderingContext2D,
+  spec: ShapeSpec,
+  view: { zoom: number; panX: number; panY: number },
+  viewportW: number,
+  viewportH: number,
+) {
+  if (spec.shape === 'line') {
+    ctx.save()
+    ctx.translate(view.panX, view.panY)
+    ctx.scale(view.zoom, view.zoom)
+    traceShapePath(ctx, spec)
+    ctx.strokeStyle = spec.stroke || spec.fill || '#e8a33d'
+    ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
+    const width = Math.max(spec.strokeWidth ?? 4, 1.5 / view.zoom)
+    ctx.lineWidth = width
+    ctx.lineCap = spec.lineCap ?? 'round'
+    applyPreviewDash(ctx, spec, width)
+    ctx.stroke()
+    drawArrowheads(ctx, spec)
+    ctx.restore()
+    return
+  }
+
+  if (spec.fill) {
+    ctx.save()
+    ctx.translate(view.panX, view.panY)
+    ctx.scale(view.zoom, view.zoom)
+    traceShapePath(ctx, spec)
+    ctx.fillStyle = spec.fill
+    ctx.globalAlpha = 0.4 * Math.max(0, Math.min(1, (spec.fillOpacity ?? 100) / 100))
+    ctx.fill()
+    ctx.restore()
+  }
+  if (!spec.stroke || (spec.strokeWidth ?? 0) <= 0) return
+
+  const alpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
+  const align = spec.strokeAlign ?? 'center'
+  if (align === 'outside') {
+    // Build outside strokes offscreen so punching out the shape interior does
+    // not erase the fill preview or unrelated overlays beneath it.
+    const tmp = createCanvas(Math.max(1, viewportW), Math.max(1, viewportH))
+    const tc = ctx2d(tmp)
+    tc.translate(view.panX, view.panY)
+    tc.scale(view.zoom, view.zoom)
+    tc.strokeStyle = spec.stroke
+    tc.lineWidth = (spec.strokeWidth ?? 4) * 2
+    tc.lineJoin = 'round'
+    applyPreviewDash(tc, spec, tc.lineWidth)
+    traceShapePath(tc, spec)
+    tc.stroke()
+    tc.setLineDash([])
+    tc.globalCompositeOperation = 'destination-out'
+    traceShapePath(tc, spec)
+    tc.fillStyle = '#000'
+    tc.fill()
+    tc.globalCompositeOperation = 'source-over'
+    ctx.save()
+    ctx.globalAlpha = alpha
+    ctx.drawImage(tmp, 0, 0)
+    ctx.restore()
+    return
+  }
+
+  ctx.save()
+  ctx.translate(view.panX, view.panY)
+  ctx.scale(view.zoom, view.zoom)
+  if (align === 'inside') {
+    traceShapePath(ctx, spec)
+    ctx.clip()
+  }
+  ctx.strokeStyle = spec.stroke
+  ctx.globalAlpha = alpha
+  ctx.lineWidth = (spec.strokeWidth ?? 4) * (align === 'inside' ? 2 : 1)
+  ctx.lineJoin = 'round'
+  applyPreviewDash(ctx, spec, ctx.lineWidth)
+  traceShapePath(ctx, spec)
+  ctx.stroke()
+  ctx.restore()
+}
+
 function drawArrowheads(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {
   if (spec.shape !== 'line' || (!spec.arrowStart && !spec.arrowEnd)) return
   const x0 = spec.x, y0 = spec.y, x1 = spec.x + spec.w, y1 = spec.y + spec.h
@@ -323,43 +411,7 @@ export const shapeTool: Tool = {
       const spec = getOptions('shape').shape === 'line'
         ? { ...getOptions('shape'), shape: 'line', x: shapeVec.x0, y: shapeVec.y0, w: shapeVec.x1 - shapeVec.x0, h: shapeVec.y1 - shapeVec.y0 } as ShapeSpec
         : { ...getOptions('shape'), x: shapeRect.x, y: shapeRect.y, w: shapeRect.w, h: shapeRect.h } as ShapeSpec
-      ctx.save()
-      ctx.translate(view.panX, view.panY)
-      ctx.scale(view.zoom, view.zoom)
-      traceShapePath(ctx, spec)
-      if (spec.shape === 'line') {
-        ctx.strokeStyle = spec.stroke || spec.fill || '#e8a33d'
-        ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
-        // WYSIWYG doc-space width, clamped so it stays visible at any zoom
-        ctx.lineWidth = Math.max(spec.strokeWidth ?? 4, 1.5 / view.zoom)
-        ctx.lineCap = spec.lineCap ?? 'round'
-        if (spec.dash === 'dashed') ctx.setLineDash([ctx.lineWidth * 3, ctx.lineWidth * 2])
-        else if (spec.dash === 'dotted') ctx.setLineDash([ctx.lineWidth * .25, ctx.lineWidth * 1.8])
-        else ctx.setLineDash([])
-        ctx.stroke()
-        drawArrowheads(ctx, spec)
-        ctx.setLineDash([])
-        ctx.globalAlpha = 1
-      } else {
-        if (spec.fill) {
-          ctx.fillStyle = spec.fill
-          ctx.globalAlpha = 0.4 * Math.max(0, Math.min(1, (spec.fillOpacity ?? 100) / 100))
-          ctx.fill()
-          ctx.globalAlpha = 1
-        }
-        if (spec.stroke) {
-          ctx.strokeStyle = spec.stroke
-          ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
-          ctx.lineWidth = spec.strokeWidth ?? 4
-          if (spec.dash === 'dashed') ctx.setLineDash([ctx.lineWidth * 3, ctx.lineWidth * 2])
-          else if (spec.dash === 'dotted') ctx.setLineDash([ctx.lineWidth * .25, ctx.lineWidth * 1.8])
-          else ctx.setLineDash([])
-          ctx.stroke()
-          ctx.setLineDash([])
-          ctx.globalAlpha = 1
-        }
-      }
-      ctx.restore()
+      drawShapePreview(ctx, spec, view, w, h)
       // dashed bbox
       const x = shapeRect.x * view.zoom + view.panX
       const y = shapeRect.y * view.zoom + view.panY
