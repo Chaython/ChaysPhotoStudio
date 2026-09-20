@@ -111,6 +111,10 @@ export interface TextSpec {
   underline?: boolean
   strikethrough?: boolean
   align: 'left' | 'center' | 'right'
+  /** Horizontal is the default; vertical stacks glyphs top-to-bottom in right-to-left columns. */
+  direction?: 'horizontal' | 'vertical'
+  /** Browser font kerning. Tracking remains an independent explicit offset. */
+  kerning?: boolean
   lineHeight: number
   tracking: number
   /** Paragraph text uses an editable bounding box; point text leaves these unset. */
