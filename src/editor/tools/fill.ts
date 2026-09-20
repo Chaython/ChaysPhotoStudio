@@ -230,6 +230,66 @@ export const gradientTool: Tool = {
   },
 }
 
+function paintBucketPattern(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  opts: Record<string, any>,
+  swapColors: boolean,
+) {
+  const scale = clamp((Number(opts.patternScale) || 100) / 100, .25, 4)
+  const tileSize = Math.max(4, Math.round(16 * scale))
+  const tile = createCanvas(tileSize, tileSize)
+  const tc = ctx2d(tile)
+  const fg = swapColors ? getBgColor() : getFgColor()
+  const bg = swapColors ? getFgColor() : getBgColor()
+  const kind = String(opts.pattern ?? 'checker')
+  tc.fillStyle = bg
+  tc.fillRect(0, 0, tileSize, tileSize)
+
+  if (kind === 'checker') {
+    const half = tileSize / 2
+    tc.fillStyle = fg
+    tc.fillRect(0, 0, half, half)
+    tc.fillRect(half, half, tileSize - half, tileSize - half)
+  } else if (kind === 'diagonal') {
+    tc.strokeStyle = fg
+    tc.lineWidth = Math.max(1, tileSize * .22)
+    tc.lineCap = 'square'
+    for (let x = -tileSize; x <= tileSize * 2; x += tileSize / 2) {
+      tc.beginPath()
+      tc.moveTo(x, tileSize)
+      tc.lineTo(x + tileSize, 0)
+      tc.stroke()
+    }
+  } else if (kind === 'dots') {
+    tc.fillStyle = fg
+    const rr = Math.max(1, tileSize * .16)
+    for (const [x, y] of [[tileSize * .25, tileSize * .25], [tileSize * .75, tileSize * .75]]) {
+      tc.beginPath()
+      tc.arc(x, y, rr, 0, Math.PI * 2)
+      tc.fill()
+    }
+  } else {
+    tc.strokeStyle = fg
+    tc.lineWidth = Math.max(1, tileSize * .10)
+    tc.beginPath()
+    tc.moveTo(0, 0); tc.lineTo(tileSize, 0)
+    tc.moveTo(0, 0); tc.lineTo(0, tileSize)
+    tc.stroke()
+  }
+
+  const pattern = ctx.createPattern(tile, 'repeat')
+  if (!pattern) return
+  const ox = Number(opts.patternOffsetX) || 0
+  const oy = Number(opts.patternOffsetY) || 0
+  ctx.save()
+  ctx.translate(ox, oy)
+  ctx.fillStyle = pattern
+  ctx.fillRect(-ox, -oy, w, h)
+  ctx.restore()
+}
+
 // ============================================================
 // Paint Bucket
 // ============================================================
@@ -282,19 +342,32 @@ export const paintBucketTool: Tool = {
     const l = engine.mutateLayerPixels(layer.id)
     if (!l?.canvas) return
 
-    // build fill layer: foreground color with the softened mask as alpha
-    const fillColor = p.alt || opts.fill === 'background' ? getBgColor() : getFgColor()
-    const [r, g, b] = hexToRgb(fillColor)
-    const id = new ImageData(doc.width, doc.height)
-    for (let i = 0; i < fillMask.length; i++) {
-      const a = fillMask[i]
-      if (a <= 0) continue
-      id.data[i * 4] = r; id.data[i * 4 + 1] = g; id.data[i * 4 + 2] = b
-      id.data[i * 4 + 3] = a > 255 ? 255 : a
-    }
+    // Build the fill content independently from the region mask. Pattern mode
+    // uses foreground/background swatches and keeps scale/offset in document
+    // space so repeated fills line up consistently.
     const tmp = createCanvas(doc.width, doc.height)
-    putImageData(tmp, id)
     const tc = ctx2d(tmp)
+    if (opts.fill === 'pattern') {
+      paintBucketPattern(tc, doc.width, doc.height, opts, p.alt)
+      const maskCanvas = createCanvas(doc.width, doc.height)
+      const maskData = new ImageData(doc.width, doc.height)
+      for (let i = 0; i < fillMask.length; i++) maskData.data[i * 4 + 3] = Math.min(255, fillMask[i])
+      putImageData(maskCanvas, maskData)
+      tc.globalCompositeOperation = 'destination-in'
+      tc.drawImage(maskCanvas, 0, 0)
+      tc.globalCompositeOperation = 'source-over'
+    } else {
+      const fillColor = p.alt || opts.fill === 'background' ? getBgColor() : getFgColor()
+      const [r, g, b] = hexToRgb(fillColor)
+      const id = new ImageData(doc.width, doc.height)
+      for (let i = 0; i < fillMask.length; i++) {
+        const a = fillMask[i]
+        if (a <= 0) continue
+        id.data[i * 4] = r; id.data[i * 4 + 1] = g; id.data[i * 4 + 2] = b
+        id.data[i * 4 + 3] = a > 255 ? 255 : a
+      }
+      putImageData(tmp, id)
+    }
     // respect the selection mask
     if (doc.selection) {
       tc.globalCompositeOperation = 'destination-in'
@@ -308,7 +381,7 @@ export const paintBucketTool: Tool = {
     // tmp is doc-space — align to the layer's offset registration
     c.drawImage(tmp, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
     c.restore()
-    engine.pushHistory('Paint Bucket')
+    engine.pushHistory(opts.fill === 'pattern' ? 'Pattern Fill' : 'Paint Bucket')
     engine.emit()
   },
 
