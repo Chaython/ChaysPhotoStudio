@@ -427,9 +427,47 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   toolbarLayout: loadToolbarLayout(),
 
   setTool: (t) => { set({ activeTool: t }) },
-  setToolOption: (tool, key, value) => set(s => ({
-    toolOptions: { ...s.toolOptions, [tool]: { ...s.toolOptions[tool], [key]: value } },
-  })),
+  setToolOption: (tool, key, value) => set(s => {
+    const current = { ...(s.toolOptions[tool] ?? {}) }
+
+    if (tool === 'clone-stamp') {
+      const fallback = { rotate: 0, scale: 100, mirrored: false }
+      const transforms = { ...(current.sourceTransforms ?? {}) }
+
+      if (key === 'rotate' || key === 'scale' || key === 'mirrored') {
+        const slot = String(Math.max(1, Math.min(5, Math.round(Number(current.sourceSlot) || 1))))
+        transforms[slot] = { ...(transforms[slot] ?? fallback), [key]: value }
+        return {
+          toolOptions: {
+            ...s.toolOptions,
+            [tool]: { ...current, [key]: value, sourceTransforms: transforms },
+          },
+        }
+      }
+
+      if (key === 'sourceSlot') {
+        const next = Math.max(1, Math.min(5, Math.round(Number(value) || 1)))
+        const tr = transforms[String(next)] ?? fallback
+        return {
+          toolOptions: {
+            ...s.toolOptions,
+            [tool]: {
+              ...current,
+              sourceSlot: next,
+              rotate: tr.rotate ?? 0,
+              scale: tr.scale ?? 100,
+              mirrored: tr.mirrored === true,
+              sourceTransforms: transforms,
+            },
+          },
+        }
+      }
+    }
+
+    return {
+      toolOptions: { ...s.toolOptions, [tool]: { ...current, [key]: value } },
+    }
+  }),
   setFgColor: (c) => set({ fgColor: c }),
   setBgColor: (c) => set({ bgColor: c }),
   swapColors: () => set(s => ({ fgColor: s.bgColor, bgColor: s.fgColor })),
