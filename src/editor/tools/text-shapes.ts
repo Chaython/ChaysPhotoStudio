@@ -170,6 +170,8 @@ function createTextLayerAt(x: number, y: number, box?: { w: number; h: number })
     bold: !!opts.bold, italic: !!opts.italic,
     underline: !!opts.underline, strikethrough: !!opts.strikethrough,
     align: opts.align ?? 'left',
+    direction: opts.direction === 'vertical' ? 'vertical' : 'horizontal',
+    kerning: opts.kerning !== false,
     lineHeight: Math.max(.5, Number(opts.lineHeight) || 1.2),
     tracking: Number(opts.tracking) || 0,
     boxWidth: box ? Math.max(20, Math.round(box.w)) : undefined,
