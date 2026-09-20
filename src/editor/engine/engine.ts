@@ -2485,9 +2485,16 @@ export class Engine {
 
     const mapAnchor = (a: any) => {
       const p = projectPoint(forward, { x: a.x, y: a.y })
-      const pin = projectPoint(forward, { x: a.inX, y: a.inY })
-      const pout = projectPoint(forward, { x: a.outX, y: a.outY })
-      return { ...a, x: p.x, y: p.y, inX: pin.x, inY: pin.y, outX: pout.x, outY: pout.y }
+      // Path handles are stored as offsets from the anchor, not absolute doc
+      // coordinates. Transform their absolute endpoints, then convert back.
+      const pin = projectPoint(forward, { x: a.x + a.inX, y: a.y + a.inY })
+      const pout = projectPoint(forward, { x: a.x + a.outX, y: a.y + a.outY })
+      return {
+        ...a,
+        x: p.x, y: p.y,
+        inX: pin.x - p.x, inY: pin.y - p.y,
+        outX: pout.x - p.x, outY: pout.y - p.y,
+      }
     }
 
     for (const l of doc.layers) {
