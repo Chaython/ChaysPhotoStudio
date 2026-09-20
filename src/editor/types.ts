@@ -304,6 +304,16 @@ export interface Guide {
   pos: number             // doc-space position in px
 }
 
+export interface SavedMeasurement {
+  id: string
+  name: string
+  segments: { a: Vec; b: Vec }[]
+  unit: 'px' | 'mm' | 'cm' | 'in'
+  pixelsPerUnit: number
+  totalLengthPx: number
+  createdAt: number
+}
+
 // ---------- Document ----------
 export interface ViewportState {
   zoom: number; panX: number; panY: number
@@ -349,6 +359,8 @@ export interface PsDocument {
   guides: Guide[]
   /** Persistent numbered Color Sampler points, stored in document coordinates. */
   colorSamplers?: { id: string; x: number; y: number }[]
+  /** Saved ruler/measurement sets for inspection/export. */
+  measurements?: SavedMeasurement[]
   /** Named editable vector paths, Photoshop Paths-panel style. */
   savedPaths?: SavedPath[]
   /** frame animation — absent/empty = static document */
