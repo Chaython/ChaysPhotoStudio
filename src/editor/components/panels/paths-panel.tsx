@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Copy, Eye, EyeOff, MousePointer2, PenTool, ShieldCheck, Trash2 } from 'lucide-react'
+import { Copy, Eye, EyeOff, MousePointer2, PenTool, Shapes, ShieldCheck, Trash2 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import type { SavedPath } from '../../types'
@@ -95,7 +95,7 @@ export function PathsPanel() {
         })}
       </div>
 
-      <div className="grid grid-cols-3 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         <button
           className="flex items-center justify-center gap-1 rounded border border-border px-1 py-1.5 hover:bg-accent disabled:opacity-40"
           disabled={!selected}
@@ -114,6 +114,14 @@ export function PathsPanel() {
           title="Use this path as a non-destructive vector mask on the active layer"
         >
           <ShieldCheck size={11} /> V.Mask
+        </button>
+        <button
+          className="flex items-center justify-center gap-1 rounded border border-border px-1 py-1.5 hover:bg-accent disabled:opacity-40"
+          disabled={!selected}
+          onClick={() => selected && engine.savedPathToShapeLayer(selected.id)}
+          title="Create an editable vector Shape layer from this path"
+        >
+          <Shapes size={11} /> Shape
         </button>
         <button
           className="flex items-center justify-center gap-1 rounded border border-border px-1 py-1.5 hover:bg-accent disabled:opacity-40"
