@@ -25,10 +25,16 @@ const MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
   '.gif': 'image/gif', '.bmp': 'image/bmp', '.tif': 'image/tiff', '.tiff': 'image/tiff',
   '.avif': 'image/avif', '.tga': 'image/x-tga', '.ico': 'image/x-icon', '.psd': 'image/vnd.adobe.photoshop',
+  '.svg': 'image/svg+xml', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8', '.map': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8', '.html': 'text/html; charset=utf-8',
+  '.woff': 'font/woff', '.woff2': 'font/woff2', '.wasm': 'application/wasm',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 }
 
 let mainWindow = null
 let serverProc = null
+let gatewayServer = null
 let serverUrl = null
 let quitting = false
 const pendingFiles = []
@@ -66,35 +72,143 @@ async function waitForServer(url, timeoutMs = 60000) {
   throw new Error(`server not ready after ${timeoutMs}ms (${url})`)
 }
 
-function startPackagedServer() {
+function safeResolve(root, relPath) {
+  const base = path.resolve(root)
+  const resolved = path.resolve(base, relPath)
+  return resolved === base || resolved.startsWith(base + path.sep) ? resolved : null
+}
+
+function serveFile(req, res, filePath, cacheControl) {
+  try {
+    const stat = fs.statSync(filePath)
+    if (!stat.isFile()) return false
+    const type = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream'
+    res.writeHead(200, {
+      'Content-Type': type,
+      'Content-Length': stat.size,
+      'Cache-Control': cacheControl,
+      'X-Content-Type-Options': 'nosniff',
+    })
+    if (req.method === 'HEAD') res.end()
+    else fs.createReadStream(filePath).on('error', () => res.destroy()).pipe(res)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function startPackagedGateway(upstreamUrl, appDir) {
+  const staticRoot = path.join(appDir, '.next', 'static')
+  const publicRoot = path.join(appDir, 'public')
+  if (!fs.existsSync(staticRoot)) throw new Error(`packaged Next static assets not found: ${staticRoot}`)
+  if (!fs.existsSync(publicRoot)) throw new Error(`packaged public assets not found: ${publicRoot}`)
+
+  const port = await freePort()
+  const upstream = new URL(upstreamUrl)
+  gatewayServer = http.createServer((req, res) => {
+    const rawUrl = req.url || '/'
+    let pathname
+    try { pathname = new URL(rawUrl, 'http://127.0.0.1').pathname }
+    catch { res.writeHead(400); res.end('Bad request'); return }
+
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      try {
+        if (pathname.startsWith('/_next/static/')) {
+          const rel = decodeURIComponent(pathname.slice('/_next/static/'.length))
+          const file = safeResolve(staticRoot, rel)
+          if (file && serveFile(req, res, file, 'public, max-age=31536000, immutable')) return
+        }
+
+        if (pathname !== '/' && !pathname.startsWith('/api/')) {
+          const rel = decodeURIComponent(pathname.replace(/^\/+/, ''))
+          const file = safeResolve(publicRoot, rel)
+          if (file && serveFile(req, res, file, 'no-cache')) return
+        }
+      } catch {
+        res.writeHead(400)
+        res.end('Bad asset path')
+        return
+      }
+    }
+
+    const headers = { ...req.headers, host: upstream.host, connection: 'close' }
+    const proxy = http.request({
+      hostname: upstream.hostname,
+      port: upstream.port,
+      method: req.method,
+      path: rawUrl,
+      headers,
+    }, (upRes) => {
+      res.writeHead(upRes.statusCode || 502, upRes.headers)
+      upRes.pipe(res)
+    })
+    proxy.on('error', (err) => {
+      console.error('[gateway] upstream request failed:', err.message)
+      if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('Embedded server unavailable')
+    })
+    req.pipe(proxy)
+  })
+
+  await new Promise((resolve, reject) => {
+    gatewayServer.once('error', reject)
+    gatewayServer.listen(port, '127.0.0.1', () => {
+      gatewayServer.removeListener('error', reject)
+      resolve()
+    })
+  })
+  return `http://127.0.0.1:${port}`
+}
+
+async function startPackagedServer() {
   const appDir = path.join(process.resourcesPath, 'app')
   const serverJs = path.join(appDir, 'server.js')
   if (!fs.existsSync(serverJs)) {
     throw new Error(`packaged server not found: ${serverJs}`)
   }
-  return freePort().then((port) => {
-    const url = `http://127.0.0.1:${port}`
-    serverProc = spawn(process.execPath, [serverJs], {
-      cwd: appDir,
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1',
-        NODE_ENV: 'production',
-        HOSTNAME: '127.0.0.1',
-        PORT: String(port),
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
-    serverProc.stdout.on('data', (d) => console.log(`[server] ${String(d).trim()}`))
-    serverProc.stderr.on('data', (d) => console.error(`[server] ${String(d).trim()}`))
-    serverProc.on('exit', (code) => {
-      if (!quitting) console.error(`[server] exited unexpectedly with code ${code}`)
-    })
-    return waitForServer(url).then(() => url)
+
+  const port = await freePort()
+  const upstreamUrl = `http://127.0.0.1:${port}`
+  serverProc = spawn(process.execPath, [serverJs], {
+    cwd: appDir,
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      NODE_ENV: 'production',
+      HOSTNAME: '127.0.0.1',
+      PORT: String(port),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   })
+  serverProc.stdout.on('data', (d) => console.log(`[server] ${String(d).trim()}`))
+  serverProc.stderr.on('data', (d) => console.error(`[server] ${String(d).trim()}`))
+  serverProc.on('exit', (code) => {
+    if (!quitting) console.error(`[server] exited unexpectedly with code ${code}`)
+  })
+
+  await waitForServer(upstreamUrl)
+  // Serve immutable _next/public files directly from the packaged payload and
+  // proxy HTML/API requests to Next. This avoids a shell-specific static-route
+  // failure leaving only the SSR loading fallback visible.
+  return startPackagedGateway(upstreamUrl, appDir)
 }
 
+async function waitForEditorReady(win, timeoutMs = 30000) {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (!win || win.isDestroyed()) return false
+    try {
+      const ready = await win.webContents.executeJavaScript(
+        'Boolean(window.__zphotoEngine && window.__zphotoStore)',
+        true,
+      )
+      if (ready) return true
+    } catch { /* renderer still loading */ }
+    await new Promise(resolve => setTimeout(resolve, 250))
+  }
+  return false
+}
 
 // ---------- optional native filter bridge ----------
 // G'MIC/GEGL are deliberately external optional dependencies. We never invoke
@@ -254,6 +368,13 @@ function createWindow() {
     } catch { e.preventDefault() }
   })
 
+  mainWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+    console.error(`[renderer] load failed code=${code} main=${isMainFrame} url=${url}: ${description}`)
+  })
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[renderer] process gone:', details?.reason || details)
+  })
+
   mainWindow.on('closed', () => { mainWindow = null })
 
   return mainWindow
@@ -333,7 +454,7 @@ if (!gotLock) {
 
   // deny all permission prompts (camera/geolocation/etc.) — an editor needs none
   app.whenReady().then(async () => {
-    session.defaultSession.setPermissionRequestHandler(_wc => false)
+    session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
     await installNativeToolIpc().catch(err => console.warn('[native-tools]', err?.message || err))
 
     buildMenu()
@@ -346,6 +467,18 @@ if (!gotLock) {
       try {
         serverUrl = await startPackagedServer()
         await mainWindow.loadURL(serverUrl)
+
+        if (process.env.CHAYS_SMOKE_TEST === '1') {
+          const ready = await waitForEditorReady(mainWindow)
+          if (!ready) {
+            console.error('[smoke] editor did not finish hydrating within 30 seconds')
+            app.exit(2)
+            return
+          }
+          console.log('[smoke] editor hydrated successfully')
+          app.exit(0)
+          return
+        }
       } catch (err) {
         console.error('[fatal]', err)
         const { dialog } = require('electron')
@@ -366,6 +499,10 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     quitting = true
+    if (gatewayServer) {
+      try { gatewayServer.close() } catch { /* already closed */ }
+      gatewayServer = null
+    }
     if (serverProc && serverProc.exitCode === null) {
       try { serverProc.kill() } catch { /* already gone */ }
     }

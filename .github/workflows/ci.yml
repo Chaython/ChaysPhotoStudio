@@ -89,6 +89,11 @@ jobs:
           set -euo pipefail
           test -f .next/standalone/server.js
           test -f build/electron/app/server.js
+          test -d build/electron/app/.next/server
+          test -d build/electron/app/.next/static
+          test -f build/webapp-export/index.html
+          ! grep -Eq '(src|href)=["'"']/_next/' build/webapp-export/index.html
+          grep -Eq '(src|href)=["'"']\./_next/' build/webapp-export/index.html
           test -f build/extension/unpacked/manifest.json
           test -f build/extension/firefox/manifest.json
           VERSION="$(node -p "require('./package.json').version")"
