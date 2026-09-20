@@ -256,13 +256,13 @@ function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: Poi
       const si = sy * sw + sx, sj = si * 4, oj = oi * 4
       const sa = srcImg.data[sj + 3] / 255
       if (sa <= 0) continue
+      const edge = kind === 'sharpen' ? localEdgeStrength(srcImg.data, sw, sh, sx, sy) : 0
       for (let ch = 0; ch < 3; ch++) {
         const base = srcImg.data[sj + ch]
         const blur = ch === 0 ? br[si] : ch === 1 ? bg[si] : bb[si]
         let value = blur
         if (kind === 'sharpen') {
           const detail = base - blur
-          const edge = localEdgeStrength(srcImg.data, sw, sh, sx, sy)
           const correction = sharpenCorrection(detail, edge, amount, threshold, protectDetail, reduceNoise)
           value = clamp(base + correction, 0, 255)
         }
@@ -328,12 +328,12 @@ function sharpenOp(x: number, y: number, p: PointerInfo) {
       const f = falloff[i] * strength
       if (f <= 0.01) continue
       const j = i * 4
+      const px = i % rw, py = Math.floor(i / rw)
+      const edge = localEdgeStrength(src, rw, rh, px, py)
       for (let c = 0; c < 3; c++) {
         const v = src[j + c]
         const blurC = c === 0 ? br[i] : c === 1 ? bg[i] : bb[i]
         const detail = v - blurC
-        const px = i % rw, py = Math.floor(i / rw)
-        const edge = localEdgeStrength(src, rw, rh, px, py)
         const correction = sharpenCorrection(detail, edge, amount, threshold, protectDetail, reduceNoise)
         if (correction === 0) continue
         const sharp = v + correction
