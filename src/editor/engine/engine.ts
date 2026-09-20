@@ -27,6 +27,7 @@ import {
 } from './selection'
 import { getScriptApi } from './scripting-api'
 import * as imageOps from '../image-ops'
+import { homography, projectPoint, quadOutputSize, warpCanvasPerspective, type Point2 } from '../image-ops/perspective'
 
 export const MAX_HISTORY = 50
 
@@ -2458,6 +2459,108 @@ export class Engine {
     doc.height = h
     doc._epoch++
     invalidateFlat(doc)
+  }
+
+  /** Perspective Crop — map an arbitrary source quadrilateral into a
+   * rectangular document while preserving layer separation. Pixel/vector/smart
+   * layers are projectively resampled; adjustment layers remain live and have
+   * their masks warped. Arbitrary projective geometry cannot remain editable as
+   * text/shape/smart transforms, so those layer types rasterize individually
+   * rather than flattening the whole document. */
+  perspectiveCropTo(quad: Point2[], opts: { targetW?: number; targetH?: number } = {}) {
+    const doc = this.activeDoc
+    if (!doc || quad.length !== 4) return
+    const auto = quadOutputSize(quad)
+    const outW = Math.max(1, Math.round(opts.targetW || auto.w))
+    const outH = Math.max(1, Math.round(opts.targetH || auto.h))
+    const dstQuad: Point2[] = [
+      { x: 0, y: 0 }, { x: outW - 1, y: 0 },
+      { x: outW - 1, y: outH - 1 }, { x: 0, y: outH - 1 },
+    ]
+    const forward = homography(quad, dstQuad)
+    if (!forward) {
+      this.ui?.toast('Perspective crop corners are degenerate', 'error')
+      return
+    }
+
+    const mapAnchor = (a: any) => {
+      const p = projectPoint(forward, { x: a.x, y: a.y })
+      const pin = projectPoint(forward, { x: a.inX, y: a.inY })
+      const pout = projectPoint(forward, { x: a.outX, y: a.outY })
+      return { ...a, x: p.x, y: p.y, inX: pin.x, inY: pin.y, outX: pout.x, outY: pout.y }
+    }
+
+    for (const l of doc.layers) {
+      if (l.kind === 'adjustment') {
+        if (l.mask) l.mask = warpCanvasPerspective(l.mask, quad, outW, outH, true)
+        if (l.vectorMask?.anchors?.length) {
+          l.vectorMask = { ...l.vectorMask, anchors: l.vectorMask.anchors.map(mapAnchor) }
+        }
+        l._v++; l._mv++
+        continue
+      }
+
+      let src: HTMLCanvasElement
+      let baked = false
+      if (l.kind === 'raster' && l.canvas) {
+        src = createCanvas(doc.width, doc.height)
+        ctx2d(src).drawImage(l.canvas, l.offsetX ?? 0, l.offsetY ?? 0)
+      } else {
+        const prepared = prepareLayer(doc, l)
+        src = prepared ? cloneCanvas(prepared) : createCanvas(doc.width, doc.height)
+        baked = true
+      }
+
+      l.canvas = warpCanvasPerspective(src, quad, outW, outH)
+      l.kind = 'raster'
+      l.offsetX = 0; l.offsetY = 0
+      l.source = null; l.transform = null; l.smartFilters = []
+      l.text = null; l.shape = null
+      if (baked) {
+        // prepareLayer already includes mask/fx/filter visual output.
+        l.mask = null
+        l.maskEnabled = false
+        l.vectorMask = null
+        l.fx = null
+        l.blendIf = null
+      } else {
+        if (l.mask) l.mask = warpCanvasPerspective(l.mask, quad, outW, outH, true)
+        if (l.vectorMask?.anchors?.length) {
+          l.vectorMask = { ...l.vectorMask, anchors: l.vectorMask.anchors.map(mapAnchor) }
+        }
+      }
+      l._v++; l._mv++
+    }
+
+    if (doc.selection) {
+      const mask = warpCanvasPerspective(doc.selection.mask, quad, outW, outH, true)
+      doc.selection = selectionFromMask(mask)
+    }
+    for (const ch of doc.savedChannels) {
+      ch.mask = warpCanvasPerspective(ch.mask, quad, outW, outH, true)
+      ch._v++
+    }
+    if (doc.savedPaths?.length) {
+      doc.savedPaths = doc.savedPaths.map(path => ({
+        ...path,
+        anchors: path.anchors.map(mapAnchor),
+      }))
+    }
+    if (doc.colorSamplers?.length) {
+      doc.colorSamplers = doc.colorSamplers
+        .map(s => ({ ...s, ...projectPoint(forward, s) }))
+        .filter(s => s.x >= 0 && s.y >= 0 && s.x < outW && s.y < outH)
+    }
+    // Projective transforms do not in general preserve horizontal/vertical
+    // guides, so retaining their old scalar positions would be misleading.
+    doc.guides = []
+
+    doc.width = outW
+    doc.height = outH
+    doc._epoch++
+    invalidateFlat(doc)
+    this.pushHistory('Perspective Crop')
+    this.emit()
   }
 
   cropTo(rect: Rect, opts: { deletePixels?: boolean; targetW?: number; targetH?: number } = {}) {
