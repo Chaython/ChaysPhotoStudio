@@ -26,6 +26,7 @@ import { blurTool, sharpenTool, smudgeTool, dodgeTool, burnTool, spongeTool } fr
 import { gradientTool, paintBucketTool } from './fill'
 import { textTool, shapeTool } from './text-shapes'
 import { cropTool, eyedropperTool, handTool, zoomTool } from './crop'
+import { colorSamplerTool } from './color-sampler'
 
 export const TOOLS: Record<ToolId, Tool> = {
   'move': moveTool,
@@ -40,6 +41,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'magic-wand': magicWandTool,
   'crop': cropTool,
   'eyedropper': eyedropperTool,
+  'color-sampler': colorSamplerTool,
   'brush': brushTool,
   'pencil': pencilTool,
   'mixer-brush': mixerBrushTool,
