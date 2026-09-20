@@ -181,6 +181,34 @@ function boxBlurRegion(src: Uint8ClampedArray, rw: number, rh: number, rad: numb
   return chans
 }
 
+function localLuma(data: Uint8ClampedArray, w: number, h: number, x: number, y: number): number {
+  const xx = clamp(Math.round(x), 0, w - 1)
+  const yy = clamp(Math.round(y), 0, h - 1)
+  const j = (yy * w + xx) * 4
+  return data[j] * .2126 + data[j + 1] * .7152 + data[j + 2] * .0722
+}
+
+function localEdgeStrength(data: Uint8ClampedArray, w: number, h: number, x: number, y: number): number {
+  const gx = localLuma(data, w, h, x + 1, y) - localLuma(data, w, h, x - 1, y)
+  const gy = localLuma(data, w, h, x, y + 1) - localLuma(data, w, h, x, y - 1)
+  return Math.min(255, Math.hypot(gx, gy) * .5)
+}
+
+function sharpenCorrection(
+  detail: number,
+  edge: number,
+  amount: number,
+  threshold: number,
+  protectDetail: boolean,
+  reduceNoise: number,
+): number {
+  const noiseFloor = threshold + clamp(reduceNoise, 0, 100) * .32
+  if (Math.abs(detail) < noiseFloor) return 0
+  const edgeWeight = protectDetail ? (.45 + .55 * smoothstep(3, 42, edge)) : 1
+  const haloLimit = protectDetail ? 18 + edge * .75 : 255
+  return clamp(detail * amount * edgeWeight, -haloLimit, haloLimit)
+}
+
 function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: PointerInfo): boolean {
   const state = retouchContext
   const doc = engine.activeDoc
@@ -210,6 +238,8 @@ function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: Poi
   const out = new ImageData(rw, rh)
   const sel = doc.selection ? ctx2d(doc.selection.mask).getImageData(x0, y0, rw, rh).data : null
   const threshold = Math.max(0, Number(opts.threshold) || 0)
+  const protectDetail = opts.protectDetail !== false
+  const reduceNoise = Math.max(0, Number(opts.reduceNoise) || 0)
   const amount = 0.4 + strength * 1.8
 
   for (let py = 0; py < rh; py++) {
@@ -232,7 +262,9 @@ function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: Poi
         let value = blur
         if (kind === 'sharpen') {
           const detail = base - blur
-          value = Math.abs(detail) < threshold ? base : clamp(base + detail * amount, 0, 255)
+          const edge = localEdgeStrength(srcImg.data, sw, sh, sx, sy)
+          const correction = sharpenCorrection(detail, edge, amount, threshold, protectDetail, reduceNoise)
+          value = clamp(base + correction, 0, 255)
         }
         out.data[oj + ch] = value
       }
@@ -284,6 +316,8 @@ function sharpenOp(x: number, y: number, p: PointerInfo) {
   const r = (opts.size ?? 60) / 2
   const strength = ((opts.strength ?? 50) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
   const threshold = Math.max(0, Number(opts.threshold) || 0)
+  const protectDetail = opts.protectDetail !== false
+  const reduceNoise = Math.max(0, Number(opts.reduceNoise) || 0)
   const rad = clamp(Math.round(r / 10), 1, 4)
   const amount = 0.4 + strength * 1.8
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {
@@ -298,8 +332,11 @@ function sharpenOp(x: number, y: number, p: PointerInfo) {
         const v = src[j + c]
         const blurC = c === 0 ? br[i] : c === 1 ? bg[i] : bb[i]
         const detail = v - blurC
-        if (Math.abs(detail) < threshold) continue
-        const sharp = v + detail * amount
+        const px = i % rw, py = Math.floor(i / rw)
+        const edge = localEdgeStrength(src, rw, rh, px, py)
+        const correction = sharpenCorrection(detail, edge, amount, threshold, protectDetail, reduceNoise)
+        if (correction === 0) continue
+        const sharp = v + correction
         d[j + c] = v * (1 - f) + clamp(sharp, 0, 255) * f
       }
     }
