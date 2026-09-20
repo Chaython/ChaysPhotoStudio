@@ -38,6 +38,9 @@ function makeEraser(): Tool {
   let last: { x: number; y: number } | null = null
   let eraseToHistory = false
   let historySource: HTMLCanvasElement | null = null
+  let connectFrom: { x: number; y: number } | null = null
+  let connectDocId: string | null = null
+  let connectLayerId: string | null = null
   /** last dab position (doc space) — travel-direction measurement */
   let lastDab: { x: number; y: number } | null = null
   /** EMA-smoothed travel direction unit vector */
@@ -102,7 +105,17 @@ function makeEraser(): Tool {
       lastDab = null
       dirX = 1; dirY = 0
       hasDir = false
-      dab(p.docX, p.docY, p)
+      const canConnect = p.shift && connectFrom && connectDocId === doc.id && connectLayerId === layer.id
+      if (canConnect && connectFrom) {
+        const settings = brushSettingsFrom(opts)
+        const spacing = Math.max(1, settings.size * settings.spacing)
+        const points = walkDabs(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing)
+        for (const q of points) dab(q.x, q.y, p)
+        const tail = points[points.length - 1]
+        if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) dab(p.docX, p.docY, p)
+      } else {
+        dab(p.docX, p.docY, p)
+      }
     },
 
     onPointerMove(p: PointerInfo) {
@@ -116,6 +129,13 @@ function makeEraser(): Tool {
 
     onPointerUp() {
       if (!active) return
+      const docId = engine.activeDoc?.id ?? null
+      const activeLayerId = engine.activeLayer?.id ?? null
+      if (last && docId && activeLayerId) {
+        connectFrom = { ...last }
+        connectDocId = docId
+        connectLayerId = activeLayerId
+      }
       active = false
       last = null
       lastDab = null
@@ -127,6 +147,9 @@ function makeEraser(): Tool {
 
     onDeactivate() {
       // tool switched mid-erase: commit cleanly so the stroke isn't dropped
+      connectFrom = null
+      connectDocId = null
+      connectLayerId = null
       if (active) {
         active = false
         last = null
