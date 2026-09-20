@@ -163,7 +163,11 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
   const weight = spec.bold ? '700' : '400'
   const style = spec.italic ? 'italic ' : ''
   ctx.font = `${style}${weight} ${spec.fontSize}px ${spec.fontFamily}`
-  ;(ctx as any).fontKerning = spec.kerning === false ? 'none' : 'normal'
+  const fontCtx = ctx as any
+  fontCtx.fontKerning = spec.kerning === false ? 'none' : 'normal'
+  fontCtx.fontVariantLigatures = spec.ligatures === false ? 'none' : 'normal'
+  fontCtx.fontVariantCaps = spec.smallCaps === true ? 'small-caps' : 'normal'
+  fontCtx.fontStretch = spec.fontStretch ?? 'normal'
   ctx.fillStyle = spec.color
   ctx.textBaseline = 'alphabetic'
 
