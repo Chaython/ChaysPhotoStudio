@@ -38,7 +38,7 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { clamp } from '../utils/canvas'
+import { clamp, createCanvas, ctx2d } from '../utils/canvas'
 import {
   getOptions, brushSettingsFrom, getFgColor, getBgColor, walkDabs, softDab, pencilDab, drawBrushCursor,
   symmetricPoints, drawSymmetryOverlay, ema,
@@ -54,6 +54,131 @@ const SPEED_EMA = 0.3
 /** EMA weight for the smoothed travel direction (vector EMA — wrap-safe) */
 const DIR_EMA = 0.35
 const RAD = Math.PI / 180
+
+let decoratedDabCanvas: HTMLCanvasElement | null = null
+let dualMaskCanvas: HTMLCanvasElement | null = null
+const textureTiles = new Map<string, HTMLCanvasElement>()
+
+function scratchCanvas(which: 'dab' | 'dual', size: number): HTMLCanvasElement {
+  const s = Math.max(4, Math.ceil(size))
+  let cv = which === 'dab' ? decoratedDabCanvas : dualMaskCanvas
+  if (!cv || cv.width !== s || cv.height !== s) cv = createCanvas(s, s)
+  if (which === 'dab') decoratedDabCanvas = cv
+  else dualMaskCanvas = cv
+  ctx2d(cv).clearRect(0, 0, s, s)
+  return cv
+}
+
+function hashNoise(x: number, y: number): number {
+  let n = (x * 374761393 + y * 668265263) | 0
+  n = (n ^ (n >>> 13)) * 1274126177
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967295
+}
+
+function brushTextureTile(kind: string, scalePct: number, depthPct: number, invert: boolean): HTMLCanvasElement {
+  const size = clamp(Math.round(24 * clamp(scalePct, 25, 400) / 100), 6, 96)
+  const depth = clamp(depthPct / 100, 0, 1)
+  const key = `${kind}:${size}:${Math.round(depth * 100)}:${invert ? 1 : 0}`
+  const hit = textureTiles.get(key)
+  if (hit) return hit
+  const cv = createCanvas(size, size)
+  const cx = ctx2d(cv)
+  const img = cx.createImageData(size, size)
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let v = 1
+    if (kind === 'noise') {
+      v = .18 + hashNoise(x, y) * .82
+    } else if (kind === 'paper') {
+      const a = hashNoise(x, y)
+      const b = hashNoise(Math.floor(x / 2) + 101, Math.floor(y / 2) + 211)
+      v = .28 + (a * .45 + b * .55) * .72
+    } else if (kind === 'dots') {
+      const cell = Math.max(4, Math.round(size / 3))
+      const dx = (x % cell) - cell / 2
+      const dy = (y % cell) - cell / 2
+      const rr = Math.hypot(dx, dy) / Math.max(1, cell * .34)
+      v = rr <= 1 ? .25 + rr * .45 : 1
+    } else {
+      // woven canvas: two perpendicular thread bands with mild grain.
+      const tx = .5 + .5 * Math.cos((x / Math.max(1, size)) * Math.PI * 8)
+      const ty = .5 + .5 * Math.cos((y / Math.max(1, size)) * Math.PI * 8)
+      v = .35 + (tx * .32 + ty * .32 + hashNoise(x, y) * .12)
+    }
+    v = clamp(v, 0, 1)
+    if (invert) v = 1 - v
+    const alpha = Math.round(255 * ((1 - depth) + depth * v))
+    const i = (y * size + x) * 4
+    img.data[i] = 255
+    img.data[i + 1] = 255
+    img.data[i + 2] = 255
+    img.data[i + 3] = alpha
+  }
+  cx.putImageData(img, 0, 0)
+  textureTiles.set(key, cv)
+  return cv
+}
+
+function decorateBrushDab(
+  base: (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void,
+  opts: Record<string, any>,
+  radius: number,
+  extent: number,
+  tipAngle: number,
+  hardness: number,
+): (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void {
+  const useTexture = opts.textureEnabled === true && Number(opts.textureDepth ?? 45) > 0
+  const useDual = opts.dualBrush === true
+  if (!useTexture && !useDual) return base
+
+  return (ctx, dx, dy) => {
+    const side = Math.max(8, Math.ceil(radius * 2 * Math.max(1, extent) + 12))
+    const tmp = scratchCanvas('dab', side)
+    const tc = ctx2d(tmp)
+    const center = side / 2
+    base(tc, center, center)
+
+    if (useDual) {
+      const dualId = typeof opts.dualTip === 'string' ? opts.dualTip : 'round-hard'
+      const dual = getTip(dualId) ?? getTip('round-hard')
+      if (dual) {
+        const mask = scratchCanvas('dual', side)
+        const mc = ctx2d(mask)
+        const dualSize = Math.max(1, radius * 2 * clamp(Number(opts.dualSize ?? 65) / 100, .1, 2))
+        dual.drawDab(mc, center, center, {
+          size: dualSize,
+          hardness,
+          angle: tipAngle + Number(opts.dualAngle ?? 0),
+          roundness: 100,
+          color: '#ffffff',
+          rand: Math.random,
+        })
+        tc.save()
+        tc.globalCompositeOperation = 'destination-in'
+        tc.drawImage(mask, 0, 0)
+        tc.restore()
+      }
+    }
+
+    if (useTexture) {
+      const tile = brushTextureTile(
+        String(opts.texture ?? 'canvas'),
+        Number(opts.textureScale ?? 100),
+        Number(opts.textureDepth ?? 45),
+        opts.textureInvert === true,
+      )
+      const pattern = tc.createPattern(tile, 'repeat')
+      if (pattern) {
+        tc.save()
+        tc.globalCompositeOperation = 'destination-in'
+        tc.fillStyle = pattern
+        tc.fillRect(0, 0, side, side)
+        tc.restore()
+      }
+    }
+
+    ctx.drawImage(tmp, dx - center, dy - center)
+  }
+}
 
 interface StrokeState {
   active: boolean
@@ -237,12 +362,9 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       roundness = clamp(roundness * (1 - tilt * 0.72), 10, 100)
     }
 
-    const drawFn: (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void = kind === 'pencil'
+    const rawDrawFn: (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void = kind === 'pencil'
       ? (ctx, dx, dy) => pencilDab(ctx, dx, dy, radius, color)
       : st.stamp
-        // image stamp (Task 7-A): preset canvas centered at the dab, scaled so
-        // its largest dimension ≈ 2·radius (brush size), axis-aligned (v1).
-        // Alpha flows through the existing engine.dab globalAlpha path.
         ? (() => {
             const stampCv = st.stamp!.canvas
             const scale = (radius * 2) / Math.max(stampCv.width, stampCv.height)
@@ -253,7 +375,6 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
             }
           })()
         : tip
-          // procedural tip (Task 1-A): full library in brush-tips.ts
           ? (ctx, dx, dy) => tip.drawDab(ctx, dx, dy, {
               size: radius * 2,
               hardness: settings.hardness,
@@ -264,8 +385,13 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
             })
           : (ctx, dx, dy) => softDab(ctx, dx, dy, radius, settings.hardness, color)
 
-    // ---- stroke-bbox extent: tips with hulls beyond the inscribed circle ----
+    // Conservative radius multiplier covers tips whose painted hull extends
+    // outside the nominal brush circle. Texture/Dual Brush decorate only the
+    // Brush family; Pencil remains exact hard-pixel output.
     const extent = tip ? tipExtentMul(st.tipId) : 1
+    const drawFn = kind === 'brush'
+      ? decorateBrushDab(rawDrawFn, opts, radius, extent, tipAngle, settings.hardness)
+      : rawDrawFn
 
     // ---- symmetry expansion (positions may land off-canvas; dabs just clip) ----
     const pts = symmetricPoints(x, y, symmetryConfig(opts, doc.width, doc.height))
