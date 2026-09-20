@@ -2335,7 +2335,96 @@ export class Engine {
   }
 
   // ================================================== transforms
-  cropTo(rect: Rect, opts: { deletePixels?: boolean } = {}) {
+  /** Scale all document-space editable geometry and pixel assets together.
+   *  Used by Image Size and Crop target-size output so paths, guides, masks,
+   *  vector masks, samplers and layer registrations stay aligned. */
+  private rescaleDocumentData(doc: PsDocument, w: number, h: number) {
+    w = Math.max(1, Math.round(w))
+    h = Math.max(1, Math.round(h))
+    const sx = w / Math.max(1, doc.width)
+    const sy = h / Math.max(1, doc.height)
+    const smin = Math.min(sx, sy)
+
+    for (const l of doc.layers) {
+      if (l.canvas) l.canvas = resampleCanvas(l.canvas, Math.max(1, Math.round(l.canvas.width * sx)), Math.max(1, Math.round(l.canvas.height * sy)))
+      if (l.kind === 'raster') {
+        l.offsetX = (l.offsetX ?? 0) * sx
+        l.offsetY = (l.offsetY ?? 0) * sy
+      }
+      if (l.mask) l.mask = resampleCanvas(l.mask, w, h)
+      if (l.source) l.source = resampleCanvas(l.source, Math.max(1, Math.round(l.source.width * sx)), Math.max(1, Math.round(l.source.height * sy)))
+      if (l.transform) {
+        l.transform.x *= sx
+        l.transform.y *= sy
+        l.transform.scale *= smin
+      }
+      if (l.text) {
+        l.text.x *= sx
+        l.text.y *= sy
+        l.text.fontSize *= sy
+        if (l.text.boxWidth) l.text.boxWidth *= sx
+        if (l.text.boxHeight) l.text.boxHeight *= sy
+      }
+      if (l.shape) {
+        l.shape.x *= sx
+        l.shape.y *= sy
+        l.shape.w *= sx
+        l.shape.h *= sy
+        l.shape.radius *= smin
+        l.shape.strokeWidth *= smin
+        if (l.shape.dashLength) l.shape.dashLength *= smin
+        if (l.shape.gapLength) l.shape.gapLength *= smin
+      }
+      if (l.vectorMask?.anchors?.length) {
+        l.vectorMask.anchors = l.vectorMask.anchors.map(a => ({
+          ...a,
+          x: a.x * sx,
+          y: a.y * sy,
+          inX: a.inX * sx,
+          inY: a.inY * sy,
+          outX: a.outX * sx,
+          outY: a.outY * sy,
+        }))
+      }
+      l._v++; l._mv++
+    }
+
+    if (doc.selection) {
+      const mask = resampleCanvas(doc.selection.mask, w, h)
+      doc.selection = { ...doc.selection, mask, _v: doc.selection._v + 1, _paths: null, _pathsV: 0 }
+    }
+    for (const ch of doc.savedChannels) {
+      ch.mask = resampleCanvas(ch.mask, w, h)
+      ch._v++
+    }
+    if (doc.colorSamplers?.length) {
+      doc.colorSamplers = doc.colorSamplers.map(s => ({ ...s, x: s.x * sx, y: s.y * sy }))
+    }
+    if (doc.savedPaths?.length) {
+      doc.savedPaths = doc.savedPaths.map(path => ({
+        ...path,
+        anchors: path.anchors.map(a => ({
+          ...a,
+          x: a.x * sx,
+          y: a.y * sy,
+          inX: a.inX * sx,
+          inY: a.inY * sy,
+          outX: a.outX * sx,
+          outY: a.outY * sy,
+        })),
+      }))
+    }
+    if (doc.guides?.length) {
+      doc.guides = doc.guides.map(g => ({ ...g, pos: g.pos * (g.orientation === 'v' ? sx : sy) }))
+    }
+
+    doc.width = w
+    doc.height = h
+    doc._epoch++
+    invalidateFlat(doc)
+  }
+
+  cropTo(rect: Rect, opts: { deletePixels?: boolean; targetW?: number; targetH?: number } = {}) {
     const doc = this.activeDoc
     if (!doc) return
     // Photoshop-style crop can extend beyond the current canvas. Negative
@@ -2376,6 +2465,9 @@ export class Engine {
       if (l.transform) { l.transform.x -= x; l.transform.y -= y }
       if (l.text) { l.text.x -= x; l.text.y -= y }
       if (l.shape) { l.shape.x -= x; l.shape.y -= y }
+      if (l.vectorMask?.anchors?.length) {
+        l.vectorMask.anchors = l.vectorMask.anchors.map(a => ({ ...a, x: a.x - x, y: a.y - y }))
+      }
       l._v++; l._mv++
     }
     if (doc.selection) {
@@ -2393,11 +2485,36 @@ export class Engine {
         .map(s => ({ ...s, x: s.x - x, y: s.y - y }))
         .filter(s => s.x >= 0 && s.y >= 0 && s.x < w && s.y < h)
     }
-    doc.width = w; doc.height = h
+    if (doc.savedPaths?.length) {
+      doc.savedPaths = doc.savedPaths.map(path => ({
+        ...path,
+        anchors: path.anchors.map(a => ({ ...a, x: a.x - x, y: a.y - y })),
+      }))
+    }
+    if (doc.guides?.length) {
+      doc.guides = doc.guides
+        .map(g => ({ ...g, pos: g.pos - (g.orientation === 'v' ? x : y) }))
+        .filter(g => g.pos >= 0 && g.pos <= (g.orientation === 'v' ? w : h))
+    }
+
+    doc.width = w
+    doc.height = h
     doc._epoch++
     invalidateFlat(doc)
-    this.pushHistory(deletePixels ? 'Crop' : 'Crop (Preserve Pixels)')
-    this.recordStep({ op: 'crop', args: { x, y, w, h, deletePixels }, label: 'Crop' })
+
+    const targetW = opts.targetW && opts.targetW > 0 ? Math.round(opts.targetW) : w
+    const targetH = opts.targetH && opts.targetH > 0 ? Math.round(opts.targetH) : h
+    if (targetW !== w || targetH !== h) this.rescaleDocumentData(doc, targetW, targetH)
+
+    const resized = targetW !== w || targetH !== h
+    this.pushHistory(resized
+      ? (deletePixels ? 'Crop & Resize' : 'Crop & Resize (Preserve Pixels)')
+      : (deletePixels ? 'Crop' : 'Crop (Preserve Pixels)'))
+    this.recordStep({
+      op: 'crop',
+      args: { x, y, w, h, deletePixels, targetW: resized ? targetW : undefined, targetH: resized ? targetH : undefined },
+      label: resized ? 'Crop & Resize' : 'Crop',
+    })
     this.emit()
   }
 
@@ -2448,34 +2565,10 @@ export class Engine {
   resizeImage(opts: { w: number; h: number }) {
     const doc = this.activeDoc
     if (!doc) return
-    const { w, h } = opts
-    const sx = w / doc.width, sy = h / doc.height
-    for (const l of doc.layers) {
-      if (l.canvas) l.canvas = resampleCanvas(l.canvas, Math.round(l.canvas.width * sx), Math.round(l.canvas.height * sy))
-      if (l.kind === 'raster') { l.offsetX = (l.offsetX ?? 0) * sx; l.offsetY = (l.offsetY ?? 0) * sy }
-      if (l.mask) l.mask = resampleCanvas(l.mask, Math.round(l.mask.width * sx), Math.round(l.mask.height * sy))
-      if (l.source) l.source = resampleCanvas(l.source, Math.round(l.source.width * sx), Math.round(l.source.height * sy))
-      if (l.transform) { l.transform.x *= sx; l.transform.y *= sy; l.transform.scale *= Math.min(sx, sy) }
-      if (l.text) { l.text.x *= sx; l.text.y *= sy; l.text.fontSize *= sy }
-      if (l.shape) {
-        l.shape.x *= sx; l.shape.y *= sy; l.shape.w *= sx; l.shape.h *= sy
-        l.shape.radius *= Math.min(sx, sy); l.shape.strokeWidth *= Math.min(sx, sy)
-      }
-      l._v++; l._mv++
-    }
-    if (doc.selection) {
-      const c = resampleCanvas(doc.selection.mask, w, h)
-      doc.selection = { ...doc.selection, mask: c, _v: doc.selection._v + 1 }
-    }
-    for (const ch of doc.savedChannels) {
-      ch.mask = resampleCanvas(ch.mask, w, h); ch._v++
-    }
-    if (doc.colorSamplers?.length) {
-      doc.colorSamplers = doc.colorSamplers.map(s => ({ ...s, x: s.x * sx, y: s.y * sy }))
-    }
-    doc.width = Math.round(w); doc.height = Math.round(h)
-    doc._epoch++
-    invalidateFlat(doc)
+    const w = Math.max(1, Math.round(opts.w))
+    const h = Math.max(1, Math.round(opts.h))
+    if (w === doc.width && h === doc.height) return
+    this.rescaleDocumentData(doc, w, h)
     this.pushHistory('Image Size')
     this.recordStep({ op: 'resizeImage', args: { w: doc.width, h: doc.height }, label: 'Image Size' })
     this.emit()
