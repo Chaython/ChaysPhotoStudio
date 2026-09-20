@@ -12,7 +12,53 @@ let live: LiveLayerDrag | null = null
 /** layer ids moved by this drag (a clipstack base drags its children too) */
 let movingIds: string[] = []
 /** Full-composite live path for dragging a true multi-layer selection. */
-let groupMove: { ids: string[]; lastDx: number; lastDy: number } | null = null
+let groupMove: { ids: string[]; lastDx: number; lastDy: number; startBounds: Rect } | null = null
+let smartGuideX: number | null = null
+let smartGuideY: number | null = null
+
+function unionRects(rects: Rect[]): Rect | null {
+  if (!rects.length) return null
+  const x0 = Math.min(...rects.map(r => r.x))
+  const y0 = Math.min(...rects.map(r => r.y))
+  const x1 = Math.max(...rects.map(r => r.x + r.w))
+  const y1 = Math.max(...rects.map(r => r.y + r.h))
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+function smartSnapRect(rect: Rect, dx: number, dy: number, moving: string[], zoom: number): { dx: number; dy: number } {
+  const doc = engine.activeDoc
+  if (!doc || getOptions('move').smartGuides === false) {
+    smartGuideX = smartGuideY = null
+    return { dx, dy }
+  }
+  const tol = 8 / Math.max(.02, zoom)
+  const moved = { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h }
+  const mx = [moved.x, moved.x + moved.w / 2, moved.x + moved.w]
+  const my = [moved.y, moved.y + moved.h / 2, moved.y + moved.h]
+  const xs: number[] = [0, doc.width / 2, doc.width]
+  const ys: number[] = [0, doc.height / 2, doc.height]
+  for (const l of doc.layers) {
+    if (!l.visible || moving.includes(l.id) || l.kind === 'adjustment') continue
+    const r = engine.layerContentRect(l.id)
+    if (!r) continue
+    xs.push(r.x, r.x + r.w / 2, r.x + r.w)
+    ys.push(r.y, r.y + r.h / 2, r.y + r.h)
+  }
+  let bestX = Infinity, bestY = Infinity, snapX: number | null = null, snapY: number | null = null
+  for (const a of mx) for (const b of xs) {
+    const d = b - a
+    if (Math.abs(d) <= tol && Math.abs(d) < Math.abs(bestX)) { bestX = d; snapX = b }
+  }
+  for (const a of my) for (const b of ys) {
+    const d = b - a
+    if (Math.abs(d) <= tol && Math.abs(d) < Math.abs(bestY)) { bestY = d; snapY = b }
+  }
+  if (snapX !== null) dx += bestX
+  if (snapY !== null) dy += bestY
+  smartGuideX = snapX
+  smartGuideY = snapY
+  return { dx, dy }
+}
 
 // ---------- on-canvas free-transform drag state ----------
 type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
@@ -191,7 +237,9 @@ export const moveTool: Tool = {
     })
     if (!p.alt && selected.length > 1 && selected.includes(target)) {
       movingIds = selected
-      groupMove = { ids: selected, lastDx: 0, lastDy: 0 }
+      const startBounds = unionRects(selected.map(id => engine.layerContentRect(id)).filter((r): r is Rect => !!r))
+      if (!startBounds) return
+      groupMove = { ids: selected, lastDx: 0, lastDy: 0, startBounds }
       drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
       engine.requestRender()
       return
@@ -296,6 +344,7 @@ export const moveTool: Tool = {
         if (Math.abs(dx) >= Math.abs(dy)) dy = 0
         else dx = 0
       }
+      ;({ dx, dy } = smartSnapRect(groupMove.startBounds, dx, dy, groupMove.ids, doc.view.zoom))
       const prefs = useEditorStore.getState().view
       if (prefs.snapGuides && doc.guides?.length) {
         const s = snapToGuides(doc, doc.view, drag.startX + dx, drag.startY + dy, 8)
@@ -337,6 +386,13 @@ export const moveTool: Tool = {
       dx = Math.round(s.x - drag.startX)
       dy = Math.round(s.y - drag.startY)
       snappedX = s.snappedX; snappedY = s.snappedY
+    }
+    const movingRect = engine.layerContentRect(movingIds[0])
+    if (movingRect) {
+      const s = smartSnapRect(movingRect, dx, dy, movingIds, doc.view.zoom)
+      dx = Math.round(s.dx); dy = Math.round(s.dy)
+      if (smartGuideX !== null) snappedX = true
+      if (smartGuideY !== null) snappedY = true
     }
     if (prefs.snapGrid && (prefs.gridSize ?? 0) > 0 && !snappedX && !snappedY) {
       const gs = prefs.gridSize as number
@@ -384,6 +440,7 @@ export const moveTool: Tool = {
         engine.requestRender()
       }
       movingIds = []
+      smartGuideX = smartGuideY = null
       return
     }
 
@@ -393,6 +450,7 @@ export const moveTool: Tool = {
       const ids = groupMove.ids
       groupMove = null
       movingIds = []
+      smartGuideX = smartGuideY = null
       if (moved) {
         engine.pushHistory(ids.length > 1 ? 'Move Layers' : 'Move')
         engine.emit()
@@ -461,6 +519,7 @@ export const moveTool: Tool = {
       engine.requestRender()
     }
     movingIds = []
+    smartGuideX = smartGuideY = null
   },
 
   onKeyDown(e: KeyboardEvent) {
@@ -473,6 +532,7 @@ export const moveTool: Tool = {
       drag.active = false
       groupMove = null
       movingIds = []
+      smartGuideX = smartGuideY = null
       engine.requestRender()
       return true
     }
@@ -482,6 +542,7 @@ export const moveTool: Tool = {
       live = null
       tdrag = null
       movingIds = []
+      smartGuideX = smartGuideY = null
       engine.requestRender()
       return true
     }
@@ -491,6 +552,25 @@ export const moveTool: Tool = {
   renderOverlay(ctx, view, w, h, mouse) {
     drawCross(ctx, mouse)
     drawLayerHighlight(ctx, view, w, h, mouse)
+    if (smartGuideX !== null || smartGuideY !== null) {
+      ctx.save()
+      ctx.strokeStyle = 'rgba(255,55,180,.95)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 3])
+      if (smartGuideX !== null) {
+        const sx = view.panX + smartGuideX * view.zoom
+        ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke()
+      }
+      if (smartGuideY !== null) {
+        const sy = view.panY + smartGuideY * view.zoom
+        ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke()
+      }
+      ctx.restore()
+    }
+  },
+
+  onDeactivate() {
+    smartGuideX = smartGuideY = null
   },
 }
 
