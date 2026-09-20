@@ -151,8 +151,77 @@ function boxBlurRegion(src: Uint8ClampedArray, rw: number, rh: number, rad: numb
   return chans
 }
 
+function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: PointerInfo): boolean {
+  const state = retouchContext
+  const doc = engine.activeDoc
+  if (!state?.outputNew || !state.source || !doc) return false
+  const target = engine.layerById(state.targetId)
+  if (!target?.canvas) return false
+  const opts = getOptions(kind)
+  const r = (opts.size ?? 60) / 2
+  const strength = ((opts.strength ?? (kind === 'blur' ? 60 : 50)) / 100)
+    * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
+  const hardness = clamp((opts.hardness ?? 60) / 100, 0, .98)
+  const rad = kind === 'blur' ? clamp(Math.round(r / 4), 1, 60) : clamp(Math.round(r / 10), 1, 4)
+  const x0 = clamp(Math.floor(x - r), 0, doc.width)
+  const y0 = clamp(Math.floor(y - r), 0, doc.height)
+  const x1 = clamp(Math.ceil(x + r), 0, doc.width)
+  const y1 = clamp(Math.ceil(y + r), 0, doc.height)
+  const rw = x1 - x0, rh = y1 - y0
+  if (rw <= 0 || rh <= 0) return true
+
+  const sx0 = clamp(x0 - rad - 1, 0, doc.width)
+  const sy0 = clamp(y0 - rad - 1, 0, doc.height)
+  const sx1 = clamp(x1 + rad + 1, 0, doc.width)
+  const sy1 = clamp(y1 + rad + 1, 0, doc.height)
+  const sw = sx1 - sx0, sh = sy1 - sy0
+  const srcImg = ctx2d(state.source).getImageData(sx0, sy0, sw, sh)
+  const [br, bg, bb] = boxBlurRegion(srcImg.data, sw, sh, rad)
+  const out = new ImageData(rw, rh)
+  const sel = doc.selection ? ctx2d(doc.selection.mask).getImageData(x0, y0, rw, rh).data : null
+  const threshold = Math.max(0, Number(opts.threshold) || 0)
+  const amount = 0.4 + strength * 1.8
+
+  for (let py = 0; py < rh; py++) {
+    for (let px = 0; px < rw; px++) {
+      const dx = x0 + px - x, dy = y0 + py - y
+      const nd = Math.hypot(dx, dy) / Math.max(1, r)
+      let falloff = nd <= hardness ? 1 : clamp(1 - (nd - hardness) / Math.max(.02, 1 - hardness), 0, 1)
+      const oi = py * rw + px
+      if (sel) falloff *= sel[oi * 4 + 3] / 255
+      const f = falloff * strength
+      if (f <= .005) continue
+
+      const sx = x0 + px - sx0, sy = y0 + py - sy0
+      const si = sy * sw + sx, sj = si * 4, oj = oi * 4
+      const sa = srcImg.data[sj + 3] / 255
+      if (sa <= 0) continue
+      for (let ch = 0; ch < 3; ch++) {
+        const base = srcImg.data[sj + ch]
+        const blur = ch === 0 ? br[si] : ch === 1 ? bg[si] : bb[si]
+        let value = blur
+        if (kind === 'sharpen') {
+          const detail = base - blur
+          value = Math.abs(detail) < threshold ? base : clamp(base + detail * amount, 0, 255)
+        }
+        out.data[oj + ch] = value
+      }
+      out.data[oj + 3] = Math.round(255 * clamp(f * sa, 0, 1))
+    }
+  }
+
+  const patch = createCanvas(rw, rh)
+  putImageData(patch, out)
+  ctx2d(target.canvas).drawImage(patch, x0, y0)
+  target._v++
+  invalidateFlat(doc)
+  engine.requestRender()
+  return true
+}
+
 // ---------- blur ----------
 function blurOp(x: number, y: number, p: PointerInfo) {
+  if (sampledFilterDab('blur', x, y, p)) return
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions('blur')
@@ -178,6 +247,7 @@ function blurOp(x: number, y: number, p: PointerInfo) {
 
 // ---------- sharpen (unsharp mask) ----------
 function sharpenOp(x: number, y: number, p: PointerInfo) {
+  if (sampledFilterDab('sharpen', x, y, p)) return
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions('sharpen')
@@ -264,7 +334,9 @@ function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: num
   const px = x - ox, py = y - oy, ppx = prev.x - ox, ppy = prev.y - oy
   // pickup: Current Layer or a snapshot of the visible composite.
   const sourceAll = opts.sampleAllLayers === true
-  const source = sourceAll ? getFlatComposite(doc) : l.canvas
+  const source = retouchContext?.outputNew && retouchContext.source
+    ? retouchContext.source
+    : sourceAll ? getFlatComposite(doc) : l.canvas
   const sx = sourceAll ? prev.x : ppx
   const sy = sourceAll ? prev.y : ppy
   tctx.drawImage(source, sx - c, sy - c, size, size, 0, 0, size, size)
