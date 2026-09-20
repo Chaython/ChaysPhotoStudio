@@ -11,7 +11,7 @@ import { getOptions, drawCross } from './shared'
 import {
   createCanvas, ctx2d, cloneCanvas, getImageData, putImageData, clamp,
 } from '../utils/canvas'
-import { getFlatComposite, invalidateFlat } from '../engine/document'
+import { getFlatComposite, invalidateFlat, newLayer } from '../engine/document'
 import { gaussianBlurChannel } from '../image-ops/core'
 import { frequencyHeal } from './dab-utils'
 import * as imageOps from '../image-ops'
@@ -191,6 +191,35 @@ async function commitMove() {
         frequencyHeal(target, baseData, restrict, lowR)
         rc.putImageData(target, region.x, region.y)
       }
+    }
+
+    if (opts.output === 'new') {
+      // Preserve the source layer intact. A full-document result layer takes
+      // its place visually and inherits the source layer's blend/opacity;
+      // hiding rather than deleting the original keeps the operation fully
+      // reversible beyond ordinary history.
+      const out = newLayer(
+        'raster',
+        mode === 'move' ? `${layer.name} — Content-Aware Move` : `${layer.name} — Content-Aware Extend`,
+        doc.width,
+        doc.height,
+      )
+      out.canvas = cloneCanvas(result)
+      out.opacity = layer.opacity
+      out.blendMode = layer.blendMode
+      out.clipped = layer.clipped
+      out.origin = layer.origin
+      const sourceIndex = doc.layers.findIndex(l => l.id === layer.id)
+      doc.layers.splice(Math.max(0, sourceIndex + 1), 0, out)
+      layer.visible = false
+      layer._v++
+      doc.activeLayerId = out.id
+      doc.selectedLayerIds = [out.id]
+      invalidateFlat(doc)
+      engine.pushHistory(mode === 'move' ? 'Content-Aware Move to New Layer' : 'Content-Aware Extend to New Layer')
+      engine.emit()
+      reset()
+      return
     }
 
     const l = engine.mutateLayerPixels(layer.id)
