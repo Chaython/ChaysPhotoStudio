@@ -336,10 +336,15 @@ export const spotHealingTool: Tool = {
       ? cloneCanvas(getFlatComposite(doc))
       : cloneCanvas(sourceLayer)
     const img = getImageData(work)
+    const original = new ImageData(img.width, img.height)
+    original.data.set(img.data)
 
-    // hardness-aware mask, dilated 1px so edge pixels get resampled
+    // Structure controls how tightly we preserve the painted footprint.
+    // Lower structure values synthesize a slightly wider neighborhood.
+    const structure = clamp(Number(opts.structure) || 5, 1, 7)
     let m = getMaskAlpha(mask)
-    m = dilateMask(m, doc.width, doc.height, 1)
+    const dilation = Math.max(1, Math.round((8 - structure) / 2))
+    m = dilateMask(m, doc.width, doc.height, dilation)
     const hasMask = m.some(v => v > 0)
     if (!hasMask) return
 
@@ -362,6 +367,17 @@ export const spotHealingTool: Tool = {
       store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: 0 })
       await imageOps.inpaint(img, m, v => store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: v }))
       store.setProgress(null)
+    }
+
+    // Photoshop-style Color adaptation: match the healed low-frequency tone
+    // to a local proximity reconstruction while retaining synthesized detail.
+    const colorAdapt = clamp(Number(opts.color) || 0, 0, 10)
+    if (colorAdapt > 0) {
+      const localTone = new ImageData(original.width, original.height)
+      localTone.data.set(original.data)
+      frequencyHealProximity(localTone, m, Math.max(6, (opts.size ?? 40) * (.35 + colorAdapt * .04)))
+      const lowR = Math.max(2, Math.round((opts.size ?? 40) * (.04 + colorAdapt * .018)))
+      frequencyHeal(img, localTone, m, lowR)
     }
 
     // Isolate ONLY the healed footprint. This is critical when Sample All
