@@ -11,6 +11,7 @@ import { magicWandTool } from './wand'
 import { brushTool, pencilTool } from './brush'
 import { mixerBrushTool } from './mixer-brush'
 import { colorReplacementTool } from './color-replacement'
+import { historyBrushTool } from './history-brush'
 import { penTool } from './pen'
 import { eraserTool } from './eraser'
 import { backgroundEraserTool } from './background-eraser'
@@ -40,6 +41,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'pencil': pencilTool,
   'mixer-brush': mixerBrushTool,
   'color-replacement': colorReplacementTool,
+  'history-brush': historyBrushTool,
   'clone-stamp': cloneStampTool,
   'healing-brush': healingBrushTool,
   'spot-healing': spotHealingTool,
