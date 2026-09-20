@@ -16,6 +16,19 @@ let pts: { x: number; y: number }[] = []
 let hover: { x: number; y: number } | null = null
 let lastShift = false
 let lastAlt = false
+let editingVertex: number | null = null
+
+function nearestVertex(p: PointerInfo): number | null {
+  const doc = engine.activeDoc
+  if (!doc || !pts.length) return null
+  const tol = 9 / Math.max(.02, doc.view.zoom)
+  let best = -1, bestD = tol
+  for (let i = 0; i < pts.length; i++) {
+    const d = Math.hypot(p.docX - pts[i].x, p.docY - pts[i].y)
+    if (d <= bestD) { best = i; bestD = d }
+  }
+  return best >= 0 ? best : null
+}
 
 function constrainedPoint(p: PointerInfo): { x: number; y: number } {
   if (!p.shift || !pts.length) return { x: p.docX, y: p.docY }
@@ -62,6 +75,16 @@ export const polygonLassoTool: Tool = {
     const doc = engine.activeDoc
     if (!doc) return
 
+    if ((p.ctrl || p.meta) && pts.length) {
+      const hit = nearestVertex(p)
+      if (hit !== null) {
+        editingVertex = hit
+        hover = null
+        engine.pokeOverlay()
+        return
+      }
+    }
+
     // close when clicking near the first vertex (10 screen px)
     const dFirst = distToFirstScreen(p)
     if (pts.length >= 3 && dFirst !== null && dFirst < 10) {
@@ -86,8 +109,36 @@ export const polygonLassoTool: Tool = {
   },
 
   onPointerMove(p: PointerInfo) {
+    if (editingVertex !== null) {
+      let q = { x: p.docX, y: p.docY }
+      if (p.shift && pts.length > 1) {
+        const ref = editingVertex > 0 ? pts[editingVertex - 1] : pts[1]
+        const dx = q.x - ref.x, dy = q.y - ref.y
+        const len = Math.hypot(dx, dy)
+        if (len > .001) {
+          const step = Math.max(1, Number(getOptions('polygon-lasso').angleSnap) || 45) * Math.PI / 180
+          const a = Math.round(Math.atan2(dy, dx) / step) * step
+          q = { x: ref.x + Math.cos(a) * len, y: ref.y + Math.sin(a) * len }
+        }
+      }
+      pts[editingVertex] = q
+      engine.pokeOverlay()
+      return
+    }
     hover = constrainedPoint(p)
     engine.pokeOverlay()
+  },
+
+  onPointerUp() {
+    if (editingVertex !== null) {
+      editingVertex = null
+      engine.pokeOverlay()
+    }
+  },
+
+  onDeactivate() {
+    editingVertex = null
+    hover = null
   },
 
   onDoubleClick() {
@@ -130,11 +181,15 @@ export const polygonLassoTool: Tool = {
 
       // vertex markers
       ctx.save()
-      ctx.fillStyle = '#ffffff'
-      for (const p of pts) {
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i]
         ctx.beginPath()
-        ctx.arc(p.x * view.zoom + view.panX, p.y * view.zoom + view.panY, 3, 0, Math.PI * 2)
+        ctx.arc(p.x * view.zoom + view.panX, p.y * view.zoom + view.panY, i === editingVertex ? 4.5 : 3, 0, Math.PI * 2)
+        ctx.fillStyle = i === editingVertex ? '#e8a33d' : '#ffffff'
         ctx.fill()
+        ctx.strokeStyle = 'rgba(0,0,0,.75)'
+        ctx.lineWidth = 1
+        ctx.stroke()
       }
       ctx.restore()
 
