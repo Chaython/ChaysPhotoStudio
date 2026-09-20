@@ -1949,6 +1949,52 @@ export class Engine {
     this.ui?.toast('Guides cleared', 'info')
   }
 
+  // ================================================== color samplers / Info panel
+  addColorSampler(x: number, y: number): string | null {
+    const doc = this.activeDoc
+    if (!doc) return null
+    if (!doc.colorSamplers) doc.colorSamplers = []
+    if (doc.colorSamplers.length >= 10) {
+      this.ui?.toast('Color Sampler supports up to 10 points', 'info')
+      return null
+    }
+    const id = uid()
+    doc.colorSamplers.push({
+      id,
+      x: clamp(x, 0, Math.max(0, doc.width - 1)),
+      y: clamp(y, 0, Math.max(0, doc.height - 1)),
+    })
+    doc.dirty = true
+    this.emitOverlay()
+    return id
+  }
+
+  moveColorSampler(id: string, x: number, y: number) {
+    const doc = this.activeDoc
+    const p = doc?.colorSamplers?.find(s => s.id === id)
+    if (!doc || !p) return
+    p.x = clamp(x, 0, Math.max(0, doc.width - 1))
+    p.y = clamp(y, 0, Math.max(0, doc.height - 1))
+    doc.dirty = true
+    this.emitOverlay()
+  }
+
+  removeColorSampler(id: string) {
+    const doc = this.activeDoc
+    if (!doc?.colorSamplers?.some(s => s.id === id)) return
+    doc.colorSamplers = doc.colorSamplers.filter(s => s.id !== id)
+    doc.dirty = true
+    this.emitOverlay()
+  }
+
+  clearColorSamplers() {
+    const doc = this.activeDoc
+    if (!doc?.colorSamplers?.length) return
+    doc.colorSamplers = []
+    doc.dirty = true
+    this.emitOverlay()
+  }
+
   // ================================================== GPU acceleration state
   isGpuEnabled(): boolean { return isGlEnabled() }
   isGpuActive(): boolean { return glAvailable() }
