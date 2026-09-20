@@ -258,7 +258,7 @@ export const cloneStampTool: Tool = {
 
         // Photoshop-style source overlay: preview the actual transformed sample
         // directly under the destination cursor before painting.
-        if (opts.showOverlay !== false && st.source) {
+        if (opts.showOverlay !== false && !(opts.overlayAutoHide !== false && st.active) && st.source) {
           const rot = ((opts.rotate ?? 0) * Math.PI) / 180
           const mirrored = opts.mirrored === true
           const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
@@ -271,6 +271,7 @@ export const cloneStampTool: Tool = {
             ctx.beginPath()
             ctx.arc(mouse.x, mouse.y, r, 0, Math.PI * 2)
             ctx.clip()
+            if (opts.overlayInvert === true) ctx.filter = 'invert(1)'
             ctx.drawImage(preview, mouse.x - dw / 2, mouse.y - dh / 2, dw, dh)
             ctx.restore()
           }

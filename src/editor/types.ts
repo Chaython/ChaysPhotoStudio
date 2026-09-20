@@ -115,6 +115,10 @@ export interface TextSpec {
   direction?: 'horizontal' | 'vertical'
   /** Browser font kerning. Tracking remains an independent explicit offset. */
   kerning?: boolean
+  /** Common OpenType/CSS font feature controls kept editable on the text layer. */
+  ligatures?: boolean
+  smallCaps?: boolean
+  fontStretch?: 'ultra-condensed' | 'extra-condensed' | 'condensed' | 'semi-condensed' | 'normal' | 'semi-expanded' | 'expanded' | 'extra-expanded' | 'ultra-expanded'
   lineHeight: number
   tracking: number
   /** Paragraph text uses an editable bounding box; point text leaves these unset. */
@@ -122,7 +126,7 @@ export interface TextSpec {
   boxHeight?: number
   /** Editable Photoshop-style Warp Text metadata. Rendering deforms the
    * generated text surface without converting the layer to pixels. */
-  warpStyle?: 'none' | 'arc' | 'arch' | 'bulge' | 'flag'
+  warpStyle?: 'none' | 'arc' | 'arch' | 'bulge' | 'flag' | 'wave'
   warpBend?: number
   warpHorizontal?: number
   warpVertical?: number

@@ -348,7 +348,7 @@ export const quickSelectTool: Tool = {
 
   onPointerUp() {
     void finishQuickSelection()
-  },,
+  },
 
   renderOverlay(ctx, view, w, h, mouse) {
     void w; void h; void mouse
