@@ -206,9 +206,48 @@ export const moveTool: Tool = {
     const doc = engine.activeDoc
     if (!doc) return
 
+    // ---- on-canvas free-transform: selected group first ----
+    const moveOpts = getOptions('move')
+    const transformIds = selectedTransformIds()
+    if (transformIds.length > 1 && !p.ctrl && moveOpts.showTransformControls !== false) {
+      const groupRect = unionRects(transformIds.map(id => engine.layerContentRect(id)).filter((r): r is Rect => !!r))
+      const uniformOnly = transformIds.some(id => {
+        const l = engine.layerById(id)
+        return l?.kind === 'smart' || l?.kind === 'text'
+      })
+      const h = groupRect ? hitTestHandle(p.docX, p.docY, groupRect, uniformOnly, doc.view.zoom) : null
+      if (groupRect && h) {
+        const pts = Object.fromEntries(handlePoints(groupRect, uniformOnly).map(pt => [pt.id, pt]))
+        const hp = pts[h]!
+        const center = { x: groupRect.x + groupRect.w / 2, y: groupRect.y + groupRect.h / 2 }
+        let ax: number, ay: number
+        if (p.alt) { ax = center.x; ay = center.y }
+        else {
+          const opp: HandleId = ({ nw: 'se', se: 'nw', ne: 'sw', sw: 'ne', n: 's', s: 'n', e: 'w', w: 'e' } as Record<HandleId, HandleId>)[h]
+          const op = pts[opp] ?? center
+          ax = op.x; ay = op.y
+        }
+        const snapshots = transformIds.map(id => engine.layerById(id)).filter((l): l is Layer => !!l).map(snapshotTransformLayer)
+        if (snapshots.length === transformIds.length) {
+          groupTransform = { ids: transformIds.slice(), snapshots, rect: groupRect }
+          movingIds = transformIds.slice()
+          tdrag = {
+            handle: h, rect: groupRect, hx: hp.x, hy: hp.y, ax, ay,
+            startPx: p.docX, startPy: p.docY,
+            uniformOnly,
+            mode: 'scale', sx: 1, sy: 1, rotation: 0,
+            cx: center.x, cy: center.y,
+          }
+          live = null
+          doc._liveDrag = null
+          engine.requestRender()
+          return
+        }
+      }
+    }
+
     // ---- on-canvas free-transform: grab a handle of the active layer ----
     const target0 = transformableLayerId()
-    const moveOpts = getOptions('move')
     if (target0 && !p.ctrl && moveOpts.showTransformControls !== false) {
       const r = engine.layerContentRect(target0)
       const layer0 = engine.layerById(target0)!
@@ -315,7 +354,7 @@ export const moveTool: Tool = {
 
   onPointerMove(p: PointerInfo) {
     // ---- free-transform drag: update the live gesture map ----
-    if (tdrag && live) {
+    if (tdrag && (live || groupTransform)) {
       const doc = engine.activeDoc
       if (!doc) return
       const t = tdrag
@@ -380,7 +419,16 @@ export const moveTool: Tool = {
       // the opposite corner/edge fixed (Alt = center)
       const pax = t.mode === 'rotate' ? t.cx : t.ax
       const pay = t.mode === 'rotate' ? t.cy : t.ay
-      live.liveTransform = { sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay }
+      if (groupTransform) {
+        for (const snapshot of groupTransform.snapshots) restoreTransformSnapshot(snapshot)
+        for (const id of groupTransform.ids) {
+          engine.directTransformLayer(id, {
+            sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay,
+          }, { skipHistory: true, silent: true })
+        }
+      } else if (live) {
+        live.liveTransform = { sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay }
+      }
       engine.requestRender()
       return
     }
