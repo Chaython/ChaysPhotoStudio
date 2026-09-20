@@ -14,6 +14,7 @@ type RGB = [number, number, number]
 let active = false
 let last: { x: number; y: number } | null = null
 let reservoir: RGB | null = null
+let bristlePrev: { x: number; y: number } | null = null
 
 function lerpRGB(a: RGB, b: RGB, t: number): RGB {
   const k = clamp(t, 0, 1)
@@ -37,7 +38,9 @@ function resetReservoir() {
 function mixerDab(x: number, y: number, p: PointerInfo) {
   if (!active) return
   const opts = getOptions('mixer-brush')
-  const size = Math.max(2, Number(opts.size) || 55)
+  let size = Math.max(2, Number(opts.size) || 55)
+  const pressure = p.pointerType === 'pen' ? clamp(p.pressure, 0, 1) : 1
+  if (p.pointerType === 'pen' && opts.pressureSize === true) size *= .25 + .75 * pressure
   const radius = size / 2
   const hardness = clamp(Number(opts.hardness) || 0, 0, 100)
   const wet = clamp((Number(opts.wet) || 0) / 100, 0, 1)
@@ -45,7 +48,7 @@ function mixerDab(x: number, y: number, p: PointerInfo) {
   const mix = clamp((Number(opts.mix) || 0) / 100, 0, 1)
   let flow = clamp((Number(opts.flow) || 60) / 100, 0, 1)
   if (p.pointerType === 'pen' && opts.pressureFlow !== false) {
-    flow *= .2 + .8 * clamp(p.pressure, 0, 1)
+    flow *= .2 + .8 * pressure
   }
 
   if (!reservoir) resetReservoir()
@@ -63,18 +66,70 @@ function mixerDab(x: number, y: number, p: PointerInfo) {
   reservoir = lerpRGB(sampled, reservoir!, keepLoaded)
 
   const color = rgbToHex(paint[0], paint[1], paint[2])
-  engine.dab(
-    x, y,
-    (ctx, dx, dy) => softDab(ctx, dx, dy, radius, hardness, color),
-    flow,
-    Math.max(4, radius),
-  )
+  if (opts.bristle === true) {
+    const count = clamp(Math.round(Number(opts.bristleCount) || 18), 3, 64)
+    const length = size * clamp((Number(opts.bristleLength) || 70) / 100, .1, 1.8)
+    const stiffness = clamp((Number(opts.bristleStiffness) || 65) / 100, 0, 1)
+
+    let angle = 0
+    if (p.pointerType === 'pen' && opts.tiltBristles !== false && Math.hypot(p.tiltX, p.tiltY) > 1) {
+      angle = Math.atan2(p.tiltY, p.tiltX)
+    } else if (bristlePrev) {
+      const dx = x - bristlePrev.x, dy = y - bristlePrev.y
+      if (Math.hypot(dx, dy) > .1) angle = Math.atan2(dy, dx)
+    }
+    bristlePrev = { x, y }
+
+    engine.dab(
+      x, y,
+      (ctx, dx, dy) => {
+        ctx.save()
+        ctx.strokeStyle = color
+        ctx.lineCap = 'round'
+        const nx = -Math.sin(angle), ny = Math.cos(angle)
+        const dirX = Math.cos(angle), dirY = Math.sin(angle)
+        for (let i = 0; i < count; i++) {
+          const u = count <= 1 ? 0 : i / (count - 1) - .5
+          const across = u * size * .82 + (Math.random() - .5) * size * .04
+          const flex = (1 - stiffness) * (Math.random() - .5) * .9
+          const a = angle + flex
+          const bx = dx + nx * across
+          const by = dy + ny * across
+          const bristleLen = length * (.65 + Math.random() * .7)
+          const ex = bx + Math.cos(a) * bristleLen
+          const ey = by + Math.sin(a) * bristleLen
+          ctx.globalAlpha = .45 + .55 * (1 - Math.abs(u))
+          ctx.lineWidth = Math.max(.5, size / Math.max(8, count) * (.45 + Math.random() * .6))
+          ctx.beginPath()
+          ctx.moveTo(bx - dirX * bristleLen * .2, by - dirY * bristleLen * .2)
+          ctx.quadraticCurveTo(
+            bx + Math.cos(a) * bristleLen * .35,
+            by + Math.sin(a) * bristleLen * .35,
+            ex, ey,
+          )
+          ctx.stroke()
+        }
+        ctx.restore()
+      },
+      flow,
+      Math.max(4, radius + length),
+    )
+  } else {
+    bristlePrev = { x, y }
+    engine.dab(
+      x, y,
+      (ctx, dx, dy) => softDab(ctx, dx, dy, radius, hardness, color),
+      flow,
+      Math.max(4, radius),
+    )
+  }
 }
 
 function finish() {
   if (!active) return
   active = false
   last = null
+  bristlePrev = null
   engine.endStroke('Mixer Brush Stroke')
   if (getOptions('mixer-brush').autoClean === true) resetReservoir()
 }
@@ -104,6 +159,7 @@ export const mixerBrushTool: Tool = {
     engine.beginStroke(layer.id, { opacity: 100 })
     active = true
     last = { x: p.docX, y: p.docY }
+    bristlePrev = null
     mixerDab(p.docX, p.docY, p)
   },
 
