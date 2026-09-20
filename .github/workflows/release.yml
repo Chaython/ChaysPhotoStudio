@@ -206,6 +206,23 @@ jobs:
           # unsigned CI builds — see DISTRIBUTION.md for local signing
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      - name: Verify packaged Electron payload
+        run: node scripts/verify-electron-package.mjs
+
+      - name: Boot-smoke packaged Electron
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+          APP_BIN="$(find build/electron/dist/linux-unpacked -maxdepth 1 -type f -perm -111 -size +20M -print -quit)"
+          test -n "$APP_BIN"
+          echo "Smoke testing: $APP_BIN"
+          CHAYS_SMOKE_TEST=1 timeout 45s xvfb-run -a "$APP_BIN" --no-sandbox
+
       - name: Upload desktop builds
         uses: actions/upload-artifact@v7
         with:

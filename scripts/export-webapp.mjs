@@ -105,5 +105,20 @@ for (const f of flavors) {
     console.error('export-webapp: export incomplete — missing index.html or _next assets')
     process.exit(1)
   }
+
+  // The plugin flavor is also embedded by Tauri. Tauri's packaged protocol
+  // does not reliably resolve root-absolute /_next/* URLs; they must be
+  // relative (assetPrefix './') or the desktop app renders only SSR fallback.
+  if (f.label === 'plugin') {
+    const html = fs.readFileSync(path.join(f.out, 'index.html'), 'utf8')
+    if (/(?:src|href)=["']\/_next\//.test(html)) {
+      console.error('export-webapp: plugin/webview export still contains root-absolute /_next assets')
+      process.exit(1)
+    }
+    if (!/(?:src|href)=["']\.\/_next\//.test(html)) {
+      console.error('export-webapp: plugin/webview export does not contain relative ./_next assets')
+      process.exit(1)
+    }
+  }
 }
 console.log('export-webapp: done')

@@ -14,11 +14,28 @@ import { useEffect } from 'react'
 
 export function AppBridges() {
   useEffect(() => {
-    // ---- 1. service worker (production, http(s) pages only) ----
-    // Skipped inside browser extensions / non-web contexts, where
-    // registration is not permitted (the catch() would swallow it,
-    // but skipping outright keeps the console clean).
-    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production'
+    const api = (window as unknown as {
+      chaysPhotoStudio?: {
+        onOpenFile?: (cb: (p: { name: string; type: string; data: ArrayBuffer | Uint8Array }) => void) => () => void
+        onMenuCommand?: (cb: (cmd: string) => void) => () => void
+      }
+    }).chaysPhotoStudio
+
+    // ---- 1. service worker (web/PWA only) ----
+    // Desktop shells already ship every asset locally. A persistent service
+    // worker there can retain HTML from an older release while the hashed
+    // _next chunks changed, stranding the app on its loading fallback.
+    const desktopShell = !!api || location.protocol === 'tauri:' || location.hostname === 'tauri.localhost'
+    if ('serviceWorker' in navigator && desktopShell) {
+      void navigator.serviceWorker.getRegistrations()
+        .then(regs => Promise.all(regs.map(reg => reg.unregister())))
+        .catch(() => {})
+      if (typeof caches !== 'undefined') {
+        void caches.keys()
+          .then(keys => Promise.all(keys.filter(k => k.startsWith('chays-photo-studio-')).map(k => caches.delete(k))))
+          .catch(() => {})
+      }
+    } else if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production'
         && /^https?:$/.test(location.protocol)) {
       // relative: resolves correctly on root hosting and sub-path
       // hosting (GitHub Pages) alike; the worker derives its own BASE.
@@ -28,12 +45,6 @@ export function AppBridges() {
     }
 
     // ---- 2. Electron open-file bridge ----
-    const api = (window as unknown as {
-      chaysPhotoStudio?: {
-        onOpenFile?: (cb: (p: { name: string; type: string; data: ArrayBuffer | Uint8Array }) => void) => () => void
-        onMenuCommand?: (cb: (cmd: string) => void) => () => void
-      }
-    }).chaysPhotoStudio
     if (typeof api?.onOpenFile === 'function') {
       try {
         api.onOpenFile((payload) => {
