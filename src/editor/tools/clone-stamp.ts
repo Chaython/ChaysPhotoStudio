@@ -36,6 +36,9 @@ interface CloneState {
 }
 const st: CloneState = { active: false, last: null, ref: null, source: null, point: null, loadedSlot: 0, loadedDocId: null }
 const sourceSlots: CloneSlot[] = Array.from({ length: 5 }, () => ({ docId: null, point: null, ref: null, source: null }))
+let connectFrom: { x: number; y: number } | null = null
+let connectDocId: string | null = null
+let connectLayerId: string | null = null
 
 export interface CloneSourceSlotInfo {
   index: number
@@ -174,7 +177,17 @@ export const cloneStampTool: Tool = {
     // non-aligned: source resets to the clone source at each stroke start
     if (opts.aligned === false || !st.ref) st.ref = { x: p.docX, y: p.docY }
     saveLoadedSlot()
-    dab(p.docX, p.docY, p)
+    const canConnect = p.shift && connectFrom && connectDocId === doc.id && connectLayerId === layer.id
+    if (canConnect && connectFrom) {
+      const settings = brushSettingsFrom(opts)
+      const spacing = Math.max(1, settings.size * settings.spacing)
+      const points = walkDabs(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing)
+      for (const q of points) dab(q.x, q.y, p)
+      const tail = points[points.length - 1]
+      if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) dab(p.docX, p.docY, p)
+    } else {
+      dab(p.docX, p.docY, p)
+    }
   },
 
   onPointerMove(p: PointerInfo) {
@@ -188,9 +201,27 @@ export const cloneStampTool: Tool = {
 
   onPointerUp() {
     if (!st.active) return
+    const docId = engine.activeDoc?.id ?? null
+    const activeLayerId = engine.activeLayer?.id ?? null
+    if (st.last && docId && activeLayerId) {
+      connectFrom = { ...st.last }
+      connectDocId = docId
+      connectLayerId = activeLayerId
+    }
     st.active = false
     st.last = null
     engine.endStroke('Clone Stamp')
+  },
+
+  onDeactivate() {
+    connectFrom = null
+    connectDocId = null
+    connectLayerId = null
+    if (st.active) {
+      st.active = false
+      st.last = null
+      engine.endStroke('Clone Stamp')
+    }
   },
 
   renderOverlay(ctx, view, w, h, mouse) {
