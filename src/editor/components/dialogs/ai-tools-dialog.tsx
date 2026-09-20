@@ -19,6 +19,30 @@ import { localColorize, localDepthMap, localDenoise, localPortraitRestore, local
 
 function canvasDataUrl(canvas: HTMLCanvasElement) { return canvas.toDataURL('image/png') }
 
+function aiResultToSelectionMask(canvas: HTMLCanvasElement, width: number, height: number): Uint8ClampedArray {
+  const normalized = canvas.width === width && canvas.height === height
+    ? canvas
+    : (() => {
+        const out = createCanvas(width, height)
+        const oc = ctx2d(out)
+        oc.imageSmoothingEnabled = true
+        oc.imageSmoothingQuality = 'high'
+        oc.drawImage(canvas, 0, 0, width, height)
+        return out
+      })()
+  const d = getImageData(normalized).data
+  let transparent = 0
+  for (let i = 3; i < d.length; i += 4) if (d[i] < 250) { transparent++; if (transparent > 16) break }
+  const useAlpha = transparent > 16
+  const mask = new Uint8ClampedArray(width * height)
+  for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
+    mask[i] = useAlpha
+      ? d[j + 3]
+      : Math.round(d[j] * .2126 + d[j + 1] * .7152 + d[j + 2] * .0722)
+  }
+  return mask
+}
+
 function selectionMaskDataUrl(): string | undefined {
   const doc = engine.activeDoc
   if (!doc?.selection) return undefined
@@ -125,11 +149,24 @@ export function AiToolsDialog({ onClose }: DialogProps) {
       const result = await runComfyWorkflow(cfg, { prompt, capability: capability === 'custom' ? undefined : capability, workflow: activeWorkflow, imageDataUrl: input, maskDataUrl: mask, signal: ac.signal })
       setProgress(90)
       const canvas = await dataUrlToCanvas(result.image)
-      const name = `AI — ${prompt.trim().slice(0, 28) || 'ComfyUI Result'}`
-      if (resultMode === 'document') engine.addCanvasDocument(canvas, name)
-      else if (resultMode === 'smart') engine.placeSmartLayer(canvas, name)
-      else engine.addLayerFromCanvas(canvas, name)
-      pushToast(`ComfyUI result added (${canvas.width} × ${canvas.height})`, 'success')
+      const activeCapability = capability === 'custom' ? null : capability
+
+      if (activeCapability === 'select-subject') {
+        const mask = aiResultToSelectionMask(canvas, doc.width, doc.height)
+        engine.setSelectionAlpha(mask, 'new', 'AI Select Subject')
+        pushToast('ComfyUI segmentation applied as an editable selection', 'success')
+      } else {
+        const fallbackTitle = activeCapability === 'remove-background'
+          ? 'Background Removed'
+          : activeCapability === 'smart-remove'
+            ? 'Smart Remove'
+            : 'ComfyUI Result'
+        const name = `AI — ${prompt.trim().slice(0, 28) || fallbackTitle}`
+        if (resultMode === 'document') engine.addCanvasDocument(canvas, name)
+        else if (resultMode === 'smart') engine.placeSmartLayer(canvas, name)
+        else engine.addLayerFromCanvas(canvas, name)
+        pushToast(`ComfyUI result added (${canvas.width} × ${canvas.height})`, 'success')
+      }
       setProgress(100)
     } catch (err: any) {
       if (err?.name !== 'AbortError') pushToast(err?.message || 'ComfyUI workflow failed', 'error')
@@ -179,7 +216,7 @@ export function AiToolsDialog({ onClose }: DialogProps) {
             })}><Upload size={12} className="mr-1" />Workflow</Button>
           </div>
           <div className="flex flex-wrap gap-1">
-            {(['inpaint','outpaint','upscale','depth','denoise','restore-face','relight','colorize','vectorize','caption','custom'] as const).map(c => <button key={c} type="button" onClick={() => setCapability(c)} className={`rounded border px-1.5 py-1 text-[9px] ${capability === c ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>{c}</button>)}
+            {(['select-subject','remove-background','smart-remove','inpaint','outpaint','upscale','depth','denoise','restore-face','relight','colorize','vectorize','caption','custom'] as const).map(c => <button key={c} type="button" onClick={() => setCapability(c)} className={`rounded border px-1.5 py-1 text-[9px] ${capability === c ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>{c}</button>)}
           </div>
           <div className="rounded border border-border p-2">
             <div className="flex items-center justify-between gap-2">
@@ -199,10 +236,16 @@ export function AiToolsDialog({ onClose }: DialogProps) {
             <label className="flex items-center gap-2"><Checkbox checked={useImage} onCheckedChange={v => setUseImage(v === true)} />Send current composite</label>
             <label className="flex items-center gap-2"><Checkbox checked={useMask} onCheckedChange={v => setUseMask(v === true)} />Send current selection mask</label>
           </div>
-          <div className="flex items-center gap-1.5 text-[10px]">
-            <span className="text-muted-foreground">Result:</span>
-            {(['layer', 'smart', 'document'] as const).map(v => <button key={v} type="button" onClick={() => setResultMode(v)} className={`rounded border px-2 py-1 ${resultMode === v ? 'border-primary bg-primary/10 text-primary' : 'border-border'}`}>{v === 'smart' ? 'Smart Object' : v === 'document' ? 'New Document' : 'New Layer'}</button>)}
-          </div>
+          {capability === 'select-subject' ? (
+            <div className="rounded border border-primary/20 bg-primary/5 px-2 py-1.5 text-[10px] text-muted-foreground">
+              Result is interpreted as a segmentation mask: transparency is used when present, otherwise grayscale luminance becomes the editable selection.
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="text-muted-foreground">Result:</span>
+              {(['layer', 'smart', 'document'] as const).map(v => <button key={v} type="button" onClick={() => setResultMode(v)} className={`rounded border px-2 py-1 ${resultMode === v ? 'border-primary bg-primary/10 text-primary' : 'border-border'}`}>{v === 'smart' ? 'Smart Object' : v === 'document' ? 'New Document' : 'New Layer'}</button>)}
+            </div>
+          )}
           {progress > 0 && <Progress value={progress} className="h-1.5" />}
           <div className="flex justify-between gap-2">
             <Button variant="secondary" size="sm" disabled={!busy} onClick={() => abortRef.current?.abort()}>Cancel Run</Button>
