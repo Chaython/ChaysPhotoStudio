@@ -133,8 +133,12 @@ export interface ShapeSpec {
   strokeWidth: number
   strokeOpacity?: number
   lineCap?: CanvasLineCap
+  /** Shape stroke registration relative to the vector path. */
+  strokeAlign?: 'inside' | 'center' | 'outside'
   /** Vector stroke pattern retained as editable shape metadata. */
-  dash?: 'solid' | 'dashed' | 'dotted'
+  dash?: 'solid' | 'dashed' | 'dotted' | 'custom'
+  dashLength?: number
+  gapLength?: number
   /** Photoshop-style line endpoint decorations. */
   arrowStart?: boolean
   arrowEnd?: boolean
