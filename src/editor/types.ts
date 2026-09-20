@@ -120,6 +120,13 @@ export interface TextSpec {
   /** Paragraph text uses an editable bounding box; point text leaves these unset. */
   boxWidth?: number
   boxHeight?: number
+  /** Editable Photoshop-style text warp. None leaves glyphs unwarped. */
+  warpStyle?: 'none' | 'arc' | 'arch' | 'bulge' | 'flag' | 'wave'
+  /** Main warp amount, -100..100. */
+  warpBend?: number
+  /** Additional perspective-like horizontal / vertical distortion, -100..100. */
+  warpHorizontal?: number
+  warpVertical?: number
   x: number
   y: number
 }
