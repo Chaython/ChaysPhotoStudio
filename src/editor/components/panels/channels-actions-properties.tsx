@@ -1128,6 +1128,48 @@ function TextProperties({ layerId }: { layerId: string }) {
           <option value='"Courier New", monospace'>Courier</option>
         </select>
       </div>
+      <div className="mt-2 border-t pt-2 space-y-1.5">
+        <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Warp Text</div>
+        <select
+          value={t.warpStyle ?? 'none'}
+          onChange={e => update({ warpStyle: e.target.value as NonNullable<typeof t.warpStyle> })}
+          className="w-full h-6 bg-background border rounded text-[10px] px-1"
+        >
+          <option value="none">None</option>
+          <option value="arc">Arc</option>
+          <option value="arch">Arch</option>
+          <option value="bulge">Bulge</option>
+          <option value="flag">Flag</option>
+          <option value="wave">Wave</option>
+        </select>
+        {([
+          ['Bend', 'warpBend'],
+          ['H Distort', 'warpHorizontal'],
+          ['V Distort', 'warpVertical'],
+        ] as const).map(([label, key]) => (
+          <label key={key} className="grid grid-cols-[58px_1fr_42px] items-center gap-1 text-[10px]">
+            <span>{label}</span>
+            <input
+              type="range"
+              min={-100}
+              max={100}
+              step={1}
+              value={Number(t[key] ?? 0)}
+              onChange={e => update({ [key]: Number(e.target.value) })}
+              className="min-w-0"
+            />
+            <input
+              type="number"
+              min={-100}
+              max={100}
+              step={1}
+              value={Number(t[key] ?? 0)}
+              onChange={e => update({ [key]: Number(e.target.value) })}
+              className="h-5 w-10 bg-background border rounded text-[9px] px-1"
+            />
+          </label>
+        ))}
+      </div>
     </div>
   )
 }
