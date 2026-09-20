@@ -18,7 +18,7 @@ export type ToolId =
   | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'eyedropper' | 'color-sampler' | 'measure'
   | 'brush' | 'pencil' | 'mixer-brush' | 'color-replacement' | 'history-brush' | 'art-history-brush' | 'clone-stamp' | 'pattern-stamp' | 'healing-brush' | 'spot-healing' | 'patch' | 'content-aware-move' | 'red-eye'
   | 'eraser' | 'background-eraser' | 'magic-eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
-  | 'dodge' | 'burn' | 'sponge' | 'text' | 'shape' | 'pen' | 'hand' | 'zoom'
+  | 'dodge' | 'burn' | 'sponge' | 'text' | 'shape' | 'pen' | 'path-select' | 'hand' | 'zoom'
 
 export type SelectionCombine = 'new' | 'add' | 'subtract' | 'intersect'
 
