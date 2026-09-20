@@ -186,7 +186,7 @@ export const measureTool: Tool = {
       ctx.fillStyle = 'rgba(255,255,255,0.9)'
       ctx.font = '11px ui-sans-serif, sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText('Drag to measure · Shift locks 45° · Esc clears', w / 2, h - 19)
+      ctx.fillText('Drag to measure · Multi-segment chains lengths · Shift snaps angle · Esc clears', w / 2, h - 19)
       ctx.restore()
     }
   },
@@ -250,9 +250,14 @@ function drawMeasurement(
     const unit = String(opts.unit ?? 'px')
     const ppu = Math.max(.001, Number(opts.pixelsPerUnit) || 1)
     const calibrated = unit === 'px' ? '' : ` / ${(len / ppu).toFixed(2)} ${unit}`
+    const total = segments.reduce((sum, seg) => sum + Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y), 0)
+      + (dragging && start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0)
+    const totalText = getOptions(TOOL_ID).chain === true && total > len + .01
+      ? `  Σ ${total.toFixed(1)} px${unit === 'px' ? '' : ` / ${(total / ppu).toFixed(2)} ${unit}`}`
+      : ''
     const label = showDelta
-      ? `L: ${len.toFixed(1)} px${calibrated}  ∠ ${angleDeg.toFixed(1)}°  ΔX ${Math.round(dx)}  ΔY ${Math.round(dy)}`
-      : `L: ${len.toFixed(1)} px${calibrated}  ∠ ${angleDeg.toFixed(1)}°`
+      ? `L: ${len.toFixed(1)} px${calibrated}${totalText}  ∠ ${angleDeg.toFixed(1)}°  ΔX ${Math.round(dx)}  ΔY ${Math.round(dy)}`
+      : `L: ${len.toFixed(1)} px${calibrated}${totalText}  ∠ ${angleDeg.toFixed(1)}°`
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace'
     const tw = ctx.measureText(label).width
     const padX = 6, chipH = 16
