@@ -15,6 +15,7 @@ import { historyBrushTool } from './history-brush'
 import { artHistoryBrushTool } from './art-history-brush'
 import { penTool } from './pen'
 import { pathSelectTool } from './path-select'
+import { directSelectTool } from './direct-select'
 import { eraserTool } from './eraser'
 import { backgroundEraserTool } from './background-eraser'
 import { magicEraserTool } from './magic-eraser'
@@ -70,6 +71,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'text': textTool,
   'pen': penTool,
   'path-select': pathSelectTool,
+  'direct-select': directSelectTool,
   'shape': shapeTool,
   'hand': handTool,
   'zoom': zoomTool,
