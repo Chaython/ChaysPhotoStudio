@@ -109,11 +109,13 @@ export const TOOL_DEFS: ToolDef[] = [
     { key: 'pressureFlow', label: 'Pen Pressure → Flow', type: 'toggle' },
     { key: 'autoClean', label: 'Clean Brush After Stroke', type: 'toggle' },
   ] },
-  { id: 'color-replacement', label: 'Color Replacement', group: 4, shortcut: 'B', icon: 'Paintbrush2', cursor: 'none', requiresLayer: true, defaults: { size: 50, hardness: 70, spacing: 15, tolerance: 30, opacity: 100, sampling: 'continuous', limits: 'find-edges', pressureSize: false }, options: [
+  { id: 'color-replacement', label: 'Color Replacement', group: 4, shortcut: 'B', icon: 'Paintbrush2', cursor: 'none', requiresLayer: true, defaults: { size: 50, hardness: 70, spacing: 15, tolerance: 30, opacity: 100, mode: 'color', perceptual: true, sampling: 'continuous', limits: 'find-edges', pressureSize: false }, options: [
     { key: 'size', label: 'Size', type: 'slider', min: 2, max: 500, step: 1, unit: 'px' },
     { key: 'hardness', label: 'Hardness', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
     { key: 'spacing', label: 'Spacing', type: 'slider', min: 1, max: 200, step: 5, unit: '%' },
+    { key: 'mode', label: 'Mode', type: 'select', options: [{ label: 'Color', value: 'color' }, { label: 'Hue', value: 'hue' }, { label: 'Saturation', value: 'saturation' }, { label: 'Luminosity', value: 'luminosity' }] },
     { key: 'tolerance', label: 'Tolerance', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
+    { key: 'perceptual', label: 'Perceptual Match', type: 'toggle', hint: 'Use Lab color distance for tolerance matching' },
     { key: 'opacity', label: 'Opacity', type: 'slider', min: 1, max: 100, step: 1, unit: '%' },
     { key: 'sampling', label: 'Sampling', type: 'select', options: [{ label: 'Continuous', value: 'continuous' }, { label: 'Once', value: 'once' }, { label: 'Background Swatch', value: 'background' }] },
     { key: 'limits', label: 'Limits', type: 'select', options: [{ label: 'Discontiguous', value: 'discontiguous' }, { label: 'Contiguous', value: 'contiguous' }, { label: 'Find Edges', value: 'find-edges' }] },
