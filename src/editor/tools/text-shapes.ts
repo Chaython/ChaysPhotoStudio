@@ -228,7 +228,10 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
         strokeWidth: opts.strokeWidth ?? 4,
         strokeOpacity: opts.strokeOpacity ?? 100,
         lineCap: opts.lineCap ?? 'round',
+        strokeAlign: opts.strokeAlign ?? 'center',
         dash: opts.dash ?? 'solid',
+        dashLength: opts.dashLength ?? 12,
+        gapLength: opts.gapLength ?? 8,
         arrowStart: opts.arrowStart === true,
         arrowEnd: opts.arrowEnd === true,
         sides: opts.sides ?? 5,
@@ -245,7 +248,10 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
       strokeWidth: opts.strokeWidth ?? 4,
       strokeOpacity: opts.strokeOpacity ?? 100,
       lineCap: opts.lineCap ?? 'round',
+      strokeAlign: opts.strokeAlign ?? 'center',
       dash: opts.dash ?? 'solid',
+      dashLength: opts.dashLength ?? 12,
+      gapLength: opts.gapLength ?? 8,
       arrowStart: opts.arrowStart === true,
       arrowEnd: opts.arrowEnd === true,
       sides: opts.sides ?? 5,
@@ -254,9 +260,9 @@ function currentShapeSpec(p: PointerInfo, live: boolean): ShapeSpec | null {
   }
   // live preview path
   if (isLine) {
-    return { shape: 'line', x: vec.x0, y: vec.y0, w: vec.x1 - vec.x0, h: vec.y1 - vec.y0, radius: 0, fill: null, fillOpacity: 0, stroke: opts.stroke ?? '#ffffff', strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', dash: opts.dash ?? 'solid', arrowStart: opts.arrowStart === true, arrowEnd: opts.arrowEnd === true, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
+    return { shape: 'line', x: vec.x0, y: vec.y0, w: vec.x1 - vec.x0, h: vec.y1 - vec.y0, radius: 0, fill: null, fillOpacity: 0, stroke: opts.stroke ?? '#ffffff', strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', strokeAlign: opts.strokeAlign ?? 'center', dash: opts.dash ?? 'solid', dashLength: opts.dashLength ?? 12, gapLength: opts.gapLength ?? 8, arrowStart: opts.arrowStart === true, arrowEnd: opts.arrowEnd === true, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
   }
-  return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', fillOpacity: opts.fillOpacity ?? 100, stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null, strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', dash: opts.dash ?? 'solid', arrowStart: false, arrowEnd: false, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
+  return { shape: opts.shape ?? 'rect', x: r.x, y: r.y, w: r.w, h: r.h, radius: opts.radius ?? 12, fill: opts.fill ?? '#e8a33d', fillOpacity: opts.fillOpacity ?? 100, stroke: opts.strokeEnabled ? (opts.stroke ?? '#ffffff') : null, strokeWidth: opts.strokeWidth ?? 4, strokeOpacity: opts.strokeOpacity ?? 100, lineCap: opts.lineCap ?? 'round', strokeAlign: opts.strokeAlign ?? 'center', dash: opts.dash ?? 'solid', dashLength: opts.dashLength ?? 12, gapLength: opts.gapLength ?? 8, arrowStart: false, arrowEnd: false, sides: opts.sides ?? 5, starInset: opts.starInset ?? 45 }
 }
 
 function drawArrowheads(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {
