@@ -37,6 +37,48 @@ interface CloneState {
 const st: CloneState = { active: false, last: null, ref: null, source: null, point: null, loadedSlot: 0, loadedDocId: null }
 const sourceSlots: CloneSlot[] = Array.from({ length: 5 }, () => ({ docId: null, point: null, ref: null, source: null }))
 
+export interface CloneSourceSlotInfo {
+  index: number
+  active: boolean
+  hasSource: boolean
+  point: { x: number; y: number } | null
+  source: HTMLCanvasElement | null
+}
+
+function notifyCloneSourcePanel() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('zphoto:clone-source'))
+}
+
+export function getCloneSourceSlots(): CloneSourceSlotInfo[] {
+  syncSourceSlot()
+  const docId = engine.activeDoc?.id ?? null
+  return sourceSlots.map((slot, index) => ({
+    index,
+    active: index === st.loadedSlot,
+    hasSource: !!slot.source && !!slot.point && slot.docId === docId,
+    point: slot.docId === docId && slot.point ? { x: slot.point.x, y: slot.point.y } : null,
+    source: slot.docId === docId ? slot.source : null,
+  }))
+}
+
+export function clearCloneSourceSlot(index: number) {
+  const i = Math.max(0, Math.min(4, Math.round(index)))
+  const slot = sourceSlots[i]
+  if (!slot) return
+  slot.docId = engine.activeDoc?.id ?? null
+  slot.point = null
+  slot.ref = null
+  slot.source = null
+  if (i === st.loadedSlot) {
+    st.point = null
+    st.ref = null
+    st.source = null
+    engine.cloneSource = null
+  }
+  notifyCloneSourcePanel()
+  engine.requestRender()
+}
+
 function requestedSlot(): number {
   return Math.max(0, Math.min(4, Math.round(Number(getOptions('clone-stamp').sourceSlot) || 1) - 1))
 }
@@ -114,6 +156,7 @@ export const cloneStampTool: Tool = {
       st.source = src
       st.ref = null // next stroke re-establishes the offset anchor
       saveLoadedSlot()
+      notifyCloneSourcePanel()
       engine.ui?.toast(`Clone source #${st.loadedSlot + 1} set`, 'info')
       engine.requestRender()
       return
