@@ -16,6 +16,7 @@ import { gaussianBlurChannel } from '../image-ops/core'
 import { getFlatComposite } from '../engine/document'
 import { diskAverageColor, growDisk } from './dab-utils'
 import * as imageOps from '../image-ops'
+import { loadComfyConfig, runComfyWorkflow } from '../ai/providers'
 
 // ============================================================
 // Object Selection
@@ -28,6 +29,61 @@ let detecting = false
 let detectRect: Rect | null = null
 let detectLasso: { x: number; y: number }[] | null = null
 let detectClick: { x: number; y: number } | null = null
+
+async function comfySegmentationMask(
+  source: HTMLCanvasElement,
+  regionMask: HTMLCanvasElement,
+  width: number,
+  height: number,
+): Promise<Uint8ClampedArray> {
+  const cfg = loadComfyConfig()
+  const result = await runComfyWorkflow(cfg, {
+    capability: 'select-subject',
+    prompt: 'Segment the foreground object inside the provided region. Return a white/opaque subject on black/transparent background.',
+    imageDataUrl: source.toDataURL('image/png'),
+    maskDataUrl: regionMask.toDataURL('image/png'),
+  })
+  const canvas = await imageOps.dataUrlToCanvas(result.image)
+  const normalized = canvas.width === width && canvas.height === height
+    ? canvas
+    : (() => {
+        const out = createCanvas(width, height)
+        const oc = ctx2d(out)
+        oc.imageSmoothingEnabled = true
+        oc.imageSmoothingQuality = 'high'
+        oc.drawImage(canvas, 0, 0, width, height)
+        return out
+      })()
+  const d = getImageData(normalized).data
+  let alphaPixels = 0
+  for (let j = 3; j < d.length; j += 4) {
+    if (d[j] < 250) { alphaPixels++; if (alphaPixels > 16) break }
+  }
+  const useAlpha = alphaPixels > 16
+  const mask = new Uint8ClampedArray(width * height)
+  for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
+    mask[i] = useAlpha
+      ? d[j + 3]
+      : Math.round(d[j] * .2126 + d[j + 1] * .7152 + d[j + 2] * .0722)
+  }
+  return mask
+}
+
+function objectRegionMask(docW: number, docH: number, r: Rect, lasso: { x: number; y: number }[] | null): HTMLCanvasElement {
+  const out = createCanvas(docW, docH)
+  const oc = ctx2d(out)
+  oc.fillStyle = '#fff'
+  if (lasso?.length && lasso.length >= 3) {
+    oc.beginPath()
+    oc.moveTo(lasso[0].x, lasso[0].y)
+    for (const q of lasso.slice(1)) oc.lineTo(q.x, q.y)
+    oc.closePath()
+    oc.fill()
+  } else {
+    oc.fillRect(r.x, r.y, r.w, r.h)
+  }
+  return out
+}
 
 function clickSearchRect(x: number, y: number): Rect {
   const doc = engine.activeDoc
@@ -133,7 +189,7 @@ export const objectSelectTool: Tool = {
     detectLasso = lasso
     detectClick = click
     engine.pokeOverlay()
-    requestAnimationFrame(() => setTimeout(() => {
+    requestAnimationFrame(() => setTimeout(async () => {
       try {
         const doc = engine.activeDoc
         if (!doc) return
@@ -141,24 +197,31 @@ export const objectSelectTool: Tool = {
           ? engine.layerCanvasDocSpace(engine.activeLayer.id)
           : getFlatComposite(doc)
         if (!source) return
-        const img = getImageData(source)
-        let mask = imageOps.objectSelect(
-          img,
-          Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)
-        )
-        if (click) mask = keepConnectedNearest(mask, doc.width, doc.height, click.x, click.y)
-        if (lasso && lasso.length >= 3) {
-          const regionMask = createCanvas(doc.width, doc.height)
-          const mc = ctx2d(regionMask)
-          mc.fillStyle = '#fff'
-          mc.beginPath()
-          mc.moveTo(lasso[0].x, lasso[0].y)
-          for (const q of lasso.slice(1)) mc.lineTo(q.x, q.y)
-          mc.closePath()
-          mc.fill()
-          const allowed = getMaskAlpha(regionMask)
-          for (let i = 0; i < mask.length; i++) if (!allowed[i]) mask[i] = 0
+        const regionMask = objectRegionMask(doc.width, doc.height, r, lasso)
+        const allowed = getMaskAlpha(regionMask)
+        let mask: Uint8ClampedArray
+
+        if (opts.detector === 'comfyui') {
+          try {
+            mask = await comfySegmentationMask(source, regionMask, doc.width, doc.height)
+          } catch (err) {
+            engine.ui?.toast(
+              `ComfyUI segmentation unavailable — using built-in detector${err instanceof Error && err.message ? `: ${err.message}` : ''}`,
+              'info',
+            )
+            const img = getImageData(source)
+            mask = imageOps.objectSelect(img, Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h))
+          }
+        } else {
+          const img = getImageData(source)
+          mask = imageOps.objectSelect(img, Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h))
         }
+
+        // Provider output is always constrained by the rectangle/lasso the
+        // user actually supplied, so an over-eager segmentation workflow
+        // cannot unexpectedly select unrelated objects elsewhere.
+        for (let i = 0; i < mask.length; i++) if (!allowed[i]) mask[i] = 0
+        if (click) mask = keepConnectedNearest(mask, doc.width, doc.height, click.x, click.y)
         const level = opts.level ?? 'balanced'
         if (level !== 'fast') {
           mask = imageOps.refineMask(mask, doc.width, doc.height, level === 'thorough'
