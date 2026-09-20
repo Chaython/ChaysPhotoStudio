@@ -14,8 +14,6 @@ let active = false
 let last: { x: number; y: number } | null = null
 let sourceImage: ImageData | null = null
 let targetImage: ImageData | null = null
-let sourceW = 0
-let sourceH = 0
 
 function historySource(layerId: string): HTMLCanvasElement | null {
   const doc = engine.activeDoc
@@ -116,7 +114,6 @@ function finish() {
   last = null
   sourceImage = null
   targetImage = null
-  sourceW = sourceH = 0
   engine.endStroke('Art History Brush')
 }
 
@@ -141,9 +138,6 @@ export const artHistoryBrushTool: Tool = {
     }
     sourceImage = getImageData(src)
     targetImage = getImageData(current)
-    sourceW = src.width
-    sourceH = src.height
-    void sourceW; void sourceH
     const opts = getOptions('art-history-brush')
     engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100 })
     active = true
