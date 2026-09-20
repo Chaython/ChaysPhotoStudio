@@ -9,7 +9,7 @@
 //  Shape: live preview of the actual shape path while dragging (overlay),
 //  Shift constrains to square / 45° lines.
 // ============================================================
-import type { Tool, PointerInfo, ShapeSpec } from '../types'
+import type { Tool, PointerInfo, ShapeSpec, TextSpec } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, newDrag, drawCross, drawDashedRect } from './shared'
 import { measureTextSpecBounds } from './dab-utils'
@@ -48,6 +48,118 @@ function editTextLayer(layerId: string) {
 let textDrag = newDrag()
 let textFrame: { x: number; y: number; w: number; h: number } | null = null
 
+type TextHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
+interface TextResizeState {
+  layerId: string
+  handle: TextHandle
+  startX: number
+  startY: number
+  original: TextSpec
+  changed: boolean
+}
+let textResize: TextResizeState | null = null
+
+function activeParagraphText(): { id: string; text: TextSpec } | null {
+  const doc = engine.activeDoc
+  if (!doc?.activeLayerId) return null
+  const layer = engine.layerById(doc.activeLayerId)
+  if (!layer || layer.kind !== 'text' || !layer.text?.boxWidth || !layer.text.boxHeight) return null
+  return { id: layer.id, text: layer.text }
+}
+
+function textHandles(t: TextSpec) {
+  const x = t.x, y = t.y, w = t.boxWidth ?? 0, h = t.boxHeight ?? 0
+  const cx = x + w / 2, cy = y + h / 2
+  return [
+    { id: 'nw' as TextHandle, x, y },
+    { id: 'n' as TextHandle, x: cx, y },
+    { id: 'ne' as TextHandle, x: x + w, y },
+    { id: 'e' as TextHandle, x: x + w, y: cy },
+    { id: 'se' as TextHandle, x: x + w, y: y + h },
+    { id: 's' as TextHandle, x: cx, y: y + h },
+    { id: 'sw' as TextHandle, x, y: y + h },
+    { id: 'w' as TextHandle, x, y: cy },
+  ]
+}
+
+function hitTextHandle(p: PointerInfo): { id: string; text: TextSpec; handle: TextHandle } | null {
+  const active = activeParagraphText()
+  const doc = engine.activeDoc
+  if (!active || !doc) return null
+  const tol = Math.max(4, 8 / Math.max(.02, doc.view.zoom))
+  let best: TextHandle | null = null
+  let bestD = Infinity
+  for (const h of textHandles(active.text)) {
+    const d = Math.hypot(p.docX - h.x, p.docY - h.y)
+    if (d <= tol && d < bestD) { best = h.id; bestD = d }
+  }
+  return best ? { ...active, handle: best } : null
+}
+
+function updateTextResize(p: PointerInfo) {
+  const st = textResize
+  if (!st) return
+  const o = st.original
+  let left = o.x, top = o.y
+  let right = o.x + (o.boxWidth ?? 20)
+  let bottom = o.y + (o.boxHeight ?? Math.max(20, o.fontSize * o.lineHeight))
+  const dx = p.docX - st.startX, dy = p.docY - st.startY
+  if (st.handle.includes('w')) left += dx
+  if (st.handle.includes('e')) right += dx
+  if (st.handle.includes('n')) top += dy
+  if (st.handle.includes('s')) bottom += dy
+
+  const minW = 20
+  const minH = Math.max(20, o.fontSize * Math.max(.5, o.lineHeight || 1.2))
+  if (right - left < minW) {
+    if (st.handle.includes('w')) left = right - minW
+    else right = left + minW
+  }
+  if (bottom - top < minH) {
+    if (st.handle.includes('n')) top = bottom - minH
+    else bottom = top + minH
+  }
+
+  // Alt/Option resizes the paragraph frame around its original center.
+  if (p.alt) {
+    const cx = o.x + (o.boxWidth ?? minW) / 2
+    const cy = o.y + (o.boxHeight ?? minH) / 2
+    const halfW = Math.max(minW / 2, Math.max(Math.abs(cx - left), Math.abs(right - cx)))
+    const halfH = Math.max(minH / 2, Math.max(Math.abs(cy - top), Math.abs(bottom - cy)))
+    if (st.handle.includes('w') || st.handle.includes('e')) { left = cx - halfW; right = cx + halfW }
+    if (st.handle.includes('n') || st.handle.includes('s')) { top = cy - halfH; bottom = cy + halfH }
+  }
+
+  const next: TextSpec = {
+    ...o,
+    x: left,
+    y: top,
+    boxWidth: right - left,
+    boxHeight: bottom - top,
+  }
+  st.changed = Math.abs(next.x - o.x) > .01 || Math.abs(next.y - o.y) > .01
+    || Math.abs((next.boxWidth ?? 0) - (o.boxWidth ?? 0)) > .01
+    || Math.abs((next.boxHeight ?? 0) - (o.boxHeight ?? 0)) > .01
+  engine.setLayerProps(st.layerId, { text: next }, { history: false, silent: true })
+  engine.requestRender()
+  engine.pokeOverlay()
+}
+
+function finishTextResize(commit: boolean) {
+  const st = textResize
+  if (!st) return
+  textResize = null
+  if (!commit) {
+    engine.setLayerProps(st.layerId, { text: { ...st.original } }, { history: false, silent: true })
+    engine.emit()
+    return
+  }
+  if (st.changed) {
+    engine.pushHistory('Resize Text Frame')
+    engine.emit()
+  } else engine.pokeOverlay()
+}
+
 function createTextLayerAt(x: number, y: number, box?: { w: number; h: number }) {
   const opts = getOptions('text')
   const layer = engine.addTextLayer({
@@ -77,6 +189,23 @@ export const textTool: Tool = {
     if (!doc) return
     const opts = getOptions('text')
 
+    // Paragraph text exposes Photoshop-style on-canvas frame handles. Test
+    // these before normal text hit activation so dragging a handle reflows the
+    // paragraph instead of opening the text editor.
+    const frameHandle = hitTextHandle(p)
+    if (frameHandle) {
+      textResize = {
+        layerId: frameHandle.id,
+        handle: frameHandle.handle,
+        startX: p.docX,
+        startY: p.docY,
+        original: { ...frameHandle.text },
+        changed: false,
+      }
+      engine.pokeOverlay()
+      return
+    }
+
     // Clicking an existing point/paragraph text frame activates it for editing.
     const hit = textLayerAt(p.docX, p.docY)
     if (hit) {
@@ -95,12 +224,14 @@ export const textTool: Tool = {
   },
 
   onPointerMove(p: PointerInfo) {
+    if (textResize) { updateTextResize(p); return }
     if (!textDrag.active) return
     textFrame = rectFromPoints(textDrag.startX, textDrag.startY, p.docX, p.docY)
     engine.pokeOverlay()
   },
 
   onPointerUp(p: PointerInfo) {
+    if (textResize) { finishTextResize(true); return }
     if (!textDrag.active) return
     textDrag.active = false
     const opts = getOptions('text')
@@ -124,6 +255,10 @@ export const textTool: Tool = {
   },
 
   onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && textResize) {
+      finishTextResize(false)
+      return true
+    }
     if (e.key === 'Escape' && textDrag.active) {
       textDrag.active = false
       textFrame = null
@@ -134,6 +269,7 @@ export const textTool: Tool = {
   },
 
   onDeactivate() {
+    if (textResize) finishTextResize(true)
     textDrag.active = false
     textFrame = null
   },
@@ -161,6 +297,39 @@ export const textTool: Tool = {
       ctx.restore()
       return
     }
+    const paragraph = activeParagraphText()
+    if (paragraph) {
+      const t = paragraph.text
+      const x = t.x * view.zoom + view.panX
+      const y = t.y * view.zoom + view.panY
+      const rw = (t.boxWidth ?? 0) * view.zoom
+      const rh = (t.boxHeight ?? 0) * view.zoom
+      ctx.save()
+      ctx.strokeStyle = 'rgba(232,163,61,.92)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 3])
+      ctx.strokeRect(x + .5, y + .5, rw, rh)
+      ctx.setLineDash([])
+      for (const hnd of textHandles(t)) {
+        const hx = hnd.x * view.zoom + view.panX
+        const hy = hnd.y * view.zoom + view.panY
+        const active = textResize?.handle === hnd.id
+        const s = active ? 9 : 7
+        ctx.fillStyle = active ? '#e8a33d' : '#fff'
+        ctx.strokeStyle = 'rgba(15,15,17,.95)'
+        ctx.fillRect(hx - s / 2, hy - s / 2, s, s)
+        ctx.strokeRect(hx - s / 2, hy - s / 2, s, s)
+      }
+      const label = `${Math.round(t.boxWidth ?? 0)} × ${Math.round(t.boxHeight ?? 0)} px`
+      ctx.font = '10px ui-monospace, monospace'
+      const tw = ctx.measureText(label).width + 10
+      ctx.fillStyle = 'rgba(10,10,12,.82)'
+      ctx.fillRect(x, y - 20, tw, 16)
+      ctx.fillStyle = '#e8a33d'
+      ctx.fillText(label, x + 5, y - 8)
+      ctx.restore()
+    }
+
     if (mouse) {
       // I-beam-ish marker: cross + baseline ticks
       ctx.save()
