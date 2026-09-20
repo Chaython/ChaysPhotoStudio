@@ -10,12 +10,14 @@ import { objectSelectTool, quickSelectTool } from './select-tools'
 import { magicWandTool } from './wand'
 import { brushTool, pencilTool } from './brush'
 import { mixerBrushTool } from './mixer-brush'
+import { colorReplacementTool } from './color-replacement'
 import { penTool } from './pen'
 import { eraserTool } from './eraser'
 import { backgroundEraserTool } from './background-eraser'
 import { magicEraserTool } from './magic-eraser'
 import { cloneStampTool } from './clone-stamp'
 import { healingBrushTool, spotHealingTool, patchTool } from './healing'
+import { redEyeTool } from './red-eye'
 import { blurTool, sharpenTool, smudgeTool, dodgeTool, burnTool, spongeTool } from './retouch'
 import { gradientTool, paintBucketTool } from './fill'
 import { textTool, shapeTool } from './text-shapes'
@@ -37,10 +39,12 @@ export const TOOLS: Record<ToolId, Tool> = {
   'brush': brushTool,
   'pencil': pencilTool,
   'mixer-brush': mixerBrushTool,
+  'color-replacement': colorReplacementTool,
   'clone-stamp': cloneStampTool,
   'healing-brush': healingBrushTool,
   'spot-healing': spotHealingTool,
   'patch': patchTool,
+  'red-eye': redEyeTool,
   'eraser': eraserTool,
   'background-eraser': backgroundEraserTool,
   'magic-eraser': magicEraserTool,
