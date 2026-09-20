@@ -19,13 +19,14 @@
 // ============================================================
 import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross, toolMaskCanvas, softDab } from './shared'
+import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross, toolMaskCanvas, softDab } from './shared'
 import { buildSourceDab, sourcePointFor, frequencyHeal, pressureFlow } from './dab-utils'
 import { createCanvas, ctx2d, getImageData, putImageData, cloneCanvas, clamp, getMaskAlpha } from '../utils/canvas'
 import { dilateMask, gaussianBlurChannel } from '../image-ops/core'
 import { useEditorStore } from '../store'
 import * as imageOps from '../image-ops'
 import { getFlatComposite } from '../engine/document'
+import { paintBuiltinPattern } from './patterns'
 
 /** rect clamped to doc bounds */
 function clampedRect(r: Rect, w: number, h: number): Rect {
@@ -49,6 +50,34 @@ interface HealState {
 }
 const hst: HealState = { active: false, last: null, ref: null, source: null, orig: null, dabs: [] }
 
+function buildHealingPatternDab(x: number, y: number, radius: number, hardness: number, opts: Record<string, any>) {
+  const side = Math.max(4, Math.ceil(radius * 2) + 4)
+  const center = side / 2
+  const out = createCanvas(side, side)
+  const oc = ctx2d(out)
+  paintBuiltinPattern(oc, side, side, {
+    kind: String(opts.pattern ?? 'checker'),
+    scale: clamp((Number(opts.patternScale) || 100) / 100, .25, 4),
+    offsetX: Number(opts.patternOffsetX) || 0,
+    offsetY: Number(opts.patternOffsetY) || 0,
+    fg: getFgColor(),
+    bg: getBgColor(),
+    originX: x - center,
+    originY: y - center,
+  })
+  oc.globalCompositeOperation = 'destination-in'
+  const inner = radius * clamp(hardness / 100, 0, .98)
+  const grad = oc.createRadialGradient(center, center, inner, center, center, Math.max(radius, .5))
+  grad.addColorStop(0, 'rgba(255,255,255,1)')
+  grad.addColorStop(1, 'rgba(255,255,255,0)')
+  oc.fillStyle = grad
+  oc.beginPath()
+  oc.arc(center, center, Math.max(radius, .5), 0, Math.PI * 2)
+  oc.fill()
+  oc.globalCompositeOperation = 'source-over'
+  return out
+}
+
 export const healingBrushTool: Tool = {
   id: 'healing-brush',
   requiresLayer: true,
@@ -61,7 +90,8 @@ export const healingBrushTool: Tool = {
     if (!doc || !layer) return
     const opts = getOptions('healing-brush')
 
-    if (p.alt) {
+    const patternMode = opts.sample === 'pattern'
+    if (p.alt && !patternMode) {
       // ---- set healing source (layer snapshot, doc-space) ----
       const c = opts.sample === 'composite' ? getFlatComposite(doc) : engine.layerCanvasDocSpace(layer.id)
       if (!c) return
@@ -73,8 +103,8 @@ export const healingBrushTool: Tool = {
       return
     }
 
-    if (!engine.cloneSource || !hst.source) {
-      engine.ui?.toast('Alt+click to set a healing source first', 'info')
+    if (!patternMode && (!engine.cloneSource || !hst.source)) {
+      engine.ui?.toast('Alt+click to set a healing source first, or choose Pattern as the source', 'info')
       return
     }
 
@@ -85,7 +115,7 @@ export const healingBrushTool: Tool = {
     hst.active = true
     hst.last = { x: p.docX, y: p.docY }
     hst.dabs = [{ x: p.docX, y: p.docY }]
-    if (opts.aligned === false || !hst.ref) hst.ref = { x: p.docX, y: p.docY }
+    if (!patternMode && (opts.aligned === false || !hst.ref)) hst.ref = { x: p.docX, y: p.docY }
     healDab(p.docX, p.docY, p)
   },
 
@@ -112,14 +142,22 @@ export const healingBrushTool: Tool = {
     commitHeal()
   },
 
+  onDeactivate() {
+    if (!hst.active) return
+    hst.active = false
+    hst.last = null
+    commitHeal()
+  },
+
   renderOverlay(ctx, view, w, h, mouse) {
     void w; void h
     const opts = getOptions('healing-brush')
     const size = opts.size ?? 40
     const src = engine.cloneSource
+    const patternMode = opts.sample === 'pattern'
 
     // source marker
-    if (src && hst.source) {
+    if (!patternMode && src && hst.source) {
       const sx = src.x * view.zoom + view.panX
       const sy = src.y * view.zoom + view.panY
       ctx.save()
@@ -133,7 +171,7 @@ export const healingBrushTool: Tool = {
     }
 
     // ghost of sampled source area under cursor
-    if (src && mouse && hst.ref) {
+    if (!patternMode && src && mouse && hst.ref) {
       const docX = (mouse.x - view.panX) / view.zoom
       const docY = (mouse.y - view.panY) / view.zoom
       const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
@@ -157,7 +195,7 @@ export const healingBrushTool: Tool = {
     void w; void h
     const opts = getOptions('healing-brush')
     const size = opts.size ?? 40
-    if (hst.active) drawBrushCursor(ctx, mouse, size, view.zoom)
+    if (hst.active || opts.sample === 'pattern') drawBrushCursor(ctx, mouse, size, view.zoom)
     else if (engine.cloneSource && hst.source) drawBrushCursor(ctx, mouse, size, view.zoom)
     else drawCross(ctx, mouse)
   },
@@ -165,21 +203,29 @@ export const healingBrushTool: Tool = {
 
 function healDab(x: number, y: number, p: PointerInfo) {
   const doc = engine.activeDoc
-  if (!doc || !hst.source || !hst.ref) return
-  const src = engine.cloneSource
-  if (!src) return
+  if (!doc) return
   const opts = getOptions('healing-brush')
   const settings = brushSettingsFrom(opts)
   const r = settings.size / 2
-  const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
-  const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
-  const mirrored = opts.mirrored === true
-  const sp = sourcePointFor(x, y, hst.ref.x, hst.ref.y, src.x, src.y, rot, mirrored, scale)
-  const dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale)
+  let dabCanvas: HTMLCanvasElement | null = null
+
+  if (opts.sample === 'pattern') {
+    dabCanvas = buildHealingPatternDab(x, y, r, settings.hardness, opts)
+  } else {
+    if (!hst.source || !hst.ref) return
+    const src = engine.cloneSource
+    if (!src) return
+    const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
+    const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
+    const mirrored = opts.mirrored === true
+    const sp = sourcePointFor(x, y, hst.ref.x, hst.ref.y, src.x, src.y, rot, mirrored, scale)
+    dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale)
+  }
+
   if (!dabCanvas) return
   const flow = pressureFlow(p.pressure, p.pointerType === 'pen' && opts.pressure !== false, settings.flow / 100)
   engine.dab(x, y, (ctx, dx, dy) => {
-    ctx.drawImage(dabCanvas, dx - dabCanvas.width / 2, dy - dabCanvas.height / 2)
+    ctx.drawImage(dabCanvas!, dx - dabCanvas!.width / 2, dy - dabCanvas!.height / 2)
   }, flow)
 }
 
