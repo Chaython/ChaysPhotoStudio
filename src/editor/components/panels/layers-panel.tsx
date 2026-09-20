@@ -144,6 +144,8 @@ export function LayersPanel() {
               <span className="w-px h-4 bg-border mx-0.5" />
               <PanelBtn title="Distribute horizontal centers" icon="GalleryHorizontal" onClick={() => engine.distributeSelected('horizontal')} />
               <PanelBtn title="Distribute vertical centers" icon="GalleryVertical" onClick={() => engine.distributeSelected('vertical')} />
+              <PanelBtn title="Distribute horizontal spacing" icon="BetweenHorizontalStart" onClick={() => engine.distributeSelectedSpacing('horizontal')} />
+              <PanelBtn title="Distribute vertical spacing" icon="BetweenVerticalStart" onClick={() => engine.distributeSelectedSpacing('vertical')} />
             </>
           )}
         </div>
