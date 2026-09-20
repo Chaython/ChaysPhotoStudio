@@ -125,6 +125,7 @@ export interface SerializedProject {
     frames?: any[]
     activeLayerId?: string | null
     historyBrushSourceIndex?: number
+    colorSamplers?: { id: string; x: number; y: number }[]
   }
   layers: SerializedLayer[]
   selection?: { bounds: any; mask: string } | null
@@ -154,6 +155,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       channelView: doc.channelView, guides: doc.guides ?? [], view: { ...doc.view },
       frames: doc.frames ? structuredClone(doc.frames) : undefined, activeLayerId: doc.activeLayerId,
       historyBrushSourceIndex: doc.historyBrushSourceIndex ?? 0,
+      colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
     },
     layers,
     selection: doc.selection ? { bounds: { ...doc.selection.bounds }, mask: toDataURL(doc.selection.mask) } : null,
@@ -224,6 +226,12 @@ export async function openSerializedProject(project: SerializedProject, label = 
       : { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
     historyBrushSourceIndex: Number.isFinite(project.doc.historyBrushSourceIndex) ? Math.max(0, Math.round(project.doc.historyBrushSourceIndex!)) : 0,
+    colorSamplers: Array.isArray(project.doc.colorSamplers)
+      ? project.doc.colorSamplers
+          .filter(s => s && Number.isFinite(s.x) && Number.isFinite(s.y))
+          .slice(0, 10)
+          .map(s => ({ id: typeof s.id === 'string' ? s.id : uid(), x: Number(s.x), y: Number(s.y) }))
+      : [],
     dirty: false, previewFilter: null, previewAdjustment: null,
     frames: Array.isArray(project.doc.frames) ? structuredClone(project.doc.frames) : undefined,
     _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
