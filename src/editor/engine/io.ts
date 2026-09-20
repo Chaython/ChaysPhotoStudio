@@ -68,6 +68,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     guides: [],
     view: { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
+    historyBrushSourceIndex: 0,
     dirty: false, previewFilter: null, previewAdjustment: null,
     _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
   }
@@ -123,6 +124,7 @@ export interface SerializedProject {
     view?: { zoom: number; panX: number; panY: number }
     frames?: any[]
     activeLayerId?: string | null
+    historyBrushSourceIndex?: number
   }
   layers: SerializedLayer[]
   selection?: { bounds: any; mask: string } | null
@@ -151,6 +153,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       name: doc.name, width: doc.width, height: doc.height,
       channelView: doc.channelView, guides: doc.guides ?? [], view: { ...doc.view },
       frames: doc.frames ? structuredClone(doc.frames) : undefined, activeLayerId: doc.activeLayerId,
+      historyBrushSourceIndex: doc.historyBrushSourceIndex ?? 0,
     },
     layers,
     selection: doc.selection ? { bounds: { ...doc.selection.bounds }, mask: toDataURL(doc.selection.mask) } : null,
@@ -220,6 +223,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
       ? { ...project.doc.view }
       : { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
+    historyBrushSourceIndex: Number.isFinite(project.doc.historyBrushSourceIndex) ? Math.max(0, Math.round(project.doc.historyBrushSourceIndex!)) : 0,
     dirty: false, previewFilter: null, previewAdjustment: null,
     frames: Array.isArray(project.doc.frames) ? structuredClone(project.doc.frames) : undefined,
     _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
