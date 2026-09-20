@@ -139,6 +139,7 @@ export const polygonLassoTool: Tool = {
   onDeactivate() {
     editingVertex = null
     hover = null
+    if (pts.length) cancel()
   },
 
   onDoubleClick() {
