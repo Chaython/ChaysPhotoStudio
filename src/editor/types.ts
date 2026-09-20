@@ -221,6 +221,12 @@ export interface Layer {
   /** layer mask — white keeps, black hides; mask value stored in alpha channel */
   mask: HTMLCanvasElement | null
   maskEnabled: boolean
+  /** Non-destructive vector mask. Stored independently from the pixel mask. */
+  vectorMask?: {
+    anchors: PathAnchor[]
+    closed: boolean
+    enabled: boolean
+  } | null
   adjustment: { type: AdjustmentType; params: Record<string, any> } | null
   text: TextSpec | null
   shape: ShapeSpec | null
