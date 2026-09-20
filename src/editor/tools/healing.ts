@@ -733,10 +733,10 @@ function commitPatch() {
     dc.globalCompositeOperation = 'source-over'
     const final = cloneCanvas(targetBefore)
     ctx2d(final).drawImage(diff, 0, 0)
-    ctx2d(l.canvas).clearRect(0, 0, l.canvas.width, l.canvas.height)
+    // Only overwrite the document-space area; preserve raster pixels hanging
+    // outside the canvas so moving the layer back can still reveal them.
     ctx2d(l.canvas).drawImage(final, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
   } else {
-    ctx2d(l.canvas).clearRect(0, 0, l.canvas.width, l.canvas.height)
     ctx2d(l.canvas).drawImage(result, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
   }
 
