@@ -205,6 +205,7 @@ export function measureTextSpecBounds(spec: TextSpec): Rect {
   const weight = spec.bold ? '700' : '400'
   const style = spec.italic ? 'italic ' : ''
   ctx.font = `${style}${weight} ${spec.fontSize}px ${spec.fontFamily}`
+  ;(ctx as any).fontKerning = spec.kerning === false ? 'none' : 'normal'
   const lines = (spec.content || '').split('\n')
   const lh = spec.fontSize * (spec.lineHeight || 1.2)
   const padX = spec.fontSize * 0.25
@@ -220,6 +221,17 @@ export function measureTextSpecBounds(spec: TextSpec): Rect {
       h: Math.max(lh, spec.boxHeight ?? lh * Math.max(1, lines.length)) + padY * 2,
     }
   }
+  if (spec.direction === 'vertical') {
+    const tracking = Number(spec.tracking) || 0
+    const maxChars = Math.max(1, ...lines.map(v => v.length))
+    return {
+      x: spec.x - padX,
+      y: spec.y - padY,
+      w: Math.max(spec.fontSize, lines.length * lh) + padX * 2,
+      h: Math.max(spec.fontSize, maxChars * lh + Math.max(0, maxChars - 1) * tracking) + padY * 2,
+    }
+  }
+
   let maxW = spec.fontSize * 0.5
   for (const line of lines) {
     const tracking = (spec.tracking || 0) * Math.max(0, line.length - 1)
