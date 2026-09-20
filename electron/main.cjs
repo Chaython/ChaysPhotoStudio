@@ -177,6 +177,12 @@ async function startPackagedServer() {
       NODE_ENV: 'production',
       HOSTNAME: '127.0.0.1',
       PORT: String(port),
+      // Keep the traced standalone runtime outside a literal node_modules
+      // directory so electron-builder cannot prune it during packaging.
+      NODE_PATH: [
+        path.join(appDir, 'server_modules'),
+        process.env.NODE_PATH,
+      ].filter(Boolean).join(path.delimiter),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
