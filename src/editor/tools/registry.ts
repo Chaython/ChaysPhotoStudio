@@ -14,6 +14,7 @@ import { colorReplacementTool } from './color-replacement'
 import { historyBrushTool } from './history-brush'
 import { artHistoryBrushTool } from './art-history-brush'
 import { penTool } from './pen'
+import { pathSelectTool } from './path-select'
 import { eraserTool } from './eraser'
 import { backgroundEraserTool } from './background-eraser'
 import { magicEraserTool } from './magic-eraser'
@@ -68,6 +69,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'sponge': spongeTool,
   'text': textTool,
   'pen': penTool,
+  'path-select': pathSelectTool,
   'shape': shapeTool,
   'hand': handTool,
   'zoom': zoomTool,
