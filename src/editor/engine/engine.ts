@@ -498,7 +498,10 @@ export class Engine {
     copy.smartFilters = src.smartFilters.map(f => ({ ...f, id: uid() }))
     if (src.adjustment) copy.adjustment = { ...src.adjustment, params: { ...src.adjustment.params } }
     if (src.text) copy.text = { ...src.text }
-    if (src.shape) copy.shape = { ...src.shape }
+    if (src.shape) copy.shape = {
+      ...src.shape,
+      pathAnchors: src.shape.pathAnchors?.map(a => ({ ...a })),
+    }
     const idx = doc.layers.findIndex(l => l.id === src.id)
     doc.layers.splice(idx + 1, 0, copy)
     doc.activeLayerId = copy.id
@@ -803,7 +806,16 @@ export class Engine {
     } else if (layer.kind === 'text' && layer.text) {
       layer.text = { ...layer.text, x: layer.text.x + dx, y: layer.text.y + dy }
     } else if (layer.kind === 'shape' && layer.shape) {
-      layer.shape = { ...layer.shape, x: layer.shape.x + dx, y: layer.shape.y + dy }
+      if (layer.shape.shape === 'path' && layer.shape.pathAnchors?.length) {
+        layer.shape = {
+          ...layer.shape,
+          x: layer.shape.x + dx,
+          y: layer.shape.y + dy,
+          pathAnchors: layer.shape.pathAnchors.map(a => ({ ...a, x: a.x + dx, y: a.y + dy })),
+        }
+      } else {
+        layer.shape = { ...layer.shape, x: layer.shape.x + dx, y: layer.shape.y + dy }
+      }
     } else return
     layer._v++
   }
@@ -1186,7 +1198,28 @@ export class Engine {
     let mutated = false
     const baseKind = layer.kind
 
-    if (baseKind === 'smart' && layer.source) {
+    if (baseKind === 'shape' && layer.shape?.shape === 'path' && layer.shape.pathAnchors?.length) {
+      // Arbitrary path shapes remain vectors for every affine transform.
+      const mapped = layer.shape.pathAnchors.map(a => {
+        const [x, y] = map(a.x, a.y)
+        const [ix, iy] = map(a.x + a.inX, a.y + a.inY)
+        const [ox, oy] = map(a.x + a.outX, a.y + a.outY)
+        return { ...a, x, y, inX: ix - x, inY: iy - y, outX: ox - x, outY: oy - y }
+      })
+      const pts = mapped.flatMap(a => [
+        { x: a.x, y: a.y },
+        { x: a.x + a.inX, y: a.y + a.inY },
+        { x: a.x + a.outX, y: a.y + a.outY },
+      ])
+      const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x))
+      const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y))
+      layer.shape = {
+        ...layer.shape,
+        pathAnchors: mapped,
+        x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY),
+      }
+      mutated = true
+    } else if (baseKind === 'smart' && layer.source) {
       // non-destructive: uniform scale (corner-handle semantics), rotation
       // composes onto the existing transform (no flip — TransformSpec scale
       // is positive; flipping a smart layer rasterizes it instead)
@@ -1529,6 +1562,42 @@ export class Engine {
     }
     c.fill()
     this.setSelectionMask(mask, mode, 'Path Selection')
+  }
+
+  savedPathToShapeLayer(
+    pathId: string,
+    style: { fill?: string | null; stroke?: string | null; strokeWidth?: number } = {},
+  ): Layer | null {
+    const doc = this.activeDoc
+    const path = doc?.savedPaths?.find(p => p.id === pathId)
+    if (!doc || !path || path.anchors.length < 2) return null
+    const pts = path.anchors.flatMap(a => [
+      { x: a.x, y: a.y },
+      { x: a.x + a.inX, y: a.y + a.inY },
+      { x: a.x + a.outX, y: a.y + a.outY },
+    ])
+    const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x))
+    const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y))
+    const layer = this.addShapeLayer({
+      shape: 'path',
+      x: minX, y: minY,
+      w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY),
+      radius: 0,
+      fill: style.fill ?? (path.closed ? '#e8a33d' : null),
+      fillOpacity: 100,
+      stroke: style.stroke ?? '#ffffff',
+      strokeWidth: style.strokeWidth ?? 2,
+      strokeOpacity: 100,
+      strokeAlign: 'center',
+      lineCap: 'round',
+      dash: 'solid',
+      sides: 5,
+      starInset: 45,
+      pathAnchors: path.anchors.map(a => ({ ...a })),
+      pathClosed: path.closed,
+    })
+    if (layer) layer.name = path.name
+    return layer
   }
 
   addVectorMaskFromPath(layerId: string, pathId: string) {
