@@ -125,7 +125,7 @@ export interface TextSpec {
 }
 
 export interface ShapeSpec {
-  shape: 'rect' | 'rounded-rect' | 'ellipse' | 'triangle' | 'polygon' | 'star' | 'line'
+  shape: 'rect' | 'rounded-rect' | 'ellipse' | 'triangle' | 'polygon' | 'star' | 'line' | 'path'
   x: number
   y: number
   w: number
@@ -150,6 +150,9 @@ export interface ShapeSpec {
   sides: number
   /** star inner radius as a percentage of the outer radius */
   starInset: number
+  /** Arbitrary editable Bezier path when shape === 'path'. */
+  pathAnchors?: PathAnchor[]
+  pathClosed?: boolean
 }
 
 export interface BlendIfSlider { lo: number; loSoft: number; hi: number; hiSoft: number }
