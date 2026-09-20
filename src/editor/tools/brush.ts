@@ -225,6 +225,9 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     tipId: 'round-soft', palette: null, lastDab: null, dirX: 1, dirY: 0, hasDir: false,
     strokeColor: null,
   }
+  let connectFrom: { x: number; y: number } | null = null
+  let connectDocId: string | null = null
+  let connectLayerId: string | null = null
 
   // ---------- option readers (re-read mid-stroke so the options bar is live) ----------
 
@@ -475,7 +478,21 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       st.dirY = 0
       st.hasDir = false
       st.airbrushPos = { x: p.docX, y: p.docY }
-      stampDab(p.docX, p.docY, p)
+
+      const canConnect = p.shift && connectFrom && connectDocId === doc.id && connectLayerId === layer.id
+      if (canConnect && connectFrom) {
+        const spacing = strokeSpacing(opts, st.stamp)
+        st.last = { ...connectFrom }
+        st.filtered = { x: p.docX, y: p.docY }
+        st.prevRaw = { ...connectFrom }
+        const points = walkDabs(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing)
+        for (const q of points) stampDab(q.x, q.y, p)
+        const tail = points[points.length - 1]
+        if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) stampDab(p.docX, p.docY, p)
+        st.last = { x: p.docX, y: p.docY }
+      } else {
+        stampDab(p.docX, p.docY, p)
+      }
       if (opts.airbrush === true) startAirbrush()
     },
 
@@ -514,6 +531,14 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     onPointerUp() {
       if (!st.active) return
       stopAirbrush()
+      const docId = engine.activeDoc?.id ?? null
+      const layerId = engine.activeLayer?.id ?? null
+      const endpoint = st.filtered ?? st.last
+      if (endpoint && docId && layerId) {
+        connectFrom = { ...endpoint }
+        connectDocId = docId
+        connectLayerId = layerId
+      }
       st.active = false
       st.last = null
       st.filtered = null
@@ -532,6 +557,9 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     onDeactivate() {
       // tool switched mid-stroke: stop the airbrush and commit cleanly
       stopAirbrush()
+      connectFrom = null
+      connectDocId = null
+      connectLayerId = null
       if (st.active) {
         st.active = false
         st.last = null
