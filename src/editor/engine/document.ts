@@ -458,7 +458,7 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   // vector mask — rasterized at composition time, so the underlying layer
   // remains fully editable and the path can be changed without touching pixels.
   const vectorMask = layer.vectorMask
-  if (vectorMask?.enabled !== false && (vectorMask?.anchors?.length ?? 0) >= 2) {
+  if (vectorMask && vectorMask.enabled !== false && vectorMask.anchors.length >= 2) {
     const vm = createCanvas(doc.width, doc.height)
     const vc = ctx2d(vm)
     const a = vectorMask.anchors
