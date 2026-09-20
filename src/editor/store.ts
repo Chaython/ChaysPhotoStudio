@@ -16,6 +16,8 @@ export interface LayerMeta {
   clipped: boolean
   hasMask: boolean
   maskEnabled: boolean
+  hasVectorMask: boolean
+  vectorMaskEnabled: boolean
   smartFilterCount: number
   adjustmentType: string | null
   hasBlendIf: boolean
@@ -757,7 +759,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       layers: doc ? doc.layers.slice().reverse().map(l => ({
         id: l.id, name: l.name, kind: l.kind, visible: l.visible, opacity: l.opacity,
         blendMode: l.blendMode, locked: l.locked, clipped: l.clipped,
-        hasMask: !!l.mask, maskEnabled: l.maskEnabled, smartFilterCount: l.smartFilters?.length ?? 0,
+        hasMask: !!l.mask, maskEnabled: l.maskEnabled,
+        hasVectorMask: !!l.vectorMask, vectorMaskEnabled: l.vectorMask?.enabled !== false,
+        smartFilterCount: l.smartFilters?.length ?? 0,
         adjustmentType: l.adjustment?.type ?? null, hasBlendIf: !!l.blendIf, hasFx: !!l.fx,
         origin: l.origin ?? null,
         thumbV: l._v + l._mv,
