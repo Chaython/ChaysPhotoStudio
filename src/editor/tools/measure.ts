@@ -27,6 +27,7 @@ const AMBER = '#e8a33d'
 let start: Vec | null = null
 let end: Vec | null = null
 let dragging = false
+let segments: { a: Vec; b: Vec }[] = []
 
 /** publish the current measurement (or null) for the status bar */
 function publish(): void {
