@@ -33,6 +33,8 @@ function stateIcon(label: string): { icon: string; title: string } {
 export function HistoryPanel() {
   const labels = useEditorStore(s => s.historyLabels)
   const index = useEditorStore(s => s.historyIndex)
+  const renderTick = useEditorStore(s => s.renderTick)
+  void renderTick
   const [confirmClear, setConfirmClear] = useState(false)
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -65,9 +67,24 @@ export function HistoryPanel() {
     if (!doc || !h || !h.states.length) return
     h.states = [h.states[h.index]]
     h.index = 0
+    doc.historyBrushSourceIndex = 0
     engine.emit()
     useEditorStore.getState().pushToast('History cleared', 'info')
   }
+
+  const setBrushSource = (i: number) => {
+    const doc = engine.activeDoc
+    if (!doc?.history.states[i]) return
+    doc.historyBrushSourceIndex = i
+    engine.emit()
+    useEditorStore.getState().pushToast(`History Brush source: ${doc.history.states[i].label}`, 'info')
+  }
+
+  const brushSource = (() => {
+    const doc = engine.activeDoc
+    if (!doc?.history.states.length) return 0
+    return Math.max(0, Math.min(doc.history.states.length - 1, doc.historyBrushSourceIndex ?? 0))
+  })()
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -92,21 +109,37 @@ export function HistoryPanel() {
           const { icon, title } = stateIcon(label)
           const Icon = (Icons as any)[icon] ?? Icons.CircleDot
           const isCurrent = i === index
+          const isBrushSource = i === brushSource
           return (
-            <button
+            <div
               key={`${i}-${label}`}
               role="listitem"
-              onClick={() => engine.jumpHistory(i)}
               className={cn(
-                'w-full text-left px-2.5 py-1.5 text-[11px] border-b border-border/30 flex items-center gap-2 group',
+                'w-full border-b border-border/30 flex items-stretch group',
                 isCurrent ? 'bg-accent/70 text-foreground border-l-2 border-l-primary' : i < index ? 'text-foreground/70 hover:bg-accent/30' : 'text-muted-foreground/40 hover:bg-accent/20'
               )}
-              title={`Jump to: ${label}`}
             >
-              <Icon size={11} className={cn('shrink-0', isCurrent ? 'text-primary' : 'opacity-60')} aria-hidden />
-              <span className="truncate flex-1">{label}</span>
-              <span className="text-[9px] text-muted-foreground/60 font-mono opacity-0 group-hover:opacity-100 transition-opacity">{i}</span>
-            </button>
+              <button
+                className={cn(
+                  'w-7 shrink-0 grid place-items-center border-r border-border/30',
+                  isBrushSource ? 'text-primary bg-primary/10' : 'text-muted-foreground/35 hover:text-foreground'
+                )}
+                title={isBrushSource ? 'History Brush source' : `Use “${label}” as History Brush source`}
+                aria-label={isBrushSource ? 'Current History Brush source' : `Set ${label} as History Brush source`}
+                onClick={() => setBrushSource(i)}
+              >
+                <Icons.Brush size={11} fill={isBrushSource ? 'currentColor' : 'none'} />
+              </button>
+              <button
+                onClick={() => engine.jumpHistory(i)}
+                className="min-w-0 flex-1 text-left px-2 py-1.5 text-[11px] flex items-center gap-2"
+                title={`Jump to: ${label}`}
+              >
+                <Icon size={11} className={cn('shrink-0', isCurrent ? 'text-primary' : 'opacity-60')} aria-hidden />
+                <span className="truncate flex-1">{label}</span>
+                <span className="text-[9px] text-muted-foreground/60 font-mono opacity-0 group-hover:opacity-100 transition-opacity">{i}</span>
+              </button>
+            </div>
           )
         })}
         {!labels.length && <div className="p-4 text-[11px] text-muted-foreground text-center">No history yet</div>}
