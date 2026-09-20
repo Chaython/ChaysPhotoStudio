@@ -1,10 +1,41 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Crosshair, Info, Trash2 } from 'lucide-react'
+import { Crosshair, Download, Info, Ruler, Save, Trash2 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { readColor } from '../../tools/color-readout'
+import { saveCurrentMeasurement } from '../../tools/measure'
+
+function measurementValue(totalPx: number, unit: string, pixelsPerUnit: number) {
+  return unit === 'px' ? `${totalPx.toFixed(1)} px` : `${(totalPx / Math.max(.001, pixelsPerUnit)).toFixed(3)} ${unit}`
+}
+
+function exportMeasurementsCsv() {
+  const doc = engine.activeDoc
+  const list = doc?.measurements ?? []
+  if (!doc || !list.length) return
+  const rows = [
+    ['Name', 'Segments', 'Length px', 'Unit', 'Pixels per unit', 'Calibrated length', 'Created'],
+    ...list.map(m => [
+      m.name,
+      String(m.segments.length),
+      m.totalLengthPx.toFixed(4),
+      m.unit,
+      m.pixelsPerUnit.toFixed(6),
+      (m.unit === 'px' ? m.totalLengthPx : m.totalLengthPx / Math.max(.001, m.pixelsPerUnit)).toFixed(6),
+      new Date(m.createdAt).toISOString(),
+    ]),
+  ]
+  const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${doc.name.replace(/\.[^.]+$/, '') || 'measurements'}-measurements.csv`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
 
 export function InfoPanel() {
   const tick = useEditorStore(s => s.renderTick)
@@ -15,6 +46,7 @@ export function InfoPanel() {
 
   const doc = engine.activeDoc
   const samplers = doc?.colorSamplers ?? []
+  const measurements = doc?.measurements ?? []
   const scope = opts.sample === 'layer' ? 'layer' : 'composite'
   const sampleSize = Math.max(1, Number(opts.radius) || 1)
   const radius = Math.max(0, Math.floor((sampleSize - 1) / 2))
@@ -118,6 +150,79 @@ export function InfoPanel() {
           </button>
         </div>
       )}
+
+      <div className="border-t border-border">
+        <div className="p-2 flex items-center gap-2">
+          <Ruler size={13} />
+          <span className="font-medium">Measurements</span>
+          <span className="flex-1" />
+          <button
+            className="h-7 px-2 rounded border border-border hover:bg-accent flex items-center gap-1"
+            onClick={() => {
+              const name = prompt('Measurement name:', `Measurement ${measurements.length + 1}`)?.trim()
+              if (name !== undefined) saveCurrentMeasurement(name || undefined)
+            }}
+            title="Save the current Ruler measurement"
+          >
+            <Save size={12} /> Save
+          </button>
+          <button
+            className="h-7 px-2 rounded border border-border hover:bg-accent disabled:opacity-40 flex items-center gap-1"
+            disabled={!measurements.length}
+            onClick={exportMeasurementsCsv}
+            title="Export measurement log as CSV"
+          >
+            <Download size={12} /> CSV
+          </button>
+        </div>
+
+        <div className="max-h-48 overflow-auto border-t border-border/60">
+          {!measurements.length ? (
+            <div className="p-3 text-[10px] leading-relaxed text-muted-foreground">
+              Use the Ruler tool, then click Save to keep measurements with the project.
+            </div>
+          ) : measurements.map((m, index) => (
+            <div key={m.id} className="flex items-start gap-2 border-b border-border/50 p-2 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <button
+                  className="block max-w-full truncate text-left font-medium hover:underline"
+                  title="Double-click to rename"
+                  onDoubleClick={() => {
+                    const next = prompt('Measurement name:', m.name)?.trim()
+                    if (next) engine.renameMeasurement(m.id, next)
+                  }}
+                >
+                  {index + 1}. {m.name}
+                </button>
+                <div className="text-[10px] text-muted-foreground tabular-nums">
+                  {m.segments.length} segment{m.segments.length === 1 ? '' : 's'} · {measurementValue(m.totalLengthPx, m.unit, m.pixelsPerUnit)}
+                </div>
+                <div className="text-[9px] text-muted-foreground/80 tabular-nums">
+                  {m.totalLengthPx.toFixed(1)} px · {m.pixelsPerUnit.toFixed(3)} px/{m.unit}
+                </div>
+              </div>
+              <button
+                className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={() => engine.removeMeasurement(m.id)}
+                title="Remove measurement"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {!!measurements.length && (
+          <div className="p-2 border-t border-border/60">
+            <button
+              className="w-full h-7 rounded border border-border hover:bg-destructive/10 hover:text-destructive flex items-center justify-center gap-1"
+              onClick={() => engine.clearMeasurements()}
+            >
+              <Trash2 size={12} /> Clear measurements
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
