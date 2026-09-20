@@ -307,7 +307,9 @@ export const objectSelectTool: Tool = {
 let qsActive = false
 let qsMask: HTMLCanvasElement | null = null
 let qsImg: ImageData | null = null
+let qsSource: HTMLCanvasElement | null = null
 let qsAlpha: Uint8ClampedArray | null = null
+let qsRefining = false
 let lastDab: { x: number; y: number } | null = null
 let qsCombineMode: 'new' | 'add' | 'subtract' | 'intersect' = 'new'
 
@@ -317,7 +319,7 @@ export const quickSelectTool: Tool = {
 
   onPointerDown(p: PointerInfo) {
     const doc = engine.activeDoc
-    if (!doc || p.button !== 0) return
+    if (!doc || p.button !== 0 || qsRefining) return
     const opts = getOptions('quick-select')
     // Cache the chosen sampling source once per stroke. Current-layer sampling
     // is useful for cut-out work; Composite matches Photoshop's Sample All Layers.
@@ -325,6 +327,7 @@ export const quickSelectTool: Tool = {
       ? engine.layerCanvasDocSpace(engine.activeLayer.id)
       : getFlatComposite(doc)
     if (!source) return
+    qsSource = source
     qsImg = getImageData(source)
     qsMask = toolMaskCanvas()
     qsAlpha = new Uint8ClampedArray(doc.width * doc.height)
@@ -344,36 +347,23 @@ export const quickSelectTool: Tool = {
   },
 
   onPointerUp() {
-    if (!qsActive || !qsAlpha) { qsActive = false; return }
-    qsActive = false
-    const alpha = qsAlpha
-    const opts = getOptions('quick-select')
-    let out = alpha
-    const feather = opts.feather ?? 1
-    if (feather > 0) {
-      const f = new Float32Array(alpha.length)
-      for (let i = 0; i < alpha.length; i++) f[i] = alpha[i]
-      const doc = engine.activeDoc
-      if (doc) {
-        const b = gaussianBlurChannel(f, doc.width, doc.height, Math.max(0.6, feather / 2))
-        out = new Uint8ClampedArray(b)
-      }
-    }
-    if (opts.autoEnhance === true) {
-      const doc = engine.activeDoc
-      if (doc) out = imageOps.refineMask(out, doc.width, doc.height, { radius: 1.5, smooth: 2, contrast: 8, feather: .3, shiftEdge: -2 })
-    }
-    const has = out.some(v => v > 0)
-    if (has) engine.setSelectionAlpha(out, qsCombineMode, 'Quick Selection')
-    qsMask = null; qsImg = null; qsAlpha = null; lastDab = null
-  },
+    void finishQuickSelection()
+  },,
 
   renderOverlay(ctx, view, w, h, mouse) {
     void w; void h; void mouse
-    if (qsMask && qsActive) {
+    if (qsMask && (qsActive || qsRefining)) {
       ctx.save()
-      ctx.globalAlpha = 0.3
+      ctx.globalAlpha = qsRefining ? 0.18 : 0.3
       ctx.drawImage(qsMask, view.panX, view.panY, qsMask.width * view.zoom, qsMask.height * view.zoom)
+      if (qsRefining) {
+        ctx.font = '12px ui-sans-serif, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillStyle = 'rgba(0,0,0,.75)'
+        ctx.fillText('Refining selection…', w / 2 + 1, h / 2 + 1)
+        ctx.fillStyle = '#e8a33d'
+        ctx.fillText('Refining selection…', w / 2, h / 2)
+      }
       ctx.restore()
     }
   },
@@ -382,6 +372,60 @@ export const quickSelectTool: Tool = {
     const opts = getOptions('quick-select')
     drawBrushCursor(ctx, mouse, opts.size ?? 40, view.zoom)
   },
+}
+
+async function finishQuickSelection() {
+  if (!qsActive || !qsAlpha) { qsActive = false; return }
+  qsActive = false
+  qsRefining = true
+  const doc = engine.activeDoc
+  const alpha = new Uint8ClampedArray(qsAlpha)
+  const source = qsSource
+  const roughMask = qsMask
+  const opts = getOptions('quick-select')
+  let out = alpha
+
+  try {
+    if (doc && opts.autoEnhance === true && opts.refineProvider === 'comfyui' && source && roughMask) {
+      try {
+        out = await comfySegmentationMask(source, roughMask, doc.width, doc.height)
+      } catch (err) {
+        engine.ui?.toast(
+          `ComfyUI Quick Selection refinement unavailable — using local refinement${err instanceof Error && err.message ? `: ${err.message}` : ''}`,
+          'info',
+        )
+        out = alpha
+      }
+    }
+
+    if (doc && opts.autoEnhance === true) {
+      out = imageOps.refineMask(out, doc.width, doc.height, {
+        radius: opts.refineProvider === 'comfyui' ? 1 : 1.5,
+        smooth: 2,
+        contrast: 8,
+        feather: .3,
+        shiftEdge: -2,
+      })
+    }
+
+    const feather = opts.feather ?? 1
+    if (doc && feather > 0) {
+      const f = new Float32Array(out.length)
+      for (let i = 0; i < out.length; i++) f[i] = out[i]
+      const b = gaussianBlurChannel(f, doc.width, doc.height, Math.max(0.6, feather / 2))
+      out = new Uint8ClampedArray(b)
+    }
+
+    if (out.some(v => v > 0)) engine.setSelectionAlpha(out, qsCombineMode, 'Quick Selection')
+  } finally {
+    qsMask = null
+    qsImg = null
+    qsSource = null
+    qsAlpha = null
+    lastDab = null
+    qsRefining = false
+    engine.pokeOverlay()
+  }
 }
 
 /** sample a disk of average color under the cursor, flood-grow with tolerance
