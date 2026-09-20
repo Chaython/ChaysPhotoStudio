@@ -713,10 +713,14 @@ function drawLayerHighlight(
   if (!targetId) return
   const layer = engine.layerById(targetId)
   if (!layer || layer.kind === 'adjustment') return
-  const r = engine.layerContentRect(targetId)
+  const groupIds = groupTransform?.ids ?? selectedTransformIds()
+  const isGroup = groupIds.length > 1
+  const r = groupTransform?.rect ?? (isGroup
+    ? unionRects(groupIds.map(id => engine.layerContentRect(id)).filter((v): v is Rect => !!v))
+    : engine.layerContentRect(targetId))
   if (!r || r.w <= 0 || r.h <= 0) return
   const dx = live && !tdrag ? live.dx : 0, dy = live && !tdrag ? live.dy : 0
-  const dim = layer.visible ? 1 : 0.45 // hidden layer: dimmed ghost frame
+  const dim = isGroup ? 1 : (layer.visible ? 1 : 0.45) // hidden layer: dimmed ghost frame
 
   // ---- map the box corners through the live gesture (scale/rotate/offset) ----
   const corners: [number, number][] = [
@@ -725,7 +729,15 @@ function drawLayerHighlight(
     [r.x + r.w + dx, r.y + r.h + dy],
     [r.x + dx, r.y + r.h + dy],
   ]
-  const lt = tdrag ? live?.liveTransform : null
+  const lt = tdrag
+    ? (live?.liveTransform ?? {
+        sx: tdrag.sx,
+        sy: tdrag.sy,
+        rotation: tdrag.rotation,
+        ax: tdrag.mode === 'rotate' ? tdrag.cx : tdrag.ax,
+        ay: tdrag.mode === 'rotate' ? tdrag.cy : tdrag.ay,
+      })
+    : null
   let mapped: [number, number][]
   if (lt) {
     const cos = Math.cos(lt.rotation), sin = Math.sin(lt.rotation)
@@ -760,10 +772,20 @@ function drawLayerHighlight(
   ctx.stroke()
 
   // ---- transform handles at the MAPPED corners (and mid-edges when idle) ----
-  const uniformOnly = layer.kind === 'smart' || layer.kind === 'text'
+  const uniformOnly = isGroup
+    ? groupIds.some(id => {
+        const l = engine.layerById(id)
+        return l?.kind === 'smart' || l?.kind === 'text'
+      })
+    : layer.kind === 'smart' || layer.kind === 'text'
   const idleBox = { x: sx0, y: sy0, w: sx1 - sx0, h: sy1 - sy0 }
   const sw = idleBox.w, sh = idleBox.h
-  const canTransform = !layer.locked && getOptions('move').showTransformControls !== false
+  const canTransform = (isGroup
+    ? groupIds.every(id => {
+        const l = engine.layerById(id)
+        return !!l && !l.locked && l.kind !== 'adjustment'
+      })
+    : !layer.locked) && getOptions('move').showTransformControls !== false
   let handleScr: { id: HandleId; x: number; y: number }[] = []
   if (canTransform && sw >= 10 && sh >= 10) {
     const mid = sw >= 22 && sh >= 22
@@ -796,12 +818,13 @@ function drawLayerHighlight(
   // live transform: readout shows the live scale/angle; otherwise X/Y/W×H
   let text: string
   const flags = [layer.locked ? 'locked' : '', layer.visible ? '' : 'hidden'].filter(Boolean).join(', ')
+  const subject = isGroup ? `${groupIds.length} layers` : `${layer.name}${flags ? ` (${flags})` : ''}`
   if (tdrag && lt) {
     const pct = Math.round(Math.abs((lt.sx + lt.sy) / 2) * 100)
     const deg = Math.round((lt.rotation * 180) / Math.PI)
-    text = `${layer.name}  ·  ${pct}%${deg ? ` · ${deg}°` : ''}  ·  ${Math.round(r.w * Math.abs(lt.sx))}×${Math.round(r.h * Math.abs(lt.sy))}`
+    text = `${subject}  ·  ${pct}%${deg ? ` · ${deg}°` : ''}  ·  ${Math.round(r.w * Math.abs(lt.sx))}×${Math.round(r.h * Math.abs(lt.sy))}`
   } else {
-    text = `${layer.name}${flags ? ` (${flags})` : ''}  ·  X ${Math.round(r.x + dx)}  Y ${Math.round(r.y + dy)}  ·  ${Math.round(r.w)}×${Math.round(r.h)}`
+    text = `${subject}  ·  X ${Math.round(r.x + dx)}  Y ${Math.round(r.y + dy)}  ·  ${Math.round(r.w)}×${Math.round(r.h)}`
   }
   ctx.font = '10px ui-monospace, SFMono-Regular, monospace'
   const tw = ctx.measureText(text).width
