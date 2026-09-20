@@ -236,6 +236,25 @@ export interface Layer {
   _mv: number
 }
 
+// ---------- Paths ----------
+export interface PathAnchor {
+  x: number
+  y: number
+  inX: number
+  inY: number
+  outX: number
+  outY: number
+  pair: boolean
+}
+
+export interface SavedPath {
+  id: string
+  name: string
+  anchors: PathAnchor[]
+  closed: boolean
+  visible: boolean
+}
+
 // ---------- Selection ----------
 export interface SelectionState {
   /** grayscale mask; mask value lives in the alpha channel (255 = selected) */
@@ -257,6 +276,7 @@ export interface HistoryState {
   height: number
   channelView: ChannelView
   savedChannels: SavedChannel[]
+  savedPaths?: SavedPath[]
 }
 
 export type ChannelView = 'rgb' | 'r' | 'g' | 'b'
@@ -320,6 +340,8 @@ export interface PsDocument {
   guides: Guide[]
   /** Persistent numbered Color Sampler points, stored in document coordinates. */
   colorSamplers?: { id: string; x: number; y: number }[]
+  /** Named editable vector paths, Photoshop Paths-panel style. */
+  savedPaths?: SavedPath[]
   /** frame animation — absent/empty = static document */
   frames?: AnimFrame[]
   _epoch: number
