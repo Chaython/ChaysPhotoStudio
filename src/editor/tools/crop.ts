@@ -420,29 +420,76 @@ let eyedropPreview: string | null = null
 // Hand
 // ============================================================
 let handDrag = newDrag()
+let handVelocity = { x: 0, y: 0 }
+let handLastT = 0
+let handInertiaFrame = 0
+
+function stopHandInertia() {
+  if (handInertiaFrame) cancelAnimationFrame(handInertiaFrame)
+  handInertiaFrame = 0
+  handVelocity = { x: 0, y: 0 }
+}
+
+function startHandInertia() {
+  const doc = engine.activeDoc
+  const opts = getOptions('hand')
+  if (!doc || opts.inertia === false) return
+  if (Math.hypot(handVelocity.x, handVelocity.y) < 80) return
+  const friction = clamp((Number(opts.friction) || 92) / 100, .7, .98)
+  let last = performance.now()
+  const step = (now: number) => {
+    const d = engine.activeDoc
+    if (!d || handDrag.active) { stopHandInertia(); return }
+    const dt = Math.min(.034, Math.max(.001, (now - last) / 1000))
+    last = now
+    d.view.panX += handVelocity.x * dt
+    d.view.panY += handVelocity.y * dt
+    // Normalize friction to 60Hz so motion is frame-rate independent.
+    const decay = Math.pow(friction, dt * 60)
+    handVelocity.x *= decay
+    handVelocity.y *= decay
+    engine.viewChanged()
+    if (Math.hypot(handVelocity.x, handVelocity.y) < 8) { stopHandInertia(); return }
+    handInertiaFrame = requestAnimationFrame(step)
+  }
+  handInertiaFrame = requestAnimationFrame(step)
+}
+
 export const handTool: Tool = {
   id: 'hand',
   cursor: 'grab',
   onPointerDown(p: PointerInfo) {
     const doc = engine.activeDoc
     if (!doc || p.button !== 0) return
+    stopHandInertia()
+    handLastT = performance.now()
     handDrag = { startX: p.rawX, startY: p.rawY, lastX: p.rawX, lastY: p.rawY, active: true }
   },
   onPointerMove(p: PointerInfo) {
     const doc = engine.activeDoc
     if (!doc || !handDrag.active) return
-    doc.view.panX += p.rawX - handDrag.lastX
-    doc.view.panY += p.rawY - handDrag.lastY
+    const dx = p.rawX - handDrag.lastX
+    const dy = p.rawY - handDrag.lastY
+    const now = performance.now()
+    const dt = Math.max(.001, (now - handLastT) / 1000)
+    doc.view.panX += dx
+    doc.view.panY += dy
+    // Smooth instantaneous velocity so one noisy pointer event does not launch
+    // an absurdly fast flick.
+    const vx = dx / dt, vy = dy / dt
+    handVelocity.x = handVelocity.x * .55 + vx * .45
+    handVelocity.y = handVelocity.y * .55 + vy * .45
+    handLastT = now
     handDrag.lastX = p.rawX
     handDrag.lastY = p.rawY
     engine.viewChanged()
   },
-  onPointerUp() { handDrag.active = false },
+  onPointerUp() { handDrag.active = false; startHandInertia() },
   onDoubleClick() {
     // Photoshop: double-click Hand = Fit on Screen.
     ;(window as any).__zphotoViewport?.fit?.()
   },
-  onDeactivate() { handDrag.active = false },
+  onDeactivate() { handDrag.active = false; stopHandInertia() },
 }
 
 // ============================================================
@@ -451,6 +498,25 @@ export const handTool: Tool = {
 let zoomDrag: { lastX: number; moved: boolean } | null = null
 let zoomAreaStart: { x: number; y: number } | null = null
 let zoomArea: Rect | null = null
+
+function maybeResizeWindowToFit() {
+  const doc = engine.activeDoc
+  if (!doc || getOptions('zoom').resizeWindowToFit !== true) return
+  const vp = (window as any).__zphotoViewport
+  const host = vp?.host as HTMLElement | undefined
+  const chromeW = Math.max(0, window.outerWidth - window.innerWidth)
+  const chromeH = Math.max(0, window.outerHeight - window.innerHeight)
+  const hostW = host?.clientWidth ?? window.innerWidth
+  const hostH = host?.clientHeight ?? window.innerHeight
+  const nonCanvasW = Math.max(0, window.innerWidth - hostW)
+  const nonCanvasH = Math.max(0, window.innerHeight - hostH)
+  const pad = 64
+  const desiredW = Math.ceil(doc.width * doc.view.zoom + nonCanvasW + chromeW + pad)
+  const desiredH = Math.ceil(doc.height * doc.view.zoom + nonCanvasH + chromeH + pad)
+  const maxW = Math.max(320, window.screen?.availWidth ?? desiredW)
+  const maxH = Math.max(240, window.screen?.availHeight ?? desiredH)
+  try { window.resizeTo(Math.min(maxW, desiredW), Math.min(maxH, desiredH)) } catch { /* browsers may deny resizeTo */ }
+}
 
 function zoomAt(p: PointerInfo, factor: number) {
   const doc = engine.activeDoc
@@ -466,6 +532,7 @@ function zoomAt(p: PointerInfo, factor: number) {
   doc.view.panY = sy - p.docY * next
   doc.view.autoFit = false
   engine.viewChanged()
+  maybeResizeWindowToFit()
 }
 
 export const zoomTool: Tool = {
@@ -512,6 +579,7 @@ export const zoomTool: Tool = {
         doc.view.panY = (vh - r.h * next) / 2 - r.y * next
         doc.view.autoFit = false
         engine.viewChanged()
+        maybeResizeWindowToFit()
       } else {
         const opts = getOptions('zoom')
         const dir = p.alt ? 'out' : opts.mode ?? 'in'
