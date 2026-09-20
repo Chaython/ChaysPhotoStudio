@@ -310,6 +310,8 @@ export interface PsDocument {
   savedChannels: SavedChannel[]
   view: ViewportState
   history: { states: HistoryState[]; index: number }
+  /** History/Art History Brush source marker; view/tool state, not itself undoable. */
+  historyBrushSourceIndex?: number
   dirty: boolean
   // live preview (dialog driven)
   previewFilter: { layerId: string; type: FilterType; params: Record<string, any> } | null
