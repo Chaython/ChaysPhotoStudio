@@ -23,9 +23,62 @@ import * as imageOps from '../image-ops'
 let drag = newDrag()
 let rect: Rect | null = null
 let objectLasso: { x: number; y: number }[] = []
+let objectClick: { x: number; y: number } | null = null
 let detecting = false
 let detectRect: Rect | null = null
 let detectLasso: { x: number; y: number }[] | null = null
+let detectClick: { x: number; y: number } | null = null
+
+function clickSearchRect(x: number, y: number): Rect {
+  const doc = engine.activeDoc
+  if (!doc) return { x, y, w: 1, h: 1 }
+  const pct = clamp((Number(getOptions('object-select').clickSearch) || 35) / 100, .1, 1)
+  const side = Math.max(48, Math.min(Math.max(doc.width, doc.height), Math.min(doc.width, doc.height) * pct))
+  return {
+    x: clamp(x - side / 2, 0, Math.max(0, doc.width - side)),
+    y: clamp(y - side / 2, 0, Math.max(0, doc.height - side)),
+    w: Math.min(side, doc.width),
+    h: Math.min(side, doc.height),
+  }
+}
+
+function keepConnectedNearest(mask: Uint8ClampedArray, w: number, h: number, x: number, y: number): Uint8ClampedArray {
+  let seed = -1
+  let best = Infinity
+  const cx = clamp(Math.round(x), 0, w - 1)
+  const cy = clamp(Math.round(y), 0, h - 1)
+  for (let yy = 0; yy < h; yy++) {
+    for (let xx = 0; xx < w; xx++) {
+      const i = yy * w + xx
+      if (mask[i] < 24) continue
+      const d = (xx - cx) * (xx - cx) + (yy - cy) * (yy - cy)
+      if (d < best) { best = d; seed = i }
+    }
+  }
+  if (seed < 0) return mask
+
+  const out = new Uint8ClampedArray(mask.length)
+  const seen = new Uint8Array(mask.length)
+  const q = new Int32Array(mask.length)
+  let head = 0, tail = 0
+  q[tail++] = seed
+  seen[seed] = 1
+  while (head < tail) {
+    const i = q[head++]
+    out[i] = mask[i]
+    const px = i % w, py = Math.floor(i / w)
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      if (!ox && !oy) continue
+      const nx = px + ox, ny = py + oy
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+      const ni = ny * w + nx
+      if (seen[ni] || mask[ni] < 24) continue
+      seen[ni] = 1
+      q[tail++] = ni
+    }
+  }
+  return out
+}
 
 export const objectSelectTool: Tool = {
   id: 'object-select',
@@ -34,14 +87,17 @@ export const objectSelectTool: Tool = {
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
     drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
-    rect = null
-    objectLasso = getOptions('object-select').geometry === 'lasso' ? [{ x: p.docX, y: p.docY }] : []
+    const geometry = getOptions('object-select').geometry
+    objectClick = geometry === 'click' ? { x: p.docX, y: p.docY } : null
+    rect = geometry === 'click' ? clickSearchRect(p.docX, p.docY) : null
+    objectLasso = geometry === 'lasso' ? [{ x: p.docX, y: p.docY }] : []
     engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
     if (!drag.active) return
-    if (getOptions('object-select').geometry === 'lasso') {
+    const geometry = getOptions('object-select').geometry
+    if (geometry === 'lasso') {
       const last = objectLasso[objectLasso.length - 1]
       const step = 1.5 / Math.max(engine.activeDoc?.view.zoom ?? 1, .25)
       if (!last || Math.hypot(p.docX - last.x, p.docY - last.y) >= step) objectLasso.push({ x: p.docX, y: p.docY })
@@ -49,6 +105,9 @@ export const objectSelectTool: Tool = {
         const xs = objectLasso.map(q => q.x), ys = objectLasso.map(q => q.y)
         rect = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
       }
+    } else if (geometry === 'click') {
+      objectClick = { x: p.docX, y: p.docY }
+      rect = clickSearchRect(p.docX, p.docY)
     } else {
       rect = rectFromPoints(drag.startX, drag.startY, p.docX, p.docY)
     }
@@ -60,8 +119,10 @@ export const objectSelectTool: Tool = {
     drag.active = false
     const r = rect
     const lasso = objectLasso.length >= 3 ? objectLasso.slice() : null
+    const click = objectClick ? { ...objectClick } : null
     rect = null
     objectLasso = []
+    objectClick = null
     if (!r || r.w < 4 || r.h < 4) { engine.pokeOverlay(); return }
     const opts = getOptions('object-select')
     const mode = combineMode(p, opts.mode ?? 'new')
@@ -70,6 +131,7 @@ export const objectSelectTool: Tool = {
     detecting = true
     detectRect = r
     detectLasso = lasso
+    detectClick = click
     engine.pokeOverlay()
     requestAnimationFrame(() => setTimeout(() => {
       try {
@@ -84,6 +146,7 @@ export const objectSelectTool: Tool = {
           img,
           Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)
         )
+        if (click) mask = keepConnectedNearest(mask, doc.width, doc.height, click.x, click.y)
         if (lasso && lasso.length >= 3) {
           const regionMask = createCanvas(doc.width, doc.height)
           const mc = ctx2d(regionMask)
@@ -117,6 +180,7 @@ export const objectSelectTool: Tool = {
         detecting = false
         detectRect = null
         detectLasso = null
+        detectClick = null
         engine.pokeOverlay()
       }
     }, 0))
@@ -151,6 +215,15 @@ export const objectSelectTool: Tool = {
       if (!(poly && poly.length >= 3)) {
         ctx.fillStyle = 'rgba(232,163,61,0.12)'
         ctx.fillRect(x, y, rw, rh)
+      }
+      const clickPoint = detecting ? detectClick : objectClick
+      if (clickPoint) {
+        const sx = clickPoint.x * view.zoom + view.panX
+        const sy = clickPoint.y * view.zoom + view.panY
+        ctx.strokeStyle = '#e8a33d'
+        ctx.lineWidth = 1.5
+        ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(sx - 9, sy); ctx.lineTo(sx + 9, sy); ctx.moveTo(sx, sy - 9); ctx.lineTo(sx, sy + 9); ctx.stroke()
       }
       if (detecting) {
         ctx.font = '12px ui-sans-serif, sans-serif'
