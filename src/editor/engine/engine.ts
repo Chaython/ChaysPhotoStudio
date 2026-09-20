@@ -1175,7 +1175,7 @@ export class Engine {
    *  canvas (content center re-registered); smart layers scale
    *  non-destructively (uniform — the tool only offers uniform for smart);
    *  text/shape scale their specs (any rotation or flip rasterizes first). */
-  directTransformLayer(id: string, spec: { sx: number; sy: number; rotation: number; ax: number; ay: number }, opts?: { skipHistory?: boolean }) {
+  directTransformLayer(id: string, spec: { sx: number; sy: number; rotation: number; ax: number; ay: number }, opts?: { skipHistory?: boolean; silent?: boolean }) {
     const doc = this.activeDoc
     if (!doc) return
     const layer = this.layerById(id)
@@ -1288,11 +1288,47 @@ export class Engine {
     }
 
     if (!mutated) return
+
+    // Layer masks are document-space assets. Transform them through the same
+    // gesture map as the layer so masked edges stay attached to the content.
+    if (layer.mask) {
+      const maskOut = createCanvas(doc.width, doc.height)
+      const mc = ctx2d(maskOut)
+      mc.imageSmoothingEnabled = true
+      mc.imageSmoothingQuality = 'high'
+      mc.translate(ax, ay)
+      mc.rotate(rot)
+      mc.scale(sx, sy)
+      mc.drawImage(layer.mask, -ax, -ay)
+      layer.mask = maskOut
+      layer._mv++
+    }
+
+    // Vector masks stay vector/editable; transform anchors and their Bezier
+    // handles through the identical affine map.
+    if (layer.vectorMask?.anchors?.length) {
+      layer.vectorMask = {
+        ...layer.vectorMask,
+        anchors: layer.vectorMask.anchors.map(a => {
+          const [x, y] = map(a.x, a.y)
+          const [ix, iy] = map(a.x + a.inX, a.y + a.inY)
+          const [ox, oy] = map(a.x + a.outX, a.y + a.outY)
+          return { ...a, x, y, inX: ix - x, inY: iy - y, outX: ox - x, outY: oy - y }
+        }),
+      }
+      layer._mv++
+    }
+
     layer._v++
     invalidateFlat(doc)
-    if (opts?.skipHistory) { this.emit(); return }
+    if (opts?.skipHistory) {
+      if (!opts.silent) this.emit()
+      else this.requestRender()
+      return
+    }
     this.pushHistory('Free Transform')
-    this.emit()
+    if (!opts?.silent) this.emit()
+    else this.requestRender()
     const pct = Math.round((Math.abs((sx + sy) / 2)) * 100)
     const deg = Math.round((rot * 180) / Math.PI)
     this.ui?.toast(`Scaled to ${pct}%${deg ? ` · rotated ${deg}°` : ''}`, 'info')
