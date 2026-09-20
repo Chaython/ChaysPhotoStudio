@@ -32,22 +32,29 @@ let segments: { a: Vec; b: Vec }[] = []
 /** publish the current measurement (or null) for the status bar */
 function publish(): void {
   const g = window as any
-  if (start && end) {
-    const dx = end.x - start.x, dy = end.y - start.y
-    const length = Math.hypot(dx, dy)
-    const opts = getOptions(TOOL_ID)
-    const unit = String(opts.unit ?? 'px')
-    const ppu = Math.max(.001, Number(opts.pixelsPerUnit) || 1)
-    g.__zphotoMeasure = {
-      length,
-      angleDeg: (Math.atan2(dy, dx) * 180) / Math.PI,
-      dx, dy,
-      unit,
-      calibratedLength: unit === 'px' ? length : length / ppu,
-      pixelsPerUnit: ppu,
-    }
-  } else {
+  const active = start && end ? [{ a: start, b: end }] : []
+  const all = [...segments, ...active]
+  if (!all.length) {
     g.__zphotoMeasure = null
+    return
+  }
+  const last = all[all.length - 1]
+  const dx = last.b.x - last.a.x, dy = last.b.y - last.a.y
+  const length = Math.hypot(dx, dy)
+  const totalLength = all.reduce((sum, s) => sum + Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y), 0)
+  const opts = getOptions(TOOL_ID)
+  const unit = String(opts.unit ?? 'px')
+  const ppu = Math.max(.001, Number(opts.pixelsPerUnit) || 1)
+  g.__zphotoMeasure = {
+    length,
+    totalLength,
+    segments: all.length,
+    angleDeg: (Math.atan2(dy, dx) * 180) / Math.PI,
+    dx, dy,
+    unit,
+    calibratedLength: unit === 'px' ? length : length / ppu,
+    calibratedTotalLength: unit === 'px' ? totalLength : totalLength / ppu,
+    pixelsPerUnit: ppu,
   }
 }
 
