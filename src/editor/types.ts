@@ -120,6 +120,12 @@ export interface TextSpec {
   /** Paragraph text uses an editable bounding box; point text leaves these unset. */
   boxWidth?: number
   boxHeight?: number
+  /** Editable Photoshop-style Warp Text metadata. Rendering deforms the
+   * generated text surface without converting the layer to pixels. */
+  warpStyle?: 'none' | 'arc' | 'arch' | 'bulge' | 'flag'
+  warpBend?: number
+  warpHorizontal?: number
+  warpVertical?: number
   x: number
   y: number
 }
