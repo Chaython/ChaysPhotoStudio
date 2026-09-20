@@ -6,8 +6,8 @@ const COMFY_KEY = 'zphoto-ai-comfy-provider-v1'
 export const AI_PROVIDERS: AiProviderDescriptor[] = [
   {
     id: 'builtin', name: 'Built-in / Local', kind: 'builtin', local: true,
-    description: 'Fast selections, masks, content-aware remove and smart upscale using the editor engine.',
-    capabilities: ['select-subject', 'remove-background', 'smart-remove', 'upscale', 'depth'],
+    description: 'Private on-device selections, masks, content-aware remove, smart upscale, depth, denoise, relight and vector-trace assists using the editor engine.',
+    capabilities: ['select-subject', 'remove-background', 'smart-remove', 'upscale', 'depth', 'denoise', 'relight', 'vectorize'],
   },
   {
     id: 'comfyui', name: 'ComfyUI', kind: 'comfyui', local: true,
