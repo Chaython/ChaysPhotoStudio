@@ -1128,6 +1128,45 @@ function TextProperties({ layerId }: { layerId: string }) {
           <option value='"Courier New", monospace'>Courier</option>
         </select>
       </div>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
+        <label className="flex items-center gap-1">
+          <input type="checkbox" checked={t.kerning !== false} onChange={e => update({ kerning: e.target.checked })} />
+          Kerning
+        </label>
+        <label className="flex items-center gap-1">
+          <input type="checkbox" checked={t.ligatures !== false} onChange={e => update({ ligatures: e.target.checked })} />
+          Ligatures
+        </label>
+        <label className="flex items-center gap-1">
+          <input type="checkbox" checked={t.smallCaps === true} onChange={e => update({ smallCaps: e.target.checked })} />
+          Small Caps
+        </label>
+        <select value={t.fontStretch ?? 'normal'} onChange={e => update({ fontStretch: e.target.value as NonNullable<typeof t.fontStretch> })} className="h-5 bg-background border rounded text-[9px] px-1" title="Font width/stretch">
+          <option value="condensed">Condensed</option>
+          <option value="semi-condensed">Semi Condensed</option>
+          <option value="normal">Normal</option>
+          <option value="semi-expanded">Semi Expanded</option>
+          <option value="expanded">Expanded</option>
+        </select>
+      </div>
+      <div className="mt-2 border-t pt-2 space-y-1.5">
+        <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Warp Text</div>
+        <select value={t.warpStyle ?? 'none'} onChange={e => update({ warpStyle: e.target.value as NonNullable<typeof t.warpStyle> })} className="w-full h-6 bg-background border rounded text-[10px] px-1">
+          <option value="none">None</option>
+          <option value="arc">Arc</option>
+          <option value="arch">Arch</option>
+          <option value="bulge">Bulge</option>
+          <option value="flag">Flag</option>
+          <option value="wave">Wave</option>
+        </select>
+        {([['Bend', 'warpBend'], ['H Distort', 'warpHorizontal'], ['V Distort', 'warpVertical']] as const).map(([label, key]) => (
+          <label key={key} className="grid grid-cols-[58px_1fr_42px] items-center gap-1 text-[10px]">
+            <span>{label}</span>
+            <input type="range" min={-100} max={100} step={1} value={Number(t[key] ?? 0)} onChange={e => update({ [key]: Number(e.target.value) })} className="min-w-0" />
+            <input type="number" min={-100} max={100} step={1} value={Number(t[key] ?? 0)} onChange={e => update({ [key]: Number(e.target.value) })} className="h-5 w-10 bg-background border rounded text-[9px] px-1" />
+          </label>
+        ))}
+      </div>
     </div>
   )
 }

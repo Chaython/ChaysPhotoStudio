@@ -150,15 +150,26 @@ export function CloneSourcePanel() {
         <span>Show source overlay at cursor</span>
       </label>
 
+      <div className="grid grid-cols-2 gap-1.5">
+        <label className="flex items-center gap-1.5 rounded border border-border px-2 py-1.5 cursor-pointer">
+          <input type="checkbox" checked={opts.overlayAutoHide !== false} onChange={e => set('overlayAutoHide', e.target.checked)} />
+          <span>Auto Hide</span>
+        </label>
+        <label className="flex items-center gap-1.5 rounded border border-border px-2 py-1.5 cursor-pointer">
+          <input type="checkbox" checked={opts.overlayInvert === true} onChange={e => set('overlayInvert', e.target.checked)} />
+          <span>Invert</span>
+        </label>
+      </div>
+
       <button
         className="flex items-center justify-center gap-1.5 rounded border border-border px-2 py-1.5 hover:bg-accent"
-        onClick={() => { set('scale', 100); set('rotate', 0); set('mirrored', false); set('overlayOpacity', 50); set('showOverlay', true) }}
+        onClick={() => { set('scale', 100); set('rotate', 0); set('mirrored', false); set('overlayOpacity', 50); set('showOverlay', true); set('overlayAutoHide', true); set('overlayInvert', false) }}
       >
         <RotateCcw size={12} /> Reset transform
       </button>
 
       <div className="text-[10px] leading-relaxed text-muted-foreground">
-        Scale, rotation and flip affect the sampled source non-destructively. Aligned keeps the source offset between strokes.
+        Scale, rotation, flip and overlay settings are remembered independently for each source slot. Aligned keeps the source offset between strokes.
       </div>
     </div>
   )

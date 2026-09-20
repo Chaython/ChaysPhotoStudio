@@ -13,7 +13,7 @@ import type { Tool, PointerInfo, ShapeSpec, TextSpec } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, newDrag, drawCross, drawDashedRect } from './shared'
 import { measureTextSpecBounds } from './dab-utils'
-import { rectFromPoints, createCanvas, ctx2d } from '../utils/canvas'
+import { rectFromPoints, createCanvas, ctx2d, clamp } from '../utils/canvas'
 import { traceShapePath } from '../engine/shape-path'
 
 // ============================================================
@@ -172,8 +172,15 @@ function createTextLayerAt(x: number, y: number, box?: { w: number; h: number })
     align: opts.align ?? 'left',
     direction: opts.direction === 'vertical' ? 'vertical' : 'horizontal',
     kerning: opts.kerning !== false,
+    ligatures: opts.ligatures !== false,
+    smallCaps: opts.smallCaps === true,
+    fontStretch: opts.fontStretch ?? 'normal',
     lineHeight: Math.max(.5, Number(opts.lineHeight) || 1.2),
     tracking: Number(opts.tracking) || 0,
+    warpStyle: opts.warpStyle ?? 'none',
+    warpBend: clamp(Number(opts.warpBend) || 0, -100, 100),
+    warpHorizontal: clamp(Number(opts.warpHorizontal) || 0, -100, 100),
+    warpVertical: clamp(Number(opts.warpVertical) || 0, -100, 100),
     boxWidth: box ? Math.max(20, Math.round(box.w)) : undefined,
     boxHeight: box ? Math.max(20, Math.round(box.h)) : undefined,
     content: '',

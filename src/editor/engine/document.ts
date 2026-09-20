@@ -79,13 +79,82 @@ function wrapVerticalColumns(spec: TextSpec): string[] {
   return cols.length ? cols : ['']
 }
 
+
+function textAlphaBounds(canvas: HTMLCanvasElement): Rect | null {
+  const img = getImageData(canvas)
+  const d = img.data
+  let minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1
+  for (let y = 0; y < canvas.height; y++) {
+    const row = y * canvas.width
+    for (let x = 0; x < canvas.width; x++) {
+      if (d[(row + x) * 4 + 3] <= 2) continue
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  }
+  return maxX >= minX && maxY >= minY
+    ? { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
+    : null
+}
+
+function warpTextCanvas(doc: PsDocument, base: HTMLCanvasElement, spec: TextSpec): HTMLCanvasElement {
+  const style = spec.warpStyle ?? 'none'
+  const bend = clamp(Number(spec.warpBend) || 0, -100, 100) / 100
+  const hDist = clamp(Number(spec.warpHorizontal) || 0, -100, 100) / 100
+  const vDist = clamp(Number(spec.warpVertical) || 0, -100, 100) / 100
+  if (style === 'none' && Math.abs(hDist) < .001 && Math.abs(vDist) < .001) return base
+
+  const b = textAlphaBounds(base)
+  if (!b) return base
+  const warped = createCanvas(doc.width, doc.height)
+  const wc = ctx2d(warped)
+  wc.imageSmoothingEnabled = true
+  wc.imageSmoothingQuality = 'high'
+  const amp = bend * Math.max(spec.fontSize * 1.35, Math.min(b.w * .30, b.h * 1.8))
+  const cy = b.y + b.h / 2
+  const width = Math.max(1, Math.ceil(b.w))
+
+  for (let ix = 0; ix < width; ix++) {
+    const sx = b.x + ix
+    const t = width <= 1 ? .5 : ix / (width - 1)
+    const u = t * 2 - 1
+    let yShift = 0
+    let scaleY = 1
+    if (style === 'arc') yShift = -amp * (1 - u * u)
+    else if (style === 'arch') yShift = -amp * (1 - Math.abs(u))
+    else if (style === 'bulge') scaleY = Math.max(.12, 1 + bend * (1 - u * u) * .85)
+    else if (style === 'flag') yShift = amp * Math.sin(t * Math.PI * 2)
+    else if (style === 'wave') yShift = amp * Math.sin(t * Math.PI * 4)
+    const dh = Math.max(1, b.h * scaleY)
+    const dy = cy - dh / 2 + yShift
+    wc.drawImage(base, sx, b.y, 1, b.h, sx, dy, 1.25, dh)
+  }
+
+  if (Math.abs(hDist) < .001 && Math.abs(vDist) < .001) return warped
+  const out = createCanvas(doc.width, doc.height)
+  const oc = ctx2d(out)
+  const cx = b.x + b.w / 2
+  const by = b.y + b.h / 2
+  oc.translate(cx, by)
+  oc.transform(1, vDist * .45, hDist * .45, 1, 0, 0)
+  oc.translate(-cx, -by)
+  oc.drawImage(warped, 0, 0)
+  return out
+}
+
 export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasElement {
   const c = createCanvas(doc.width, doc.height)
   const ctx = ctx2d(c)
   const weight = spec.bold ? '700' : '400'
   const style = spec.italic ? 'italic ' : ''
   ctx.font = `${style}${weight} ${spec.fontSize}px ${spec.fontFamily}`
-  ;(ctx as any).fontKerning = spec.kerning === false ? 'none' : 'normal'
+  const fontCtx = ctx as any
+  fontCtx.fontKerning = spec.kerning === false ? 'none' : 'normal'
+  fontCtx.fontVariantLigatures = spec.ligatures === false ? 'none' : 'normal'
+  fontCtx.fontVariantCaps = spec.smallCaps === true ? 'small-caps' : 'normal'
+  fontCtx.fontStretch = spec.fontStretch ?? 'normal'
   ctx.fillStyle = spec.color
   ctx.textBaseline = 'alphabetic'
 
@@ -181,7 +250,7 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
   }
 
   ctx.restore()
-  return c
+  return warpTextCanvas(doc, c, spec)
 }
 
 function applyShapeDash(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {

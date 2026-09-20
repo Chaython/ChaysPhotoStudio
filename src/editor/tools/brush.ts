@@ -45,6 +45,7 @@ import {
 } from './shared'
 import { getActiveId, getById, getCachedStampCanvas, warmPreset } from '../plugins/brush-presets'
 import { getTip, drawTipCursor, jitterPalette, tipExtentMul } from './brush-tips'
+import { useEditorStore } from '../store'
 
 /** airbrush build-up: stamp cadence (ms) and flow reduction while stationary */
 const AIRBRUSH_INTERVAL_MS = 50
@@ -448,6 +449,15 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       const doc = engine.activeDoc
       const layer = engine.activeLayer
       if (!doc || !layer) return
+
+      // Photoshop-style temporary Eyedropper while Alt/Option is held.
+      if (p.alt) {
+        const hex = engine.sampleColor(p.docX, p.docY, 'composite', 0)
+        if (hex) useEditorStore.getState().setFgColor(hex)
+        engine.pokeOverlay()
+        return
+      }
+
       const opts = getOptions(toolId)
       if (kind === 'pencil') {
         const fg = getFgColor()
