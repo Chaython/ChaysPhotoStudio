@@ -897,6 +897,38 @@ export class Engine {
     this.emit()
   }
 
+  /** Evenly distribute the gaps BETWEEN selected layer bounds. The outermost
+   * layers stay fixed, matching Photoshop's "Distribute Spacing" behavior. */
+  distributeSelectedSpacing(axis: 'horizontal' | 'vertical') {
+    const doc = this.activeDoc
+    const items = this.selectedLayers()
+      .map(layer => ({ layer, rect: this.layerContentRect(layer.id) }))
+      .filter((x): x is { layer: Layer; rect: Rect } => !!x.rect)
+    if (!doc || items.length < 3) return
+    const pos = (r: Rect) => axis === 'horizontal' ? r.x : r.y
+    const size = (r: Rect) => axis === 'horizontal' ? r.w : r.h
+    items.sort((a, b) => pos(a.rect) - pos(b.rect))
+    const firstStart = pos(items[0].rect)
+    const lastEnd = pos(items[items.length - 1].rect) + size(items[items.length - 1].rect)
+    const totalSize = items.reduce((sum, x) => sum + size(x.rect), 0)
+    const gap = (lastEnd - firstStart - totalSize) / (items.length - 1)
+    let cursor = firstStart + size(items[0].rect) + gap
+    let changed = false
+    for (let i = 1; i < items.length - 1; i++) {
+      const current = pos(items[i].rect)
+      const delta = cursor - current
+      if (Math.abs(delta) > .001) {
+        this.translateLayerGeometry(items[i].layer, axis === 'horizontal' ? delta : 0, axis === 'vertical' ? delta : 0)
+        changed = true
+      }
+      cursor += size(items[i].rect) + gap
+    }
+    if (!changed) return
+    invalidateFlat(doc)
+    this.pushHistory(axis === 'horizontal' ? 'Distribute Horizontal Spacing' : 'Distribute Vertical Spacing')
+    this.emit()
+  }
+
   /** Crop transparent padding from a raster layer without changing its document-space position. */
   trimLayerToContent(id?: string): boolean {
     const doc = this.activeDoc
