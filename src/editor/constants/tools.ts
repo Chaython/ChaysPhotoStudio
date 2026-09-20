@@ -60,9 +60,10 @@ const paintBlendOptions = [
 
 export const TOOL_DEFS: ToolDef[] = [
   // group 0 — navigation / arrangement
-  { id: 'move', label: 'Move', group: 0, shortcut: 'V', icon: 'Move', defaults: { autoSelect: true, showTransformControls: true, alignTo: 'selection' } as any, options: [
+  { id: 'move', label: 'Move', group: 0, shortcut: 'V', icon: 'Move', defaults: { autoSelect: true, showTransformControls: true, smartGuides: true, alignTo: 'selection' } as any, options: [
     { key: 'autoSelect', label: 'Auto-select layer', type: 'toggle' },
     { key: 'showTransformControls', label: 'Show Transform Controls', type: 'toggle' },
+    { key: 'smartGuides', label: 'Smart Guides', type: 'toggle', hint: 'Snap layer edges and centers to other layers and the canvas' },
     { key: 'alignTo', label: 'Align To', type: 'select', options: [{ label: 'Selected Layers', value: 'selection' }, { label: 'Primary Layer', value: 'primary' }, { label: 'Canvas', value: 'canvas' }] },
   ]},
   // group 1 — selections
