@@ -132,6 +132,7 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
 function applyShapeDash(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {
   if (spec.dash === 'dashed') ctx.setLineDash([Math.max(1, spec.strokeWidth) * 3, Math.max(1, spec.strokeWidth) * 2])
   else if (spec.dash === 'dotted') ctx.setLineDash([Math.max(1, spec.strokeWidth) * .25, Math.max(1, spec.strokeWidth) * 1.8])
+  else if (spec.dash === 'custom') ctx.setLineDash([Math.max(1, spec.dashLength ?? 12), Math.max(1, spec.gapLength ?? 8)])
   else ctx.setLineDash([])
 }
 
@@ -178,15 +179,57 @@ export function renderShapeCanvas(doc: PsDocument, spec: ShapeSpec): HTMLCanvasE
       ctx.restore()
     }
     if (spec.stroke && spec.strokeWidth > 0) {
-      ctx.save()
-      ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
-      ctx.strokeStyle = spec.stroke
-      ctx.lineWidth = spec.strokeWidth
-      ctx.lineJoin = 'round'
-      applyShapeDash(ctx, spec)
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.restore()
+      const align = spec.strokeAlign ?? 'center'
+      const alpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
+      if (align === 'center') {
+        ctx.save()
+        ctx.globalAlpha = alpha
+        ctx.strokeStyle = spec.stroke
+        ctx.lineWidth = spec.strokeWidth
+        ctx.lineJoin = 'round'
+        applyShapeDash(ctx, spec)
+        traceShapePath(ctx, spec)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.restore()
+      } else if (align === 'inside') {
+        // Canvas strokes are center-aligned. Double the width and clip to the
+        // vector interior so the visible half has the requested stroke width.
+        ctx.save()
+        traceShapePath(ctx, spec)
+        ctx.clip()
+        ctx.globalAlpha = alpha
+        ctx.strokeStyle = spec.stroke
+        ctx.lineWidth = spec.strokeWidth * 2
+        ctx.lineJoin = 'round'
+        applyShapeDash(ctx, spec)
+        traceShapePath(ctx, spec)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.restore()
+      } else {
+        // Outside alignment is rendered on a temporary surface: draw a 2×
+        // center stroke, punch out the shape interior, then composite at the
+        // requested opacity. This preserves the fill beneath it.
+        const strokeCanvas = createCanvas(doc.width, doc.height)
+        const sc = ctx2d(strokeCanvas)
+        sc.strokeStyle = spec.stroke
+        sc.lineWidth = spec.strokeWidth * 2
+        sc.lineJoin = 'round'
+        applyShapeDash(sc, spec)
+        traceShapePath(sc, spec)
+        sc.stroke()
+        sc.setLineDash([])
+        sc.globalCompositeOperation = 'destination-out'
+        traceShapePath(sc, spec)
+        sc.fillStyle = '#000'
+        sc.fill()
+        sc.globalCompositeOperation = 'source-over'
+        ctx.save()
+        ctx.globalAlpha = alpha
+        ctx.drawImage(strokeCanvas, 0, 0)
+        ctx.restore()
+      }
     }
   }
   return c
