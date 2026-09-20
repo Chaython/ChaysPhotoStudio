@@ -14,11 +14,23 @@ import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, regionProcess, drawBrushCursor, walkDabs } from './shared'
 import { smoothstep } from './dab-utils'
-import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb } from '../utils/canvas'
-import { getFlatComposite } from '../engine/document'
+import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb, cloneCanvas, getImageData, putImageData } from '../utils/canvas'
+import { getFlatComposite, newLayer, invalidateFlat } from '../engine/document'
 
 type RetouchId = 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
 type RetouchOp = (x: number, y: number, p: PointerInfo) => void
+
+interface RetouchContext {
+  targetId: string
+  sourceLayerId: string
+  source: HTMLCanvasElement | null
+  outputNew: boolean
+}
+let retouchContext: RetouchContext | null = null
+
+function supportsNewLayerOutput(id: RetouchId): boolean {
+  return id === 'blur' || id === 'sharpen' || id === 'smudge'
+}
 
 function makeRetouch(
   id: RetouchId, op: RetouchOp,
@@ -35,14 +47,34 @@ function makeRetouch(
       if (p.button !== 0) return
       const doc = engine.activeDoc
       const layer = engine.activeLayer
-      if (!doc || !layer) return
-      // COW mutate ONCE per stroke — all ops then edit the fresh canvas
-      engine.mutateLayerPixels(layer.id)
+      if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+      const opts = getOptions(id)
+      if (supportsNewLayerOutput(id) && opts.output === 'new') {
+        const src0 = opts.sampleAllLayers === true ? getFlatComposite(doc) : engine.layerCanvasDocSpace(layer.id)
+        if (!src0) return
+        const out = newLayer('raster', `${id[0].toUpperCase()}${id.slice(1)} Retouch`, doc.width, doc.height)
+        doc.layers.push(out)
+        doc.activeLayerId = out.id
+        doc.selectedLayerIds = [out.id]
+        retouchContext = {
+          targetId: out.id,
+          sourceLayerId: layer.id,
+          source: cloneCanvas(src0),
+          outputNew: true,
+        }
+        invalidateFlat(doc)
+      } else {
+        const l = engine.mutateLayerPixels(layer.id)
+        if (!l?.canvas) return
+        retouchContext = { targetId: l.id, sourceLayerId: l.id, source: null, outputNew: false }
+      }
       mutated = true
       active = true
       last = { x: p.docX, y: p.docY }
       onStart?.()
       op(p.docX, p.docY, p)
+      invalidateFlat(doc)
+      engine.requestRender()
     },
     onPointerMove(p: PointerInfo) {
       if (!active || !last) return
@@ -50,6 +82,9 @@ function makeRetouch(
       const spacing = Math.max(2, (opts.size ?? 60) / 6)
       for (const d of walkDabs(last.x, last.y, p.docX, p.docY, spacing)) op(d.x, d.y, p)
       if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
+      const doc = engine.activeDoc
+      if (doc) invalidateFlat(doc)
+      engine.requestRender()
     },
     onPointerUp() {
       if (!active) return
@@ -61,6 +96,19 @@ function makeRetouch(
         engine.emit()
         mutated = false
       }
+      retouchContext = null
+    },
+    onDeactivate() {
+      if (!active) { retouchContext = null; return }
+      active = false
+      last = null
+      onEnd?.()
+      if (mutated) {
+        engine.pushHistory(`${id[0].toUpperCase()}${id.slice(1)} Tool`)
+        engine.emit()
+        mutated = false
+      }
+      retouchContext = null
     },
     renderOverlay() { /* brush ring lives on the cursor layer */ },
     renderCursor(ctx, view, w, h, mouse) {
