@@ -6,17 +6,18 @@
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film,
+  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp,
 } from 'lucide-react'
 import { LayersPanel } from './layers-panel'
 import { HistoryPanel, NavigatorPanel, HistogramPanel } from './history-navigator-histogram'
 import { ColorPanel } from './color-panel'
 import { ChannelsPanel, AdjustmentsPanel, ActionsPanel, PropertiesPanel } from './channels-actions-properties'
 import { TimelinePanel } from './timeline-panel'
+import { CloneSourcePanel } from './clone-source-panel'
 
 export type PanelId =
   | 'color' | 'layers' | 'channels' | 'history' | 'actions'
-  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline'
+  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source'
 
 export interface PanelDef {
   id: PanelId
@@ -72,6 +73,10 @@ export const PANELS: PanelDef[] = [
   {
     id: 'timeline', label: 'Timeline', icon: Film, render: TimelinePanel,
     defaultFloat: { w: 680, h: 280 }, minFloat: { w: 460, h: 200 }, dockSlot: 'tab',
+  },
+  {
+    id: 'clone-source', label: 'Clone', icon: Stamp, render: CloneSourcePanel,
+    defaultFloat: { w: 292, h: 420 }, minFloat: { w: 240, h: 300 }, dockSlot: 'tab',
   },
 ]
 
