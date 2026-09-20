@@ -64,26 +64,30 @@ function wrapTextRows(ctx: CanvasRenderingContext2D, spec: TextSpec): string[] {
   return out.length ? out : ['']
 }
 
+function wrapVerticalColumns(spec: TextSpec): string[] {
+  const raw = (spec.content || '').split('\n')
+  const advance = Math.max(1, spec.fontSize * (spec.lineHeight || 1.2) + (Number(spec.tracking) || 0))
+  const maxChars = spec.boxHeight && spec.boxHeight > 1
+    ? Math.max(1, Math.floor((spec.boxHeight + Math.max(0, Number(spec.tracking) || 0)) / advance))
+    : Number.POSITIVE_INFINITY
+  const cols: string[] = []
+  for (const paragraph of raw) {
+    if (!paragraph) { cols.push(''); continue }
+    if (!Number.isFinite(maxChars)) cols.push(paragraph)
+    else for (let i = 0; i < paragraph.length; i += maxChars) cols.push(paragraph.slice(i, i + maxChars))
+  }
+  return cols.length ? cols : ['']
+}
+
 export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasElement {
   const c = createCanvas(doc.width, doc.height)
   const ctx = ctx2d(c)
   const weight = spec.bold ? '700' : '400'
   const style = spec.italic ? 'italic ' : ''
   ctx.font = `${style}${weight} ${spec.fontSize}px ${spec.fontFamily}`
+  ;(ctx as any).fontKerning = spec.kerning === false ? 'none' : 'normal'
   ctx.fillStyle = spec.color
   ctx.textBaseline = 'alphabetic'
-
-  const lines = wrapTextRows(ctx, spec)
-  const tracking = Number(spec.tracking) || 0
-  const lh = spec.fontSize * (spec.lineHeight || 1.2)
-  const widths = lines.map(l => measuredTextWidth(ctx, l, tracking))
-  const maxW = Math.max(...widths, 1)
-  const areaW = Math.max(1, spec.boxWidth ?? maxW)
-  const applyAlign = (x: number, lineW: number) => {
-    if (spec.align === 'center') return x + (areaW - lineW) / 2
-    if (spec.align === 'right') return x + (areaW - lineW)
-    return x
-  }
 
   ctx.save()
   if (spec.boxWidth && spec.boxHeight) {
@@ -92,39 +96,90 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
     ctx.clip()
   }
 
-  if (tracking) {
-    lines.forEach((line, li) => {
-      let x = applyAlign(spec.x, widths[li])
-      const y = spec.y + spec.fontSize * 0.85 + li * lh
-      for (let ci = 0; ci < line.length; ci++) {
-        const ch = line[ci]
-        ctx.fillText(ch, x, y)
-        x += ctx.measureText(ch).width + (ci < line.length - 1 ? tracking : 0)
+  const tracking = Number(spec.tracking) || 0
+  const lh = spec.fontSize * (spec.lineHeight || 1.2)
+
+  if (spec.direction === 'vertical') {
+    const columns = wrapVerticalColumns(spec)
+    const charAdvance = Math.max(1, lh + tracking)
+    const longest = Math.max(1, ...columns.map(v => v.length))
+    const areaW = Math.max(spec.fontSize, spec.boxWidth ?? columns.length * lh)
+    const areaH = Math.max(spec.fontSize, spec.boxHeight ?? longest * charAdvance)
+    ctx.textAlign = 'center'
+
+    columns.forEach((column, ci) => {
+      const x = spec.x + areaW - spec.fontSize * .55 - ci * lh
+      const contentH = Math.max(0, column.length * charAdvance - tracking)
+      let y = spec.y
+      if (spec.align === 'center') y += (areaH - contentH) / 2
+      else if (spec.align === 'right') y += areaH - contentH
+
+      for (let i = 0; i < column.length; i++) {
+        const ch = column[i]
+        const baseline = y + spec.fontSize * .85 + i * charAdvance
+        ctx.fillText(ch, x, baseline)
+      }
+
+      if ((spec.underline || spec.strikethrough) && column.length) {
+        ctx.strokeStyle = spec.color
+        ctx.lineWidth = Math.max(1, spec.fontSize / 18)
+        const y0 = y
+        const y1 = y + contentH
+        if (spec.underline) {
+          const ux = x + spec.fontSize * .56
+          ctx.beginPath(); ctx.moveTo(ux, y0); ctx.lineTo(ux, y1); ctx.stroke()
+        }
+        if (spec.strikethrough) {
+          ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke()
+        }
       }
     })
   } else {
-    lines.forEach((line, li) => {
-      ctx.fillText(line, applyAlign(spec.x, widths[li]), spec.y + spec.fontSize * 0.85 + li * lh)
-    })
-  }
+    const lines = wrapTextRows(ctx, spec)
+    const widths = lines.map(l => measuredTextWidth(ctx, l, tracking))
+    const maxW = Math.max(...widths, 1)
+    const areaW = Math.max(1, spec.boxWidth ?? maxW)
+    const applyAlign = (x: number, lineW: number) => {
+      if (spec.align === 'center') return x + (areaW - lineW) / 2
+      if (spec.align === 'right') return x + (areaW - lineW)
+      return x
+    }
 
-  if (spec.underline || spec.strikethrough) {
-    ctx.strokeStyle = spec.color
-    ctx.lineWidth = Math.max(1, spec.fontSize / 18)
-    for (let li = 0; li < lines.length; li++) {
-      if (!lines[li]) continue
-      const x = applyAlign(spec.x, widths[li])
-      const y = spec.y + spec.fontSize * 0.85 + li * lh
-      if (spec.underline) {
-        const uy = y + Math.max(1, spec.fontSize * 0.08)
-        ctx.beginPath(); ctx.moveTo(x, uy); ctx.lineTo(x + widths[li], uy); ctx.stroke()
-      }
-      if (spec.strikethrough) {
-        const sy = y - spec.fontSize * 0.30
-        ctx.beginPath(); ctx.moveTo(x, sy); ctx.lineTo(x + widths[li], sy); ctx.stroke()
+    if (tracking) {
+      lines.forEach((line, li) => {
+        let x = applyAlign(spec.x, widths[li])
+        const y = spec.y + spec.fontSize * 0.85 + li * lh
+        for (let ci = 0; ci < line.length; ci++) {
+          const ch = line[ci]
+          ctx.fillText(ch, x, y)
+          x += ctx.measureText(ch).width + (ci < line.length - 1 ? tracking : 0)
+        }
+      })
+    } else {
+      lines.forEach((line, li) => {
+        ctx.fillText(line, applyAlign(spec.x, widths[li]), spec.y + spec.fontSize * 0.85 + li * lh)
+      })
+    }
+
+    if (spec.underline || spec.strikethrough) {
+      ctx.strokeStyle = spec.color
+      ctx.lineWidth = Math.max(1, spec.fontSize / 18)
+      for (let li = 0; li < lines.length; li++) {
+        if (!lines[li]) continue
+        const x = applyAlign(spec.x, widths[li])
+        const y = spec.y + spec.fontSize * 0.85 + li * lh
+        if (spec.underline) {
+          const uy = y + Math.max(1, spec.fontSize * 0.08)
+          ctx.beginPath(); ctx.moveTo(x, uy); ctx.lineTo(x + widths[li], uy); ctx.stroke()
+        }
+        if (spec.strikethrough) {
+          const sy = y - spec.fontSize * 0.30
+          ctx.beginPath(); ctx.moveTo(x, sy); ctx.lineTo(x + widths[li], sy); ctx.stroke()
+        }
       }
     }
   }
+
   ctx.restore()
   return c
 }
