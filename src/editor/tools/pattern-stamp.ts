@@ -45,6 +45,31 @@ function stampDab(x: number, y: number, p: PointerInfo) {
     originY: aligned ? patchDocY : patchDocY - anchor.y,
   })
 
+  if (opts.impressionist === true) {
+    const src = pc.getImageData(0, 0, side, side)
+    pc.clearRect(0, 0, side, side)
+    const strokeScale = clamp((Number(opts.impressionistStroke) || 55) / 100, .1, 1.5)
+    const scatter = clamp((Number(opts.impressionistScatter) || 45) / 100, 0, 1)
+    const marks = Math.max(5, Math.round(10 + scatter * 22))
+    pc.lineCap = 'round'
+    for (let i = 0; i < marks; i++) {
+      const px = Math.random() * side
+      const py = Math.random() * side
+      const j = (Math.floor(py) * side + Math.floor(px)) * 4
+      const a = src.data[j + 3] / 255
+      if (a <= .01) continue
+      const angle = Math.random() * Math.PI * 2
+      const len = Math.max(2, size * strokeScale * (.35 + Math.random() * .75))
+      const halfLen = len / 2
+      pc.strokeStyle = `rgba(${src.data[j]},${src.data[j + 1]},${src.data[j + 2]},${a})`
+      pc.lineWidth = Math.max(1, size * (.035 + Math.random() * .05))
+      pc.beginPath()
+      pc.moveTo(px - Math.cos(angle) * halfLen, py - Math.sin(angle) * halfLen)
+      pc.lineTo(px + Math.cos(angle) * halfLen, py + Math.sin(angle) * halfLen)
+      pc.stroke()
+    }
+  }
+
   // Shape the pattern with the brush hardness. A hard brush gets a crisp disk;
   // softer brushes fade toward the edge without blurring the pattern itself.
   pc.globalCompositeOperation = 'destination-in'
