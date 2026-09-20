@@ -1531,6 +1531,44 @@ export class Engine {
     this.setSelectionMask(mask, mode, 'Path Selection')
   }
 
+  addVectorMaskFromPath(layerId: string, pathId: string) {
+    const doc = this.activeDoc
+    const layer = this.layerById(layerId)
+    const path = doc?.savedPaths?.find(p => p.id === pathId)
+    if (!doc || !layer || !path || layer.kind === 'adjustment') return
+    layer.vectorMask = {
+      anchors: path.anchors.map(a => ({ ...a })),
+      closed: path.closed,
+      enabled: true,
+    }
+    layer._mv++
+    invalidateFlat(doc)
+    this.pushHistory('Add Vector Mask')
+    this.emit()
+  }
+
+  toggleVectorMask(layerId: string, enabled?: boolean) {
+    const doc = this.activeDoc
+    const layer = this.layerById(layerId)
+    if (!doc || !layer?.vectorMask) return
+    layer.vectorMask = { ...layer.vectorMask, enabled: enabled ?? !layer.vectorMask.enabled }
+    layer._mv++
+    invalidateFlat(doc)
+    this.pushHistory(layer.vectorMask.enabled ? 'Enable Vector Mask' : 'Disable Vector Mask')
+    this.emit()
+  }
+
+  deleteVectorMask(layerId: string) {
+    const doc = this.activeDoc
+    const layer = this.layerById(layerId)
+    if (!doc || !layer?.vectorMask) return
+    layer.vectorMask = null
+    layer._mv++
+    invalidateFlat(doc)
+    this.pushHistory('Delete Vector Mask')
+    this.emit()
+  }
+
   // ================================================== selection
   setSelectionMask(mask: HTMLCanvasElement | null, mode: SelectionCombine = 'new', label = 'Selection') {
     const doc = this.activeDoc
