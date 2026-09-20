@@ -13,6 +13,59 @@ import { createCanvas, ctx2d, getImageData, putImageData, clamp, cloneCanvas } f
 import { perceptualWandMask } from '../image-ops/wand'
 import { getFlatComposite, invalidateFlat } from '../engine/document'
 
+function decontaminateMagicEdge(
+  canvas: HTMLCanvasElement,
+  maskAlpha: Uint8ClampedArray,
+  docWidth: number,
+  docHeight: number,
+  offsetX: number,
+  offsetY: number,
+  amountPct: number,
+) {
+  const amount = clamp(amountPct / 100, 0, 1)
+  if (amount <= 0) return
+  const tc = ctx2d(canvas)
+  const img = tc.getImageData(0, 0, canvas.width, canvas.height)
+  const src = new Uint8ClampedArray(img.data)
+  const around = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]] as const
+
+  for (let ly = 0; ly < canvas.height; ly++) {
+    const dy = ly + offsetY
+    if (dy < 0 || dy >= docHeight) continue
+    for (let lx = 0; lx < canvas.width; lx++) {
+      const dx = lx + offsetX
+      if (dx < 0 || dx >= docWidth) continue
+      const mi = dy * docWidth + dx
+      const ma = maskAlpha[mi]
+      // Decontamination is for the soft boundary. Fully erased pixels are
+      // invisible, while untouched pixels should retain their original color.
+      if (ma <= 0 || ma >= 250) continue
+
+      let rr = 0, gg = 0, bb = 0, n = 0
+      for (const [ox, oy] of around) {
+        const nx = lx + ox, ny = ly + oy
+        const ndx = dx + ox, ndy = dy + oy
+        if (nx < 0 || ny < 0 || nx >= canvas.width || ny >= canvas.height) continue
+        if (ndx < 0 || ndy < 0 || ndx >= docWidth || ndy >= docHeight) continue
+        const nmi = ndy * docWidth + ndx
+        // Prefer pixels outside the erased region: they are our best estimate
+        // of the true foreground edge color.
+        if (maskAlpha[nmi] >= ma * .45) continue
+        const ni = (ny * canvas.width + nx) * 4
+        if (src[ni + 3] < 24) continue
+        rr += src[ni]; gg += src[ni + 1]; bb += src[ni + 2]; n++
+      }
+      if (!n) continue
+      const i = (ly * canvas.width + lx) * 4
+      const strength = amount * clamp(ma / 255, 0, 1)
+      img.data[i] = src[i] * (1 - strength) + (rr / n) * strength
+      img.data[i + 1] = src[i + 1] * (1 - strength) + (gg / n) * strength
+      img.data[i + 2] = src[i + 2] * (1 - strength) + (bb / n) * strength
+    }
+  }
+  tc.putImageData(img, 0, 0)
+}
+
 export const magicEraserTool: Tool = {
   id: 'magic-eraser',
   requiresLayer: true,
@@ -95,6 +148,15 @@ export const magicEraserTool: Tool = {
 
     const target = engine.mutateLayerPixels(layer.id)
     if (!target?.canvas) return
+    decontaminateMagicEdge(
+      target.canvas,
+      alpha,
+      doc.width,
+      doc.height,
+      target.offsetX ?? 0,
+      target.offsetY ?? 0,
+      Number(opts.decontaminate) || 0,
+    )
     const tc = ctx2d(target.canvas)
     tc.save()
     tc.globalAlpha = eraseOpacity
