@@ -16,7 +16,7 @@ export type BlendMode =
 export type ToolId =
   | 'move' | 'marquee-rect' | 'marquee-ellipse' | 'lasso' | 'polygon-lasso' | 'magnetic-lasso'
   | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'eyedropper' | 'measure'
-  | 'brush' | 'pencil' | 'mixer-brush' | 'clone-stamp' | 'healing-brush' | 'spot-healing' | 'patch'
+  | 'brush' | 'pencil' | 'mixer-brush' | 'color-replacement' | 'clone-stamp' | 'healing-brush' | 'spot-healing' | 'patch' | 'red-eye'
   | 'eraser' | 'background-eraser' | 'magic-eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
   | 'dodge' | 'burn' | 'sponge' | 'text' | 'shape' | 'pen' | 'hand' | 'zoom'
 
