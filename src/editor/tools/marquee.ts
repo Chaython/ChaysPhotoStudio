@@ -1,7 +1,8 @@
 import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
 import { newDrag, getOptions, combineMode, drawDashedRect, drawCross } from './shared'
-import { rectFromPoints } from '../utils/canvas'
+import { rectFromPoints, cloneCanvas, createCanvas, ctx2d } from '../utils/canvas'
+import { selectionFromMask } from '../engine/selection'
 import { snapToGuides } from '../engine/guides'
 import { useEditorStore } from '../store'
 
@@ -16,6 +17,50 @@ function snapPoint(x: number, y: number): { x: number; y: number } {
 let drag = newDrag()
 let current: Rect | null = null
 let startMods = { shift: false, alt: false }
+
+interface SelectionMove {
+  originalMask: HTMLCanvasElement
+  startX: number
+  startY: number
+  dx: number
+  dy: number
+  bounds: Rect
+}
+let selectionMove: SelectionMove | null = null
+
+function pointInSelection(x: number, y: number): boolean {
+  const doc = engine.activeDoc
+  const sel = doc?.selection
+  if (!doc || !sel) return false
+  const px = Math.floor(x), py = Math.floor(y)
+  if (px < 0 || py < 0 || px >= doc.width || py >= doc.height) return false
+  const b = sel.bounds
+  if (x < b.x || y < b.y || x > b.x + b.w || y > b.y + b.h) return false
+  return ctx2d(sel.mask).getImageData(px, py, 1, 1).data[3] > 0
+}
+
+function previewSelectionMove(dx: number, dy: number) {
+  const doc = engine.activeDoc
+  if (!doc || !selectionMove) return
+  const mask = createCanvas(doc.width, doc.height)
+  ctx2d(mask).drawImage(selectionMove.originalMask, dx, dy)
+  doc.selection = selectionFromMask(mask)
+  engine.pokeOverlay()
+}
+
+function finishSelectionMove(commit: boolean) {
+  const doc = engine.activeDoc
+  const sm = selectionMove
+  if (!doc || !sm) { selectionMove = null; return }
+  if (!commit) {
+    doc.selection = selectionFromMask(cloneCanvas(sm.originalMask))
+    engine.pokeOverlay()
+  } else if (sm.dx || sm.dy) {
+    engine.pushHistory('Move Selection')
+    engine.pokeOverlay()
+  }
+  selectionMove = null
+}
 
 function ratioFrom(opts: Record<string, any>): number {
   return Math.max(0.001, (Number(opts.ratioW) || 1) / Math.max(0.001, Number(opts.ratioH) || 1))
@@ -63,21 +108,55 @@ function make(kind: 'rect' | 'ellipse'): Tool {
 
     onPointerDown(p: PointerInfo) {
       if (p.button !== 0) return
+      const opts = getOptions(id)
+      const doc = engine.activeDoc
+      // Photoshop marquee behavior: with New Selection active, dragging from
+      // inside the current selection moves only the boundary/mask, never pixels.
+      if (doc?.selection && (opts.mode ?? 'new') === 'new' && !p.shift && !p.alt && pointInSelection(p.docX, p.docY)) {
+        selectionMove = {
+          originalMask: cloneCanvas(doc.selection.mask),
+          startX: p.docX,
+          startY: p.docY,
+          dx: 0,
+          dy: 0,
+          bounds: { ...doc.selection.bounds },
+        }
+        drag.active = false
+        current = null
+        engine.pokeOverlay()
+        return
+      }
       const s = snapPoint(p.docX, p.docY)
       drag = { startX: s.x, startY: s.y, lastX: s.x, lastY: s.y, active: true }
       startMods = { shift: p.shift, alt: p.alt }
-      const opts = getOptions(id)
       current = opts.style === 'fixed' ? geometry(kind, p, opts) : null
       engine.pokeOverlay()
     },
 
     onPointerMove(p: PointerInfo) {
+      if (selectionMove) {
+        let dx = Math.round(p.docX - selectionMove.startX)
+        let dy = Math.round(p.docY - selectionMove.startY)
+        if (p.shift) {
+          if (Math.abs(dx) >= Math.abs(dy)) dy = 0
+          else dx = 0
+        }
+        const snapped = snapPoint(selectionMove.bounds.x + dx, selectionMove.bounds.y + dy)
+        dx += Math.round(snapped.x - (selectionMove.bounds.x + dx))
+        dy += Math.round(snapped.y - (selectionMove.bounds.y + dy))
+        if (dx === selectionMove.dx && dy === selectionMove.dy) return
+        selectionMove.dx = dx
+        selectionMove.dy = dy
+        previewSelectionMove(dx, dy)
+        return
+      }
       if (!drag.active) return
       current = geometry(kind, p, getOptions(id))
       engine.pokeOverlay()
     },
 
     onPointerUp(p: PointerInfo) {
+      if (selectionMove) { finishSelectionMove(true); return }
       if (!drag.active) return
       drag.active = false
       const opts = getOptions(id)
@@ -96,6 +175,10 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && selectionMove) {
+        finishSelectionMove(false)
+        return true
+      }
       if (e.key === 'Escape' && drag.active) {
         drag.active = false; current = null; engine.pokeOverlay(); return true
       }
@@ -103,6 +186,7 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onDeactivate() {
+      if (selectionMove) finishSelectionMove(true)
       drag.active = false
       current = null
     },
