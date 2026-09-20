@@ -588,7 +588,7 @@ export class Engine {
     this.emit()
   }
 
-  rasterizeLayer(id?: string) {
+  rasterizeLayer(id?: string, opts: { history?: boolean; emit?: boolean } = {}) {
     const doc = this.activeDoc
     const layer = id ? this.layerById(id) : this.activeLayer
     if (!doc || !layer || layer.kind === 'raster') return
@@ -613,8 +613,8 @@ export class Engine {
       layer._v++
     }
     invalidateFlat(doc)
-    this.pushHistory('Rasterize Layer')
-    this.emit()
+    if (opts.history !== false) this.pushHistory('Rasterize Layer')
+    if (opts.emit !== false) this.emit()
   }
 
   mergeDown(id?: string) {
@@ -1245,7 +1245,7 @@ export class Engine {
       // raster bake (also the path for rotated/flipped text & shape after
       // rasterizing — specs carry no rotation field)
       if ((baseKind === 'text' || baseKind === 'shape') && (Math.abs(rot) >= 0.002 || sx < 0 || sy < 0)) {
-        this.rasterizeLayer(id)
+        this.rasterizeLayer(id, { history: false, emit: false })
       }
       const l = this.layerById(id)!
       if (l.kind === 'raster' && l.canvas) {
