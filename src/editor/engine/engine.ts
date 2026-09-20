@@ -313,6 +313,13 @@ export class Engine {
     this.emit()
   }
 
+  setHistoryBrushSource(i: number) {
+    const doc = this.activeDoc
+    if (!doc?.history.states.length) return
+    doc.historyBrushSourceIndex = clamp(Math.round(i), 0, doc.history.states.length - 1)
+    this.emit()
+  }
+
   // ================================================== COW mutation helpers
   /** Call BEFORE mutating a layer's pixels — clones canvas so history stays intact. */
   mutateLayerPixels(layerId: string): Layer | null {
