@@ -133,9 +133,26 @@ export function CloneSourcePanel() {
         </label>
       </div>
 
+      <div className="grid grid-cols-[72px_1fr_46px] items-center gap-x-2 gap-y-1.5">
+        <label className="text-muted-foreground">Overlay</label>
+        <input
+          type="range" min={0} max={100} step={1}
+          value={Number(opts.overlayOpacity) || 0}
+          onChange={e => set('overlayOpacity', Number(e.target.value))}
+          className="w-full"
+          disabled={opts.showOverlay === false}
+        />
+        <span className="text-right tabular-nums">{Math.round(Number(opts.overlayOpacity) || 0)}%</span>
+      </div>
+
+      <label className="flex items-center gap-1.5 rounded border border-border px-2 py-1.5 cursor-pointer">
+        <input type="checkbox" checked={opts.showOverlay !== false} onChange={e => set('showOverlay', e.target.checked)} />
+        <span>Show source overlay at cursor</span>
+      </label>
+
       <button
         className="flex items-center justify-center gap-1.5 rounded border border-border px-2 py-1.5 hover:bg-accent"
-        onClick={() => { set('scale', 100); set('rotate', 0); set('mirrored', false) }}
+        onClick={() => { set('scale', 100); set('rotate', 0); set('mirrored', false); set('overlayOpacity', 50); set('showOverlay', true) }}
       >
         <RotateCcw size={12} /> Reset transform
       </button>
