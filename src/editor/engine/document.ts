@@ -457,10 +457,11 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
 
   // vector mask — rasterized at composition time, so the underlying layer
   // remains fully editable and the path can be changed without touching pixels.
-  if (layer.vectorMask?.enabled !== false && layer.vectorMask?.anchors?.length >= 2) {
+  const vectorMask = layer.vectorMask
+  if (vectorMask?.enabled !== false && (vectorMask?.anchors?.length ?? 0) >= 2) {
     const vm = createCanvas(doc.width, doc.height)
     const vc = ctx2d(vm)
-    const a = layer.vectorMask.anchors
+    const a = vectorMask.anchors
     vc.fillStyle = '#fff'
     vc.beginPath()
     vc.moveTo(a[0].x, a[0].y)
@@ -472,7 +473,7 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
         p1.x, p1.y,
       )
     }
-    if (layer.vectorMask.closed && a.length >= 2) {
+    if (vectorMask.closed && a.length >= 2) {
       const p0 = a[a.length - 1], p1 = a[0]
       vc.bezierCurveTo(
         p0.x + p0.outX, p0.y + p0.outY,
