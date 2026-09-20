@@ -396,6 +396,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'win-navigator', label: 'Navigator', run: () => store().revealPanel('navigator') },
     { id: 'win-histogram', label: 'Histogram', run: () => store().revealPanel('histogram') },
     { id: 'win-info', label: 'Info', run: () => store().revealPanel('info') },
+    { id: 'win-paths', label: 'Paths', run: () => store().revealPanel('paths') },
     { id: 'win-clone-source', label: 'Clone Source', run: () => store().revealPanel('clone-source') },
     { id: 'win-timeline', label: 'Timeline', run: () => store().revealPanel('timeline') },
     S(),
