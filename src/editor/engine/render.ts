@@ -6,7 +6,7 @@
 //   cursor  — brush rings / precise crosshairs (redrawn EVERY frame with a mouse and
 //             immediately on pointermove at input rate, so the cursor never lags or
 //             disappears even while the composite engine is busy)
-import type { PointerInfo, PsDocument, Tool, ToolId } from '../types'
+import type { PointerInfo, PsDocument, Tool, ToolId, SavedPath } from '../types'
 import { ctx2d, clamp } from '../utils/canvas'
 import { compositeDocument } from './document'
 import { drawAnts } from './selection'
@@ -14,6 +14,42 @@ import { getTool } from '../tools/registry'
 import { engine } from './engine'
 import { RULER_W, drawRulers, drawGuides, drawGrid, drawPixelGrid, hitGuide } from './guides'
 import { useEditorStore } from '../store'
+
+function drawSavedPathOverlay(
+  ctx: CanvasRenderingContext2D,
+  path: SavedPath,
+  view: { zoom: number; panX: number; panY: number },
+) {
+  if (!path.visible || path.anchors.length < 2) return
+  const a = path.anchors
+  ctx.save()
+  ctx.translate(view.panX, view.panY)
+  ctx.scale(view.zoom, view.zoom)
+  ctx.beginPath()
+  ctx.moveTo(a[0].x, a[0].y)
+  for (let i = 1; i < a.length; i++) {
+    const p0 = a[i - 1], p1 = a[i]
+    ctx.bezierCurveTo(
+      p0.x + p0.outX, p0.y + p0.outY,
+      p1.x + p1.inX, p1.y + p1.inY,
+      p1.x, p1.y,
+    )
+  }
+  if (path.closed) {
+    const p0 = a[a.length - 1], p1 = a[0]
+    ctx.bezierCurveTo(
+      p0.x + p0.outX, p0.y + p0.outY,
+      p1.x + p1.inX, p1.y + p1.inY,
+      p1.x, p1.y,
+    )
+    ctx.closePath()
+  }
+  ctx.lineWidth = 1.35 / Math.max(.02, view.zoom)
+  ctx.strokeStyle = 'rgba(232,163,61,.95)'
+  ctx.setLineDash([5 / Math.max(.02, view.zoom), 3 / Math.max(.02, view.zoom)])
+  ctx.stroke()
+  ctx.restore()
+}
 
 export class Viewport {
   host: HTMLElement | null = null
@@ -314,6 +350,8 @@ export class Viewport {
       drawAnts(ctx, doc.selection, v.zoom, this.antsOffset)
       ctx.restore()
     }
+    // persistent named paths remain visible independently of the active tool.
+    for (const path of doc.savedPaths ?? []) drawSavedPathOverlay(ctx, path, v)
     // tool overlay (brush rings live on the cursor layer, not here)
     const tool = getTool(((engine as any)._activeToolId ?? currentToolId()) as ToolId)
     if (tool?.renderOverlay) tool.renderOverlay(ctx, v, w, h, this.lastMouse)
