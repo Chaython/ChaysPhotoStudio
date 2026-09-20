@@ -12,6 +12,7 @@ import { brushTool, pencilTool } from './brush'
 import { mixerBrushTool } from './mixer-brush'
 import { colorReplacementTool } from './color-replacement'
 import { historyBrushTool } from './history-brush'
+import { artHistoryBrushTool } from './art-history-brush'
 import { penTool } from './pen'
 import { eraserTool } from './eraser'
 import { backgroundEraserTool } from './background-eraser'
@@ -42,6 +43,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'mixer-brush': mixerBrushTool,
   'color-replacement': colorReplacementTool,
   'history-brush': historyBrushTool,
+  'art-history-brush': artHistoryBrushTool,
   'clone-stamp': cloneStampTool,
   'healing-brush': healingBrushTool,
   'spot-healing': spotHealingTool,
