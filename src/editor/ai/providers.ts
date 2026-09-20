@@ -12,7 +12,7 @@ export const AI_PROVIDERS: AiProviderDescriptor[] = [
   {
     id: 'comfyui', name: 'ComfyUI', kind: 'comfyui', local: true,
     description: 'Run any local ComfyUI workflow for inpaint, outpaint, restoration, ControlNet, LoRA and more.',
-    capabilities: ['generate', 'inpaint', 'outpaint', 'upscale', 'depth', 'caption', 'denoise', 'restore-face', 'relight', 'colorize', 'vectorize'],
+    capabilities: ['select-subject', 'remove-background', 'smart-remove', 'generate', 'inpaint', 'outpaint', 'upscale', 'depth', 'caption', 'denoise', 'restore-face', 'relight', 'colorize', 'vectorize'],
   },
   {
     id: 'openai-compatible', name: 'OpenAI-compatible', kind: 'openai-compatible', local: false,
