@@ -223,6 +223,25 @@ export const cloneStampTool: Tool = {
         const gx = sp.x * view.zoom + view.panX
         const gy = sp.y * view.zoom + view.panY
         const r = Math.max(2, (size / 2) * view.zoom)
+        const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
+        const mirrored = opts.mirrored === true
+        const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
+
+        // Photoshop-style Clone Source overlay: show the actual transformed
+        // sampled pixels beneath the destination brush before committing.
+        if (!(opts.overlayAutoHide !== false && st.active) && st.source && Number(opts.overlayOpacity ?? 65) > 0) {
+          const overlay = buildSourceDab(st.source, sp.x, sp.y, size / 2, 100, rot, mirrored, scale)
+          if (overlay) {
+            const ow = overlay.width * view.zoom
+            const oh = overlay.height * view.zoom
+            ctx.save()
+            ctx.globalAlpha = Math.max(0, Math.min(1, (Number(opts.overlayOpacity) || 0) / 100))
+            if (opts.overlayInvert === true) ctx.filter = 'invert(1)'
+            ctx.drawImage(overlay, mouse.x - ow / 2, mouse.y - oh / 2, ow, oh)
+            ctx.restore()
+          }
+        }
+
         ctx.save()
         ctx.setLineDash([4, 3])
         ctx.strokeStyle = 'rgba(78,201,176,0.9)'
