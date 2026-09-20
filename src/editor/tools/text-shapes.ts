@@ -320,7 +320,7 @@ function drawShapePreview(
     tc.strokeStyle = spec.stroke
     tc.lineWidth = (spec.strokeWidth ?? 4) * 2
     tc.lineJoin = 'round'
-    applyPreviewDash(tc, spec, tc.lineWidth)
+    applyPreviewDash(tc, spec, spec.strokeWidth ?? 4)
     traceShapePath(tc, spec)
     tc.stroke()
     tc.setLineDash([])
@@ -347,7 +347,7 @@ function drawShapePreview(
   ctx.globalAlpha = alpha
   ctx.lineWidth = (spec.strokeWidth ?? 4) * (align === 'inside' ? 2 : 1)
   ctx.lineJoin = 'round'
-  applyPreviewDash(ctx, spec, ctx.lineWidth)
+  applyPreviewDash(ctx, spec, spec.strokeWidth ?? 4)
   traceShapePath(ctx, spec)
   ctx.stroke()
   ctx.restore()
@@ -408,9 +408,10 @@ export const shapeTool: Tool = {
   renderOverlay(ctx, view, w, h, mouse) {
     void w; void h
     if (shapeRect && drag.active && shapeVec) {
-      const spec = getOptions('shape').shape === 'line'
-        ? { ...getOptions('shape'), shape: 'line', x: shapeVec.x0, y: shapeVec.y0, w: shapeVec.x1 - shapeVec.x0, h: shapeVec.y1 - shapeVec.y0 } as ShapeSpec
-        : { ...getOptions('shape'), x: shapeRect.x, y: shapeRect.y, w: shapeRect.w, h: shapeRect.h } as ShapeSpec
+      const shapeOpts = getOptions('shape')
+      const spec = shapeOpts.shape === 'line'
+        ? { ...shapeOpts, shape: 'line', x: shapeVec.x0, y: shapeVec.y0, w: shapeVec.x1 - shapeVec.x0, h: shapeVec.y1 - shapeVec.y0 } as ShapeSpec
+        : { ...shapeOpts, stroke: shapeOpts.strokeEnabled ? (shapeOpts.stroke ?? '#ffffff') : null, x: shapeRect.x, y: shapeRect.y, w: shapeRect.w, h: shapeRect.h } as ShapeSpec
       drawShapePreview(ctx, spec, view, w, h)
       // dashed bbox
       const x = shapeRect.x * view.zoom + view.panX
