@@ -117,6 +117,18 @@ export const TOOL_DEFS: ToolDef[] = [
     { key: 'pressureFlow', label: 'Pen Pressure → Flow', type: 'toggle' },
     { key: 'pressureSize', label: 'Pen Pressure → Size', type: 'toggle' },
   ] },
+  { id: 'art-history-brush', label: 'Art History Brush', group: 4, shortcut: 'Y', icon: 'Brush', cursor: 'none', requiresLayer: true, defaults: { size: 38, opacity: 100, flow: 70, spacing: 18, source: 'previous', style: 'tight-medium', area: 50, tolerance: 0, pressureFlow: true, pressureSize: false }, options: [
+    { key: 'source', label: 'Source', type: 'select', options: [{ label: 'Previous History State', value: 'previous' }, { label: 'Original State', value: 'original' }] },
+    { key: 'style', label: 'Style', type: 'select', options: [{ label: 'Tight Short', value: 'tight-short' }, { label: 'Tight Medium', value: 'tight-medium' }, { label: 'Loose Medium', value: 'loose-medium' }, { label: 'Loose Long', value: 'loose-long' }, { label: 'Curl', value: 'curl' }] },
+    { key: 'size', label: 'Brush Size', type: 'slider', min: 2, max: 300, step: 1, unit: 'px' },
+    { key: 'area', label: 'Area', type: 'slider', min: 1, max: 200, step: 1, unit: '%' },
+    { key: 'tolerance', label: 'Tolerance', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
+    { key: 'opacity', label: 'Opacity', type: 'slider', min: 1, max: 100, step: 1, unit: '%' },
+    { key: 'flow', label: 'Flow', type: 'slider', min: 1, max: 100, step: 1, unit: '%' },
+    { key: 'spacing', label: 'Spacing', type: 'slider', min: 1, max: 200, step: 5, unit: '%' },
+    { key: 'pressureFlow', label: 'Pen Pressure → Flow', type: 'toggle' },
+    { key: 'pressureSize', label: 'Pen Pressure → Size', type: 'toggle' },
+  ] },
 
   { id: 'eraser', label: 'Eraser', group: 4, shortcut: 'E', icon: 'Eraser', cursor: 'none', requiresLayer: true, defaults: { size: 40, hardness: 70, opacity: 100, flow: 100, spacing: 15, tip: 'round-soft', angle: 0, angleFollow: false, roundness: 100, symmetry: 'off', mandalaCount: 6, mode: 'brush', pressure: true, pressureSize: false }, options: [{ key: 'mode', label: 'Mode', type: 'select', options: [{ label: 'Brush', value: 'brush' }, { label: 'Pencil', value: 'pencil' }, { label: 'Block', value: 'block' }] }, ...brushCtls, { key: 'pressure', label: 'Pen Pressure → Flow', type: 'toggle' }, { key: 'pressureSize', label: 'Pen Pressure → Size', type: 'toggle' }, { key: 'tip', label: 'Tip', type: 'select', options: eraserTipSelectOptions }, { key: 'angle', label: 'Angle', type: 'angle', min: 0, max: 360, step: 1, unit: '°', hint: 'Tip rotation (rotatable tips)' }, { key: 'roundness', label: 'Roundness', type: 'slider', min: 10, max: 100, step: 1, unit: '%', hint: 'Calligraphy nib squash' }, { key: 'angleFollow', label: 'Follow', type: 'toggle', hint: 'Rotate the tip with the stroke direction' }, symmetryCtl, mandalaCtl] },
   { id: 'background-eraser', label: 'Background Eraser', group: 4, shortcut: 'E', icon: 'Eraser', cursor: 'none', requiresLayer: true, defaults: { size: 50, hardness: 70, spacing: 18, tolerance: 30, sampling: 'continuous', limits: 'find-edges', protectForeground: false, pressureSize: false }, options: [
@@ -180,7 +192,7 @@ export const TOOL_CYCLES: ToolId[][] = [
   ['lasso', 'polygon-lasso', 'magnetic-lasso'],
   ['object-select', 'quick-select', 'magic-wand'],
   ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
-  ['history-brush'],
+  ['history-brush', 'art-history-brush'],
   ['eraser', 'background-eraser', 'magic-eraser'],
   ['clone-stamp'],
   ['healing-brush', 'spot-healing', 'patch', 'red-eye'],
