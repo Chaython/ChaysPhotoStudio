@@ -383,7 +383,7 @@ async function finishQuickSelection() {
   const source = qsSource
   const roughMask = qsMask
   const opts = getOptions('quick-select')
-  let out = alpha
+  let out: Uint8ClampedArray = alpha
 
   try {
     if (doc && opts.autoEnhance === true && opts.refineProvider === 'comfyui' && source && roughMask) {
