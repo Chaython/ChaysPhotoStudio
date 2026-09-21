@@ -7,8 +7,9 @@
    - never touches /api/* or cross-origin requests
    BASE: derived from this worker's own URL, so the same file serves
    root deployments and sub-path deployments (GitHub Pages) alike. */
-const CACHE = 'chays-photo-studio-v1'
+const CACHE = 'chays-photo-studio-v2'
 const BASE = self.location.pathname.replace(/\/sw\.js$/, '')
+const IS_TAURI = self.location.hostname === 'tauri.localhost'
 const SHELL = [`${BASE}/`, `${BASE}/manifest.webmanifest`, `${BASE}/icons/icon-192.png`, `${BASE}/icons/icon-512.png`]
 
 const OFFLINE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -23,6 +24,14 @@ a{color:#e8a33d}</style></head><body><div>
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
+    // A Tauri/WebView2 build must never run as a PWA. Older releases could
+    // register this worker on http://tauri.localhost, where a cached shell can
+    // outlive app updates and point at no-longer-existing hashed Next chunks.
+    if (IS_TAURI) {
+      await self.skipWaiting()
+      return
+    }
+
     const cache = await caches.open(CACHE)
     // allSettled: a missing icon must never block install
     await Promise.allSettled(SHELL.map((u) => cache.add(u)))
@@ -33,6 +42,13 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
     const keys = await caches.keys()
+
+    if (IS_TAURI) {
+      await Promise.all(keys.filter((k) => k.startsWith('chays-photo-studio-')).map((k) => caches.delete(k)))
+      await self.registration.unregister()
+      return
+    }
+
     await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
     await self.clients.claim()
   })())
@@ -45,6 +61,10 @@ self.addEventListener('message', (e) => {
 const STATIC_RE = /\.(png|jpe?g|svg|webp|avif|gif|ico|woff2?|ttf|css|js|wasm|json)$/i
 
 self.addEventListener('fetch', (e) => {
+  // Never intercept native-shell requests. A clean WebView profile plus this
+  // guard makes future desktop upgrades immune to PWA shell caching.
+  if (IS_TAURI) return
+
   const req = e.request
   if (req.method !== 'GET') return
   const url = new URL(req.url)
