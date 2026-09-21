@@ -106,17 +106,18 @@ for (const f of flavors) {
     process.exit(1)
   }
 
-  // The plugin flavor is also embedded by Tauri. Tauri's packaged protocol
-  // does not reliably resolve root-absolute /_next/* URLs; they must be
-  // relative (assetPrefix './') or the desktop app renders only SSR fallback.
+  // The plugin flavor is also embedded by Tauri/WebView2. The last verified
+  // working desktop build (release run #32, ba1caeab) used root-absolute
+  // /_next/* references. Keep that form: changing them to ./_next/* leaves
+  // the packaged WebView on the unstyled server-rendered loading fallback.
   if (f.label === 'plugin') {
     const html = fs.readFileSync(path.join(f.out, 'index.html'), 'utf8')
-    if (/(?:src|href)=["']\/_next\//.test(html)) {
-      console.error('export-webapp: plugin/webview export still contains root-absolute /_next assets')
+    if (!/(?:src|href)=["']\/_next\//.test(html)) {
+      console.error('export-webapp: plugin/webview export is missing root-absolute /_next assets')
       process.exit(1)
     }
-    if (!/(?:src|href)=["']\.\/_next\//.test(html)) {
-      console.error('export-webapp: plugin/webview export does not contain relative ./_next assets')
+    if (/(?:src|href)=["']\.\/_next\//.test(html)) {
+      console.error('export-webapp: plugin/webview export unexpectedly contains relative ./_next assets')
       process.exit(1)
     }
   }

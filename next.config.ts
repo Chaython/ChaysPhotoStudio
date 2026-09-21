@@ -12,15 +12,10 @@ import type { NextConfig } from "next";
  */
 const isExport = process.env.NEXT_OUTPUT === "export";
 const basePath = process.env.NEXT_BASE_PATH || "";
-const isLocalStaticExport = isExport && !basePath;
 
 const nextConfig: NextConfig = {
   output: isExport ? "export" : "standalone",
   ...(basePath ? { basePath } : {}),
-  // Tauri's packaged custom protocol cannot reliably resolve root-absolute
-  // /_next/* URLs. The local static flavor is also used by the browser
-  // extension, where relative assets are valid from the root editor page.
-  ...(isLocalStaticExport ? { assetPrefix: './' } : {}),
   images: isExport ? { unoptimized: true } : undefined,
   /* config options here */
   typescript: {
