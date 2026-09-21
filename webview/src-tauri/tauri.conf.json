@@ -19,7 +19,8 @@
         "center": true,
         "dragDropEnabled": false,
         "backgroundColor": "#1c1c1c",
-        "dataDirectory": "profile-v2-no-pwa"
+        "dataDirectory": "profile-v2-no-pwa",
+        "devtools": true
       }
     ],
     "security": {
