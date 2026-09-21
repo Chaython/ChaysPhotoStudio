@@ -1,0 +1,59 @@
+name: Release 32 Recovery Validation
+
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-webview:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install locked JavaScript tooling
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          NEXT_TELEMETRY_DISABLED: 1
+        run: bun install --frozen-lockfile
+
+      - name: Generate prerequisites
+        shell: bash
+        run: |
+          bun run db:generate
+          bun run icons
+
+      - name: Build embedded static editor
+        run: node scripts/export-webapp.mjs plugin
+
+      - name: Repair compatible Cargo lock resolution
+        working-directory: webview/src-tauri
+        run: cargo update -p toml_parser --precise "1.1.3+spec-1.1.0"
+
+      - name: Configure embedded WebView
+        run: node scripts/webview-config.mjs
+        env:
+          WEBVIEW_APP_URL:
+          WEBVIEW_FRONTEND_DIST: ../../build/webapp-export
+
+      - name: Build Windows WebView recovery installer
+        working-directory: webview/src-tauri
+        shell: bash
+        run: |
+          set -euo pipefail
+          bunx @tauri-apps/cli build --config tauri.conf.release.json --bundles nsis
+
+      - name: Upload Windows WebView recovery installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: release32-runtime-recovery-webview-windows-x64
+          path: webview/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
