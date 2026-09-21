@@ -18,7 +18,8 @@
         "minHeight": 700,
         "center": true,
         "dragDropEnabled": false,
-        "backgroundColor": "#1c1c1c"
+        "backgroundColor": "#1c1c1c",
+        "dataDirectory": "profile-v2-no-pwa"
       }
     ],
     "security": {
