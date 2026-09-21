@@ -82,6 +82,8 @@ jobs:
           # ext:build already produced build/webapp-export above.
           node scripts/webview-config.mjs
           node -e "const c=require('./webview/src-tauri/tauri.conf.release.json'); if(c.build.frontendDist!=='../../build/webapp-export') process.exit(1)"
+          node -e "const c=require('./webview/src-tauri/tauri.conf.json'); const w=c.app?.windows?.[0]; if(w?.dataDirectory!=='profile-v2-no-pwa') process.exit(1)"
+          node -e "const s=require('fs').readFileSync('public/sw.js','utf8'); if(!s.includes(\"self.location.hostname === 'tauri.localhost'\") || !s.includes('self.registration.unregister()')) process.exit(1)"
 
       - name: Verify expected build outputs
         shell: bash
