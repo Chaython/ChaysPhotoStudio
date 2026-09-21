@@ -1,27 +1,22 @@
 'use client'
-// Panel registry — single source of truth for dockable/floating editor panels.
+// Panel registry — single source of truth for the 9 right-dock panels.
 // The dock renders tabs from this list; FloatingPanels renders windows from it.
 // NOTE: this module imports panel components (which import the store) — keep it
 // free of store imports to avoid a circular dependency.
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders,
+  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film,
 } from 'lucide-react'
 import { LayersPanel } from './layers-panel'
 import { HistoryPanel, NavigatorPanel, HistogramPanel } from './history-navigator-histogram'
 import { ColorPanel } from './color-panel'
 import { ChannelsPanel, AdjustmentsPanel, ActionsPanel, PropertiesPanel } from './channels-actions-properties'
 import { TimelinePanel } from './timeline-panel'
-import { CloneSourcePanel } from './clone-source-panel'
-import { InfoPanel } from './info-panel'
-import { PathsPanel } from './paths-panel'
-import { PatternsPanel } from './patterns-panel'
-import { ToolPresetsPanel } from './tool-presets-panel'
 
 export type PanelId =
   | 'color' | 'layers' | 'channels' | 'history' | 'actions'
-  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns' | 'tool-presets'
+  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline'
 
 export interface PanelDef {
   id: PanelId
@@ -77,26 +72,6 @@ export const PANELS: PanelDef[] = [
   {
     id: 'timeline', label: 'Timeline', icon: Film, render: TimelinePanel,
     defaultFloat: { w: 680, h: 280 }, minFloat: { w: 460, h: 200 }, dockSlot: 'tab',
-  },
-  {
-    id: 'clone-source', label: 'Clone', icon: Stamp, render: CloneSourcePanel,
-    defaultFloat: { w: 292, h: 420 }, minFloat: { w: 240, h: 300 }, dockSlot: 'tab',
-  },
-  {
-    id: 'info', label: 'Info', icon: Info, render: InfoPanel,
-    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
-  },
-  {
-    id: 'paths', label: 'Paths', icon: PenTool, render: PathsPanel,
-    defaultFloat: { w: 286, h: 420 }, minFloat: { w: 230, h: 260 }, dockSlot: 'tab',
-  },
-  {
-    id: 'patterns', label: 'Patterns', icon: Grid2X2, render: PatternsPanel,
-    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
-  },
-  {
-    id: 'tool-presets', label: 'Presets', icon: Sliders, render: ToolPresetsPanel,
-    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
   },
 ]
 

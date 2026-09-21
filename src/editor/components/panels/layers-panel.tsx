@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
@@ -17,8 +17,6 @@ import { FancyScroll } from '@/components/ui/fancy-scroll'
 export function LayersPanel() {
   const layers = useEditorStore(s => s.layers)
   const activeLayerId = useEditorStore(s => s.activeLayerId)
-  const selectedLayerIds = useEditorStore(s => s.selectedLayerIds)
-  const alignTo = useEditorStore(s => (s.toolOptions.move?.alignTo ?? 'selection') as 'selection' | 'canvas' | 'primary')
   const tick = useEditorStore(s => s.renderTick)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -29,38 +27,13 @@ export function LayersPanel() {
 
   const doc = engine.activeDoc
   const activeLayer = doc?.layers.find(l => l.id === activeLayerId)
-  const selectedSet = new Set(selectedLayerIds)
-  const selectedLayers = doc?.layers.filter(l => selectedSet.has(l.id)) ?? []
 
   const idxOf = (metaId: string) => layers.findIndex(l => l.id === metaId) // display index (0=top)
   const q = query.trim().toLowerCase()
   const visibleLayers = layers.filter(l => (kindFilter === 'all' || l.kind === kindFilter) && (!q || l.name.toLowerCase().includes(q)))
 
-  const setActive = (id: string, e: ReactMouseEvent) => {
-    if (!doc) return
-    const order = layers.map(l => l.id) // display order: top → bottom
-    const current = doc.selectedLayerIds?.filter(x => doc.layers.some(l => l.id === x))
-      ?? (doc.activeLayerId ? [doc.activeLayerId] : [])
-
-    if (e.shiftKey && doc.activeLayerId) {
-      const a = order.indexOf(doc.activeLayerId)
-      const b = order.indexOf(id)
-      if (a >= 0 && b >= 0) {
-        const lo = Math.min(a, b), hi = Math.max(a, b)
-        doc.selectedLayerIds = order.slice(lo, hi + 1)
-      } else doc.selectedLayerIds = [id]
-      doc.activeLayerId = id
-    } else if (e.ctrlKey || e.metaKey) {
-      const set = new Set(current)
-      if (set.has(id) && set.size > 1) set.delete(id)
-      else set.add(id)
-      doc.selectedLayerIds = [...set]
-      doc.activeLayerId = set.has(id) ? id : (doc.selectedLayerIds[doc.selectedLayerIds.length - 1] ?? null)
-    } else {
-      doc.activeLayerId = id
-      doc.selectedLayerIds = [id]
-    }
-    engine.emit()
+  const setActive = (id: string) => {
+    if (doc) { doc.activeLayerId = id; engine.emit() }
   }
 
   const reorder = (id: string, displayIdx: number) => {
@@ -94,11 +67,7 @@ export function LayersPanel() {
         <span className="text-muted-foreground shrink-0">Blend</span>
         <Select
           value={activeLayer?.blendMode ?? 'normal'}
-          onValueChange={v => {
-            const targets = selectedLayers.length ? selectedLayers : (activeLayer ? [activeLayer] : [])
-            for (const l of targets) engine.setLayerProps(l.id, { blendMode: v as BlendMode }, { history: false })
-            if (targets.length) { engine.pushHistory(targets.length > 1 ? 'Layer Blend Modes' : 'Layer Blend Mode'); engine.emit() }
-          }}
+          onValueChange={v => { if (activeLayer) engine.setLayerProps(activeLayer.id, { blendMode: v as BlendMode }) }}
         >
           <SelectTrigger className="h-6! flex-1 px-1.5 py-0.5 text-[11px]">
             <SelectValue />
@@ -118,38 +87,12 @@ export function LayersPanel() {
           min={0}
           max={100}
           step={1}
-          onValueChange={v => {
-            const targets = selectedLayers.length ? selectedLayers : (activeLayer ? [activeLayer] : [])
-            for (const l of targets) engine.setLayerProps(l.id, { opacity: v[0] }, { history: false })
-          }}
-          onValueCommit={() => {
-            if (selectedLayers.length || activeLayer) engine.pushHistory(selectedLayers.length > 1 ? 'Layer Opacities' : 'Layer Opacity')
-          }}
+          onValueChange={v => { if (activeLayer) engine.setLayerProps(activeLayer.id, { opacity: v[0] }, { history: false }) }}
+          onValueCommit={() => { if (activeLayer) engine.pushHistory('Layer Opacity') }}
           className="flex-1"
         />
         <span className="font-mono w-9 text-right">{Math.round(activeLayer?.opacity ?? 100)}%</span>
       </div>
-
-      {selectedLayers.length > 1 && (
-        <div className="flex items-center gap-0.5 px-2 py-1 border-b bg-panel/35" title={`Align ${selectedLayers.length} selected layers to ${alignTo}`}>
-          <span className="text-[10px] text-muted-foreground mr-1 tabular-nums">{selectedLayers.length} selected</span>
-          <PanelBtn title="Align left" icon="AlignHorizontalJustifyStart" onClick={() => engine.alignSelected('left', alignTo)} />
-          <PanelBtn title="Align horizontal centers" icon="AlignHorizontalJustifyCenter" onClick={() => engine.alignSelected('hcenter', alignTo)} />
-          <PanelBtn title="Align right" icon="AlignHorizontalJustifyEnd" onClick={() => engine.alignSelected('right', alignTo)} />
-          <PanelBtn title="Align top" icon="AlignVerticalJustifyStart" onClick={() => engine.alignSelected('top', alignTo)} />
-          <PanelBtn title="Align vertical centers" icon="AlignVerticalJustifyCenter" onClick={() => engine.alignSelected('vcenter', alignTo)} />
-          <PanelBtn title="Align bottom" icon="AlignVerticalJustifyEnd" onClick={() => engine.alignSelected('bottom', alignTo)} />
-          {selectedLayers.length >= 3 && (
-            <>
-              <span className="w-px h-4 bg-border mx-0.5" />
-              <PanelBtn title="Distribute horizontal centers" icon="GalleryHorizontal" onClick={() => engine.distributeSelected('horizontal')} />
-              <PanelBtn title="Distribute vertical centers" icon="GalleryVertical" onClick={() => engine.distributeSelected('vertical')} />
-              <PanelBtn title="Distribute horizontal spacing" icon="BetweenHorizontalStart" onClick={() => engine.distributeSelectedSpacing('horizontal')} />
-              <PanelBtn title="Distribute vertical spacing" icon="BetweenVerticalStart" onClick={() => engine.distributeSelectedSpacing('vertical')} />
-            </>
-          )}
-        </div>
-      )}
 
       {/* fast layer search/filter — important once real projects reach dozens of layers */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b bg-panel/40">
@@ -177,11 +120,10 @@ export function LayersPanel() {
             key={meta.id}
             meta={meta}
             tick={tick}
-            active={selectedSet.has(meta.id)}
-            primary={meta.id === activeLayerId}
+            active={meta.id === activeLayerId}
             renaming={renaming === meta.id}
             renameValue={renameValue}
-            onActivate={e => setActive(meta.id, e)}
+            onActivate={() => setActive(meta.id)}
             onToggleVisibility={(solo) => solo ? toggleSolo(meta.id) : engine.setLayerProps(meta.id, { visible: !meta.visible })}
             onStartRename={() => { setRenaming(meta.id); setRenameValue(meta.name) }}
             onRename={v => {
@@ -223,14 +165,13 @@ export function LayersPanel() {
   )
 }
 
-function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActivate, onToggleVisibility, onStartRename, onRename, onRenameChange, onDragStart, onDropAt, onMoveUp, onMoveDown }: {
+function LayerRow({ meta, tick, active, renaming, renameValue, onActivate, onToggleVisibility, onStartRename, onRename, onRenameChange, onDragStart, onDropAt, onMoveUp, onMoveDown }: {
   meta: LayerMeta
   tick: number
   active: boolean
-  primary: boolean
   renaming: boolean
   renameValue: string
-  onActivate(e: ReactMouseEvent<HTMLDivElement>): void
+  onActivate(): void
   onToggleVisibility(solo: boolean): void
   onStartRename(): void
   onRename(v: string): void
@@ -306,7 +247,7 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
 
           {/* thumbnails */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            <div className={cn('w-9 h-9 rounded-sm border bg-checker', primary && 'ring-1 ring-primary')}>
+            <div className={cn('w-9 h-9 rounded-sm border bg-checker', active && 'ring-1 ring-primary')}>
               {meta.kind === 'adjustment' && AdjIcon ? (
                 <div className="w-full h-full flex items-center justify-center bg-muted/30">
                   <AdjIcon size={15} className="text-primary" />
@@ -319,18 +260,6 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
               <div className={cn('w-6 h-6 rounded-sm border bg-black overflow-hidden', !meta.maskEnabled && 'opacity-40')}>
                 <canvas ref={maskRef} width={24} height={24} className="w-6 h-6" />
               </div>
-            )}
-            {meta.hasVectorMask && (
-              <button
-                className={cn(
-                  'w-6 h-6 rounded-sm border grid place-items-center bg-muted/30 text-primary',
-                  !meta.vectorMaskEnabled && 'opacity-40',
-                )}
-                title={meta.vectorMaskEnabled ? 'Vector mask enabled · click to disable' : 'Vector mask disabled · click to enable'}
-                onClick={e => { e.stopPropagation(); engine.toggleVectorMask(meta.id) }}
-              >
-                <Icons.PenTool size={12} />
-              </button>
             )}
           </div>
 
@@ -397,8 +326,6 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
         <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, false)}><Icons.Square /> Add Mask (Reveal All)</ContextMenuItem>
         {meta.hasMask && <ContextMenuItem onClick={() => engine.deleteLayerMask(meta.id, true)}><Icons.Stamp /> Apply Mask</ContextMenuItem>}
         {meta.hasMask && <ContextMenuItem onClick={() => engine.deleteLayerMask(meta.id, false)}><Icons.Trash2 /> Delete Mask</ContextMenuItem>}
-        {meta.hasVectorMask && <ContextMenuItem onClick={() => engine.toggleVectorMask(meta.id)}><Icons.PenTool /> {meta.vectorMaskEnabled ? 'Disable' : 'Enable'} Vector Mask</ContextMenuItem>}
-        {meta.hasVectorMask && <ContextMenuItem onClick={() => engine.deleteVectorMask(meta.id)}><Icons.Trash2 /> Delete Vector Mask</ContextMenuItem>}
         <ContextMenuItem onClick={() => engine.toggleClipping(meta.id)}><Icons.CornerDownRight /> Toggle Clipping</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.rasterizeLayer(meta.id)}><Icons.Grid2x2 /> Rasterize</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.trimLayerToContent(meta.id)}><Icons.ScanLine /> Trim to Content</ContextMenuItem>

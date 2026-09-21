@@ -5,7 +5,7 @@
 import { engine } from '../engine/engine'
 import { useEditorStore } from '../store'
 import { createCanvas, ctx2d, getImageData, getMaskAlpha, putImageData } from '../utils/canvas'
-import { getFlatComposite, invalidateFlat } from '../engine/document'
+import { invalidateFlat } from '../engine/document'
 import { getPluginWorkerURL } from './plugin-worker'
 import { analyzeUxpCompatibility, uxpManifestToPlugin } from './compatibility'
 import { runNativeGegl, runNativeGmic } from './native-host'
@@ -126,127 +126,12 @@ async function runUxpBatchPlay(descriptors: any[]): Promise<any[]> {
       out.push({})
     } else if (obj === 'flip') {
       const axis = String(d.axis?._value ?? d.axis ?? 'horizontal').toLowerCase()
-      const targetLayer = Array.isArray(d?._target) && d._target.some((t: any) => t?._ref === 'layer')
-      if (targetLayer && layer) engine.flipLayer(layer.id, axis.includes('vertical') ? 'vertical' : 'horizontal')
-      else engine.flipCanvas(axis.includes('vertical') ? 'vertical' : 'horizontal')
-      out.push({})
-    } else if (obj === 'show' || obj === 'hide') {
-      if (layer) engine.setLayerProps(layer.id, { visible: obj === 'show' }, { label: 'UXP Plugin' })
-      out.push({})
-    } else if (obj === 'selectAll') {
-      engine.selectAll(); out.push({})
-    } else if (obj === 'deselect' || obj === 'setd') {
-      engine.deselect(); out.push({})
-    } else if (obj === 'inverse' || obj === 'inverseSelection') {
-      engine.invertSelection(); out.push({})
-    } else if (obj === 'feather') {
-      const px = Number(d.radius?._value ?? d.radius ?? d.feather?._value ?? d.feather ?? 0)
-      if (px > 0) engine.selectionModify('feather', px)
-      out.push({})
-    } else if (obj === 'expand') {
-      const px = Number(d.by?._value ?? d.by ?? d.radius?._value ?? d.radius ?? 0)
-      if (px > 0) engine.selectionModify('grow', px)
-      out.push({})
-    } else if (obj === 'contract') {
-      const px = Number(d.by?._value ?? d.by ?? d.radius?._value ?? d.radius ?? 0)
-      if (px > 0) engine.selectionModify('contract', px)
-      out.push({})
-    } else if (obj === 'crop') {
-      const n = (v: any) => typeof v === 'number' ? v : Number(v?._value ?? v?.value ?? v)
-      const b = d.to ?? d.bounds ?? d
-      let left = n(b.left ?? b.x), top = n(b.top ?? b.y)
-      let right = n(b.right), bottom = n(b.bottom)
-      const width = n(b.width), height = n(b.height)
-      if (!Number.isFinite(left)) left = doc.selection?.bounds.x ?? 0
-      if (!Number.isFinite(top)) top = doc.selection?.bounds.y ?? 0
-      if (!Number.isFinite(right)) right = Number.isFinite(width) ? left + width : (doc.selection ? doc.selection.bounds.x + doc.selection.bounds.w : doc.width)
-      if (!Number.isFinite(bottom)) bottom = Number.isFinite(height) ? top + height : (doc.selection ? doc.selection.bounds.y + doc.selection.bounds.h : doc.height)
-      if (right > left && bottom > top) engine.cropTo({ x: left, y: top, w: right - left, h: bottom - top }, { deletePixels: d.delete === true })
-      out.push({ width: doc.width, height: doc.height })
-    } else if (obj === 'move' && layer) {
-      const to = d.to ?? {}
-      const targetIndex = Number(to._index ?? to.index)
-      if (Number.isFinite(targetIndex)) {
-        // Photoshop layer indices are effectively top-oriented in many
-        // descriptors; accept both explicit index and relative ordinal forms.
-        engine.reorderLayer(layer.id, Math.max(0, Math.min(doc.layers.length - 1, Math.round(targetIndex))))
-      } else {
-        const delta = d.delta ?? d.offset ?? {}
-        const x = Number(delta.horizontal?._value ?? delta.horizontal ?? delta.x?._value ?? delta.x ?? 0)
-        const y = Number(delta.vertical?._value ?? delta.vertical ?? delta.y?._value ?? delta.y ?? 0)
-        if (Number.isFinite(x) && Number.isFinite(y) && (x || y)) engine.moveLayerPixels(layer.id, x, y)
-      }
-      out.push({})
-    } else if (obj === 'selectNoLayers') {
-      doc.activeLayerId = null
-      doc.selectedLayerIds = []
-      engine.emit()
-      out.push({})
+      engine.flipCanvas(axis.includes('vertical') ? 'vertical' : 'horizontal'); out.push({})
     } else {
       throw new Error(`Unsupported UXP batchPlay action: ${obj || '(unknown)'}`)
     }
   }
   return out
-}
-
-function uxpDocCheck(options: any) {
-  const doc = engine.activeDoc
-  if (!doc) throw new Error('No active document')
-  if (options?.documentID != null && String(options.documentID) !== String(doc.id)) {
-    throw new Error('UXP imaging currently operates on the active document')
-  }
-  return doc
-}
-
-function uxpTargetLayer(options: any) {
-  const doc = uxpDocCheck(options)
-  if (options?.layerID == null || options.layerID === 0) return engine.activeLayer
-  return doc.layers.find(l => String(l.id) === String(options.layerID)) ?? engine.activeLayer
-}
-
-function uxpBounds(options: any, width: number, height: number) {
-  const b = options?.sourceBounds ?? options?.targetBounds ?? {}
-  const left = Math.max(0, Math.min(width, Math.floor(Number(b.left ?? b.x ?? 0) || 0)))
-  const top = Math.max(0, Math.min(height, Math.floor(Number(b.top ?? b.y ?? 0) || 0)))
-  let right = Number(b.right)
-  let bottom = Number(b.bottom)
-  if (!Number.isFinite(right)) right = left + (Number(b.width) || width - left)
-  if (!Number.isFinite(bottom)) bottom = top + (Number(b.height) || height - top)
-  right = Math.max(left, Math.min(width, Math.ceil(right)))
-  bottom = Math.max(top, Math.min(height, Math.ceil(bottom)))
-  return { left, top, right, bottom, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
-}
-
-function uxpReadCanvas(canvas: HTMLCanvasElement, options: any) {
-  const bounds = uxpBounds(options, canvas.width, canvas.height)
-  if (bounds.width < 1 || bounds.height < 1) throw new Error('UXP imaging sourceBounds is empty')
-  const tw = Math.max(1, Math.round(Number(options?.targetSize?.width) || bounds.width))
-  const th = Math.max(1, Math.round(Number(options?.targetSize?.height) || bounds.height))
-  const out = createCanvas(tw, th)
-  const oc = ctx2d(out)
-  oc.imageSmoothingEnabled = true
-  oc.imageSmoothingQuality = 'high'
-  oc.drawImage(canvas, bounds.left, bounds.top, bounds.width, bounds.height, 0, 0, tw, th)
-  const img = getImageData(out)
-  if (options?.applyAlpha === false) {
-    for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255
-  }
-  return {
-    data: img.data.slice().buffer,
-    width: tw,
-    height: th,
-    sourceBounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
-  }
-}
-
-function uxpInputCanvas(image: any): HTMLCanvasElement {
-  const w = Math.max(1, Number(image?.width) | 0)
-  const h = Math.max(1, Number(image?.height) | 0)
-  const data = new Uint8ClampedArray(image?.data ?? [])
-  if (data.length < w * h * 4) throw new Error('UXP imaging input does not contain enough RGBA pixels')
-  const canvas = createCanvas(w, h)
-  putImageData(canvas, new ImageData(data.slice(0, w * h * 4), w, h))
-  return canvas
 }
 
 // ---------- host RPC bridge ----------
@@ -325,90 +210,6 @@ async function handleRpc(pluginId: string, method: string, args: any[]): Promise
     case 'uxp.batchPlay':
       requirePerm(pluginId, 'editor.commands')
       return runUxpBatchPlay(args[0] ?? [])
-    case 'uxp.imaging.getPixels': {
-      requirePerm(pluginId, 'layer.read')
-      const [options = {}] = args
-      const doc0 = uxpDocCheck(options)
-      const merged = options?.layerID === -1 || options?.layerID === 'merged' || options?.source === 'merged'
-      const target = merged ? null : uxpTargetLayer(options)
-      const canvas = merged ? getFlatComposite(doc0) : target ? engine.layerCanvasDocSpace(target.id) : null
-      if (!canvas) throw new Error('No readable pixel layer for photoshop.imaging.getPixels')
-      return uxpReadCanvas(canvas, options)
-    }
-    case 'uxp.imaging.putPixels': {
-      requirePerm(pluginId, 'layer.write')
-      const [options = {}] = args
-      const doc0 = uxpDocCheck(options)
-      const target = uxpTargetLayer(options)
-      if (!target || target.locked || target.kind === 'adjustment') throw new Error('No writable target layer')
-      const image = options?.imageData
-      const src = uxpInputCanvas(image)
-      const left = Math.round(Number(options?.targetBounds?.left ?? options?.x ?? 0) || 0)
-      const top = Math.round(Number(options?.targetBounds?.top ?? options?.y ?? 0) || 0)
-      const rightRaw = Number(options?.targetBounds?.right)
-      const bottomRaw = Number(options?.targetBounds?.bottom)
-      const dw = Math.max(1, Math.round(Number.isFinite(rightRaw) ? rightRaw - left : (Number(options?.targetBounds?.width) || src.width)))
-      const dh = Math.max(1, Math.round(Number.isFinite(bottomRaw) ? bottomRaw - top : (Number(options?.targetBounds?.height) || src.height)))
-      const layer0 = engine.mutateLayerPixels(target.id)
-      if (!layer0?.canvas) throw new Error('Target layer has no writable pixels')
-      const lc = ctx2d(layer0.canvas)
-      const lx = left - (layer0.offsetX ?? 0)
-      const ly = top - (layer0.offsetY ?? 0)
-      if (options?.replace === true) lc.clearRect(lx, ly, dw, dh)
-      lc.save()
-      lc.globalAlpha = Math.max(0, Math.min(1, Number(options?.opacity ?? 1)))
-      lc.drawImage(src, 0, 0, src.width, src.height, lx, ly, dw, dh)
-      lc.restore()
-      layer0._v++
-      invalidateFlat(doc0)
-      engine.pushHistory('UXP Imaging Put Pixels')
-      engine.emit()
-      return { width: dw, height: dh, targetBounds: { left, top, right: left + dw, bottom: top + dh } }
-    }
-    case 'uxp.imaging.getSelection': {
-      requirePerm(pluginId, 'selection.read')
-      const [options = {}] = args
-      const doc0 = uxpDocCheck(options)
-      const mask = createCanvas(doc0.width, doc0.height)
-      const img = ctx2d(mask).createImageData(doc0.width, doc0.height)
-      const alpha = doc0.selection ? getMaskAlpha(doc0.selection.mask) : new Uint8ClampedArray(doc0.width * doc0.height)
-      for (let i = 0; i < alpha.length; i++) {
-        const j = i * 4, v = alpha[i]
-        img.data[j] = v; img.data[j + 1] = v; img.data[j + 2] = v; img.data[j + 3] = 255
-      }
-      putImageData(mask, img)
-      return uxpReadCanvas(mask, options)
-    }
-    case 'uxp.imaging.putSelection': {
-      requirePerm(pluginId, 'selection.write')
-      const [options = {}] = args
-      const doc0 = uxpDocCheck(options)
-      const src = uxpInputCanvas(options?.imageData)
-      const left = Math.round(Number(options?.targetBounds?.left ?? options?.x ?? 0) || 0)
-      const top = Math.round(Number(options?.targetBounds?.top ?? options?.y ?? 0) || 0)
-      const rightRaw = Number(options?.targetBounds?.right)
-      const bottomRaw = Number(options?.targetBounds?.bottom)
-      const dw = Math.max(1, Math.round(Number.isFinite(rightRaw) ? rightRaw - left : (Number(options?.targetBounds?.width) || src.width)))
-      const dh = Math.max(1, Math.round(Number.isFinite(bottomRaw) ? bottomRaw - top : (Number(options?.targetBounds?.height) || src.height)))
-      const scaled = createCanvas(dw, dh)
-      ctx2d(scaled).drawImage(src, 0, 0, dw, dh)
-      const sd = getImageData(scaled).data
-      const alpha = new Uint8ClampedArray(doc0.width * doc0.height)
-      for (let y = 0; y < dh; y++) {
-        const yy = top + y
-        if (yy < 0 || yy >= doc0.height) continue
-        for (let x = 0; x < dw; x++) {
-          const xx = left + x
-          if (xx < 0 || xx >= doc0.width) continue
-          const si = (y * dw + x) * 4
-          const v = Math.round(sd[si] * .299 + sd[si + 1] * .587 + sd[si + 2] * .114)
-          alpha[yy * doc0.width + xx] = v
-        }
-      }
-      const mode = ['new', 'add', 'subtract', 'intersect'].includes(options?.mode) ? options.mode : 'new'
-      engine.setSelectionAlpha(alpha, mode, 'UXP Imaging Selection')
-      return true
-    }
     case 'storage.get': {
       requirePerm(pluginId, 'storage')
       const [key] = args

@@ -22,7 +22,7 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { clamp, createCanvas, ctx2d } from '../utils/canvas'
+import { clamp } from '../utils/canvas'
 import {
   getOptions, brushSettingsFrom, walkDabs, pencilDab,
   symmetricPoints, drawSymmetryOverlay, ema,
@@ -36,11 +36,6 @@ const RAD = Math.PI / 180
 function makeEraser(): Tool {
   let active = false
   let last: { x: number; y: number } | null = null
-  let eraseToHistory = false
-  let historySource: HTMLCanvasElement | null = null
-  let connectFrom: { x: number; y: number } | null = null
-  let connectDocId: string | null = null
-  let connectLayerId: string | null = null
   /** last dab position (doc space) — travel-direction measurement */
   let lastDab: { x: number; y: number } | null = null
   /** EMA-smoothed travel direction unit vector */
@@ -53,18 +48,6 @@ function makeEraser(): Tool {
       count: clamp(Math.round(opts.mandalaCount ?? 6), 3, 16),
       w, h,
     }
-  }
-
-  function resolveHistorySource(layerId: string): HTMLCanvasElement | null {
-    const doc = engine.activeDoc
-    if (!doc?.history.states.length) return null
-    const i = Math.max(0, Math.min(doc.history.states.length - 1, doc.historyBrushSourceIndex ?? 0))
-    const state = doc.history.states[i]
-    const layer = state?.layers.find(l => l.id === layerId)
-    if (!layer?.canvas || layer.kind !== 'raster') return null
-    const out = createCanvas(doc.width, doc.height)
-    ctx2d(out).drawImage(layer.canvas, layer.offsetX ?? 0, layer.offsetY ?? 0)
-    return out
   }
 
   /** allowed eraser tip id (falls back to round-soft) */
@@ -92,30 +75,13 @@ function makeEraser(): Tool {
       const layer = engine.activeLayer
       if (!doc || !layer) return
       const opts = getOptions('eraser')
-      eraseToHistory = opts.eraseToHistory === true
-      historySource = eraseToHistory ? resolveHistorySource(layer.id) : null
-      if (eraseToHistory && !historySource) {
-        engine.ui?.toast('The marked History source has no compatible raster pixels for this layer', 'error')
-        eraseToHistory = false
-        return
-      }
-      engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100, erase: !eraseToHistory })
+      engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100, erase: true })
       active = true
       last = { x: p.docX, y: p.docY }
       lastDab = null
       dirX = 1; dirY = 0
       hasDir = false
-      const canConnect = p.shift && connectFrom && connectDocId === doc.id && connectLayerId === layer.id
-      if (canConnect && connectFrom) {
-        const settings = brushSettingsFrom(opts)
-        const spacing = Math.max(1, settings.size * settings.spacing)
-        const points = walkDabs(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing)
-        for (const q of points) dab(q.x, q.y, p)
-        const tail = points[points.length - 1]
-        if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) dab(p.docX, p.docY, p)
-      } else {
-        dab(p.docX, p.docY, p)
-      }
+      dab(p.docX, p.docY, p)
     },
 
     onPointerMove(p: PointerInfo) {
@@ -129,35 +95,21 @@ function makeEraser(): Tool {
 
     onPointerUp() {
       if (!active) return
-      const docId = engine.activeDoc?.id ?? null
-      const activeLayerId = engine.activeLayer?.id ?? null
-      if (last && docId && activeLayerId) {
-        connectFrom = { ...last }
-        connectDocId = docId
-        connectLayerId = activeLayerId
-      }
       active = false
       last = null
       lastDab = null
       hasDir = false
-      engine.endStroke(eraseToHistory ? 'Erase to History' : 'Erase')
-      eraseToHistory = false
-      historySource = null
+      engine.endStroke('Erase')
     },
 
     onDeactivate() {
       // tool switched mid-erase: commit cleanly so the stroke isn't dropped
-      connectFrom = null
-      connectDocId = null
-      connectLayerId = null
       if (active) {
         active = false
         last = null
         lastDab = null
         hasDir = false
-        engine.endStroke(eraseToHistory ? 'Erase to History' : 'Erase')
-        eraseToHistory = false
-        historySource = null
+        engine.endStroke('Erase')
       }
     },
 
@@ -217,10 +169,7 @@ function makeEraser(): Tool {
     }
     lastDab = { x, y }
 
-    let radius = settings.size / 2
-    if (p && p.pointerType === 'pen' && opts.pressureSize === true) {
-      radius *= 0.25 + 0.75 * clamp(p.pressure, 0, 1)
-    }
+    const radius = settings.size / 2
 
     // ---- flow (pen pressure → opacity; mouse/touch full flow) ----
     let flow = clamp(settings.flow / 100, 0, 1)
@@ -256,30 +205,7 @@ function makeEraser(): Tool {
     }
 
     const pts = symmetricPoints(x, y, symmetryConfig(opts, doc.width, doc.height))
-    for (const pt of pts) {
-      if (eraseToHistory && historySource) {
-        const side = Math.max(4, Math.ceil(radius * 2 * extent) + 6)
-        const half = side / 2
-        const patch = createCanvas(side, side)
-        const pc = ctx2d(patch)
-        pc.drawImage(
-          historySource,
-          pt.x - half, pt.y - half, side, side,
-          0, 0, side, side,
-        )
-        pc.globalCompositeOperation = 'destination-in'
-        drawFn(pc, half, half)
-        pc.globalCompositeOperation = 'source-over'
-        engine.dab(
-          pt.x, pt.y,
-          (ctx, dx, dy) => ctx.drawImage(patch, dx - half, dy - half),
-          flow,
-          Math.max(4, radius * extent),
-        )
-      } else {
-        engine.dab(pt.x, pt.y, drawFn, flow, Math.max(4, radius * extent))
-      }
-    }
+    for (const pt of pts) engine.dab(pt.x, pt.y, drawFn, flow, Math.max(4, radius * extent))
   }
 
   return tool

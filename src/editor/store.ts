@@ -16,8 +16,6 @@ export interface LayerMeta {
   clipped: boolean
   hasMask: boolean
   maskEnabled: boolean
-  hasVectorMask: boolean
-  vectorMaskEnabled: boolean
   smartFilterCount: number
   adjustmentType: string | null
   hasBlendIf: boolean
@@ -254,7 +252,6 @@ interface EditorStore {
   activeDocId: string | null
   layers: LayerMeta[]
   activeLayerId: string | null
-  selectedLayerIds: string[]
   historyIndex: number
   historyLabels: string[]
   channelView: ChannelView
@@ -379,7 +376,6 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   activeDocId: null,
   layers: [],
   activeLayerId: null,
-  selectedLayerIds: [],
   historyIndex: -1,
   historyLabels: [],
   channelView: 'rgb',
@@ -429,51 +425,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   toolbarLayout: loadToolbarLayout(),
 
   setTool: (t) => { set({ activeTool: t }) },
-  setToolOption: (tool, key, value) => set(s => {
-    const current = { ...(s.toolOptions[tool] ?? {}) }
-
-    if (tool === 'clone-stamp') {
-      const fallback = { rotate: 0, scale: 100, mirrored: false, showOverlay: true, overlayOpacity: 50, overlayAutoHide: true, overlayInvert: false }
-      const transforms = { ...(current.sourceTransforms ?? {}) }
-
-      if (key === 'rotate' || key === 'scale' || key === 'mirrored' || key === 'showOverlay' || key === 'overlayOpacity' || key === 'overlayAutoHide' || key === 'overlayInvert') {
-        const slot = String(Math.max(1, Math.min(5, Math.round(Number(current.sourceSlot) || 1))))
-        transforms[slot] = { ...(transforms[slot] ?? fallback), [key]: value }
-        return {
-          toolOptions: {
-            ...s.toolOptions,
-            [tool]: { ...current, [key]: value, sourceTransforms: transforms },
-          },
-        }
-      }
-
-      if (key === 'sourceSlot') {
-        const next = Math.max(1, Math.min(5, Math.round(Number(value) || 1)))
-        const tr = transforms[String(next)] ?? fallback
-        return {
-          toolOptions: {
-            ...s.toolOptions,
-            [tool]: {
-              ...current,
-              sourceSlot: next,
-              rotate: tr.rotate ?? 0,
-              scale: tr.scale ?? 100,
-              mirrored: tr.mirrored === true,
-              showOverlay: tr.showOverlay !== false,
-              overlayOpacity: Number.isFinite(tr.overlayOpacity) ? tr.overlayOpacity : 50,
-              overlayAutoHide: tr.overlayAutoHide !== false,
-              overlayInvert: tr.overlayInvert === true,
-              sourceTransforms: transforms,
-            },
-          },
-        }
-      }
-    }
-
-    return {
-      toolOptions: { ...s.toolOptions, [tool]: { ...current, [key]: value } },
-    }
-  }),
+  setToolOption: (tool, key, value) => set(s => ({
+    toolOptions: { ...s.toolOptions, [tool]: { ...s.toolOptions[tool], [key]: value } },
+  })),
   setFgColor: (c) => set({ fgColor: c }),
   setBgColor: (c) => set({ bgColor: c }),
   swapColors: () => set(s => ({ fgColor: s.bgColor, bgColor: s.fgColor })),
@@ -763,19 +717,12 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       layers: doc ? doc.layers.slice().reverse().map(l => ({
         id: l.id, name: l.name, kind: l.kind, visible: l.visible, opacity: l.opacity,
         blendMode: l.blendMode, locked: l.locked, clipped: l.clipped,
-        hasMask: !!l.mask, maskEnabled: l.maskEnabled,
-        hasVectorMask: !!l.vectorMask, vectorMaskEnabled: l.vectorMask?.enabled !== false,
-        smartFilterCount: l.smartFilters?.length ?? 0,
+        hasMask: !!l.mask, maskEnabled: l.maskEnabled, smartFilterCount: l.smartFilters?.length ?? 0,
         adjustmentType: l.adjustment?.type ?? null, hasBlendIf: !!l.blendIf, hasFx: !!l.fx,
         origin: l.origin ?? null,
         thumbV: l._v + l._mv,
       })) : [],
       activeLayerId: doc?.activeLayerId ?? null,
-      selectedLayerIds: doc
-        ? ((doc.selectedLayerIds?.filter(id => doc.layers.some(l => l.id === id)).length
-            ? doc.selectedLayerIds!.filter(id => doc.layers.some(l => l.id === id))
-            : (doc.activeLayerId ? [doc.activeLayerId] : [])))
-        : [],
       historyIndex: doc?.history.index ?? -1,
       historyLabels: doc?.history.states.map(h => h.label) ?? [],
       channelView: doc?.channelView ?? 'rgb',

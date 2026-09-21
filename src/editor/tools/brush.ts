@@ -38,14 +38,13 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { clamp, createCanvas, ctx2d } from '../utils/canvas'
+import { clamp } from '../utils/canvas'
 import {
   getOptions, brushSettingsFrom, getFgColor, getBgColor, walkDabs, softDab, pencilDab, drawBrushCursor,
   symmetricPoints, drawSymmetryOverlay, ema,
 } from './shared'
 import { getActiveId, getById, getCachedStampCanvas, warmPreset } from '../plugins/brush-presets'
 import { getTip, drawTipCursor, jitterPalette, tipExtentMul } from './brush-tips'
-import { useEditorStore } from '../store'
 
 /** airbrush build-up: stamp cadence (ms) and flow reduction while stationary */
 const AIRBRUSH_INTERVAL_MS = 50
@@ -55,131 +54,6 @@ const SPEED_EMA = 0.3
 /** EMA weight for the smoothed travel direction (vector EMA — wrap-safe) */
 const DIR_EMA = 0.35
 const RAD = Math.PI / 180
-
-let decoratedDabCanvas: HTMLCanvasElement | null = null
-let dualMaskCanvas: HTMLCanvasElement | null = null
-const textureTiles = new Map<string, HTMLCanvasElement>()
-
-function scratchCanvas(which: 'dab' | 'dual', size: number): HTMLCanvasElement {
-  const s = Math.max(4, Math.ceil(size))
-  let cv = which === 'dab' ? decoratedDabCanvas : dualMaskCanvas
-  if (!cv || cv.width !== s || cv.height !== s) cv = createCanvas(s, s)
-  if (which === 'dab') decoratedDabCanvas = cv
-  else dualMaskCanvas = cv
-  ctx2d(cv).clearRect(0, 0, s, s)
-  return cv
-}
-
-function hashNoise(x: number, y: number): number {
-  let n = (x * 374761393 + y * 668265263) | 0
-  n = (n ^ (n >>> 13)) * 1274126177
-  return ((n ^ (n >>> 16)) >>> 0) / 4294967295
-}
-
-function brushTextureTile(kind: string, scalePct: number, depthPct: number, invert: boolean): HTMLCanvasElement {
-  const size = clamp(Math.round(24 * clamp(scalePct, 25, 400) / 100), 6, 96)
-  const depth = clamp(depthPct / 100, 0, 1)
-  const key = `${kind}:${size}:${Math.round(depth * 100)}:${invert ? 1 : 0}`
-  const hit = textureTiles.get(key)
-  if (hit) return hit
-  const cv = createCanvas(size, size)
-  const cx = ctx2d(cv)
-  const img = cx.createImageData(size, size)
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    let v = 1
-    if (kind === 'noise') {
-      v = .18 + hashNoise(x, y) * .82
-    } else if (kind === 'paper') {
-      const a = hashNoise(x, y)
-      const b = hashNoise(Math.floor(x / 2) + 101, Math.floor(y / 2) + 211)
-      v = .28 + (a * .45 + b * .55) * .72
-    } else if (kind === 'dots') {
-      const cell = Math.max(4, Math.round(size / 3))
-      const dx = (x % cell) - cell / 2
-      const dy = (y % cell) - cell / 2
-      const rr = Math.hypot(dx, dy) / Math.max(1, cell * .34)
-      v = rr <= 1 ? .25 + rr * .45 : 1
-    } else {
-      // woven canvas: two perpendicular thread bands with mild grain.
-      const tx = .5 + .5 * Math.cos((x / Math.max(1, size)) * Math.PI * 8)
-      const ty = .5 + .5 * Math.cos((y / Math.max(1, size)) * Math.PI * 8)
-      v = .35 + (tx * .32 + ty * .32 + hashNoise(x, y) * .12)
-    }
-    v = clamp(v, 0, 1)
-    if (invert) v = 1 - v
-    const alpha = Math.round(255 * ((1 - depth) + depth * v))
-    const i = (y * size + x) * 4
-    img.data[i] = 255
-    img.data[i + 1] = 255
-    img.data[i + 2] = 255
-    img.data[i + 3] = alpha
-  }
-  cx.putImageData(img, 0, 0)
-  textureTiles.set(key, cv)
-  return cv
-}
-
-function decorateBrushDab(
-  base: (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void,
-  opts: Record<string, any>,
-  radius: number,
-  extent: number,
-  tipAngle: number,
-  hardness: number,
-): (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void {
-  const useTexture = opts.textureEnabled === true && Number(opts.textureDepth ?? 45) > 0
-  const useDual = opts.dualBrush === true
-  if (!useTexture && !useDual) return base
-
-  return (ctx, dx, dy) => {
-    const side = Math.max(8, Math.ceil(radius * 2 * Math.max(1, extent) + 12))
-    const tmp = scratchCanvas('dab', side)
-    const tc = ctx2d(tmp)
-    const center = side / 2
-    base(tc, center, center)
-
-    if (useDual) {
-      const dualId = typeof opts.dualTip === 'string' ? opts.dualTip : 'round-hard'
-      const dual = getTip(dualId) ?? getTip('round-hard')
-      if (dual) {
-        const mask = scratchCanvas('dual', side)
-        const mc = ctx2d(mask)
-        const dualSize = Math.max(1, radius * 2 * clamp(Number(opts.dualSize ?? 65) / 100, .1, 2))
-        dual.drawDab(mc, center, center, {
-          size: dualSize,
-          hardness,
-          angle: tipAngle + Number(opts.dualAngle ?? 0),
-          roundness: 100,
-          color: '#ffffff',
-          rand: Math.random,
-        })
-        tc.save()
-        tc.globalCompositeOperation = 'destination-in'
-        tc.drawImage(mask, 0, 0)
-        tc.restore()
-      }
-    }
-
-    if (useTexture) {
-      const tile = brushTextureTile(
-        String(opts.texture ?? 'canvas'),
-        Number(opts.textureScale ?? 100),
-        Number(opts.textureDepth ?? 45),
-        opts.textureInvert === true,
-      )
-      const pattern = tc.createPattern(tile, 'repeat')
-      if (pattern) {
-        tc.save()
-        tc.globalCompositeOperation = 'destination-in'
-        tc.fillStyle = pattern
-        tc.fillRect(0, 0, side, side)
-        tc.restore()
-      }
-    }
-
-    ctx.drawImage(tmp, dx - center, dy - center)
-  }
-}
 
 interface StrokeState {
   active: boolean
@@ -226,9 +100,6 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     tipId: 'round-soft', palette: null, lastDab: null, dirX: 1, dirY: 0, hasDir: false,
     strokeColor: null,
   }
-  let connectFrom: { x: number; y: number } | null = null
-  let connectDocId: string | null = null
-  let connectLayerId: string | null = null
 
   // ---------- option readers (re-read mid-stroke so the options bar is live) ----------
 
@@ -255,17 +126,9 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     return getTip(id) ? id : 'round-soft'
   }
 
-  /** Effective per-dab angle. Pen barrel rotation wins when enabled,
-   * then pen tilt direction, then stroke-direction follow, then the static
-   * brush angle. Mouse/touch remain unchanged. */
-  function dabAngle(opts: Record<string, any>, p?: PointerInfo | null): number {
+  /** effective per-dab angle: angleFollow → EMA travel direction + offset */
+  function dabAngle(opts: Record<string, any>): number {
     const offset = clamp(opts.angle ?? 0, -360, 720)
-    if (p?.pointerType === 'pen') {
-      if (opts.twistAngle === true && Math.abs(p.twist) > 0.01) return p.twist + offset
-      if (opts.tiltAngle === true && Math.hypot(p.tiltX, p.tiltY) > 1) {
-        return Math.atan2(p.tiltY, p.tiltX) / RAD + offset
-      }
-    }
     if (opts.angleFollow === true && st.hasDir) {
       return Math.atan2(st.dirY, st.dirX) / RAD + offset
     }
@@ -359,16 +222,15 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       : baseColor
 
     const tip = kind === 'brush' && !st.stamp ? getTip(st.tipId) : undefined
-    const tipAngle = tip?.rotatable ? dabAngle(opts, p) : 0
-    let roundness = clamp(opts.roundness ?? 100, 10, 100)
-    if (kind === 'brush' && p?.pointerType === 'pen' && opts.tiltRoundness === true) {
-      const tilt = clamp(Math.hypot(p.tiltX, p.tiltY) / 90, 0, 1)
-      roundness = clamp(roundness * (1 - tilt * 0.72), 10, 100)
-    }
+    const tipAngle = tip?.rotatable ? dabAngle(opts) : 0
+    const roundness = clamp(opts.roundness ?? 100, 10, 100)
 
-    const rawDrawFn: (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void = kind === 'pencil'
+    const drawFn: (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void = kind === 'pencil'
       ? (ctx, dx, dy) => pencilDab(ctx, dx, dy, radius, color)
       : st.stamp
+        // image stamp (Task 7-A): preset canvas centered at the dab, scaled so
+        // its largest dimension ≈ 2·radius (brush size), axis-aligned (v1).
+        // Alpha flows through the existing engine.dab globalAlpha path.
         ? (() => {
             const stampCv = st.stamp!.canvas
             const scale = (radius * 2) / Math.max(stampCv.width, stampCv.height)
@@ -379,6 +241,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
             }
           })()
         : tip
+          // procedural tip (Task 1-A): full library in brush-tips.ts
           ? (ctx, dx, dy) => tip.drawDab(ctx, dx, dy, {
               size: radius * 2,
               hardness: settings.hardness,
@@ -389,13 +252,8 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
             })
           : (ctx, dx, dy) => softDab(ctx, dx, dy, radius, settings.hardness, color)
 
-    // Conservative radius multiplier covers tips whose painted hull extends
-    // outside the nominal brush circle. Texture/Dual Brush decorate only the
-    // Brush family; Pencil remains exact hard-pixel output.
+    // ---- stroke-bbox extent: tips with hulls beyond the inscribed circle ----
     const extent = tip ? tipExtentMul(st.tipId) : 1
-    const drawFn = kind === 'brush'
-      ? decorateBrushDab(rawDrawFn, opts, radius, extent, tipAngle, settings.hardness)
-      : rawDrawFn
 
     // ---- symmetry expansion (positions may land off-canvas; dabs just clip) ----
     const pts = symmetricPoints(x, y, symmetryConfig(opts, doc.width, doc.height))
@@ -449,15 +307,6 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       const doc = engine.activeDoc
       const layer = engine.activeLayer
       if (!doc || !layer) return
-
-      // Photoshop-style temporary Eyedropper while Alt/Option is held.
-      if (p.alt) {
-        const hex = engine.sampleColor(p.docX, p.docY, 'composite', 0)
-        if (hex) useEditorStore.getState().setFgColor(hex)
-        engine.pokeOverlay()
-        return
-      }
-
       const opts = getOptions(toolId)
       if (kind === 'pencil') {
         const fg = getFgColor()
@@ -466,7 +315,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       } else {
         st.strokeColor = null
       }
-      engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100, blendMode: opts.blendMode ?? 'normal' })
+      engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100 })
       st.active = true
       // image stamp resolved LIVE at stroke start (Task 7-A); held for the whole stroke
       st.stamp = resolveStamp(opts)
@@ -488,21 +337,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       st.dirY = 0
       st.hasDir = false
       st.airbrushPos = { x: p.docX, y: p.docY }
-
-      const canConnect = p.shift && connectFrom && connectDocId === doc.id && connectLayerId === layer.id
-      if (canConnect && connectFrom) {
-        const spacing = strokeSpacing(opts, st.stamp)
-        st.last = { ...connectFrom }
-        st.filtered = { x: p.docX, y: p.docY }
-        st.prevRaw = { ...connectFrom }
-        const points = walkDabs(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing)
-        for (const q of points) stampDab(q.x, q.y, p)
-        const tail = points[points.length - 1]
-        if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) stampDab(p.docX, p.docY, p)
-        st.last = { x: p.docX, y: p.docY }
-      } else {
-        stampDab(p.docX, p.docY, p)
-      }
+      stampDab(p.docX, p.docY, p)
       if (opts.airbrush === true) startAirbrush()
     },
 
@@ -541,14 +376,6 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     onPointerUp() {
       if (!st.active) return
       stopAirbrush()
-      const docId = engine.activeDoc?.id ?? null
-      const layerId = engine.activeLayer?.id ?? null
-      const endpoint = st.filtered ?? st.last
-      if (endpoint && docId && layerId) {
-        connectFrom = { ...endpoint }
-        connectDocId = docId
-        connectLayerId = layerId
-      }
       st.active = false
       st.last = null
       st.filtered = null
@@ -567,9 +394,6 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     onDeactivate() {
       // tool switched mid-stroke: stop the airbrush and commit cleanly
       stopAirbrush()
-      connectFrom = null
-      connectDocId = null
-      connectLayerId = null
       if (st.active) {
         st.active = false
         st.last = null

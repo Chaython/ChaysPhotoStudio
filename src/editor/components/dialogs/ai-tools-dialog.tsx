@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Cpu, Sparkles, Upload, Wand2, Scissors, Eraser, Maximize2, Boxes, Plug, FileJson, ShieldCheck, Layers3, ScanLine, SunMedium, ScanFace, Palette } from 'lucide-react'
+import { Cpu, Sparkles, Upload, Wand2, Scissors, Eraser, Maximize2, Boxes, Plug, FileJson, ShieldCheck, Layers3, ScanLine, SunMedium } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { getFlatComposite } from '../../engine/document'
 import { useEditorStore } from '../../store'
@@ -15,33 +15,9 @@ import { dataUrlToCanvas } from '../../image-ops'
 import { AI_PROVIDERS, inspectComfyWorkflow, loadComfyConfig, runComfyWorkflow, saveComfyConfig } from '../../ai/providers'
 import type { AiCapability, ComfyUiConfig } from '../../ai/types'
 import type { DialogProps } from './generic-dialogs'
-import { localColorize, localDepthMap, localDenoise, localPortraitRestore, localRelight, localVectorGuide } from '../../ai/local'
+import { localDepthMap, localDenoise, localRelight, localVectorGuide } from '../../ai/local'
 
 function canvasDataUrl(canvas: HTMLCanvasElement) { return canvas.toDataURL('image/png') }
-
-function aiResultToSelectionMask(canvas: HTMLCanvasElement, width: number, height: number): Uint8ClampedArray {
-  const normalized = canvas.width === width && canvas.height === height
-    ? canvas
-    : (() => {
-        const out = createCanvas(width, height)
-        const oc = ctx2d(out)
-        oc.imageSmoothingEnabled = true
-        oc.imageSmoothingQuality = 'high'
-        oc.drawImage(canvas, 0, 0, width, height)
-        return out
-      })()
-  const d = getImageData(normalized).data
-  let transparent = 0
-  for (let i = 3; i < d.length; i += 4) if (d[i] < 250) { transparent++; if (transparent > 16) break }
-  const useAlpha = transparent > 16
-  const mask = new Uint8ClampedArray(width * height)
-  for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
-    mask[i] = useAlpha
-      ? d[j + 3]
-      : Math.round(d[j] * .2126 + d[j + 1] * .7152 + d[j + 2] * .0722)
-  }
-  return mask
-}
 
 function selectionMaskDataUrl(): string | undefined {
   const doc = engine.activeDoc
@@ -104,7 +80,7 @@ export function AiToolsDialog({ onClose }: DialogProps) {
     return next
   })
 
-  const builtIn = async (op: 'subject' | 'background' | 'remove' | 'upscale' | 'depth' | 'denoise' | 'relight' | 'vector-guide' | 'restore' | 'colorize') => {
+  const builtIn = async (op: 'subject' | 'background' | 'remove' | 'upscale' | 'depth' | 'denoise' | 'relight' | 'vector-guide') => {
     const doc = engine.activeDoc
     if (!doc) { pushToast('Open an image first', 'error'); return }
     setBusy(true); setProgress(0)
@@ -128,8 +104,6 @@ export function AiToolsDialog({ onClose }: DialogProps) {
         if (op === 'depth') engine.addLayerFromCanvas(localDepthMap(flat), 'Local Depth Map')
         else if (op === 'denoise') engine.addLayerFromCanvas(localDenoise(flat, 42), 'AI Assist — Denoised')
         else if (op === 'relight') { const depth = localDepthMap(flat); engine.addLayerFromCanvas(localRelight(flat, depth, 38), 'AI Assist — Relit') }
-        else if (op === 'restore') engine.addLayerFromCanvas(localPortraitRestore(flat, 58), 'AI Assist — Portrait Restore')
-        else if (op === 'colorize') engine.addLayerFromCanvas(localColorize(flat, 58), 'AI Assist — Colorized')
         else engine.addLayerFromCanvas(localVectorGuide(flat), 'Vector Trace Guide')
       }
     } catch (err: any) {
@@ -149,24 +123,11 @@ export function AiToolsDialog({ onClose }: DialogProps) {
       const result = await runComfyWorkflow(cfg, { prompt, capability: capability === 'custom' ? undefined : capability, workflow: activeWorkflow, imageDataUrl: input, maskDataUrl: mask, signal: ac.signal })
       setProgress(90)
       const canvas = await dataUrlToCanvas(result.image)
-      const activeCapability = capability === 'custom' ? null : capability
-
-      if (activeCapability === 'select-subject') {
-        const mask = aiResultToSelectionMask(canvas, doc.width, doc.height)
-        engine.setSelectionAlpha(mask, 'new', 'AI Select Subject')
-        pushToast('ComfyUI segmentation applied as an editable selection', 'success')
-      } else {
-        const fallbackTitle = activeCapability === 'remove-background'
-          ? 'Background Removed'
-          : activeCapability === 'smart-remove'
-            ? 'Smart Remove'
-            : 'ComfyUI Result'
-        const name = `AI — ${prompt.trim().slice(0, 28) || fallbackTitle}`
-        if (resultMode === 'document') engine.addCanvasDocument(canvas, name)
-        else if (resultMode === 'smart') engine.placeSmartLayer(canvas, name)
-        else engine.addLayerFromCanvas(canvas, name)
-        pushToast(`ComfyUI result added (${canvas.width} × ${canvas.height})`, 'success')
-      }
+      const name = `AI — ${prompt.trim().slice(0, 28) || 'ComfyUI Result'}`
+      if (resultMode === 'document') engine.addCanvasDocument(canvas, name)
+      else if (resultMode === 'smart') engine.placeSmartLayer(canvas, name)
+      else engine.addLayerFromCanvas(canvas, name)
+      pushToast(`ComfyUI result added (${canvas.width} × ${canvas.height})`, 'success')
       setProgress(100)
     } catch (err: any) {
       if (err?.name !== 'AbortError') pushToast(err?.message || 'ComfyUI workflow failed', 'error')
@@ -195,11 +156,9 @@ export function AiToolsDialog({ onClose }: DialogProps) {
             <ToolCard icon={Layers3} title="Depth Map" body="Create an editable local depth-like grayscale layer for blur, masks and relighting. Neural depth can override this via ComfyUI." disabled={busy} onClick={() => void builtIn('depth')} />
             <ToolCard icon={ScanLine} title="Denoise Assist" body="Create a cleaned layer using robust median + light Gaussian suppression without touching the source." disabled={busy} onClick={() => void builtIn('denoise')} />
             <ToolCard icon={SunMedium} title="Depth Relight" body="Estimate depth locally and create a relit result on a new layer for further masking and blending." disabled={busy} onClick={() => void builtIn('relight')} />
-            <ToolCard icon={ScanFace} title="Portrait Restore Assist" body="Locally suppress flat-region noise and recover edge/detail contrast with a portrait-aware heuristic. Output stays on a new editable layer." disabled={busy} onClick={() => void builtIn('restore')} />
-            <ToolCard icon={Palette} title="Colorize Assist" body="Add restrained color to grayscale or low-chroma photos with a deterministic local luminance/spatial prior. Use ComfyUI for semantic neural colorization." disabled={busy} onClick={() => void builtIn('colorize')} />
             <ToolCard icon={Wand2} title="Vector Trace Guide" body="Generate a high-contrast edge layer that is easy to convert to selections or trace with the Pen tool." disabled={busy} onClick={() => void builtIn('vector-guide')} />
           </div>
-          <p className="text-[10px] text-muted-foreground">Local restore/colorize are deterministic editing assists rather than semantic neural models. For neural inpainting, face restoration, semantic colorization, ControlNet, depth models, LoRAs and diffusion upscalers, use the ComfyUI tab with your local workflow.</p>
+          <p className="text-[10px] text-muted-foreground">For neural inpainting, face restoration, ControlNet, depth models, LoRAs and diffusion upscalers, use the ComfyUI tab with your local workflow.</p>
         </TabsContent>
 
         <TabsContent value="comfy" className="space-y-2.5 pt-2">
@@ -216,7 +175,7 @@ export function AiToolsDialog({ onClose }: DialogProps) {
             })}><Upload size={12} className="mr-1" />Workflow</Button>
           </div>
           <div className="flex flex-wrap gap-1">
-            {(['select-subject','remove-background','smart-remove','inpaint','outpaint','upscale','depth','denoise','restore-face','relight','colorize','vectorize','caption','custom'] as const).map(c => <button key={c} type="button" onClick={() => setCapability(c)} className={`rounded border px-1.5 py-1 text-[9px] ${capability === c ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>{c}</button>)}
+            {(['inpaint','outpaint','upscale','depth','denoise','restore-face','relight','colorize','vectorize','caption','custom'] as const).map(c => <button key={c} type="button" onClick={() => setCapability(c)} className={`rounded border px-1.5 py-1 text-[9px] ${capability === c ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>{c}</button>)}
           </div>
           <div className="rounded border border-border p-2">
             <div className="flex items-center justify-between gap-2">
@@ -236,16 +195,10 @@ export function AiToolsDialog({ onClose }: DialogProps) {
             <label className="flex items-center gap-2"><Checkbox checked={useImage} onCheckedChange={v => setUseImage(v === true)} />Send current composite</label>
             <label className="flex items-center gap-2"><Checkbox checked={useMask} onCheckedChange={v => setUseMask(v === true)} />Send current selection mask</label>
           </div>
-          {capability === 'select-subject' ? (
-            <div className="rounded border border-primary/20 bg-primary/5 px-2 py-1.5 text-[10px] text-muted-foreground">
-              Result is interpreted as a segmentation mask: transparency is used when present, otherwise grayscale luminance becomes the editable selection.
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <span className="text-muted-foreground">Result:</span>
-              {(['layer', 'smart', 'document'] as const).map(v => <button key={v} type="button" onClick={() => setResultMode(v)} className={`rounded border px-2 py-1 ${resultMode === v ? 'border-primary bg-primary/10 text-primary' : 'border-border'}`}>{v === 'smart' ? 'Smart Object' : v === 'document' ? 'New Document' : 'New Layer'}</button>)}
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="text-muted-foreground">Result:</span>
+            {(['layer', 'smart', 'document'] as const).map(v => <button key={v} type="button" onClick={() => setResultMode(v)} className={`rounded border px-2 py-1 ${resultMode === v ? 'border-primary bg-primary/10 text-primary' : 'border-border'}`}>{v === 'smart' ? 'Smart Object' : v === 'document' ? 'New Document' : 'New Layer'}</button>)}
+          </div>
           {progress > 0 && <Progress value={progress} className="h-1.5" />}
           <div className="flex justify-between gap-2">
             <Button variant="secondary" size="sm" disabled={!busy} onClick={() => abortRef.current?.abort()}>Cancel Run</Button>

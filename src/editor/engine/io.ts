@@ -68,9 +68,8 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     guides: [],
     view: { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
-    historyBrushSourceIndex: 0,
     dirty: false, previewFilter: null, previewAdjustment: null,
-    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
   }
   for (const psd of decoded.psdLayers ?? []) {
     const layer = newLayer('raster', psd.name || 'Layer', width, height)
@@ -124,10 +123,6 @@ export interface SerializedProject {
     view?: { zoom: number; panX: number; panY: number }
     frames?: any[]
     activeLayerId?: string | null
-    historyBrushSourceIndex?: number
-    colorSamplers?: { id: string; x: number; y: number }[]
-    measurements?: import('../types').SavedMeasurement[]
-    savedPaths?: import('../types').SavedPath[]
   }
   layers: SerializedLayer[]
   selection?: { bounds: any; mask: string } | null
@@ -144,7 +139,6 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       blendMode: l.blendMode, locked: l.locked, clipped: l.clipped, maskEnabled: l.maskEnabled,
       transform: l.transform, smartFilters: l.smartFilters,
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
-      vectorMask: l.vectorMask ? { ...l.vectorMask, anchors: l.vectorMask.anchors.map(a => ({ ...a })) } : null,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
     },
     canvas: l.canvas ? toDataURL(l.canvas) : undefined,
@@ -157,13 +151,6 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       name: doc.name, width: doc.width, height: doc.height,
       channelView: doc.channelView, guides: doc.guides ?? [], view: { ...doc.view },
       frames: doc.frames ? structuredClone(doc.frames) : undefined, activeLayerId: doc.activeLayerId,
-      historyBrushSourceIndex: doc.historyBrushSourceIndex ?? 0,
-      colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
-      measurements: (doc.measurements ?? []).map(m => ({
-        ...m,
-        segments: m.segments.map(s => ({ a: { ...s.a }, b: { ...s.b } })),
-      })),
-      savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
     },
     layers,
     selection: doc.selection ? { bounds: { ...doc.selection.bounds }, mask: toDataURL(doc.selection.mask) } : null,
@@ -233,58 +220,9 @@ export async function openSerializedProject(project: SerializedProject, label = 
       ? { ...project.doc.view }
       : { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
-    historyBrushSourceIndex: Number.isFinite(project.doc.historyBrushSourceIndex) ? Math.max(0, Math.round(project.doc.historyBrushSourceIndex!)) : 0,
-    colorSamplers: Array.isArray(project.doc.colorSamplers)
-      ? project.doc.colorSamplers
-          .filter(s => s && Number.isFinite(s.x) && Number.isFinite(s.y))
-          .slice(0, 10)
-          .map(s => ({ id: typeof s.id === 'string' ? s.id : uid(), x: Number(s.x), y: Number(s.y) }))
-      : [],
-    measurements: Array.isArray(project.doc.measurements)
-      ? project.doc.measurements
-          .filter(m => m && Array.isArray(m.segments))
-          .map(m => {
-            const unit: import('../types').SavedMeasurement['unit'] =
-              m.unit === 'mm' || m.unit === 'cm' || m.unit === 'in' ? m.unit : 'px'
-            const segments = m.segments
-              .filter((s: any) => s?.a && s?.b && Number.isFinite(s.a.x) && Number.isFinite(s.a.y) && Number.isFinite(s.b.x) && Number.isFinite(s.b.y))
-              .map((s: any) => ({
-                a: { x: Number(s.a.x), y: Number(s.a.y) },
-                b: { x: Number(s.b.x), y: Number(s.b.y) },
-              }))
-            return {
-              id: typeof m.id === 'string' && m.id ? m.id : uid(),
-              name: typeof m.name === 'string' && m.name ? m.name : 'Measurement',
-              segments,
-              unit,
-              pixelsPerUnit: Math.max(.001, Number(m.pixelsPerUnit) || 1),
-              totalLengthPx: segments.reduce((sum: number, s: any) => sum + Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y), 0),
-              createdAt: Number.isFinite(m.createdAt) ? Number(m.createdAt) : Date.now(),
-            }
-          })
-          .filter(m => m.segments.length > 0)
-      : [],
-    savedPaths: Array.isArray(project.doc.savedPaths)
-      ? project.doc.savedPaths
-          .filter(p => p && Array.isArray(p.anchors))
-          .map(p => ({
-            id: typeof p.id === 'string' && p.id ? p.id : uid(),
-            name: typeof p.name === 'string' && p.name ? p.name : 'Path',
-            closed: !!p.closed,
-            visible: p.visible !== false,
-            anchors: p.anchors
-              .filter(a => a && Number.isFinite(a.x) && Number.isFinite(a.y))
-              .map(a => ({
-                x: Number(a.x), y: Number(a.y),
-                inX: Number(a.inX) || 0, inY: Number(a.inY) || 0,
-                outX: Number(a.outX) || 0, outY: Number(a.outY) || 0,
-                pair: a.pair !== false,
-              })),
-          }))
-      : [],
     dirty: false, previewFilter: null, previewAdjustment: null,
     frames: Array.isArray(project.doc.frames) ? structuredClone(project.doc.frames) : undefined,
-    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
   }
   const layerIds = new Set<string>()
   for (const sl of project.layers ?? []) {
@@ -303,18 +241,6 @@ export async function openSerializedProject(project: SerializedProject, label = 
       text: sl.props.text ?? null, shape: sl.props.shape ? { sides: 5, starInset: 45, ...sl.props.shape } : null,
       blendIf: sl.props.blendIf ?? null,
       fx: sl.props.fx ?? null,
-      vectorMask: sl.props.vectorMask && Array.isArray(sl.props.vectorMask.anchors)
-        ? {
-            enabled: sl.props.vectorMask.enabled !== false,
-            closed: !!sl.props.vectorMask.closed,
-            anchors: sl.props.vectorMask.anchors.map((a: any) => ({
-              x: Number(a.x) || 0, y: Number(a.y) || 0,
-              inX: Number(a.inX) || 0, inY: Number(a.inY) || 0,
-              outX: Number(a.outX) || 0, outY: Number(a.outY) || 0,
-              pair: a.pair !== false,
-            })),
-          }
-        : null,
       offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
       origin: sl.props.origin ?? null,
     })

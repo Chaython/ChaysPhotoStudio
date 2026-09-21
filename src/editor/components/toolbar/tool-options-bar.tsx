@@ -167,9 +167,6 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="z-50 max-h-72">
-              {!control.options?.some(o => String(o.value) === String(value)) && String(value).startsWith('user:') && (
-                <SelectItem value={String(value)} className="text-[11px]">Imported Pattern</SelectItem>
-              )}
               {control.options?.map(o => (
                 <SelectItem key={String(o.value)} value={String(o.value)} className="text-[11px]">
                   {o.label}

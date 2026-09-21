@@ -15,10 +15,10 @@ export type BlendMode =
 // ---------- Tools ----------
 export type ToolId =
   | 'move' | 'marquee-rect' | 'marquee-ellipse' | 'lasso' | 'polygon-lasso' | 'magnetic-lasso'
-  | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'perspective-crop' | 'eyedropper' | 'color-sampler' | 'measure'
-  | 'brush' | 'pencil' | 'mixer-brush' | 'color-replacement' | 'history-brush' | 'art-history-brush' | 'clone-stamp' | 'pattern-stamp' | 'healing-brush' | 'spot-healing' | 'patch' | 'content-aware-move' | 'red-eye'
-  | 'eraser' | 'background-eraser' | 'magic-eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
-  | 'dodge' | 'burn' | 'sponge' | 'text' | 'shape' | 'pen' | 'path-select' | 'direct-select' | 'hand' | 'zoom'
+  | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'eyedropper' | 'measure'
+  | 'brush' | 'pencil' | 'clone-stamp' | 'healing-brush' | 'spot-healing' | 'patch'
+  | 'eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
+  | 'dodge' | 'burn' | 'sponge' | 'text' | 'shape' | 'pen' | 'hand' | 'zoom'
 
 export type SelectionCombine = 'new' | 'add' | 'subtract' | 'intersect'
 
@@ -108,61 +108,27 @@ export interface TextSpec {
   color: string
   bold: boolean
   italic: boolean
-  underline?: boolean
-  strikethrough?: boolean
   align: 'left' | 'center' | 'right'
-  /** Horizontal is the default; vertical stacks glyphs top-to-bottom in right-to-left columns. */
-  direction?: 'horizontal' | 'vertical'
-  /** Browser font kerning. Tracking remains an independent explicit offset. */
-  kerning?: boolean
-  /** Common OpenType/CSS font feature controls kept editable on the text layer. */
-  ligatures?: boolean
-  smallCaps?: boolean
-  fontStretch?: 'ultra-condensed' | 'extra-condensed' | 'condensed' | 'semi-condensed' | 'normal' | 'semi-expanded' | 'expanded' | 'extra-expanded' | 'ultra-expanded'
   lineHeight: number
   tracking: number
-  /** Paragraph text uses an editable bounding box; point text leaves these unset. */
-  boxWidth?: number
-  boxHeight?: number
-  /** Editable Photoshop-style Warp Text metadata. Rendering deforms the
-   * generated text surface without converting the layer to pixels. */
-  warpStyle?: 'none' | 'arc' | 'arch' | 'bulge' | 'flag' | 'wave'
-  warpBend?: number
-  warpHorizontal?: number
-  warpVertical?: number
   x: number
   y: number
 }
 
 export interface ShapeSpec {
-  shape: 'rect' | 'rounded-rect' | 'ellipse' | 'triangle' | 'polygon' | 'star' | 'line' | 'path'
+  shape: 'rect' | 'rounded-rect' | 'ellipse' | 'triangle' | 'polygon' | 'star' | 'line'
   x: number
   y: number
   w: number
   h: number
   radius: number
   fill: string | null
-  fillOpacity?: number
   stroke: string | null
   strokeWidth: number
-  strokeOpacity?: number
-  lineCap?: CanvasLineCap
-  /** Shape stroke registration relative to the vector path. */
-  strokeAlign?: 'inside' | 'center' | 'outside'
-  /** Vector stroke pattern retained as editable shape metadata. */
-  dash?: 'solid' | 'dashed' | 'dotted' | 'custom'
-  dashLength?: number
-  gapLength?: number
-  /** Photoshop-style line endpoint decorations. */
-  arrowStart?: boolean
-  arrowEnd?: boolean
   /** polygon/star point count (3–32); ignored by other shapes */
   sides: number
   /** star inner radius as a percentage of the outer radius */
   starInset: number
-  /** Arbitrary editable Bezier path when shape === 'path'. */
-  pathAnchors?: PathAnchor[]
-  pathClosed?: boolean
 }
 
 export interface BlendIfSlider { lo: number; loSoft: number; hi: number; hiSoft: number }
@@ -234,12 +200,6 @@ export interface Layer {
   /** layer mask — white keeps, black hides; mask value stored in alpha channel */
   mask: HTMLCanvasElement | null
   maskEnabled: boolean
-  /** Non-destructive vector mask. Stored independently from the pixel mask. */
-  vectorMask?: {
-    anchors: PathAnchor[]
-    closed: boolean
-    enabled: boolean
-  } | null
   adjustment: { type: AdjustmentType; params: Record<string, any> } | null
   text: TextSpec | null
   shape: ShapeSpec | null
@@ -253,25 +213,6 @@ export interface Layer {
   _v: number
   /** mask version */
   _mv: number
-}
-
-// ---------- Paths ----------
-export interface PathAnchor {
-  x: number
-  y: number
-  inX: number
-  inY: number
-  outX: number
-  outY: number
-  pair: boolean
-}
-
-export interface SavedPath {
-  id: string
-  name: string
-  anchors: PathAnchor[]
-  closed: boolean
-  visible: boolean
 }
 
 // ---------- Selection ----------
@@ -295,7 +236,6 @@ export interface HistoryState {
   height: number
   channelView: ChannelView
   savedChannels: SavedChannel[]
-  savedPaths?: SavedPath[]
 }
 
 export type ChannelView = 'rgb' | 'r' | 'g' | 'b'
@@ -312,16 +252,6 @@ export interface Guide {
   id: string
   orientation: 'h' | 'v'  // 'h' = horizontal line at y = pos; 'v' = vertical line at x = pos
   pos: number             // doc-space position in px
-}
-
-export interface SavedMeasurement {
-  id: string
-  name: string
-  segments: { a: Vec; b: Vec }[]
-  unit: 'px' | 'mm' | 'cm' | 'in'
-  pixelsPerUnit: number
-  totalLengthPx: number
-  createdAt: number
 }
 
 // ---------- Document ----------
@@ -352,27 +282,17 @@ export interface PsDocument {
   height: number
   layers: Layer[]            // index 0 = bottom
   activeLayerId: string | null
-  /** Multi-layer selection. activeLayerId is the primary/anchor layer. */
-  selectedLayerIds?: string[]
   selection: SelectionState | null
   channelView: ChannelView
   savedChannels: SavedChannel[]
   view: ViewportState
   history: { states: HistoryState[]; index: number }
-  /** History/Art History Brush source marker; view/tool state, not itself undoable. */
-  historyBrushSourceIndex?: number
   dirty: boolean
   // live preview (dialog driven)
   previewFilter: { layerId: string; type: FilterType; params: Record<string, any> } | null
   previewAdjustment: { type: AdjustmentType; params: Record<string, any> } | null
   /** document guides (rulers) — view-state, not undo-tracked */
   guides: Guide[]
-  /** Persistent numbered Color Sampler points, stored in document coordinates. */
-  colorSamplers?: { id: string; x: number; y: number }[]
-  /** Saved ruler/measurement sets for inspection/export. */
-  measurements?: SavedMeasurement[]
-  /** Named editable vector paths, Photoshop Paths-panel style. */
-  savedPaths?: SavedPath[]
   /** frame animation — absent/empty = static document */
   frames?: AnimFrame[]
   _epoch: number
@@ -380,9 +300,6 @@ export interface PsDocument {
   _strokeLayerId: string | null
   _strokeErase: boolean
   _strokeOpacity: number
-  /** Photoshop-style painting blend mode applied when the live stroke is
-   * previewed and committed. Erasers still force destination-out. */
-  _strokeBlendMode: BlendMode
   _strokeBbox: Rect | null
   /** stroke content version — bumped per dab so live preview cache keys stay fresh */
   _strokeV: number
@@ -432,11 +349,6 @@ export interface PointerInfo {
   ctrl: boolean
   meta: boolean
   pressure: number
-  /** Stylus tilt in degrees (-90..90); zero for mouse/touch. */
-  tiltX: number
-  tiltY: number
-  /** Barrel rotation in degrees when the device/browser reports it. */
-  twist: number
   button: number
   pointerType: string
   isStart: boolean

@@ -5,9 +5,9 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec,
-  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor,
+  ChannelView, BrushSettings,
 } from '../types'
-import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
+import { TOOL_MAP } from '../constants/tools'
 import {
   createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData,
   hexToRgb, rgbToHex, clamp, drawSoftDab, canvasToBlob, downloadBlob, getMaskAlpha,
@@ -27,7 +27,6 @@ import {
 } from './selection'
 import { getScriptApi } from './scripting-api'
 import * as imageOps from '../image-ops'
-import { homography, projectPoint, quadOutputSize, warpCanvasPerspective, type Point2 } from '../image-ops/perspective'
 
 export const MAX_HISTORY = 50
 
@@ -76,17 +75,6 @@ export class Engine {
   /** view-only repaint (pan/zoom re-blit of the cached composite) — no composite */
   viewChanged() { (this.renderer as any)?.viewChanged?.() }
   emit() {
-    // Keep multi-layer selection coherent no matter which subsystem changed
-    // activeLayerId. The active layer is always the primary member.
-    const doc = this.activeDoc
-    if (doc) {
-      const valid = (doc.selectedLayerIds ?? []).filter(id => doc.layers.some(l => l.id === id))
-      if (doc.activeLayerId) {
-        doc.selectedLayerIds = valid.includes(doc.activeLayerId) ? valid : [doc.activeLayerId]
-      } else {
-        doc.selectedLayerIds = []
-      }
-    }
     this.requestRender()
     for (const l of this.listeners) l()
   }
@@ -171,7 +159,7 @@ export class Engine {
       history: { states: [], index: -1 },
       dirty: false,
       previewFilter: null, previewAdjustment: null,
-      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
     }
     const bg = newLayer('raster', 'Background', width, height)
     if (opts.fill && opts.fill !== 'transparent') {
@@ -201,7 +189,7 @@ export class Engine {
       history: { states: [], index: -1 },
       dirty: false,
       previewFilter: null, previewAdjustment: null,
-      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBbox: null, _strokeV: 0, _liveDrag: null,
     }
     const layer = newLayer('raster', name.replace(/\.[^.]+$/, ''), canvas.width, canvas.height)
     ctx2d(layer.canvas!).drawImage(canvas, 0, 0)
@@ -250,14 +238,8 @@ export class Engine {
     const h = doc.history
     h.states = h.states.slice(0, h.index + 1)
     h.states.push(st)
-    while (h.states.length > MAX_HISTORY) {
-      h.states.shift()
-      if (typeof doc.historyBrushSourceIndex === 'number') doc.historyBrushSourceIndex--
-    }
+    while (h.states.length > MAX_HISTORY) h.states.shift()
     h.index = h.states.length - 1
-    if (typeof doc.historyBrushSourceIndex === 'number') {
-      doc.historyBrushSourceIndex = clamp(doc.historyBrushSourceIndex, 0, Math.max(0, h.states.length - 1))
-    }
     doc.dirty = true
   }
 
@@ -270,7 +252,6 @@ export class Engine {
       width: doc.width, height: doc.height,
       channelView: doc.channelView,
       savedChannels: doc.savedChannels.map(c => ({ ...c })),
-      savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
     }
   }
 
@@ -281,10 +262,7 @@ export class Engine {
     doc.width = st.width; doc.height = st.height
     doc.channelView = st.channelView
     doc.savedChannels = st.savedChannels.map((c: any) => ({ ...c }))
-    doc.savedPaths = Array.isArray(st.savedPaths)
-      ? st.savedPaths.map((p: any) => ({ ...p, anchors: Array.isArray(p.anchors) ? p.anchors.map((a: any) => ({ ...a })) : [] }))
-      : []
-    doc._stroke = null; doc._strokeLayerId = null; doc._strokeBlendMode = 'normal'; doc._strokeBbox = null
+    doc._stroke = null; doc._strokeLayerId = null; doc._strokeBbox = null
     doc.previewFilter = null; doc.previewAdjustment = null
     doc._epoch++
     invalidateFlat(doc)
@@ -315,13 +293,6 @@ export class Engine {
     if (idx === h.index) return
     h.index = idx
     this.restoreState(doc, h.states[idx])
-    this.emit()
-  }
-
-  setHistoryBrushSource(i: number) {
-    const doc = this.activeDoc
-    if (!doc?.history.states.length) return
-    doc.historyBrushSourceIndex = clamp(Math.round(i), 0, doc.history.states.length - 1)
     this.emit()
   }
 
@@ -458,8 +429,7 @@ export class Engine {
     const layer = newLayer('text', spec.content?.split('\n')[0]?.slice(0, 24) || 'Type Layer', doc.width, doc.height)
     layer.text = {
       content: 'Type here', fontFamily: 'Georgia, serif', fontSize: 48, color: '#ffffff',
-      bold: false, italic: false, underline: false, strikethrough: false,
-      align: 'left', lineHeight: 1.2, tracking: 0,
+      bold: false, italic: false, align: 'left', lineHeight: 1.2, tracking: 0,
       x: 40, y: 40, ...spec,
     }
     layer.canvas = null
@@ -476,9 +446,7 @@ export class Engine {
     const layer = newLayer('shape', 'Shape Layer', doc.width, doc.height)
     layer.shape = {
       shape: 'rect', x: 0, y: 0, w: 100, h: 100, radius: 12,
-      fill: '#e8a33d', fillOpacity: 100, stroke: null, strokeWidth: 4, strokeOpacity: 100,
-      lineCap: 'round', dash: 'solid', arrowStart: false, arrowEnd: false,
-      sides: 5, starInset: 45, ...spec,
+      fill: '#e8a33d', stroke: null, strokeWidth: 4, sides: 5, starInset: 45, ...spec,
     }
     layer.canvas = null
     doc.layers.push(layer)
@@ -499,10 +467,7 @@ export class Engine {
     copy.smartFilters = src.smartFilters.map(f => ({ ...f, id: uid() }))
     if (src.adjustment) copy.adjustment = { ...src.adjustment, params: { ...src.adjustment.params } }
     if (src.text) copy.text = { ...src.text }
-    if (src.shape) copy.shape = {
-      ...src.shape,
-      pathAnchors: src.shape.pathAnchors?.map(a => ({ ...a })),
-    }
+    if (src.shape) copy.shape = { ...src.shape }
     const idx = doc.layers.findIndex(l => l.id === src.id)
     doc.layers.splice(idx + 1, 0, copy)
     doc.activeLayerId = copy.id
@@ -589,7 +554,7 @@ export class Engine {
     this.emit()
   }
 
-  rasterizeLayer(id?: string, opts: { history?: boolean; emit?: boolean } = {}) {
+  rasterizeLayer(id?: string) {
     const doc = this.activeDoc
     const layer = id ? this.layerById(id) : this.activeLayer
     if (!doc || !layer || layer.kind === 'raster') return
@@ -614,8 +579,8 @@ export class Engine {
       layer._v++
     }
     invalidateFlat(doc)
-    if (opts.history !== false) this.pushHistory('Rasterize Layer')
-    if (opts.emit !== false) this.emit()
+    this.pushHistory('Rasterize Layer')
+    this.emit()
   }
 
   mergeDown(id?: string) {
@@ -758,13 +723,6 @@ export class Engine {
       const t = l.text
       // memoize the metrics on the layer — keyed by every spec field that
       // affects measurement (font, size, tracking, content, line height)
-      if (t.boxWidth) {
-        return {
-          x: t.x, y: t.y,
-          w: Math.max(1, t.boxWidth),
-          h: Math.max(t.fontSize * (t.lineHeight || 1.2), t.boxHeight ?? t.fontSize * (t.lineHeight || 1.2)),
-        }
-      }
       const key = `${t.content}|${t.fontSize}|${t.fontFamily}|${t.bold ? 1 : 0}|${t.italic ? 1 : 0}|${t.tracking}|${t.lineHeight}`
       const any = l as any
       if (any._textMetricsKey !== key) {
@@ -773,7 +731,7 @@ export class Engine {
         const lines = t.content.split('\n')
         let maxW = 1
         for (const ln of lines) {
-          const w = ctx.measureText(ln).width + (t.tracking ? t.tracking * Math.max(0, ln.length - 1) : 0)
+          const w = ctx.measureText(ln).width + (t.tracking ? t.tracking * ln.length : 0)
           if (w > maxW) maxW = w
         }
         any._textMetricsKey = key
@@ -782,181 +740,6 @@ export class Engine {
       return { x: t.x, y: t.y, w: any._textMetrics.w, h: any._textMetrics.h }
     }
     return null
-  }
-
-  /** Current transformable multi-layer selection, primary layer first. */
-  selectedLayers(): Layer[] {
-    const doc = this.activeDoc
-    if (!doc) return []
-    const ids = doc.selectedLayerIds?.length
-      ? doc.selectedLayerIds
-      : (doc.activeLayerId ? [doc.activeLayerId] : [])
-    const set = new Set(ids)
-    const out = doc.layers.filter(l => set.has(l.id) && !l.locked && l.kind !== 'adjustment')
-    const primary = doc.activeLayerId ? out.find(l => l.id === doc.activeLayerId) : undefined
-    return primary ? [primary, ...out.filter(l => l.id !== primary.id)] : out
-  }
-
-  private translateLayerGeometry(layer: Layer, dx: number, dy: number) {
-    if (!dx && !dy) return
-    if (layer.kind === 'raster' && layer.canvas) {
-      layer.offsetX = (layer.offsetX ?? 0) + dx
-      layer.offsetY = (layer.offsetY ?? 0) + dy
-    } else if (layer.kind === 'smart' && layer.transform) {
-      layer.transform = { ...layer.transform, x: layer.transform.x + dx, y: layer.transform.y + dy }
-    } else if (layer.kind === 'text' && layer.text) {
-      layer.text = { ...layer.text, x: layer.text.x + dx, y: layer.text.y + dy }
-    } else if (layer.kind === 'shape' && layer.shape) {
-      if (layer.shape.shape === 'path' && layer.shape.pathAnchors?.length) {
-        layer.shape = {
-          ...layer.shape,
-          x: layer.shape.x + dx,
-          y: layer.shape.y + dy,
-          pathAnchors: layer.shape.pathAnchors.map(a => ({ ...a, x: a.x + dx, y: a.y + dy })),
-        }
-      } else {
-        layer.shape = { ...layer.shape, x: layer.shape.x + dx, y: layer.shape.y + dy }
-      }
-    } else return
-    layer._v++
-  }
-
-  /** Live multi-layer translation used by the Move tool. No history entry or
-   * listener churn; caller commits one history state on pointer-up. */
-  translateLayersPreview(ids: string[], dx: number, dy: number) {
-    const doc = this.activeDoc
-    if (!doc || (!dx && !dy)) return
-    let changed = false
-    for (const id of ids) {
-      const l = this.layerById(id)
-      if (!l || l.locked || l.kind === 'adjustment') continue
-      this.translateLayerGeometry(l, dx, dy)
-      changed = true
-    }
-    if (changed) {
-      invalidateFlat(doc)
-      this.requestRender()
-    }
-  }
-
-  /** Translate several layers as one edit/history step. */
-  translateLayers(ids: string[], dx: number, dy: number, label = 'Move Layers') {
-    const doc = this.activeDoc
-    if (!doc || (!dx && !dy)) return
-    let changed = false
-    for (const id of ids) {
-      const l = this.layerById(id)
-      if (!l || l.locked || l.kind === 'adjustment') continue
-      this.translateLayerGeometry(l, dx, dy)
-      changed = true
-    }
-    if (!changed) return
-    invalidateFlat(doc)
-    this.pushHistory(label)
-    this.emit()
-  }
-
-  /** Align selected layers to their collective bounds, canvas, or primary layer. */
-  alignSelected(
-    kind: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom',
-    reference: 'selection' | 'canvas' | 'primary' = 'selection',
-  ) {
-    const doc = this.activeDoc
-    const layers = this.selectedLayers()
-    if (!doc || !layers.length) return
-    const items = layers
-      .map(layer => ({ layer, rect: this.layerContentRect(layer.id) }))
-      .filter((x): x is { layer: Layer; rect: Rect } => !!x.rect)
-    if (!items.length) return
-    if (reference !== 'canvas' && items.length < 2) return
-
-    let ref: Rect
-    if (reference === 'canvas') ref = { x: 0, y: 0, w: doc.width, h: doc.height }
-    else if (reference === 'primary') ref = items.find(x => x.layer.id === doc.activeLayerId)?.rect ?? items[0].rect
-    else {
-      const x0 = Math.min(...items.map(x => x.rect.x))
-      const y0 = Math.min(...items.map(x => x.rect.y))
-      const x1 = Math.max(...items.map(x => x.rect.x + x.rect.w))
-      const y1 = Math.max(...items.map(x => x.rect.y + x.rect.h))
-      ref = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
-    }
-
-    let changed = false
-    for (const { layer, rect } of items) {
-      if (reference === 'primary' && layer.id === doc.activeLayerId) continue
-      let dx = 0, dy = 0
-      if (kind === 'left') dx = ref.x - rect.x
-      else if (kind === 'hcenter') dx = (ref.x + ref.w / 2) - (rect.x + rect.w / 2)
-      else if (kind === 'right') dx = (ref.x + ref.w) - (rect.x + rect.w)
-      else if (kind === 'top') dy = ref.y - rect.y
-      else if (kind === 'vcenter') dy = (ref.y + ref.h / 2) - (rect.y + rect.h / 2)
-      else if (kind === 'bottom') dy = (ref.y + ref.h) - (rect.y + rect.h)
-      if (Math.abs(dx) > .001 || Math.abs(dy) > .001) {
-        this.translateLayerGeometry(layer, dx, dy)
-        changed = true
-      }
-    }
-    if (!changed) return
-    invalidateFlat(doc)
-    this.pushHistory('Align Layers')
-    this.emit()
-  }
-
-  /** Evenly distribute selected layer centers between the outermost layers. */
-  distributeSelected(axis: 'horizontal' | 'vertical') {
-    const doc = this.activeDoc
-    const items = this.selectedLayers()
-      .map(layer => ({ layer, rect: this.layerContentRect(layer.id) }))
-      .filter((x): x is { layer: Layer; rect: Rect } => !!x.rect)
-    if (!doc || items.length < 3) return
-    const center = (r: Rect) => axis === 'horizontal' ? r.x + r.w / 2 : r.y + r.h / 2
-    items.sort((a, b) => center(a.rect) - center(b.rect))
-    const first = center(items[0].rect)
-    const last = center(items[items.length - 1].rect)
-    const step = (last - first) / (items.length - 1)
-    let changed = false
-    for (let i = 1; i < items.length - 1; i++) {
-      const delta = first + step * i - center(items[i].rect)
-      if (Math.abs(delta) <= .001) continue
-      this.translateLayerGeometry(items[i].layer, axis === 'horizontal' ? delta : 0, axis === 'vertical' ? delta : 0)
-      changed = true
-    }
-    if (!changed) return
-    invalidateFlat(doc)
-    this.pushHistory(axis === 'horizontal' ? 'Distribute Layers Horizontally' : 'Distribute Layers Vertically')
-    this.emit()
-  }
-
-  /** Evenly distribute the gaps BETWEEN selected layer bounds. The outermost
-   * layers stay fixed, matching Photoshop's "Distribute Spacing" behavior. */
-  distributeSelectedSpacing(axis: 'horizontal' | 'vertical') {
-    const doc = this.activeDoc
-    const items = this.selectedLayers()
-      .map(layer => ({ layer, rect: this.layerContentRect(layer.id) }))
-      .filter((x): x is { layer: Layer; rect: Rect } => !!x.rect)
-    if (!doc || items.length < 3) return
-    const pos = (r: Rect) => axis === 'horizontal' ? r.x : r.y
-    const size = (r: Rect) => axis === 'horizontal' ? r.w : r.h
-    items.sort((a, b) => pos(a.rect) - pos(b.rect))
-    const firstStart = pos(items[0].rect)
-    const lastEnd = pos(items[items.length - 1].rect) + size(items[items.length - 1].rect)
-    const totalSize = items.reduce((sum, x) => sum + size(x.rect), 0)
-    const gap = (lastEnd - firstStart - totalSize) / (items.length - 1)
-    let cursor = firstStart + size(items[0].rect) + gap
-    let changed = false
-    for (let i = 1; i < items.length - 1; i++) {
-      const current = pos(items[i].rect)
-      const delta = cursor - current
-      if (Math.abs(delta) > .001) {
-        this.translateLayerGeometry(items[i].layer, axis === 'horizontal' ? delta : 0, axis === 'vertical' ? delta : 0)
-        changed = true
-      }
-      cursor += size(items[i].rect) + gap
-    }
-    if (!changed) return
-    invalidateFlat(doc)
-    this.pushHistory(axis === 'horizontal' ? 'Distribute Horizontal Spacing' : 'Distribute Vertical Spacing')
-    this.emit()
   }
 
   /** Crop transparent padding from a raster layer without changing its document-space position. */
@@ -1176,7 +959,7 @@ export class Engine {
    *  canvas (content center re-registered); smart layers scale
    *  non-destructively (uniform — the tool only offers uniform for smart);
    *  text/shape scale their specs (any rotation or flip rasterizes first). */
-  directTransformLayer(id: string, spec: { sx: number; sy: number; rotation: number; ax: number; ay: number }, opts?: { skipHistory?: boolean; silent?: boolean }) {
+  directTransformLayer(id: string, spec: { sx: number; sy: number; rotation: number; ax: number; ay: number }, opts?: { skipHistory?: boolean }) {
     const doc = this.activeDoc
     if (!doc) return
     const layer = this.layerById(id)
@@ -1199,28 +982,7 @@ export class Engine {
     let mutated = false
     const baseKind = layer.kind
 
-    if (baseKind === 'shape' && layer.shape?.shape === 'path' && layer.shape.pathAnchors?.length) {
-      // Arbitrary path shapes remain vectors for every affine transform.
-      const mapped = layer.shape.pathAnchors.map(a => {
-        const [x, y] = map(a.x, a.y)
-        const [ix, iy] = map(a.x + a.inX, a.y + a.inY)
-        const [ox, oy] = map(a.x + a.outX, a.y + a.outY)
-        return { ...a, x, y, inX: ix - x, inY: iy - y, outX: ox - x, outY: oy - y }
-      })
-      const pts = mapped.flatMap(a => [
-        { x: a.x, y: a.y },
-        { x: a.x + a.inX, y: a.y + a.inY },
-        { x: a.x + a.outX, y: a.y + a.outY },
-      ])
-      const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x))
-      const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y))
-      layer.shape = {
-        ...layer.shape,
-        pathAnchors: mapped,
-        x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY),
-      }
-      mutated = true
-    } else if (baseKind === 'smart' && layer.source) {
+    if (baseKind === 'smart' && layer.source) {
       // non-destructive: uniform scale (corner-handle semantics), rotation
       // composes onto the existing transform (no flip — TransformSpec scale
       // is positive; flipping a smart layer rasterizes it instead)
@@ -1246,7 +1008,7 @@ export class Engine {
       // raster bake (also the path for rotated/flipped text & shape after
       // rasterizing — specs carry no rotation field)
       if ((baseKind === 'text' || baseKind === 'shape') && (Math.abs(rot) >= 0.002 || sx < 0 || sy < 0)) {
-        this.rasterizeLayer(id, { history: false, emit: false })
+        this.rasterizeLayer(id)
       }
       const l = this.layerById(id)!
       if (l.kind === 'raster' && l.canvas) {
@@ -1289,47 +1051,11 @@ export class Engine {
     }
 
     if (!mutated) return
-
-    // Layer masks are document-space assets. Transform them through the same
-    // gesture map as the layer so masked edges stay attached to the content.
-    if (layer.mask) {
-      const maskOut = createCanvas(doc.width, doc.height)
-      const mc = ctx2d(maskOut)
-      mc.imageSmoothingEnabled = true
-      mc.imageSmoothingQuality = 'high'
-      mc.translate(ax, ay)
-      mc.rotate(rot)
-      mc.scale(sx, sy)
-      mc.drawImage(layer.mask, -ax, -ay)
-      layer.mask = maskOut
-      layer._mv++
-    }
-
-    // Vector masks stay vector/editable; transform anchors and their Bezier
-    // handles through the identical affine map.
-    if (layer.vectorMask?.anchors?.length) {
-      layer.vectorMask = {
-        ...layer.vectorMask,
-        anchors: layer.vectorMask.anchors.map(a => {
-          const [x, y] = map(a.x, a.y)
-          const [ix, iy] = map(a.x + a.inX, a.y + a.inY)
-          const [ox, oy] = map(a.x + a.outX, a.y + a.outY)
-          return { ...a, x, y, inX: ix - x, inY: iy - y, outX: ox - x, outY: oy - y }
-        }),
-      }
-      layer._mv++
-    }
-
     layer._v++
     invalidateFlat(doc)
-    if (opts?.skipHistory) {
-      if (!opts.silent) this.emit()
-      else this.requestRender()
-      return
-    }
+    if (opts?.skipHistory) { this.emit(); return }
     this.pushHistory('Free Transform')
-    if (!opts?.silent) this.emit()
-    else this.requestRender()
+    this.emit()
     const pct = Math.round((Math.abs((sx + sy) / 2)) * 100)
     const deg = Math.round((rot * 180) / Math.PI)
     this.ui?.toast(`Scaled to ${pct}%${deg ? ` · rotated ${deg}°` : ''}`, 'info')
@@ -1513,165 +1239,6 @@ export class Engine {
     layer._v++
     invalidateFlat(doc)
     this.pushHistory('Toggle Smart Filter')
-    this.emit()
-  }
-
-  // ================================================== paths
-  addSavedPath(path: Omit<SavedPath, 'id'> & { id?: string }, label = 'New Path'): SavedPath | null {
-    const doc = this.activeDoc
-    if (!doc) return null
-    const made: SavedPath = {
-      id: path.id || uid(),
-      name: path.name || `Path ${(doc.savedPaths?.length ?? 0) + 1}`,
-      anchors: path.anchors.map((a: PathAnchor) => ({ ...a })),
-      closed: !!path.closed,
-      visible: path.visible !== false,
-    }
-    doc.savedPaths = [...(doc.savedPaths ?? []), made]
-    this.pushHistory(label)
-    this.emit()
-    return made
-  }
-
-  updateSavedPath(id: string, patch: Partial<Omit<SavedPath, 'id' | 'anchors'>> & { anchors?: PathAnchor[] }, label = 'Edit Path') {
-    const doc = this.activeDoc
-    if (!doc) return
-    const paths = doc.savedPaths ?? []
-    const i = paths.findIndex(p => p.id === id)
-    if (i < 0) return
-    const next = paths.slice()
-    next[i] = {
-      ...next[i],
-      ...patch,
-      anchors: patch.anchors ? patch.anchors.map(a => ({ ...a })) : next[i].anchors.map(a => ({ ...a })),
-    }
-    doc.savedPaths = next
-    this.pushHistory(label)
-    this.emit()
-  }
-
-  duplicateSavedPath(id: string): SavedPath | null {
-    const doc = this.activeDoc
-    const src = doc?.savedPaths?.find(p => p.id === id)
-    if (!doc || !src) return null
-    return this.addSavedPath({
-      name: `${src.name} copy`,
-      anchors: src.anchors.map(a => ({ ...a })),
-      closed: src.closed,
-      visible: src.visible,
-    }, 'Duplicate Path')
-  }
-
-  deleteSavedPath(id: string) {
-    const doc = this.activeDoc
-    if (!doc?.savedPaths?.some(p => p.id === id)) return
-    doc.savedPaths = doc.savedPaths.filter(p => p.id !== id)
-    this.pushHistory('Delete Path')
-    this.emit()
-  }
-
-  savedPathToSelection(id: string, mode: SelectionCombine = 'new') {
-    const doc = this.activeDoc
-    const path = doc?.savedPaths?.find(p => p.id === id)
-    if (!doc || !path || path.anchors.length < 2) return
-    const mask = createCanvas(doc.width, doc.height)
-    const c = ctx2d(mask)
-    const a = path.anchors
-    c.fillStyle = '#fff'
-    c.beginPath()
-    c.moveTo(a[0].x, a[0].y)
-    for (let i = 1; i < a.length; i++) {
-      const p0 = a[i - 1], p1 = a[i]
-      c.bezierCurveTo(
-        p0.x + p0.outX, p0.y + p0.outY,
-        p1.x + p1.inX, p1.y + p1.inY,
-        p1.x, p1.y,
-      )
-    }
-    if (path.closed && a.length >= 2) {
-      const p0 = a[a.length - 1], p1 = a[0]
-      c.bezierCurveTo(
-        p0.x + p0.outX, p0.y + p0.outY,
-        p1.x + p1.inX, p1.y + p1.inY,
-        p1.x, p1.y,
-      )
-      c.closePath()
-    }
-    c.fill()
-    this.setSelectionMask(mask, mode, 'Path Selection')
-  }
-
-  savedPathToShapeLayer(
-    pathId: string,
-    style: { fill?: string | null; stroke?: string | null; strokeWidth?: number } = {},
-  ): Layer | null {
-    const doc = this.activeDoc
-    const path = doc?.savedPaths?.find(p => p.id === pathId)
-    if (!doc || !path || path.anchors.length < 2) return null
-    const pts = path.anchors.flatMap(a => [
-      { x: a.x, y: a.y },
-      { x: a.x + a.inX, y: a.y + a.inY },
-      { x: a.x + a.outX, y: a.y + a.outY },
-    ])
-    const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x))
-    const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y))
-    const layer = this.addShapeLayer({
-      shape: 'path',
-      x: minX, y: minY,
-      w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY),
-      radius: 0,
-      fill: style.fill ?? (path.closed ? '#e8a33d' : null),
-      fillOpacity: 100,
-      stroke: style.stroke ?? '#ffffff',
-      strokeWidth: style.strokeWidth ?? 2,
-      strokeOpacity: 100,
-      strokeAlign: 'center',
-      lineCap: 'round',
-      dash: 'solid',
-      sides: 5,
-      starInset: 45,
-      pathAnchors: path.anchors.map(a => ({ ...a })),
-      pathClosed: path.closed,
-    })
-    if (layer) layer.name = path.name
-    return layer
-  }
-
-  addVectorMaskFromPath(layerId: string, pathId: string) {
-    const doc = this.activeDoc
-    const layer = this.layerById(layerId)
-    const path = doc?.savedPaths?.find(p => p.id === pathId)
-    if (!doc || !layer || !path || layer.kind === 'adjustment') return
-    layer.vectorMask = {
-      anchors: path.anchors.map(a => ({ ...a })),
-      closed: path.closed,
-      enabled: true,
-    }
-    layer._mv++
-    invalidateFlat(doc)
-    this.pushHistory('Add Vector Mask')
-    this.emit()
-  }
-
-  toggleVectorMask(layerId: string, enabled?: boolean) {
-    const doc = this.activeDoc
-    const layer = this.layerById(layerId)
-    if (!doc || !layer?.vectorMask) return
-    layer.vectorMask = { ...layer.vectorMask, enabled: enabled ?? !layer.vectorMask.enabled }
-    layer._mv++
-    invalidateFlat(doc)
-    this.pushHistory(layer.vectorMask.enabled ? 'Enable Vector Mask' : 'Disable Vector Mask')
-    this.emit()
-  }
-
-  deleteVectorMask(layerId: string) {
-    const doc = this.activeDoc
-    const layer = this.layerById(layerId)
-    if (!doc || !layer?.vectorMask) return
-    layer.vectorMask = null
-    layer._mv++
-    invalidateFlat(doc)
-    this.pushHistory('Delete Vector Mask')
     this.emit()
   }
 
@@ -2182,103 +1749,6 @@ export class Engine {
     this.ui?.toast('Guides cleared', 'info')
   }
 
-  // ================================================== color samplers / Info panel
-  addColorSampler(x: number, y: number): string | null {
-    const doc = this.activeDoc
-    if (!doc) return null
-    if (!doc.colorSamplers) doc.colorSamplers = []
-    if (doc.colorSamplers.length >= 10) {
-      this.ui?.toast('Color Sampler supports up to 10 points', 'info')
-      return null
-    }
-    const id = uid()
-    doc.colorSamplers.push({
-      id,
-      x: clamp(x, 0, Math.max(0, doc.width - 1)),
-      y: clamp(y, 0, Math.max(0, doc.height - 1)),
-    })
-    doc.dirty = true
-    this.emitOverlay()
-    return id
-  }
-
-  moveColorSampler(id: string, x: number, y: number) {
-    const doc = this.activeDoc
-    const p = doc?.colorSamplers?.find(s => s.id === id)
-    if (!doc || !p) return
-    p.x = clamp(x, 0, Math.max(0, doc.width - 1))
-    p.y = clamp(y, 0, Math.max(0, doc.height - 1))
-    doc.dirty = true
-    this.emitOverlay()
-  }
-
-  removeColorSampler(id: string) {
-    const doc = this.activeDoc
-    if (!doc?.colorSamplers?.some(s => s.id === id)) return
-    doc.colorSamplers = doc.colorSamplers.filter(s => s.id !== id)
-    doc.dirty = true
-    this.emitOverlay()
-  }
-
-  clearColorSamplers() {
-    const doc = this.activeDoc
-    if (!doc?.colorSamplers?.length) return
-    doc.colorSamplers = []
-    doc.dirty = true
-    this.emitOverlay()
-  }
-
-  addMeasurement(entry: {
-    name?: string
-    segments: { a: { x: number; y: number }; b: { x: number; y: number } }[]
-    unit: 'px' | 'mm' | 'cm' | 'in'
-    pixelsPerUnit: number
-  }): string | null {
-    const doc = this.activeDoc
-    if (!doc || !entry.segments.length) return null
-    if (!doc.measurements) doc.measurements = []
-    const id = uid()
-    const segments = entry.segments.map(s => ({ a: { ...s.a }, b: { ...s.b } }))
-    const totalLengthPx = segments.reduce((sum, s) => sum + Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y), 0)
-    doc.measurements.push({
-      id,
-      name: entry.name?.trim() || `Measurement ${doc.measurements.length + 1}`,
-      segments,
-      unit: entry.unit,
-      pixelsPerUnit: Math.max(.001, entry.pixelsPerUnit || 1),
-      totalLengthPx,
-      createdAt: Date.now(),
-    })
-    doc.dirty = true
-    this.emit()
-    return id
-  }
-
-  renameMeasurement(id: string, name: string) {
-    const doc = this.activeDoc
-    const item = doc?.measurements?.find(m => m.id === id)
-    if (!doc || !item || !name.trim()) return
-    item.name = name.trim()
-    doc.dirty = true
-    this.emit()
-  }
-
-  removeMeasurement(id: string) {
-    const doc = this.activeDoc
-    if (!doc?.measurements?.some(m => m.id === id)) return
-    doc.measurements = doc.measurements.filter(m => m.id !== id)
-    doc.dirty = true
-    this.emit()
-  }
-
-  clearMeasurements() {
-    const doc = this.activeDoc
-    if (!doc?.measurements?.length) return
-    doc.measurements = []
-    doc.dirty = true
-    this.emit()
-  }
-
   // ================================================== GPU acceleration state
   isGpuEnabled(): boolean { return isGlEnabled() }
   isGpuActive(): boolean { return glAvailable() }
@@ -2333,7 +1803,7 @@ export class Engine {
   }
 
   // ================================================== stroke engine (brush/eraser/clone/heal)
-  beginStroke(layerId: string, opts: { opacity?: number; erase?: boolean; blendMode?: BlendMode | string } = {}) {
+  beginStroke(layerId: string, opts: { opacity?: number; erase?: boolean } = {}) {
     const doc = this.activeDoc
     if (!doc) return
     let layer = this.layerById(layerId)
@@ -2348,7 +1818,6 @@ export class Engine {
     doc._strokeLayerId = layerId
     doc._strokeErase = !!opts.erase
     doc._strokeOpacity = (opts.opacity ?? 100) / 100
-    doc._strokeBlendMode = (opts.blendMode && BLEND_GCO[opts.blendMode as BlendMode] ? opts.blendMode : 'normal') as BlendMode
     doc._strokeBbox = null
     doc._strokeV = (doc._strokeV || 0) + 1
     this.requestRender()
@@ -2396,9 +1865,6 @@ export class Engine {
       c.save()
       c.globalAlpha = doc._strokeOpacity
       if (doc._strokeErase) c.globalCompositeOperation = 'destination-out'
-      else {
-        try { c.globalCompositeOperation = BLEND_GCO[doc._strokeBlendMode] || 'source-over' } catch { /* noop */ }
-      }
       c.drawImage(stroke, sx, sy)
       c.restore()
     }
@@ -2423,205 +1889,7 @@ export class Engine {
   }
 
   // ================================================== transforms
-  /** Scale all document-space editable geometry and pixel assets together.
-   *  Used by Image Size and Crop target-size output so paths, guides, masks,
-   *  vector masks, samplers and layer registrations stay aligned. */
-  private rescaleDocumentData(doc: PsDocument, w: number, h: number) {
-    w = Math.max(1, Math.round(w))
-    h = Math.max(1, Math.round(h))
-    const sx = w / Math.max(1, doc.width)
-    const sy = h / Math.max(1, doc.height)
-    const smin = Math.min(sx, sy)
-
-    for (const l of doc.layers) {
-      if (l.canvas) l.canvas = resampleCanvas(l.canvas, Math.max(1, Math.round(l.canvas.width * sx)), Math.max(1, Math.round(l.canvas.height * sy)))
-      if (l.kind === 'raster') {
-        l.offsetX = (l.offsetX ?? 0) * sx
-        l.offsetY = (l.offsetY ?? 0) * sy
-      }
-      if (l.mask) l.mask = resampleCanvas(l.mask, w, h)
-      if (l.source) l.source = resampleCanvas(l.source, Math.max(1, Math.round(l.source.width * sx)), Math.max(1, Math.round(l.source.height * sy)))
-      if (l.transform) {
-        l.transform.x *= sx
-        l.transform.y *= sy
-        l.transform.scale *= smin
-      }
-      if (l.text) {
-        l.text.x *= sx
-        l.text.y *= sy
-        l.text.fontSize *= sy
-        if (l.text.boxWidth) l.text.boxWidth *= sx
-        if (l.text.boxHeight) l.text.boxHeight *= sy
-      }
-      if (l.shape) {
-        l.shape.x *= sx
-        l.shape.y *= sy
-        l.shape.w *= sx
-        l.shape.h *= sy
-        l.shape.radius *= smin
-        l.shape.strokeWidth *= smin
-        if (l.shape.dashLength) l.shape.dashLength *= smin
-        if (l.shape.gapLength) l.shape.gapLength *= smin
-      }
-      if (l.vectorMask?.anchors?.length) {
-        l.vectorMask.anchors = l.vectorMask.anchors.map(a => ({
-          ...a,
-          x: a.x * sx,
-          y: a.y * sy,
-          inX: a.inX * sx,
-          inY: a.inY * sy,
-          outX: a.outX * sx,
-          outY: a.outY * sy,
-        }))
-      }
-      l._v++; l._mv++
-    }
-
-    if (doc.selection) {
-      const mask = resampleCanvas(doc.selection.mask, w, h)
-      doc.selection = { ...doc.selection, mask, _v: doc.selection._v + 1, _paths: null, _pathsV: 0 }
-    }
-    for (const ch of doc.savedChannels) {
-      ch.mask = resampleCanvas(ch.mask, w, h)
-      ch._v++
-    }
-    if (doc.colorSamplers?.length) {
-      doc.colorSamplers = doc.colorSamplers.map(s => ({ ...s, x: s.x * sx, y: s.y * sy }))
-    }
-    if (doc.savedPaths?.length) {
-      doc.savedPaths = doc.savedPaths.map(path => ({
-        ...path,
-        anchors: path.anchors.map(a => ({
-          ...a,
-          x: a.x * sx,
-          y: a.y * sy,
-          inX: a.inX * sx,
-          inY: a.inY * sy,
-          outX: a.outX * sx,
-          outY: a.outY * sy,
-        })),
-      }))
-    }
-    if (doc.guides?.length) {
-      doc.guides = doc.guides.map(g => ({ ...g, pos: g.pos * (g.orientation === 'v' ? sx : sy) }))
-    }
-
-    doc.width = w
-    doc.height = h
-    doc._epoch++
-    invalidateFlat(doc)
-  }
-
-  /** Perspective Crop — map an arbitrary source quadrilateral into a
-   * rectangular document while preserving layer separation. Pixel/vector/smart
-   * layers are projectively resampled; adjustment layers remain live and have
-   * their masks warped. Arbitrary projective geometry cannot remain editable as
-   * text/shape/smart transforms, so those layer types rasterize individually
-   * rather than flattening the whole document. */
-  perspectiveCropTo(quad: Point2[], opts: { targetW?: number; targetH?: number } = {}) {
-    const doc = this.activeDoc
-    if (!doc || quad.length !== 4) return
-    const auto = quadOutputSize(quad)
-    const outW = Math.max(1, Math.round(opts.targetW || auto.w))
-    const outH = Math.max(1, Math.round(opts.targetH || auto.h))
-    const dstQuad: Point2[] = [
-      { x: 0, y: 0 }, { x: outW - 1, y: 0 },
-      { x: outW - 1, y: outH - 1 }, { x: 0, y: outH - 1 },
-    ]
-    const forward = homography(quad, dstQuad)
-    if (!forward) {
-      this.ui?.toast('Perspective crop corners are degenerate', 'error')
-      return
-    }
-
-    const mapAnchor = (a: any) => {
-      const p = projectPoint(forward, { x: a.x, y: a.y })
-      // Path handles are stored as offsets from the anchor, not absolute doc
-      // coordinates. Transform their absolute endpoints, then convert back.
-      const pin = projectPoint(forward, { x: a.x + a.inX, y: a.y + a.inY })
-      const pout = projectPoint(forward, { x: a.x + a.outX, y: a.y + a.outY })
-      return {
-        ...a,
-        x: p.x, y: p.y,
-        inX: pin.x - p.x, inY: pin.y - p.y,
-        outX: pout.x - p.x, outY: pout.y - p.y,
-      }
-    }
-
-    for (const l of doc.layers) {
-      if (l.kind === 'adjustment') {
-        if (l.mask) l.mask = warpCanvasPerspective(l.mask, quad, outW, outH, true)
-        if (l.vectorMask?.anchors?.length) {
-          l.vectorMask = { ...l.vectorMask, anchors: l.vectorMask.anchors.map(mapAnchor) }
-        }
-        l._v++; l._mv++
-        continue
-      }
-
-      let src: HTMLCanvasElement
-      let baked = false
-      if (l.kind === 'raster' && l.canvas) {
-        src = createCanvas(doc.width, doc.height)
-        ctx2d(src).drawImage(l.canvas, l.offsetX ?? 0, l.offsetY ?? 0)
-      } else {
-        const prepared = prepareLayer(doc, l)
-        src = prepared ? cloneCanvas(prepared) : createCanvas(doc.width, doc.height)
-        baked = true
-      }
-
-      l.canvas = warpCanvasPerspective(src, quad, outW, outH)
-      l.kind = 'raster'
-      l.offsetX = 0; l.offsetY = 0
-      l.source = null; l.transform = null; l.smartFilters = []
-      l.text = null; l.shape = null
-      if (baked) {
-        // prepareLayer already includes mask/fx/filter visual output.
-        l.mask = null
-        l.maskEnabled = false
-        l.vectorMask = null
-        l.fx = null
-        l.blendIf = null
-      } else {
-        if (l.mask) l.mask = warpCanvasPerspective(l.mask, quad, outW, outH, true)
-        if (l.vectorMask?.anchors?.length) {
-          l.vectorMask = { ...l.vectorMask, anchors: l.vectorMask.anchors.map(mapAnchor) }
-        }
-      }
-      l._v++; l._mv++
-    }
-
-    if (doc.selection) {
-      const mask = warpCanvasPerspective(doc.selection.mask, quad, outW, outH, true)
-      doc.selection = selectionFromMask(mask)
-    }
-    for (const ch of doc.savedChannels) {
-      ch.mask = warpCanvasPerspective(ch.mask, quad, outW, outH, true)
-      ch._v++
-    }
-    if (doc.savedPaths?.length) {
-      doc.savedPaths = doc.savedPaths.map(path => ({
-        ...path,
-        anchors: path.anchors.map(mapAnchor),
-      }))
-    }
-    if (doc.colorSamplers?.length) {
-      doc.colorSamplers = doc.colorSamplers
-        .map(s => ({ ...s, ...projectPoint(forward, s) }))
-        .filter(s => s.x >= 0 && s.y >= 0 && s.x < outW && s.y < outH)
-    }
-    // Projective transforms do not in general preserve horizontal/vertical
-    // guides, so retaining their old scalar positions would be misleading.
-    doc.guides = []
-
-    doc.width = outW
-    doc.height = outH
-    doc._epoch++
-    invalidateFlat(doc)
-    this.pushHistory('Perspective Crop')
-    this.emit()
-  }
-
-  cropTo(rect: Rect, opts: { deletePixels?: boolean; targetW?: number; targetH?: number } = {}) {
+  cropTo(rect: Rect, opts: { deletePixels?: boolean } = {}) {
     const doc = this.activeDoc
     if (!doc) return
     // Photoshop-style crop can extend beyond the current canvas. Negative
@@ -2662,9 +1930,6 @@ export class Engine {
       if (l.transform) { l.transform.x -= x; l.transform.y -= y }
       if (l.text) { l.text.x -= x; l.text.y -= y }
       if (l.shape) { l.shape.x -= x; l.shape.y -= y }
-      if (l.vectorMask?.anchors?.length) {
-        l.vectorMask.anchors = l.vectorMask.anchors.map(a => ({ ...a, x: a.x - x, y: a.y - y }))
-      }
       l._v++; l._mv++
     }
     if (doc.selection) {
@@ -2677,41 +1942,11 @@ export class Engine {
       ctx2d(next).drawImage(ch.mask, -x, -y)
       ch.mask = next; ch._v++
     }
-    if (doc.colorSamplers?.length) {
-      doc.colorSamplers = doc.colorSamplers
-        .map(s => ({ ...s, x: s.x - x, y: s.y - y }))
-        .filter(s => s.x >= 0 && s.y >= 0 && s.x < w && s.y < h)
-    }
-    if (doc.savedPaths?.length) {
-      doc.savedPaths = doc.savedPaths.map(path => ({
-        ...path,
-        anchors: path.anchors.map(a => ({ ...a, x: a.x - x, y: a.y - y })),
-      }))
-    }
-    if (doc.guides?.length) {
-      doc.guides = doc.guides
-        .map(g => ({ ...g, pos: g.pos - (g.orientation === 'v' ? x : y) }))
-        .filter(g => g.pos >= 0 && g.pos <= (g.orientation === 'v' ? w : h))
-    }
-
-    doc.width = w
-    doc.height = h
+    doc.width = w; doc.height = h
     doc._epoch++
     invalidateFlat(doc)
-
-    const targetW = opts.targetW && opts.targetW > 0 ? Math.round(opts.targetW) : w
-    const targetH = opts.targetH && opts.targetH > 0 ? Math.round(opts.targetH) : h
-    if (targetW !== w || targetH !== h) this.rescaleDocumentData(doc, targetW, targetH)
-
-    const resized = targetW !== w || targetH !== h
-    this.pushHistory(resized
-      ? (deletePixels ? 'Crop & Resize' : 'Crop & Resize (Preserve Pixels)')
-      : (deletePixels ? 'Crop' : 'Crop (Preserve Pixels)'))
-    this.recordStep({
-      op: 'crop',
-      args: { x, y, w, h, deletePixels, targetW: resized ? targetW : undefined, targetH: resized ? targetH : undefined },
-      label: resized ? 'Crop & Resize' : 'Crop',
-    })
+    this.pushHistory(deletePixels ? 'Crop' : 'Crop (Preserve Pixels)')
+    this.recordStep({ op: 'crop', args: { x, y, w, h, deletePixels }, label: 'Crop' })
     this.emit()
   }
 
@@ -2747,11 +1982,6 @@ export class Engine {
       if (l.shape) { l.shape.x += dx; l.shape.y += dy }
       l._v++; l._mv++
     }
-    if (doc.colorSamplers?.length) {
-      doc.colorSamplers = doc.colorSamplers
-        .map(s => ({ ...s, x: s.x + dx, y: s.y + dy }))
-        .filter(s => s.x >= 0 && s.y >= 0 && s.x < w && s.y < h)
-    }
     doc.width = w; doc.height = h
     doc._epoch++
     invalidateFlat(doc)
@@ -2762,10 +1992,31 @@ export class Engine {
   resizeImage(opts: { w: number; h: number }) {
     const doc = this.activeDoc
     if (!doc) return
-    const w = Math.max(1, Math.round(opts.w))
-    const h = Math.max(1, Math.round(opts.h))
-    if (w === doc.width && h === doc.height) return
-    this.rescaleDocumentData(doc, w, h)
+    const { w, h } = opts
+    const sx = w / doc.width, sy = h / doc.height
+    for (const l of doc.layers) {
+      if (l.canvas) l.canvas = resampleCanvas(l.canvas, Math.round(l.canvas.width * sx), Math.round(l.canvas.height * sy))
+      if (l.kind === 'raster') { l.offsetX = (l.offsetX ?? 0) * sx; l.offsetY = (l.offsetY ?? 0) * sy }
+      if (l.mask) l.mask = resampleCanvas(l.mask, Math.round(l.mask.width * sx), Math.round(l.mask.height * sy))
+      if (l.source) l.source = resampleCanvas(l.source, Math.round(l.source.width * sx), Math.round(l.source.height * sy))
+      if (l.transform) { l.transform.x *= sx; l.transform.y *= sy; l.transform.scale *= Math.min(sx, sy) }
+      if (l.text) { l.text.x *= sx; l.text.y *= sy; l.text.fontSize *= sy }
+      if (l.shape) {
+        l.shape.x *= sx; l.shape.y *= sy; l.shape.w *= sx; l.shape.h *= sy
+        l.shape.radius *= Math.min(sx, sy); l.shape.strokeWidth *= Math.min(sx, sy)
+      }
+      l._v++; l._mv++
+    }
+    if (doc.selection) {
+      const c = resampleCanvas(doc.selection.mask, w, h)
+      doc.selection = { ...doc.selection, mask: c, _v: doc.selection._v + 1 }
+    }
+    for (const ch of doc.savedChannels) {
+      ch.mask = resampleCanvas(ch.mask, w, h); ch._v++
+    }
+    doc.width = Math.round(w); doc.height = Math.round(h)
+    doc._epoch++
+    invalidateFlat(doc)
     this.pushHistory('Image Size')
     this.recordStep({ op: 'resizeImage', args: { w: doc.width, h: doc.height }, label: 'Image Size' })
     this.emit()
@@ -2841,9 +2092,6 @@ export class Engine {
       ch.mask = await imageOps.lanczosResample(ch.mask, w, h)
       ch._v++
     }
-    if (doc.colorSamplers?.length) {
-      doc.colorSamplers = doc.colorSamplers.map(s => ({ ...s, x: s.x * sx, y: s.y * sy }))
-    }
     doc.width = w; doc.height = h
     doc._epoch++
     invalidateFlat(doc)
@@ -2862,8 +2110,7 @@ export class Engine {
     const doc = this.activeDoc
     if (!doc) return
     const rad = (deg * Math.PI) / 180
-    const rc = Math.cos(rad), rs = Math.sin(rad)
-    const cos = Math.abs(rc), sin = Math.abs(rs)
+    const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad))
     const w = Math.round(doc.width * cos + doc.height * sin)
     const h = Math.round(doc.width * sin + doc.height * cos)
     const rotateCanvasPixels = (src: HTMLCanvasElement): HTMLCanvasElement => {
@@ -2896,30 +2143,24 @@ export class Engine {
         // rotate anchor point around old center
         const t = l.transform
         const ox = t.x - doc.width / 2, oy = t.y - doc.height / 2
-        t.x = w / 2 + ox * rc - oy * rs
-        t.y = h / 2 + ox * rs + oy * rc
+        t.x = w / 2 + ox * cos - oy * sin
+        t.y = h / 2 + ox * sin + oy * cos
         t.rotation += rad
       }
       if (l.text) {
         const ox = l.text.x - doc.width / 2, oy = l.text.y - doc.height / 2
-        l.text.x = w / 2 + ox * rc - oy * rs
-        l.text.y = h / 2 + ox * rs + oy * rc
+        l.text.x = w / 2 + ox * cos - oy * sin
+        l.text.y = h / 2 + ox * sin + oy * cos
       }
       if (l.shape) {
         const ox = l.shape.x - doc.width / 2, oy = l.shape.y - doc.height / 2
-        l.shape.x = w / 2 + ox * rc - oy * rs
-        l.shape.y = h / 2 + ox * rs + oy * rc
+        l.shape.x = w / 2 + ox * cos - oy * sin
+        l.shape.y = h / 2 + ox * sin + oy * cos
       }
       l._v++; l._mv++
     }
     if (doc.selection) {
       doc.selection = { ...doc.selection, mask: rotateCanvasPixels(doc.selection.mask), _v: doc.selection._v + 1 }
-    }
-    if (doc.colorSamplers?.length) {
-      doc.colorSamplers = doc.colorSamplers.map(s => {
-        const ox = s.x - doc.width / 2, oy = s.y - doc.height / 2
-        return { ...s, x: w / 2 + ox * rc - oy * rs, y: h / 2 + ox * rs + oy * rc }
-      })
     }
     doc.width = w; doc.height = h
     doc._epoch++
@@ -2956,13 +2197,6 @@ export class Engine {
       l._v++; l._mv++
     }
     if (doc.selection) doc.selection = { ...doc.selection, mask: flip(doc.selection.mask), _v: doc.selection._v + 1 }
-    if (doc.colorSamplers?.length) {
-      doc.colorSamplers = doc.colorSamplers.map(s => ({
-        ...s,
-        x: dir === 'horizontal' ? doc.width - 1 - s.x : s.x,
-        y: dir === 'vertical' ? doc.height - 1 - s.y : s.y,
-      }))
-    }
     doc._epoch++
     invalidateFlat(doc)
     this.pushHistory(`Flip Canvas ${dir}`)

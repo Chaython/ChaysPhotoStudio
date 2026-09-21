@@ -20,262 +20,39 @@ export function newLayer(kind: LayerKind, name: string, w: number, h: number): L
   }
 }
 
-function measuredTextWidth(ctx: CanvasRenderingContext2D, text: string, tracking: number): number {
-  return ctx.measureText(text).width + Math.max(0, text.length - 1) * tracking
-}
-
-function wrapTextRows(ctx: CanvasRenderingContext2D, spec: TextSpec): string[] {
-  const raw = (spec.content || '').split('\n')
-  const width = spec.boxWidth
-  if (!width || width <= 1) return raw
-
-  const tracking = Number(spec.tracking) || 0
-  const out: string[] = []
-  const pushLongWord = (word: string) => {
-    let part = ''
-    for (const ch of word) {
-      const next = part + ch
-      if (part && measuredTextWidth(ctx, next, tracking) > width) {
-        out.push(part)
-        part = ch
-      } else part = next
-    }
-    if (part) out.push(part)
-  }
-
-  for (const paragraph of raw) {
-    if (!paragraph) { out.push(''); continue }
-    const words = paragraph.trim().split(/\s+/)
-    let line = ''
-    for (const word of words) {
-      const candidate = line ? line + ' ' + word : word
-      if (measuredTextWidth(ctx, candidate, tracking) <= width) {
-        line = candidate
-        continue
-      }
-      if (line) out.push(line)
-      if (measuredTextWidth(ctx, word, tracking) > width) {
-        pushLongWord(word)
-        line = ''
-      } else line = word
-    }
-    if (line) out.push(line)
-  }
-  return out.length ? out : ['']
-}
-
-function wrapVerticalColumns(spec: TextSpec): string[] {
-  const raw = (spec.content || '').split('\n')
-  const advance = Math.max(1, spec.fontSize * (spec.lineHeight || 1.2) + (Number(spec.tracking) || 0))
-  const maxChars = spec.boxHeight && spec.boxHeight > 1
-    ? Math.max(1, Math.floor((spec.boxHeight + Math.max(0, Number(spec.tracking) || 0)) / advance))
-    : Number.POSITIVE_INFINITY
-  const cols: string[] = []
-  for (const paragraph of raw) {
-    if (!paragraph) { cols.push(''); continue }
-    if (!Number.isFinite(maxChars)) cols.push(paragraph)
-    else for (let i = 0; i < paragraph.length; i += maxChars) cols.push(paragraph.slice(i, i + maxChars))
-  }
-  return cols.length ? cols : ['']
-}
-
-
-function textAlphaBounds(canvas: HTMLCanvasElement): Rect | null {
-  const img = getImageData(canvas)
-  const d = img.data
-  let minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1
-  for (let y = 0; y < canvas.height; y++) {
-    const row = y * canvas.width
-    for (let x = 0; x < canvas.width; x++) {
-      if (d[(row + x) * 4 + 3] <= 2) continue
-      if (x < minX) minX = x
-      if (x > maxX) maxX = x
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
-    }
-  }
-  return maxX >= minX && maxY >= minY
-    ? { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
-    : null
-}
-
-function warpTextCanvas(doc: PsDocument, base: HTMLCanvasElement, spec: TextSpec): HTMLCanvasElement {
-  const style = spec.warpStyle ?? 'none'
-  const bend = clamp(Number(spec.warpBend) || 0, -100, 100) / 100
-  const hDist = clamp(Number(spec.warpHorizontal) || 0, -100, 100) / 100
-  const vDist = clamp(Number(spec.warpVertical) || 0, -100, 100) / 100
-  if (style === 'none' && Math.abs(hDist) < .001 && Math.abs(vDist) < .001) return base
-
-  const b = textAlphaBounds(base)
-  if (!b) return base
-  const warped = createCanvas(doc.width, doc.height)
-  const wc = ctx2d(warped)
-  wc.imageSmoothingEnabled = true
-  wc.imageSmoothingQuality = 'high'
-  const amp = bend * Math.max(spec.fontSize * 1.35, Math.min(b.w * .30, b.h * 1.8))
-  const cy = b.y + b.h / 2
-  const width = Math.max(1, Math.ceil(b.w))
-
-  for (let ix = 0; ix < width; ix++) {
-    const sx = b.x + ix
-    const t = width <= 1 ? .5 : ix / (width - 1)
-    const u = t * 2 - 1
-    let yShift = 0
-    let scaleY = 1
-    if (style === 'arc') yShift = -amp * (1 - u * u)
-    else if (style === 'arch') yShift = -amp * (1 - Math.abs(u))
-    else if (style === 'bulge') scaleY = Math.max(.12, 1 + bend * (1 - u * u) * .85)
-    else if (style === 'flag') yShift = amp * Math.sin(t * Math.PI * 2)
-    else if (style === 'wave') yShift = amp * Math.sin(t * Math.PI * 4)
-    const dh = Math.max(1, b.h * scaleY)
-    const dy = cy - dh / 2 + yShift
-    wc.drawImage(base, sx, b.y, 1, b.h, sx, dy, 1.25, dh)
-  }
-
-  if (Math.abs(hDist) < .001 && Math.abs(vDist) < .001) return warped
-  const out = createCanvas(doc.width, doc.height)
-  const oc = ctx2d(out)
-  const cx = b.x + b.w / 2
-  const by = b.y + b.h / 2
-  oc.translate(cx, by)
-  oc.transform(1, vDist * .45, hDist * .45, 1, 0, 0)
-  oc.translate(-cx, -by)
-  oc.drawImage(warped, 0, 0)
-  return out
-}
-
 export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasElement {
   const c = createCanvas(doc.width, doc.height)
   const ctx = ctx2d(c)
   const weight = spec.bold ? '700' : '400'
   const style = spec.italic ? 'italic ' : ''
   ctx.font = `${style}${weight} ${spec.fontSize}px ${spec.fontFamily}`
-  const fontCtx = ctx as any
-  fontCtx.fontKerning = spec.kerning === false ? 'none' : 'normal'
-  fontCtx.fontVariantLigatures = spec.ligatures === false ? 'none' : 'normal'
-  fontCtx.fontVariantCaps = spec.smallCaps === true ? 'small-caps' : 'normal'
-  fontCtx.fontStretch = spec.fontStretch ?? 'normal'
   ctx.fillStyle = spec.color
   ctx.textBaseline = 'alphabetic'
-
-  ctx.save()
-  if (spec.boxWidth && spec.boxHeight) {
-    ctx.beginPath()
-    ctx.rect(spec.x, spec.y, Math.max(1, spec.boxWidth), Math.max(1, spec.boxHeight))
-    ctx.clip()
-  }
-
-  const tracking = Number(spec.tracking) || 0
+  const lines = spec.content.split('\n')
   const lh = spec.fontSize * (spec.lineHeight || 1.2)
-
-  if (spec.direction === 'vertical') {
-    const columns = wrapVerticalColumns(spec)
-    const charAdvance = Math.max(1, lh + tracking)
-    const longest = Math.max(1, ...columns.map(v => v.length))
-    const areaW = Math.max(spec.fontSize, spec.boxWidth ?? columns.length * lh)
-    const areaH = Math.max(spec.fontSize, spec.boxHeight ?? longest * charAdvance)
-    ctx.textAlign = 'center'
-
-    columns.forEach((column, ci) => {
-      const x = spec.x + areaW - spec.fontSize * .55 - ci * lh
-      const contentH = Math.max(0, column.length * charAdvance - tracking)
-      let y = spec.y
-      if (spec.align === 'center') y += (areaH - contentH) / 2
-      else if (spec.align === 'right') y += areaH - contentH
-
-      for (let i = 0; i < column.length; i++) {
-        const ch = column[i]
-        const baseline = y + spec.fontSize * .85 + i * charAdvance
-        ctx.fillText(ch, x, baseline)
-      }
-
-      if ((spec.underline || spec.strikethrough) && column.length) {
-        ctx.strokeStyle = spec.color
-        ctx.lineWidth = Math.max(1, spec.fontSize / 18)
-        const y0 = y
-        const y1 = y + contentH
-        if (spec.underline) {
-          const ux = x + spec.fontSize * .56
-          ctx.beginPath(); ctx.moveTo(ux, y0); ctx.lineTo(ux, y1); ctx.stroke()
-        }
-        if (spec.strikethrough) {
-          ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke()
-        }
+  const widths = lines.map(l => ctx.measureText(l).width)
+  const maxW = Math.max(...widths, 1)
+  const applyAlign = (x: number, lineW: number) => {
+    if (spec.align === 'center') return x + (maxW - lineW) / 2
+    if (spec.align === 'right') return x + (maxW - lineW)
+    return x
+  }
+  if (spec.tracking) {
+    // manual letter spacing
+    lines.forEach((line, li) => {
+      let x = applyAlign(spec.x, widths[li])
+      const y = spec.y + spec.fontSize * 0.85 + li * lh
+      for (const ch of line) {
+        ctx.fillText(ch, x, y)
+        x += ctx.measureText(ch).width + spec.tracking
       }
     })
   } else {
-    const lines = wrapTextRows(ctx, spec)
-    const widths = lines.map(l => measuredTextWidth(ctx, l, tracking))
-    const maxW = Math.max(...widths, 1)
-    const areaW = Math.max(1, spec.boxWidth ?? maxW)
-    const applyAlign = (x: number, lineW: number) => {
-      if (spec.align === 'center') return x + (areaW - lineW) / 2
-      if (spec.align === 'right') return x + (areaW - lineW)
-      return x
-    }
-
-    if (tracking) {
-      lines.forEach((line, li) => {
-        let x = applyAlign(spec.x, widths[li])
-        const y = spec.y + spec.fontSize * 0.85 + li * lh
-        for (let ci = 0; ci < line.length; ci++) {
-          const ch = line[ci]
-          ctx.fillText(ch, x, y)
-          x += ctx.measureText(ch).width + (ci < line.length - 1 ? tracking : 0)
-        }
-      })
-    } else {
-      lines.forEach((line, li) => {
-        ctx.fillText(line, applyAlign(spec.x, widths[li]), spec.y + spec.fontSize * 0.85 + li * lh)
-      })
-    }
-
-    if (spec.underline || spec.strikethrough) {
-      ctx.strokeStyle = spec.color
-      ctx.lineWidth = Math.max(1, spec.fontSize / 18)
-      for (let li = 0; li < lines.length; li++) {
-        if (!lines[li]) continue
-        const x = applyAlign(spec.x, widths[li])
-        const y = spec.y + spec.fontSize * 0.85 + li * lh
-        if (spec.underline) {
-          const uy = y + Math.max(1, spec.fontSize * 0.08)
-          ctx.beginPath(); ctx.moveTo(x, uy); ctx.lineTo(x + widths[li], uy); ctx.stroke()
-        }
-        if (spec.strikethrough) {
-          const sy = y - spec.fontSize * 0.30
-          ctx.beginPath(); ctx.moveTo(x, sy); ctx.lineTo(x + widths[li], sy); ctx.stroke()
-        }
-      }
-    }
+    lines.forEach((line, li) => {
+      ctx.fillText(line, applyAlign(spec.x, widths[li]), spec.y + spec.fontSize * 0.85 + li * lh)
+    })
   }
-
-  ctx.restore()
-  return warpTextCanvas(doc, c, spec)
-}
-
-function applyShapeDash(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {
-  if (spec.dash === 'dashed') ctx.setLineDash([Math.max(1, spec.strokeWidth) * 3, Math.max(1, spec.strokeWidth) * 2])
-  else if (spec.dash === 'dotted') ctx.setLineDash([Math.max(1, spec.strokeWidth) * .25, Math.max(1, spec.strokeWidth) * 1.8])
-  else if (spec.dash === 'custom') ctx.setLineDash([Math.max(1, spec.dashLength ?? 12), Math.max(1, spec.gapLength ?? 8)])
-  else ctx.setLineDash([])
-}
-
-function strokeLineArrows(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {
-  if (spec.shape !== 'line' || (!spec.arrowStart && !spec.arrowEnd)) return
-  const x0 = spec.x, y0 = spec.y, x1 = spec.x + spec.w, y1 = spec.y + spec.h
-  const angle = Math.atan2(y1 - y0, x1 - x0)
-  const len = Math.max(8, (spec.strokeWidth || 2) * 4)
-  const spread = Math.PI / 7
-  const draw = (x: number, y: number, a: number) => {
-    ctx.beginPath()
-    ctx.moveTo(x, y)
-    ctx.lineTo(x - Math.cos(a - spread) * len, y - Math.sin(a - spread) * len)
-    ctx.moveTo(x, y)
-    ctx.lineTo(x - Math.cos(a + spread) * len, y - Math.sin(a + spread) * len)
-    ctx.stroke()
-  }
-  if (spec.arrowEnd) draw(x1, y1, angle)
-  if (spec.arrowStart) draw(x0, y0, angle + Math.PI)
+  return c
 }
 
 export function renderShapeCanvas(doc: PsDocument, spec: ShapeSpec): HTMLCanvasElement {
@@ -284,76 +61,16 @@ export function renderShapeCanvas(doc: PsDocument, spec: ShapeSpec): HTMLCanvasE
   const { shape } = spec
   traceShapePath(ctx, spec)
   if (shape === 'line') {
-    ctx.save()
-    ctx.globalAlpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
     ctx.strokeStyle = spec.stroke || spec.fill || '#ffffff'
     ctx.lineWidth = spec.strokeWidth || 2
-    ctx.lineCap = spec.lineCap ?? 'round'
-    applyShapeDash(ctx, spec)
+    ctx.lineCap = 'round'
     ctx.stroke()
-    ctx.setLineDash([])
-    strokeLineArrows(ctx, spec)
-    ctx.restore()
   } else {
-    if (spec.fill) {
-      ctx.save()
-      ctx.globalAlpha = Math.max(0, Math.min(1, (spec.fillOpacity ?? 100) / 100))
-      ctx.fillStyle = spec.fill
-      ctx.fill()
-      ctx.restore()
-    }
+    if (spec.fill) { ctx.fillStyle = spec.fill; ctx.fill() }
     if (spec.stroke && spec.strokeWidth > 0) {
-      const align = spec.strokeAlign ?? 'center'
-      const alpha = Math.max(0, Math.min(1, (spec.strokeOpacity ?? 100) / 100))
-      if (align === 'center') {
-        ctx.save()
-        ctx.globalAlpha = alpha
-        ctx.strokeStyle = spec.stroke
-        ctx.lineWidth = spec.strokeWidth
-        ctx.lineJoin = 'round'
-        applyShapeDash(ctx, spec)
-        traceShapePath(ctx, spec)
-        ctx.stroke()
-        ctx.setLineDash([])
-        ctx.restore()
-      } else if (align === 'inside') {
-        // Canvas strokes are center-aligned. Double the width and clip to the
-        // vector interior so the visible half has the requested stroke width.
-        ctx.save()
-        traceShapePath(ctx, spec)
-        ctx.clip()
-        ctx.globalAlpha = alpha
-        ctx.strokeStyle = spec.stroke
-        ctx.lineWidth = spec.strokeWidth * 2
-        ctx.lineJoin = 'round'
-        applyShapeDash(ctx, spec)
-        traceShapePath(ctx, spec)
-        ctx.stroke()
-        ctx.setLineDash([])
-        ctx.restore()
-      } else {
-        // Outside alignment is rendered on a temporary surface: draw a 2×
-        // center stroke, punch out the shape interior, then composite at the
-        // requested opacity. This preserves the fill beneath it.
-        const strokeCanvas = createCanvas(doc.width, doc.height)
-        const sc = ctx2d(strokeCanvas)
-        sc.strokeStyle = spec.stroke
-        sc.lineWidth = spec.strokeWidth * 2
-        sc.lineJoin = 'round'
-        applyShapeDash(sc, spec)
-        traceShapePath(sc, spec)
-        sc.stroke()
-        sc.setLineDash([])
-        sc.globalCompositeOperation = 'destination-out'
-        traceShapePath(sc, spec)
-        sc.fillStyle = '#000'
-        sc.fill()
-        sc.globalCompositeOperation = 'source-over'
-        ctx.save()
-        ctx.globalAlpha = alpha
-        ctx.drawImage(strokeCanvas, 0, 0)
-        ctx.restore()
-      }
+      ctx.strokeStyle = spec.stroke
+      ctx.lineWidth = spec.strokeWidth
+      ctx.stroke()
     }
   }
   return c
@@ -449,7 +166,7 @@ function applyAdjustmentLayerOver(target: HTMLCanvasElement, layer: Layer) {
 
 // ---------- layer preparation (cached) ----------
 export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement | null {
-  const cacheKey = `${doc._epoch}|${layer._v}|${layer._mv}|${layer.maskEnabled ? 1 : 0}|vm${layer.vectorMask?.enabled === false ? 0 : layer.vectorMask ? 1 : 0}|${doc.previewFilter && doc.previewFilter.layerId === layer.id ? JSON.stringify(doc.previewFilter) : ''}|${doc._strokeLayerId === layer.id ? `st${doc._strokeV}` : ''}|${layer.fx ? 'fx' : ''}`
+  const cacheKey = `${doc._epoch}|${layer._v}|${layer._mv}|${layer.maskEnabled ? 1 : 0}|${doc.previewFilter && doc.previewFilter.layerId === layer.id ? JSON.stringify(doc.previewFilter) : ''}|${doc._strokeLayerId === layer.id ? `st${doc._strokeV}` : ''}|${layer.fx ? 'fx' : ''}`
   const anyLayer = layer as any
   if (anyLayer._cacheKey === cacheKey && anyLayer._cache) return anyLayer._cache
 
@@ -511,7 +228,6 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
     } else {
       ctx.save()
       ctx.globalAlpha = doc._strokeOpacity
-      try { ctx.globalCompositeOperation = BLEND_GCO[doc._strokeBlendMode] || 'source-over' } catch { /* noop */ }
       ctx.drawImage(doc._stroke, 0, 0)
       ctx.restore()
     }
@@ -521,39 +237,6 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   if (layer.maskEnabled && layer.mask) {
     ctx.globalCompositeOperation = 'destination-in'
     ctx.drawImage(layer.mask, 0, 0)
-    ctx.globalCompositeOperation = 'source-over'
-  }
-
-  // vector mask — rasterized at composition time, so the underlying layer
-  // remains fully editable and the path can be changed without touching pixels.
-  const vectorMask = layer.vectorMask
-  if (vectorMask && vectorMask.enabled !== false && vectorMask.anchors.length >= 2) {
-    const vm = createCanvas(doc.width, doc.height)
-    const vc = ctx2d(vm)
-    const a = vectorMask.anchors
-    vc.fillStyle = '#fff'
-    vc.beginPath()
-    vc.moveTo(a[0].x, a[0].y)
-    for (let i = 1; i < a.length; i++) {
-      const p0 = a[i - 1], p1 = a[i]
-      vc.bezierCurveTo(
-        p0.x + p0.outX, p0.y + p0.outY,
-        p1.x + p1.inX, p1.y + p1.inY,
-        p1.x, p1.y,
-      )
-    }
-    if (vectorMask.closed && a.length >= 2) {
-      const p0 = a[a.length - 1], p1 = a[0]
-      vc.bezierCurveTo(
-        p0.x + p0.outX, p0.y + p0.outY,
-        p1.x + p1.inX, p1.y + p1.inY,
-        p1.x, p1.y,
-      )
-      vc.closePath()
-    }
-    vc.fill()
-    ctx.globalCompositeOperation = 'destination-in'
-    ctx.drawImage(vm, 0, 0)
     ctx.globalCompositeOperation = 'source-over'
   }
 

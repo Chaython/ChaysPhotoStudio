@@ -27,69 +27,29 @@ const AMBER = '#e8a33d'
 let start: Vec | null = null
 let end: Vec | null = null
 let dragging = false
-let segments: { a: Vec; b: Vec }[] = []
 
 /** publish the current measurement (or null) for the status bar */
 function publish(): void {
   const g = window as any
-  const active = start && end ? [{ a: start, b: end }] : []
-  const all = [...segments, ...active]
-  if (!all.length) {
+  if (start && end) {
+    const dx = end.x - start.x, dy = end.y - start.y
+    g.__zphotoMeasure = {
+      length: Math.hypot(dx, dy),
+      angleDeg: (Math.atan2(dy, dx) * 180) / Math.PI,
+      dx, dy,
+    }
+  } else {
     g.__zphotoMeasure = null
-    return
-  }
-  const last = all[all.length - 1]
-  const dx = last.b.x - last.a.x, dy = last.b.y - last.a.y
-  const length = Math.hypot(dx, dy)
-  const totalLength = all.reduce((sum, s) => sum + Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y), 0)
-  const opts = getOptions(TOOL_ID)
-  const unit = String(opts.unit ?? 'px')
-  const ppu = Math.max(.001, Number(opts.pixelsPerUnit) || 1)
-  g.__zphotoMeasure = {
-    length,
-    totalLength,
-    segments: all.length,
-    angleDeg: (Math.atan2(dy, dx) * 180) / Math.PI,
-    dx, dy,
-    unit,
-    calibratedLength: unit === 'px' ? length : length / ppu,
-    calibratedTotalLength: unit === 'px' ? totalLength : totalLength / ppu,
-    pixelsPerUnit: ppu,
   }
 }
 
 function clearMeasurement(): void {
-  if (!start && !end && !segments.length) return
+  if (!start && !end) return
   start = null
   end = null
-  segments = []
   dragging = false
   publish()
   engine.pokeOverlay()
-}
-
-export function saveCurrentMeasurement(name?: string): string | null {
-  const active = start && end ? [{ a: { ...start }, b: { ...end } }] : []
-  const all = [...segments.map(s => ({ a: { ...s.a }, b: { ...s.b } })), ...active]
-  if (!all.length) {
-    engine.ui?.toast('Draw a ruler measurement first', 'info')
-    return null
-  }
-  const opts = getOptions(TOOL_ID)
-  const unitRaw = String(opts.unit ?? 'px')
-  const unit = (unitRaw === 'mm' || unitRaw === 'cm' || unitRaw === 'in' ? unitRaw : 'px') as 'px' | 'mm' | 'cm' | 'in'
-  const id = engine.addMeasurement({
-    name,
-    segments: all,
-    unit,
-    pixelsPerUnit: Math.max(.001, Number(opts.pixelsPerUnit) || 1),
-  })
-  if (id) engine.ui?.toast('Measurement saved to Info panel', 'success')
-  return id
-}
-
-export function hasCurrentMeasurement(): boolean {
-  return segments.length > 0 || !!(start && end)
 }
 
 /** Shift constrains to the selected angular increment, preserving length. */
@@ -145,12 +105,9 @@ export const measureTool: Tool = {
 
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
-    const chain = getOptions(TOOL_ID).chain === true
-    if (!chain) segments = []
-    start = chain && segments.length ? { ...segments[segments.length - 1].b } : { x: p.docX, y: p.docY }
-    end = { ...start }
+    start = { x: p.docX, y: p.docY }
+    end = null
     dragging = true
-    publish()
     engine.pokeOverlay()
   },
 
@@ -158,20 +115,18 @@ export const measureTool: Tool = {
     if (!dragging || !start) return
     const raw = { x: p.docX, y: p.docY }
     end = p.shift ? constrainAngle(start, raw) : raw
-    publish()
     engine.pokeOverlay()
   },
 
   onPointerUp() {
     if (!dragging) return
     dragging = false
+    // a click without a meaningful drag clears the previous measurement
     const len = start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0
-    if (len >= 0.5 && start && end) {
-      segments.push({ a: { ...start }, b: { ...end } })
-      if (getOptions(TOOL_ID).chain !== true && segments.length > 1) segments = [segments[segments.length - 1]]
+    if (len < 0.5) {
+      start = null
+      end = null
     }
-    start = null
-    end = null
     publish()
     engine.pokeOverlay()
   },
@@ -185,24 +140,15 @@ export const measureTool: Tool = {
 
   onDoubleClick() { clearMeasurement() },
 
-  onDeactivate() {
-    // Photoshop's Ruler measurement is useful as a reference while switching
-    // to other tools. Keep it unless the user explicitly disables persistence.
-    if (getOptions(TOOL_ID).persist === false) clearMeasurement()
-  },
+  onDeactivate() { clearMeasurement() },
 
   renderOverlay(ctx, view, w, h, mouse) {
-    if (segments.length || (start && end)) {
-      for (let i = 0; i < segments.length; i++) {
-        const show = i === segments.length - 1 && !(start && end)
-        drawMeasurement(ctx, view, w, h, segments[i].a, segments[i].b, show)
-      }
-      if (start && end) drawMeasurement(ctx, view, w, h, start, end, true)
-      if (!dragging) drawCross(ctx, mouse)
+    if (start && end) {
+      drawMeasurement(ctx, view, w, h)
       return
     }
     drawCross(ctx, mouse)
-    if (!start && !end && !segments.length) {
+    if (!start && !end) {
       // idle hint (crop-tool style bottom strip)
       ctx.save()
       ctx.fillStyle = 'rgba(0,0,0,0.55)'
@@ -210,17 +156,14 @@ export const measureTool: Tool = {
       ctx.fillStyle = 'rgba(255,255,255,0.9)'
       ctx.font = '11px ui-sans-serif, sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText('Drag to measure · Multi-segment chains lengths · Shift snaps angle · Esc clears', w / 2, h - 19)
+      ctx.fillText('Drag to measure · Shift locks 45° · Esc clears', w / 2, h - 19)
       ctx.restore()
     }
   },
 }
 
-function drawMeasurement(
-  ctx: CanvasRenderingContext2D,
-  view: { zoom: number; panX: number; panY: number },
-  w: number, h: number, s: Vec, e: Vec, showLabel = true,
-): void {
+function drawMeasurement(ctx: CanvasRenderingContext2D, view: { zoom: number; panX: number; panY: number }, w: number, h: number): void {
+  const s = start!, e = end!
   const ax = s.x * view.zoom + view.panX, ay = s.y * view.zoom + view.panY
   const bx = e.x * view.zoom + view.panX, by = e.y * view.zoom + view.panY
   const lenScreen = Math.hypot(bx - ax, by - ay)
@@ -265,23 +208,14 @@ function drawMeasurement(
   }
 
   // label chip near the midpoint (only once the line is readable)
-  if (showLabel && lenScreen > 12) {
+  if (lenScreen > 12) {
     const dx = e.x - s.x, dy = e.y - s.y
     const len = Math.hypot(dx, dy)
     const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI
     const showDelta = getOptions(TOOL_ID).showDelta !== false
-    const opts = getOptions(TOOL_ID)
-    const unit = String(opts.unit ?? 'px')
-    const ppu = Math.max(.001, Number(opts.pixelsPerUnit) || 1)
-    const calibrated = unit === 'px' ? '' : ` / ${(len / ppu).toFixed(2)} ${unit}`
-    const total = segments.reduce((sum, seg) => sum + Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y), 0)
-      + (dragging && start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0)
-    const totalText = getOptions(TOOL_ID).chain === true && total > len + .01
-      ? `  Σ ${total.toFixed(1)} px${unit === 'px' ? '' : ` / ${(total / ppu).toFixed(2)} ${unit}`}`
-      : ''
     const label = showDelta
-      ? `L: ${len.toFixed(1)} px${calibrated}${totalText}  ∠ ${angleDeg.toFixed(1)}°  ΔX ${Math.round(dx)}  ΔY ${Math.round(dy)}`
-      : `L: ${len.toFixed(1)} px${calibrated}${totalText}  ∠ ${angleDeg.toFixed(1)}°`
+      ? `L: ${len.toFixed(1)} px  ∠ ${angleDeg.toFixed(1)}°  ΔX ${Math.round(dx)}  ΔY ${Math.round(dy)}`
+      : `L: ${len.toFixed(1)} px  ∠ ${angleDeg.toFixed(1)}°`
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace'
     const tw = ctx.measureText(label).width
     const padX = 6, chipH = 16

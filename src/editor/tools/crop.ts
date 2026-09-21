@@ -5,7 +5,6 @@ import { getOptions, newDrag, drawCross, drawDashedRect } from './shared'
 import { rectFromPoints, clamp } from '../utils/canvas'
 import { useEditorStore } from '../store'
 import { snapToGuides } from '../engine/guides'
-import { colorReadoutLines } from './color-readout'
 
 function snapPoint(x: number, y: number): { x: number; y: number } {
   const doc = engine.activeDoc
@@ -26,23 +25,9 @@ let cropRect: Rect | null = null
 let cropStartRect: Rect | null = null
 let cropMode: CropMode = 'new'
 let cropHandle: CropHandle | null = null
-let straightenStart: { x: number; y: number } | null = null
-let straightenEnd: { x: number; y: number } | null = null
 
 function ratioValue(raw: unknown): number | null {
   if (!raw || raw === 'free') return null
-  if (raw === 'custom') {
-    const opts = getOptions('crop')
-    const a = Math.max(0.001, Number(opts.ratioW) || 1)
-    const b = Math.max(0.001, Number(opts.ratioH) || 1)
-    return a / b
-  }
-  if (raw === 'target') {
-    const opts = getOptions('crop')
-    const a = Math.max(1, Number(opts.targetWidth) || 1)
-    const b = Math.max(1, Number(opts.targetHeight) || 1)
-    return a / b
-  }
   const [a, b] = String(raw).split(':').map(Number)
   return a > 0 && b > 0 ? a / b : null
 }
@@ -135,13 +120,6 @@ export const cropTool: Tool = {
   onPointerDown(p: PointerInfo) {
     const doc = engine.activeDoc
     if (!doc || p.button !== 0) return
-    if (getOptions('crop').straighten === true) {
-      straightenStart = { x: p.docX, y: p.docY }
-      straightenEnd = { x: p.docX, y: p.docY }
-      cropDrag.active = false
-      engine.pokeOverlay()
-      return
-    }
     if (cropRect) {
       const hit = hitCrop(p, cropRect, doc.view.zoom)
       if (hit) {
@@ -161,11 +139,6 @@ export const cropTool: Tool = {
   },
 
   onPointerMove(p: PointerInfo) {
-    if (straightenStart) {
-      straightenEnd = { x: p.docX, y: p.docY }
-      engine.pokeOverlay()
-      return
-    }
     if (!cropDrag.active) return
     if (cropMode === 'move' && cropStartRect) {
       const dx = p.docX - cropDrag.startX, dy = p.docY - cropDrag.startY
@@ -179,22 +152,6 @@ export const cropTool: Tool = {
   },
 
   onPointerUp() {
-    if (straightenStart && straightenEnd) {
-      const dx = straightenEnd.x - straightenStart.x
-      const dy = straightenEnd.y - straightenStart.y
-      const len = Math.hypot(dx, dy)
-      straightenStart = null
-      straightenEnd = null
-      if (len >= 4) {
-        const deg = Math.atan2(dy, dx) * 180 / Math.PI
-        if (Math.abs(deg) >= 0.01) engine.rotateCanvas(-deg)
-        const doc = engine.activeDoc
-        if (doc) cropRect = { x: 0, y: 0, w: doc.width, h: doc.height }
-      }
-      useEditorStore.getState().setToolOption('crop', 'straighten', false)
-      engine.pokeOverlay()
-      return
-    }
     cropDrag.active = false
     cropStartRect = null
     cropHandle = null
@@ -203,13 +160,6 @@ export const cropTool: Tool = {
   onDoubleClick() { commitCrop() },
 
   onKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && straightenStart) {
-      straightenStart = null
-      straightenEnd = null
-      useEditorStore.getState().setToolOption('crop', 'straighten', false)
-      engine.pokeOverlay()
-      return true
-    }
     if (e.key === 'Enter' && cropRect) { commitCrop(); return true }
     if (e.key === 'Escape' && cropRect) {
       cropRect = null; cropStartRect = null; cropHandle = null; cropDrag.active = false
@@ -219,28 +169,6 @@ export const cropTool: Tool = {
   },
 
   renderOverlay(ctx, view, w, h, mouse) {
-    if (straightenStart && straightenEnd) {
-      const ax = straightenStart.x * view.zoom + view.panX
-      const ay = straightenStart.y * view.zoom + view.panY
-      const bx = straightenEnd.x * view.zoom + view.panX
-      const by = straightenEnd.y * view.zoom + view.panY
-      const deg = Math.atan2(straightenEnd.y - straightenStart.y, straightenEnd.x - straightenStart.x) * 180 / Math.PI
-      ctx.save()
-      ctx.strokeStyle = '#e8a33d'
-      ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
-      ctx.fillStyle = 'rgba(0,0,0,.75)'
-      const label = `${deg.toFixed(2)}°`
-      ctx.font = '11px ui-monospace, monospace'
-      const tw = ctx.measureText(label).width + 10
-      const mx = (ax + bx) / 2, my = (ay + by) / 2
-      ctx.fillRect(mx - tw / 2, my - 22, tw, 17)
-      ctx.fillStyle = '#fff'
-      ctx.textAlign = 'center'
-      ctx.fillText(label, mx, my - 10)
-      ctx.restore()
-      return
-    }
     const r = cropRect
     if (!r) {
       drawCross(ctx, mouse)
@@ -250,7 +178,7 @@ export const cropTool: Tool = {
       ctx.fillStyle = '#fff'
       ctx.font = '12px sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText(getOptions('crop').straighten === true ? 'Drag along a horizon/edge to straighten' : 'Drag crop · Alt from center · Enter / double-click applies', w / 2, h - 19)
+      ctx.fillText('Drag crop · Alt from center · Enter / double-click applies', w / 2, h - 19)
       ctx.restore()
       return
     }
@@ -308,11 +236,7 @@ export const cropTool: Tool = {
     ctx.restore()
 
     ctx.save()
-    const cropOpts = getOptions('crop')
-    const targetText = cropOpts.ratio === 'target'
-      ? ` → ${Math.max(1, Math.round(Number(cropOpts.targetWidth) || 1))} × ${Math.max(1, Math.round(Number(cropOpts.targetHeight) || 1))} px`
-      : ''
-    const label = `${Math.round(r.w)} × ${Math.round(r.h)} px${targetText}`
+    const label = `${Math.round(r.w)} × ${Math.round(r.h)} px`
     ctx.font = '11px monospace'
     const tw = ctx.measureText(label).width + 12
     ctx.fillStyle = 'rgba(0,0,0,0.72)'
@@ -326,8 +250,6 @@ export const cropTool: Tool = {
     cropDrag.active = false
     cropStartRect = null
     cropHandle = null
-    straightenStart = null
-    straightenEnd = null
   },
 }
 
@@ -338,13 +260,7 @@ function commitCrop() {
   cropRect = null
   if (r.w < 1 || r.h < 1) { engine.pokeOverlay(); return }
   const opts = getOptions('crop')
-  const target = opts.ratio === 'target'
-    ? {
-        targetW: Math.max(1, Math.round(Number(opts.targetWidth) || r.w)),
-        targetH: Math.max(1, Math.round(Number(opts.targetHeight) || r.h)),
-      }
-    : {}
-  engine.cropTo(r, { deletePixels: opts.deletePixels !== false, ...target })
+  engine.cropTo(r, { deletePixels: opts.deletePixels !== false })
 }
 
 // ============================================================
@@ -355,60 +271,36 @@ function eyedropRadius(): number {
   return Math.max(0, Math.floor(((Number(getOptions('eyedropper').radius) || 1) - 1) / 2))
 }
 
-let eyedropDragging = false
-let eyedropToBackground = false
-
-function sampleEyedropper(p: PointerInfo, commit: boolean) {
-  const opts = getOptions('eyedropper')
-  const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite', eyedropRadius())
-  if (!hex) return
-  eyedropPreview = hex
-  if (commit) {
-    const store = useEditorStore.getState()
-    if (eyedropToBackground) store.setBgColor(hex)
-    else store.setFgColor(hex)
-  }
-  engine.pokeOverlay()
-}
-
 export const eyedropperTool: Tool = {
   id: 'eyedropper',
   cursor: 'crosshair',
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
-    eyedropDragging = true
-    eyedropToBackground = p.alt
-    sampleEyedropper(p, true)
+    const opts = getOptions('eyedropper')
+    const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite', eyedropRadius())
+    if (!hex) return
+    const store = useEditorStore.getState()
+    if (p.alt) store.setBgColor(hex)
+    else store.setFgColor(hex)
   },
   onPointerMove(p: PointerInfo) {
-    // Photoshop samples continuously while the mouse is held; hover still
-    // updates the preview chip without changing the foreground/background.
-    sampleEyedropper(p, eyedropDragging)
+    const opts = getOptions('eyedropper')
+    const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite', eyedropRadius())
+    if (hex) { eyedropPreview = hex; engine.pokeOverlay() }
   },
-  onPointerUp() { eyedropDragging = false },
-  onDeactivate() { eyedropPreview = null; eyedropDragging = false },
+  onDeactivate() { eyedropPreview = null },
   renderOverlay(ctx, view, w, h, mouse) {
     void view; void w; void h
     if (mouse && eyedropPreview) {
-      const lines = colorReadoutLines(eyedropPreview, String(getOptions('eyedropper').hud ?? 'all'))
       ctx.save()
       ctx.font = '10px ui-monospace, monospace'
-      const lineH = 13
-      const textW = Math.max(...lines.map(t => ctx.measureText(t).width))
-      const boxW = Math.max(98, textW + 37)
-      const boxH = Math.max(25, 8 + lines.length * lineH)
-      const bx = mouse.x + 11
-      const by = mouse.y - boxH - 8
-      ctx.fillStyle = 'rgba(10,10,12,.88)'
-      ctx.fillRect(bx, by, boxW, boxH)
-      // sampled-color ring + swatch make subtle changes visible over the image
+      ctx.fillStyle = 'rgba(10,10,12,.82)'
+      ctx.fillRect(mouse.x + 11, mouse.y - 33, 78, 25)
       ctx.fillStyle = eyedropPreview
-      ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 8, 0, Math.PI * 2); ctx.fill()
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke()
-      ctx.fillRect(bx + 4, by + 5, 20, 20)
-      ctx.strokeRect(bx + 3.5, by + 4.5, 21, 21)
+      ctx.fillRect(mouse.x + 15, mouse.y - 29, 17, 17)
+      ctx.strokeStyle = '#fff'; ctx.strokeRect(mouse.x + 14.5, mouse.y - 29.5, 18, 18)
       ctx.fillStyle = '#fff'
-      for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 30, by + 13 + i * lineH)
+      ctx.fillText(eyedropPreview.toUpperCase(), mouse.x + 37, mouse.y - 17)
       ctx.restore()
     }
     drawCross(ctx, mouse)
@@ -420,103 +312,35 @@ let eyedropPreview: string | null = null
 // Hand
 // ============================================================
 let handDrag = newDrag()
-let handVelocity = { x: 0, y: 0 }
-let handLastT = 0
-let handInertiaFrame = 0
-
-function stopHandInertia() {
-  if (handInertiaFrame) cancelAnimationFrame(handInertiaFrame)
-  handInertiaFrame = 0
-  handVelocity = { x: 0, y: 0 }
-}
-
-function startHandInertia() {
-  const doc = engine.activeDoc
-  const opts = getOptions('hand')
-  if (!doc || opts.inertia === false) return
-  if (Math.hypot(handVelocity.x, handVelocity.y) < 80) return
-  const friction = clamp((Number(opts.friction) || 92) / 100, .7, .98)
-  let last = performance.now()
-  const step = (now: number) => {
-    const d = engine.activeDoc
-    if (!d || handDrag.active) { stopHandInertia(); return }
-    const dt = Math.min(.034, Math.max(.001, (now - last) / 1000))
-    last = now
-    d.view.panX += handVelocity.x * dt
-    d.view.panY += handVelocity.y * dt
-    // Normalize friction to 60Hz so motion is frame-rate independent.
-    const decay = Math.pow(friction, dt * 60)
-    handVelocity.x *= decay
-    handVelocity.y *= decay
-    engine.viewChanged()
-    if (Math.hypot(handVelocity.x, handVelocity.y) < 8) { stopHandInertia(); return }
-    handInertiaFrame = requestAnimationFrame(step)
-  }
-  handInertiaFrame = requestAnimationFrame(step)
-}
-
 export const handTool: Tool = {
   id: 'hand',
   cursor: 'grab',
   onPointerDown(p: PointerInfo) {
     const doc = engine.activeDoc
     if (!doc || p.button !== 0) return
-    stopHandInertia()
-    handLastT = performance.now()
     handDrag = { startX: p.rawX, startY: p.rawY, lastX: p.rawX, lastY: p.rawY, active: true }
   },
   onPointerMove(p: PointerInfo) {
     const doc = engine.activeDoc
     if (!doc || !handDrag.active) return
-    const dx = p.rawX - handDrag.lastX
-    const dy = p.rawY - handDrag.lastY
-    const now = performance.now()
-    const dt = Math.max(.001, (now - handLastT) / 1000)
-    doc.view.panX += dx
-    doc.view.panY += dy
-    // Smooth instantaneous velocity so one noisy pointer event does not launch
-    // an absurdly fast flick.
-    const vx = dx / dt, vy = dy / dt
-    handVelocity.x = handVelocity.x * .55 + vx * .45
-    handVelocity.y = handVelocity.y * .55 + vy * .45
-    handLastT = now
+    doc.view.panX += p.rawX - handDrag.lastX
+    doc.view.panY += p.rawY - handDrag.lastY
     handDrag.lastX = p.rawX
     handDrag.lastY = p.rawY
     engine.viewChanged()
   },
-  onPointerUp() { handDrag.active = false; startHandInertia() },
+  onPointerUp() { handDrag.active = false },
   onDoubleClick() {
     // Photoshop: double-click Hand = Fit on Screen.
     ;(window as any).__zphotoViewport?.fit?.()
   },
-  onDeactivate() { handDrag.active = false; stopHandInertia() },
+  onDeactivate() { handDrag.active = false },
 }
 
 // ============================================================
 // Zoom
 // ============================================================
 let zoomDrag: { lastX: number; moved: boolean } | null = null
-let zoomAreaStart: { x: number; y: number } | null = null
-let zoomArea: Rect | null = null
-
-function maybeResizeWindowToFit() {
-  const doc = engine.activeDoc
-  if (!doc || getOptions('zoom').resizeWindowToFit !== true) return
-  const vp = (window as any).__zphotoViewport
-  const host = vp?.host as HTMLElement | undefined
-  const chromeW = Math.max(0, window.outerWidth - window.innerWidth)
-  const chromeH = Math.max(0, window.outerHeight - window.innerHeight)
-  const hostW = host?.clientWidth ?? window.innerWidth
-  const hostH = host?.clientHeight ?? window.innerHeight
-  const nonCanvasW = Math.max(0, window.innerWidth - hostW)
-  const nonCanvasH = Math.max(0, window.innerHeight - hostH)
-  const pad = 64
-  const desiredW = Math.ceil(doc.width * doc.view.zoom + nonCanvasW + chromeW + pad)
-  const desiredH = Math.ceil(doc.height * doc.view.zoom + nonCanvasH + chromeH + pad)
-  const maxW = Math.max(320, window.screen?.availWidth ?? desiredW)
-  const maxH = Math.max(240, window.screen?.availHeight ?? desiredH)
-  try { window.resizeTo(Math.min(maxW, desiredW), Math.min(maxH, desiredH)) } catch { /* browsers may deny resizeTo */ }
-}
 
 function zoomAt(p: PointerInfo, factor: number) {
   const doc = engine.activeDoc
@@ -532,7 +356,6 @@ function zoomAt(p: PointerInfo, factor: number) {
   doc.view.panY = sy - p.docY * next
   doc.view.autoFit = false
   engine.viewChanged()
-  maybeResizeWindowToFit()
 }
 
 export const zoomTool: Tool = {
@@ -544,17 +367,11 @@ export const zoomTool: Tool = {
     if (opts.scrubby !== false) {
       zoomDrag = { lastX: p.rawX, moved: false }
     } else {
-      zoomAreaStart = { x: p.docX, y: p.docY }
-      zoomArea = null
-      engine.pokeOverlay()
+      const dir = p.alt ? 'out' : opts.mode ?? 'in'
+      zoomAt(p, dir === 'in' ? 1.35 : 1 / 1.35)
     }
   },
   onPointerMove(p: PointerInfo) {
-    if (zoomAreaStart) {
-      zoomArea = rectFromPoints(zoomAreaStart.x, zoomAreaStart.y, p.docX, p.docY)
-      engine.pokeOverlay()
-      return
-    }
     if (!zoomDrag) return
     const dx = p.rawX - zoomDrag.lastX
     if (Math.abs(dx) < 1) return
@@ -563,31 +380,6 @@ export const zoomTool: Tool = {
     zoomAt(p, Math.exp(dx * 0.012))
   },
   onPointerUp(p: PointerInfo) {
-    if (zoomAreaStart) {
-      const r = zoomArea ?? rectFromPoints(zoomAreaStart.x, zoomAreaStart.y, p.docX, p.docY)
-      zoomAreaStart = null
-      zoomArea = null
-      const doc = engine.activeDoc
-      const vp = (window as any).__zphotoViewport
-      const vw = vp?.host?.clientWidth ?? window.innerWidth
-      const vh = vp?.host?.clientHeight ?? window.innerHeight
-      if (doc && r.w * doc.view.zoom >= 6 && r.h * doc.view.zoom >= 6 && !p.alt) {
-        const pad = 24
-        const next = clamp(Math.min((vw - pad * 2) / Math.max(1, r.w), (vh - pad * 2) / Math.max(1, r.h)), .02, 32)
-        doc.view.zoom = next
-        doc.view.panX = (vw - r.w * next) / 2 - r.x * next
-        doc.view.panY = (vh - r.h * next) / 2 - r.y * next
-        doc.view.autoFit = false
-        engine.viewChanged()
-        maybeResizeWindowToFit()
-      } else {
-        const opts = getOptions('zoom')
-        const dir = p.alt ? 'out' : opts.mode ?? 'in'
-        zoomAt(p, dir === 'in' ? 1.35 : 1 / 1.35)
-      }
-      engine.pokeOverlay()
-      return
-    }
     if (!zoomDrag) return
     if (!zoomDrag.moved) {
       const opts = getOptions('zoom')
@@ -600,17 +392,6 @@ export const zoomTool: Tool = {
     const doc = engine.activeDoc
     if (doc) zoomAt(p, 1 / doc.view.zoom)
   },
-  onDeactivate() { zoomDrag = null; zoomAreaStart = null; zoomArea = null },
-  renderOverlay(ctx, view, w, h, mouse) {
-    void w; void h; void mouse
-    if (!zoomArea) return
-    const x = zoomArea.x * view.zoom + view.panX
-    const y = zoomArea.y * view.zoom + view.panY
-    const rw = zoomArea.w * view.zoom, rh = zoomArea.h * view.zoom
-    ctx.save()
-    ctx.fillStyle = 'rgba(232,163,61,.08)'
-    ctx.fillRect(x, y, rw, rh)
-    ctx.restore()
-    drawDashedRect(ctx, x, y, rw, rh)
-  },
+  onDeactivate() { zoomDrag = null },
+  renderOverlay() {},
 }

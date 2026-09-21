@@ -6,13 +6,13 @@ const COMFY_KEY = 'zphoto-ai-comfy-provider-v1'
 export const AI_PROVIDERS: AiProviderDescriptor[] = [
   {
     id: 'builtin', name: 'Built-in / Local', kind: 'builtin', local: true,
-    description: 'Private on-device selections, masks, content-aware remove, smart upscale, depth, denoise, relight and vector-trace assists using the editor engine.',
-    capabilities: ['select-subject', 'remove-background', 'smart-remove', 'upscale', 'depth', 'denoise', 'restore-face', 'relight', 'colorize', 'vectorize'],
+    description: 'Fast selections, masks, content-aware remove and smart upscale using the editor engine.',
+    capabilities: ['select-subject', 'remove-background', 'smart-remove', 'upscale', 'depth'],
   },
   {
     id: 'comfyui', name: 'ComfyUI', kind: 'comfyui', local: true,
     description: 'Run any local ComfyUI workflow for inpaint, outpaint, restoration, ControlNet, LoRA and more.',
-    capabilities: ['select-subject', 'remove-background', 'smart-remove', 'generate', 'inpaint', 'outpaint', 'upscale', 'depth', 'caption', 'denoise', 'restore-face', 'relight', 'colorize', 'vectorize'],
+    capabilities: ['generate', 'inpaint', 'outpaint', 'upscale', 'depth', 'caption', 'denoise', 'restore-face', 'relight', 'colorize', 'vectorize'],
   },
   {
     id: 'openai-compatible', name: 'OpenAI-compatible', kind: 'openai-compatible', local: false,

@@ -19,7 +19,7 @@
 //    with a fixed grid size
 // Doc-space path model; overlay drawn in screen space every frame.
 // ============================================================
-import type { Tool, PointerInfo, PathAnchor, SavedPath } from '../types'
+import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, hardDab, pencilDab } from './shared'
 import { useEditorStore } from '../store'
@@ -31,7 +31,13 @@ type Pt = { x: number; y: number }
 /** One path anchor: doc-space position + bezier handle offsets (doc px,
  *  relative to the anchor). A corner anchor has all-zero handles; a smooth
  *  anchor has paired handles (in = −out) until Alt breaks the pairing. */
-type Anchor = PathAnchor
+interface Anchor {
+  x: number; y: number
+  inX: number; inY: number
+  outX: number; outY: number
+  /** true while the in/out handles are mirrored (drag one → move both) */
+  pair: boolean
+}
 
 /** cubic segment between two anchors: p0/p3 = anchors, p1 = prev.out, p2 = cur.in */
 interface Seg { p0: Pt; p1: Pt; p2: Pt; p3: Pt }
@@ -44,7 +50,6 @@ type Drag =
 // ---------------- module state (single working path) ----------------
 let anchors: Anchor[] = []
 let closed = false
-let editingPathId: string | null = null
 /** last placed/edited anchor — its handles stay visible (Photoshop behavior) */
 let activeAnchor = -1
 let drag: Drag | null = null
@@ -81,17 +86,7 @@ function constrain45(dx: number, dy: number): Pt {
 function resetPath() {
   anchors = []
   closed = false
-  editingPathId = null
   activeAnchor = -1
-  drag = null
-  engine.pokeOverlay()
-}
-
-export function loadSavedPathIntoPen(path: SavedPath) {
-  anchors = path.anchors.map(a => ({ ...a }))
-  closed = !!path.closed
-  editingPathId = path.id
-  activeAnchor = anchors.length ? anchors.length - 1 : -1
   drag = null
   engine.pokeOverlay()
 }
@@ -392,25 +387,10 @@ function commitPath() {
   const opts = getOptions('pen')
   const action = opts.action ?? 'selection'
   let ok = false
-  if (action === 'path') {
-    if (editingPathId && engine.activeDoc?.savedPaths?.some(p => p.id === editingPathId)) {
-      engine.updateSavedPath(editingPathId, {
-        anchors: anchors.map(a => ({ ...a })),
-        closed,
-        visible: true,
-      }, 'Edit Path')
-      ok = true
-    } else {
-      ok = !!engine.addSavedPath({
-        name: `Work Path ${(engine.activeDoc?.savedPaths?.length ?? 0) + 1}`,
-        anchors: anchors.map(a => ({ ...a })),
-        closed,
-        visible: true,
-      }, 'Save Path')
-    }
-  } else if (action === 'stroke') ok = commitStroke(opts)
+  if (action === 'stroke') ok = commitStroke(opts)
   else if (action === 'fill') ok = commitFill(opts)
   else ok = commitSelection(opts)
+  // Photoshop keeps paths; we clear the working path after a successful commit
   if (ok) resetPath()
 }
 
@@ -469,7 +449,6 @@ export const penTool: Tool = {
     if (closed) {
       anchors = []
       closed = false
-      editingPathId = null
       activeAnchor = -1
     }
 

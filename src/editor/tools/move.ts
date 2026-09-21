@@ -1,4 +1,4 @@
-import type { Tool, PointerInfo, ViewportState, Rect, Layer } from '../types'
+import type { Tool, PointerInfo, ViewportState, Rect } from '../types'
 import { engine } from '../engine/engine'
 import { buildLiveDrag } from '../engine/document'
 import { newDrag, drawCross, pickLayerAt, getOptions } from './shared'
@@ -11,54 +11,6 @@ let drag = newDrag()
 let live: LiveLayerDrag | null = null
 /** layer ids moved by this drag (a clipstack base drags its children too) */
 let movingIds: string[] = []
-/** Full-composite live path for dragging a true multi-layer selection. */
-let groupMove: { ids: string[]; lastDx: number; lastDy: number; startBounds: Rect } | null = null
-let smartGuideX: number | null = null
-let smartGuideY: number | null = null
-
-function unionRects(rects: Rect[]): Rect | null {
-  if (!rects.length) return null
-  const x0 = Math.min(...rects.map(r => r.x))
-  const y0 = Math.min(...rects.map(r => r.y))
-  const x1 = Math.max(...rects.map(r => r.x + r.w))
-  const y1 = Math.max(...rects.map(r => r.y + r.h))
-  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
-}
-
-function smartSnapRect(rect: Rect, dx: number, dy: number, moving: string[], zoom: number): { dx: number; dy: number } {
-  const doc = engine.activeDoc
-  if (!doc || getOptions('move').smartGuides === false) {
-    smartGuideX = smartGuideY = null
-    return { dx, dy }
-  }
-  const tol = 8 / Math.max(.02, zoom)
-  const moved = { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h }
-  const mx = [moved.x, moved.x + moved.w / 2, moved.x + moved.w]
-  const my = [moved.y, moved.y + moved.h / 2, moved.y + moved.h]
-  const xs: number[] = [0, doc.width / 2, doc.width]
-  const ys: number[] = [0, doc.height / 2, doc.height]
-  for (const l of doc.layers) {
-    if (!l.visible || moving.includes(l.id) || l.kind === 'adjustment') continue
-    const r = engine.layerContentRect(l.id)
-    if (!r) continue
-    xs.push(r.x, r.x + r.w / 2, r.x + r.w)
-    ys.push(r.y, r.y + r.h / 2, r.y + r.h)
-  }
-  let bestX = Infinity, bestY = Infinity, snapX: number | null = null, snapY: number | null = null
-  for (const a of mx) for (const b of xs) {
-    const d = b - a
-    if (Math.abs(d) <= tol && Math.abs(d) < Math.abs(bestX)) { bestX = d; snapX = b }
-  }
-  for (const a of my) for (const b of ys) {
-    const d = b - a
-    if (Math.abs(d) <= tol && Math.abs(d) < Math.abs(bestY)) { bestY = d; snapY = b }
-  }
-  if (snapX !== null) dx += bestX
-  if (snapY !== null) dy += bestY
-  smartGuideX = snapX
-  smartGuideY = snapY
-  return { dx, dy }
-}
 
 // ---------- on-canvas free-transform drag state ----------
 type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
@@ -90,56 +42,6 @@ interface TransformDrag {
 }
 
 let tdrag: TransformDrag | null = null
-
-interface GroupTransformState {
-  ids: string[]
-  snapshots: Layer[]
-  rect: Rect
-}
-let groupTransform: GroupTransformState | null = null
-
-function snapshotTransformLayer(layer: Layer): Layer {
-  return {
-    ...layer,
-    transform: layer.transform ? { ...layer.transform } : null,
-    text: layer.text ? { ...layer.text } : null,
-    shape: layer.shape ? {
-      ...layer.shape,
-      pathAnchors: layer.shape.pathAnchors?.map(a => ({ ...a })),
-    } : null,
-    smartFilters: layer.smartFilters.map(sf => ({ ...sf, params: { ...sf.params } })),
-    vectorMask: layer.vectorMask ? {
-      ...layer.vectorMask,
-      anchors: layer.vectorMask.anchors.map(a => ({ ...a })),
-    } : null,
-    fx: layer.fx ? { ...layer.fx } : null,
-    // canvas/source/mask are intentionally retained by reference. Preview
-    // transforms REPLACE them rather than mutating these source canvases.
-    canvas: layer.canvas,
-    source: layer.source,
-    mask: layer.mask,
-  }
-}
-
-function restoreTransformSnapshot(snapshot: Layer) {
-  const layer = engine.layerById(snapshot.id)
-  if (!layer) return
-  const restored = snapshotTransformLayer(snapshot)
-  Object.assign(layer, restored)
-  ;(layer as any)._cache = null
-  ;(layer as any)._cacheKey = ''
-}
-
-function selectedTransformIds(): string[] {
-  const doc = engine.activeDoc
-  if (!doc?.activeLayerId) return []
-  const ids = (doc.selectedLayerIds ?? []).filter(id => {
-    const l = engine.layerById(id)
-    return !!l && !l.locked && l.kind !== 'adjustment'
-  })
-  return ids.length > 1 && ids.includes(doc.activeLayerId) ? ids : []
-}
-
 /** handle currently hovered (cursor management) */
 let hoverHandle: HandleId | null = null
 let lastCursorCss = ''
@@ -206,48 +108,9 @@ export const moveTool: Tool = {
     const doc = engine.activeDoc
     if (!doc) return
 
-    // ---- on-canvas free-transform: selected group first ----
-    const moveOpts = getOptions('move')
-    const transformIds = selectedTransformIds()
-    if (transformIds.length > 1 && !p.ctrl && moveOpts.showTransformControls !== false) {
-      const groupRect = unionRects(transformIds.map(id => engine.layerContentRect(id)).filter((r): r is Rect => !!r))
-      const uniformOnly = transformIds.some(id => {
-        const l = engine.layerById(id)
-        return l?.kind === 'smart' || l?.kind === 'text'
-      })
-      const h = groupRect ? hitTestHandle(p.docX, p.docY, groupRect, uniformOnly, doc.view.zoom) : null
-      if (groupRect && h) {
-        const pts = Object.fromEntries(handlePoints(groupRect, uniformOnly).map(pt => [pt.id, pt]))
-        const hp = pts[h]!
-        const center = { x: groupRect.x + groupRect.w / 2, y: groupRect.y + groupRect.h / 2 }
-        let ax: number, ay: number
-        if (p.alt) { ax = center.x; ay = center.y }
-        else {
-          const opp: HandleId = ({ nw: 'se', se: 'nw', ne: 'sw', sw: 'ne', n: 's', s: 'n', e: 'w', w: 'e' } as Record<HandleId, HandleId>)[h]
-          const op = pts[opp] ?? center
-          ax = op.x; ay = op.y
-        }
-        const snapshots = transformIds.map(id => engine.layerById(id)).filter((l): l is Layer => !!l).map(snapshotTransformLayer)
-        if (snapshots.length === transformIds.length) {
-          groupTransform = { ids: transformIds.slice(), snapshots, rect: groupRect }
-          movingIds = transformIds.slice()
-          tdrag = {
-            handle: h, rect: groupRect, hx: hp.x, hy: hp.y, ax, ay,
-            startPx: p.docX, startPy: p.docY,
-            uniformOnly,
-            mode: 'scale', sx: 1, sy: 1, rotation: 0,
-            cx: center.x, cy: center.y,
-          }
-          live = null
-          doc._liveDrag = null
-          engine.requestRender()
-          return
-        }
-      }
-    }
-
     // ---- on-canvas free-transform: grab a handle of the active layer ----
     const target0 = transformableLayerId()
+    const moveOpts = getOptions('move')
     if (target0 && !p.ctrl && moveOpts.showTransformControls !== false) {
       const r = engine.layerContentRect(target0)
       const layer0 = engine.layerById(target0)!
@@ -315,25 +178,6 @@ export const moveTool: Tool = {
 
     const layer = engine.layerById(target)
     if (!layer || layer.locked || layer.kind === 'adjustment') return
-
-    // If the clicked/active layer is part of a multi-layer selection, drag the
-    // whole selection together. The single-layer below/stack/above cache can't
-    // represent arbitrary non-contiguous stacks, so groups use the exact full
-    // composite while moving and commit one history entry on release.
-    const selected = (doc.selectedLayerIds ?? []).filter(id => {
-      const l = engine.layerById(id)
-      return !!l && !l.locked && l.kind !== 'adjustment'
-    })
-    if (!p.alt && selected.length > 1 && selected.includes(target)) {
-      movingIds = selected
-      const startBounds = unionRects(selected.map(id => engine.layerContentRect(id)).filter((r): r is Rect => !!r))
-      if (!startBounds) return
-      groupMove = { ids: selected, lastDx: 0, lastDy: 0, startBounds }
-      drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
-      engine.requestRender()
-      return
-    }
-
     // build the cached below/stack/above split ONCE — per-frame composites are
     // then 3 drawImages instead of the full pipeline (60fps drag)
     const ld = buildLiveDrag(doc, target)
@@ -354,7 +198,7 @@ export const moveTool: Tool = {
 
   onPointerMove(p: PointerInfo) {
     // ---- free-transform drag: update the live gesture map ----
-    if (tdrag && (live || groupTransform)) {
+    if (tdrag && live) {
       const doc = engine.activeDoc
       if (!doc) return
       const t = tdrag
@@ -419,48 +263,8 @@ export const moveTool: Tool = {
       // the opposite corner/edge fixed (Alt = center)
       const pax = t.mode === 'rotate' ? t.cx : t.ax
       const pay = t.mode === 'rotate' ? t.cy : t.ay
-      if (groupTransform) {
-        for (const snapshot of groupTransform.snapshots) restoreTransformSnapshot(snapshot)
-        for (const id of groupTransform.ids) {
-          engine.directTransformLayer(id, {
-            sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay,
-          }, { skipHistory: true, silent: true })
-        }
-      } else if (live) {
-        live.liveTransform = { sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay }
-      }
+      live.liveTransform = { sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay }
       engine.requestRender()
-      return
-    }
-
-    if (drag.active && groupMove) {
-      const doc = engine.activeDoc
-      if (!doc) return
-      let dx = Math.round(p.docX - drag.startX)
-      let dy = Math.round(p.docY - drag.startY)
-      if (p.shift) {
-        if (Math.abs(dx) >= Math.abs(dy)) dy = 0
-        else dx = 0
-      }
-      ;({ dx, dy } = smartSnapRect(groupMove.startBounds, dx, dy, groupMove.ids, doc.view.zoom))
-      const prefs = useEditorStore.getState().view
-      if (prefs.snapGuides && doc.guides?.length) {
-        const s = snapToGuides(doc, doc.view, drag.startX + dx, drag.startY + dy, 8)
-        dx = Math.round(s.x - drag.startX)
-        dy = Math.round(s.y - drag.startY)
-      }
-      if (prefs.snapGrid && (prefs.gridSize ?? 0) > 0) {
-        const gs = prefs.gridSize as number
-        dx = Math.round(dx / gs) * gs
-        dy = Math.round(dy / gs) * gs
-      }
-      const incX = dx - groupMove.lastDx
-      const incY = dy - groupMove.lastDy
-      if (incX || incY) {
-        engine.translateLayersPreview(groupMove.ids, incX, incY)
-        groupMove.lastDx = dx
-        groupMove.lastDy = dy
-      }
       return
     }
 
@@ -469,12 +273,6 @@ export const moveTool: Tool = {
     if (!doc) return
     let dx = Math.round(p.docX - drag.startX)
     let dy = Math.round(p.docY - drag.startY)
-    // Photoshop: Shift constrains a move to the dominant axis. Do this before
-    // snapping so guides/grid still refine the constrained coordinate.
-    if (p.shift) {
-      if (Math.abs(dx) >= Math.abs(dy)) dy = 0
-      else dx = 0
-    }
     // snapping: guides first (grab point), then the grid (layer content edge)
     const prefs = useEditorStore.getState().view
     const x = drag.startX + dx, y = drag.startY + dy
@@ -484,13 +282,6 @@ export const moveTool: Tool = {
       dx = Math.round(s.x - drag.startX)
       dy = Math.round(s.y - drag.startY)
       snappedX = s.snappedX; snappedY = s.snappedY
-    }
-    const movingRect = engine.layerContentRect(movingIds[0])
-    if (movingRect) {
-      const s = smartSnapRect(movingRect, dx, dy, movingIds, doc.view.zoom)
-      dx = Math.round(s.dx); dy = Math.round(s.dy)
-      if (smartGuideX !== null) snappedX = true
-      if (smartGuideY !== null) snappedY = true
     }
     if (prefs.snapGrid && (prefs.gridSize ?? 0) > 0 && !snappedX && !snappedY) {
       const gs = prefs.gridSize as number
@@ -517,60 +308,27 @@ export const moveTool: Tool = {
 
   onPointerUp(p: PointerInfo) {
     // ---- free-transform commit ----
-    if (tdrag && (live || groupTransform)) {
+    if (tdrag && live) {
       const doc = engine.activeDoc
       const t = tdrag
-      const gt = groupTransform
       const moved = Math.abs(t.sx - 1) > 0.002 || Math.abs(t.sy - 1) > 0.002 || Math.abs(t.rotation) > 0.002
       if (doc) doc._liveDrag = null
-
-      if (gt) {
-        if (moved && doc) {
-          // Preview already transformed every layer from its clean snapshot;
-          // committing only records ONE history state.
-          engine.pushHistory(gt.ids.length > 1 ? 'Free Transform Layers' : 'Free Transform')
-          engine.emit()
-        } else {
-          for (const snapshot of gt.snapshots) restoreTransformSnapshot(snapshot)
-          engine.requestRender()
+      live = null
+      tdrag = null
+      if (moved && doc) {
+        // base first (history entry), then any clipped children (coalesced —
+        // they transform with their base under the same gesture map)
+        const pax = t.mode === 'rotate' ? t.cx : t.ax
+        const pay = t.mode === 'rotate' ? t.cy : t.ay
+        for (let i = 0; i < movingIds.length; i++) {
+          engine.directTransformLayer(movingIds[i], {
+            sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay,
+          }, { skipHistory: i > 0 })
         }
-        groupTransform = null
-        live = null
-        tdrag = null
       } else {
-        live = null
-        tdrag = null
-        if (moved && doc) {
-          // base first (history entry), then any clipped children (coalesced —
-          // they transform with their base under the same gesture map)
-          const pax = t.mode === 'rotate' ? t.cx : t.ax
-          const pay = t.mode === 'rotate' ? t.cy : t.ay
-          for (let i = 0; i < movingIds.length; i++) {
-            engine.directTransformLayer(movingIds[i], {
-              sx: t.sx, sy: t.sy, rotation: t.rotation, ax: pax, ay: pay,
-            }, { skipHistory: i > 0 })
-          }
-        } else {
-          engine.requestRender()
-        }
+        engine.requestRender()
       }
-
       movingIds = []
-      smartGuideX = smartGuideY = null
-      return
-    }
-
-    if (drag.active && groupMove) {
-      const moved = Math.hypot(groupMove.lastDx, groupMove.lastDy) > 0.5
-      drag.active = false
-      const ids = groupMove.ids
-      groupMove = null
-      movingIds = []
-      smartGuideX = smartGuideY = null
-      if (moved) {
-        engine.pushHistory(ids.length > 1 ? 'Move Layers' : 'Move')
-        engine.emit()
-      } else engine.requestRender()
       return
     }
 
@@ -635,34 +393,17 @@ export const moveTool: Tool = {
       engine.requestRender()
     }
     movingIds = []
-    smartGuideX = smartGuideY = null
   },
 
   onKeyDown(e: KeyboardEvent) {
     // Escape cancels an in-flight free-transform drag (preview only — the
     // layer was never touched)
-    if (e.key === 'Escape' && groupMove) {
-      if (groupMove.lastDx || groupMove.lastDy) {
-        engine.translateLayersPreview(groupMove.ids, -groupMove.lastDx, -groupMove.lastDy)
-      }
-      drag.active = false
-      groupMove = null
-      movingIds = []
-      smartGuideX = smartGuideY = null
-      engine.requestRender()
-      return true
-    }
     if (e.key === 'Escape' && tdrag) {
       const doc = engine.activeDoc
-      if (groupTransform) {
-        for (const snapshot of groupTransform.snapshots) restoreTransformSnapshot(snapshot)
-        groupTransform = null
-      }
       if (doc) doc._liveDrag = null
       live = null
       tdrag = null
       movingIds = []
-      smartGuideX = smartGuideY = null
       engine.requestRender()
       return true
     }
@@ -672,25 +413,6 @@ export const moveTool: Tool = {
   renderOverlay(ctx, view, w, h, mouse) {
     drawCross(ctx, mouse)
     drawLayerHighlight(ctx, view, w, h, mouse)
-    if (smartGuideX !== null || smartGuideY !== null) {
-      ctx.save()
-      ctx.strokeStyle = 'rgba(255,55,180,.95)'
-      ctx.lineWidth = 1
-      ctx.setLineDash([4, 3])
-      if (smartGuideX !== null) {
-        const sx = view.panX + smartGuideX * view.zoom
-        ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke()
-      }
-      if (smartGuideY !== null) {
-        const sy = view.panY + smartGuideY * view.zoom
-        ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke()
-      }
-      ctx.restore()
-    }
-  },
-
-  onDeactivate() {
-    smartGuideX = smartGuideY = null
   },
 }
 
@@ -713,14 +435,10 @@ function drawLayerHighlight(
   if (!targetId) return
   const layer = engine.layerById(targetId)
   if (!layer || layer.kind === 'adjustment') return
-  const groupIds = groupTransform?.ids ?? selectedTransformIds()
-  const isGroup = groupIds.length > 1
-  const r = groupTransform?.rect ?? (isGroup
-    ? unionRects(groupIds.map(id => engine.layerContentRect(id)).filter((v): v is Rect => !!v))
-    : engine.layerContentRect(targetId))
+  const r = engine.layerContentRect(targetId)
   if (!r || r.w <= 0 || r.h <= 0) return
   const dx = live && !tdrag ? live.dx : 0, dy = live && !tdrag ? live.dy : 0
-  const dim = isGroup ? 1 : (layer.visible ? 1 : 0.45) // hidden layer: dimmed ghost frame
+  const dim = layer.visible ? 1 : 0.45 // hidden layer: dimmed ghost frame
 
   // ---- map the box corners through the live gesture (scale/rotate/offset) ----
   const corners: [number, number][] = [
@@ -729,15 +447,7 @@ function drawLayerHighlight(
     [r.x + r.w + dx, r.y + r.h + dy],
     [r.x + dx, r.y + r.h + dy],
   ]
-  const lt = tdrag
-    ? (live?.liveTransform ?? {
-        sx: tdrag.sx,
-        sy: tdrag.sy,
-        rotation: tdrag.rotation,
-        ax: tdrag.mode === 'rotate' ? tdrag.cx : tdrag.ax,
-        ay: tdrag.mode === 'rotate' ? tdrag.cy : tdrag.ay,
-      })
-    : null
+  const lt = tdrag ? live?.liveTransform : null
   let mapped: [number, number][]
   if (lt) {
     const cos = Math.cos(lt.rotation), sin = Math.sin(lt.rotation)
@@ -772,20 +482,10 @@ function drawLayerHighlight(
   ctx.stroke()
 
   // ---- transform handles at the MAPPED corners (and mid-edges when idle) ----
-  const uniformOnly = isGroup
-    ? groupIds.some(id => {
-        const l = engine.layerById(id)
-        return l?.kind === 'smart' || l?.kind === 'text'
-      })
-    : layer.kind === 'smart' || layer.kind === 'text'
+  const uniformOnly = layer.kind === 'smart' || layer.kind === 'text'
   const idleBox = { x: sx0, y: sy0, w: sx1 - sx0, h: sy1 - sy0 }
   const sw = idleBox.w, sh = idleBox.h
-  const canTransform = (isGroup
-    ? groupIds.every(id => {
-        const l = engine.layerById(id)
-        return !!l && !l.locked && l.kind !== 'adjustment'
-      })
-    : !layer.locked) && getOptions('move').showTransformControls !== false
+  const canTransform = !layer.locked && getOptions('move').showTransformControls !== false
   let handleScr: { id: HandleId; x: number; y: number }[] = []
   if (canTransform && sw >= 10 && sh >= 10) {
     const mid = sw >= 22 && sh >= 22
@@ -818,13 +518,12 @@ function drawLayerHighlight(
   // live transform: readout shows the live scale/angle; otherwise X/Y/W×H
   let text: string
   const flags = [layer.locked ? 'locked' : '', layer.visible ? '' : 'hidden'].filter(Boolean).join(', ')
-  const subject = isGroup ? `${groupIds.length} layers` : `${layer.name}${flags ? ` (${flags})` : ''}`
   if (tdrag && lt) {
     const pct = Math.round(Math.abs((lt.sx + lt.sy) / 2) * 100)
     const deg = Math.round((lt.rotation * 180) / Math.PI)
-    text = `${subject}  ·  ${pct}%${deg ? ` · ${deg}°` : ''}  ·  ${Math.round(r.w * Math.abs(lt.sx))}×${Math.round(r.h * Math.abs(lt.sy))}`
+    text = `${layer.name}  ·  ${pct}%${deg ? ` · ${deg}°` : ''}  ·  ${Math.round(r.w * Math.abs(lt.sx))}×${Math.round(r.h * Math.abs(lt.sy))}`
   } else {
-    text = `${subject}  ·  X ${Math.round(r.x + dx)}  Y ${Math.round(r.y + dy)}  ·  ${Math.round(r.w)}×${Math.round(r.h)}`
+    text = `${layer.name}${flags ? ` (${flags})` : ''}  ·  X ${Math.round(r.x + dx)}  Y ${Math.round(r.y + dy)}  ·  ${Math.round(r.w)}×${Math.round(r.h)}`
   }
   ctx.font = '10px ui-monospace, SFMono-Regular, monospace'
   const tw = ctx.measureText(text).width

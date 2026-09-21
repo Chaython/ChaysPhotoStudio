@@ -19,14 +19,13 @@
 // ============================================================
 import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross, toolMaskCanvas, softDab } from './shared'
+import { getOptions, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross, toolMaskCanvas, softDab } from './shared'
 import { buildSourceDab, sourcePointFor, frequencyHeal, pressureFlow } from './dab-utils'
 import { createCanvas, ctx2d, getImageData, putImageData, cloneCanvas, clamp, getMaskAlpha } from '../utils/canvas'
 import { dilateMask, gaussianBlurChannel } from '../image-ops/core'
 import { useEditorStore } from '../store'
 import * as imageOps from '../image-ops'
 import { getFlatComposite } from '../engine/document'
-import { paintBuiltinPattern } from './patterns'
 
 /** rect clamped to doc bounds */
 function clampedRect(r: Rect, w: number, h: number): Rect {
@@ -49,37 +48,6 @@ interface HealState {
   dabs: { x: number; y: number }[]
 }
 const hst: HealState = { active: false, last: null, ref: null, source: null, orig: null, dabs: [] }
-let healConnectFrom: { x: number; y: number } | null = null
-let healConnectDocId: string | null = null
-let healConnectLayerId: string | null = null
-
-function buildHealingPatternDab(x: number, y: number, radius: number, hardness: number, opts: Record<string, any>) {
-  const side = Math.max(4, Math.ceil(radius * 2) + 4)
-  const center = side / 2
-  const out = createCanvas(side, side)
-  const oc = ctx2d(out)
-  paintBuiltinPattern(oc, side, side, {
-    kind: String(opts.pattern ?? 'checker'),
-    scale: clamp((Number(opts.patternScale) || 100) / 100, .25, 4),
-    offsetX: Number(opts.patternOffsetX) || 0,
-    offsetY: Number(opts.patternOffsetY) || 0,
-    fg: getFgColor(),
-    bg: getBgColor(),
-    originX: x - center,
-    originY: y - center,
-  })
-  oc.globalCompositeOperation = 'destination-in'
-  const inner = radius * clamp(hardness / 100, 0, .98)
-  const grad = oc.createRadialGradient(center, center, inner, center, center, Math.max(radius, .5))
-  grad.addColorStop(0, 'rgba(255,255,255,1)')
-  grad.addColorStop(1, 'rgba(255,255,255,0)')
-  oc.fillStyle = grad
-  oc.beginPath()
-  oc.arc(center, center, Math.max(radius, .5), 0, Math.PI * 2)
-  oc.fill()
-  oc.globalCompositeOperation = 'source-over'
-  return out
-}
 
 export const healingBrushTool: Tool = {
   id: 'healing-brush',
@@ -93,8 +61,7 @@ export const healingBrushTool: Tool = {
     if (!doc || !layer) return
     const opts = getOptions('healing-brush')
 
-    const patternMode = opts.sample === 'pattern'
-    if (p.alt && !patternMode) {
+    if (p.alt) {
       // ---- set healing source (layer snapshot, doc-space) ----
       const c = opts.sample === 'composite' ? getFlatComposite(doc) : engine.layerCanvasDocSpace(layer.id)
       if (!c) return
@@ -106,38 +73,20 @@ export const healingBrushTool: Tool = {
       return
     }
 
-    if (!patternMode && (!engine.cloneSource || !hst.source)) {
-      engine.ui?.toast('Alt+click to set a healing source first, or choose Pattern as the source', 'info')
+    if (!engine.cloneSource || !hst.source) {
+      engine.ui?.toast('Alt+click to set a healing source first', 'info')
       return
     }
 
-    engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100, blendMode: opts.blendMode ?? 'normal' })
+    engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100 })
     // snapshot the pre-stroke layer AFTER beginStroke (it rasterizes if needed)
     const pre = engine.layerCanvasDocSpace(layer.id)
     hst.orig = pre ? cloneCanvas(pre) : null
     hst.active = true
     hst.last = { x: p.docX, y: p.docY }
-    hst.dabs = []
-    if (!patternMode && (opts.aligned === false || !hst.ref)) hst.ref = { x: p.docX, y: p.docY }
-
-    const canConnect = p.shift && healConnectFrom && healConnectDocId === doc.id && healConnectLayerId === layer.id
-    if (canConnect && healConnectFrom) {
-      const settings = brushSettingsFrom(opts)
-      const spacing = Math.max(1, settings.size * settings.spacing)
-      const line = walkDabs(healConnectFrom.x, healConnectFrom.y, p.docX, p.docY, spacing)
-      for (const q of line) {
-        healDab(q.x, q.y, p)
-        hst.dabs.push(q)
-      }
-      const tail = line[line.length - 1]
-      if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) {
-        healDab(p.docX, p.docY, p)
-        hst.dabs.push({ x: p.docX, y: p.docY })
-      }
-    } else {
-      healDab(p.docX, p.docY, p)
-      hst.dabs.push({ x: p.docX, y: p.docY })
-    }
+    hst.dabs = [{ x: p.docX, y: p.docY }]
+    if (opts.aligned === false || !hst.ref) hst.ref = { x: p.docX, y: p.docY }
+    healDab(p.docX, p.docY, p)
   },
 
   onPointerMove(p: PointerInfo) {
@@ -158,23 +107,6 @@ export const healingBrushTool: Tool = {
 
   onPointerUp() {
     if (!hst.active) return
-    const docId = engine.activeDoc?.id ?? null
-    const layerId = engine.activeLayer?.id ?? null
-    if (hst.last && docId && layerId) {
-      healConnectFrom = { ...hst.last }
-      healConnectDocId = docId
-      healConnectLayerId = layerId
-    }
-    hst.active = false
-    hst.last = null
-    commitHeal()
-  },
-
-  onDeactivate() {
-    healConnectFrom = null
-    healConnectDocId = null
-    healConnectLayerId = null
-    if (!hst.active) return
     hst.active = false
     hst.last = null
     commitHeal()
@@ -185,10 +117,9 @@ export const healingBrushTool: Tool = {
     const opts = getOptions('healing-brush')
     const size = opts.size ?? 40
     const src = engine.cloneSource
-    const patternMode = opts.sample === 'pattern'
 
     // source marker
-    if (!patternMode && src && hst.source) {
+    if (src && hst.source) {
       const sx = src.x * view.zoom + view.panX
       const sy = src.y * view.zoom + view.panY
       ctx.save()
@@ -202,7 +133,7 @@ export const healingBrushTool: Tool = {
     }
 
     // ghost of sampled source area under cursor
-    if (!patternMode && src && mouse && hst.ref) {
+    if (src && mouse && hst.ref) {
       const docX = (mouse.x - view.panX) / view.zoom
       const docY = (mouse.y - view.panY) / view.zoom
       const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
@@ -226,7 +157,7 @@ export const healingBrushTool: Tool = {
     void w; void h
     const opts = getOptions('healing-brush')
     const size = opts.size ?? 40
-    if (hst.active || opts.sample === 'pattern') drawBrushCursor(ctx, mouse, size, view.zoom)
+    if (hst.active) drawBrushCursor(ctx, mouse, size, view.zoom)
     else if (engine.cloneSource && hst.source) drawBrushCursor(ctx, mouse, size, view.zoom)
     else drawCross(ctx, mouse)
   },
@@ -234,29 +165,21 @@ export const healingBrushTool: Tool = {
 
 function healDab(x: number, y: number, p: PointerInfo) {
   const doc = engine.activeDoc
-  if (!doc) return
+  if (!doc || !hst.source || !hst.ref) return
+  const src = engine.cloneSource
+  if (!src) return
   const opts = getOptions('healing-brush')
   const settings = brushSettingsFrom(opts)
   const r = settings.size / 2
-  let dabCanvas: HTMLCanvasElement | null = null
-
-  if (opts.sample === 'pattern') {
-    dabCanvas = buildHealingPatternDab(x, y, r, settings.hardness, opts)
-  } else {
-    if (!hst.source || !hst.ref) return
-    const src = engine.cloneSource
-    if (!src) return
-    const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
-    const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
-    const mirrored = opts.mirrored === true
-    const sp = sourcePointFor(x, y, hst.ref.x, hst.ref.y, src.x, src.y, rot, mirrored, scale)
-    dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale)
-  }
-
+  const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
+  const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
+  const mirrored = opts.mirrored === true
+  const sp = sourcePointFor(x, y, hst.ref.x, hst.ref.y, src.x, src.y, rot, mirrored, scale)
+  const dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale)
   if (!dabCanvas) return
   const flow = pressureFlow(p.pressure, p.pointerType === 'pen' && opts.pressure !== false, settings.flow / 100)
   engine.dab(x, y, (ctx, dx, dy) => {
-    ctx.drawImage(dabCanvas!, dx - dabCanvas!.width / 2, dy - dabCanvas!.height / 2)
+    ctx.drawImage(dabCanvas, dx - dabCanvas.width / 2, dy - dabCanvas.height / 2)
   }, flow)
 }
 
@@ -357,25 +280,21 @@ export const spotHealingTool: Tool = {
     const mask = spotMask
     spotMask = null
 
-    const outputNew = opts.output === 'new'
-    const sourceLayer = engine.layerCanvasDocSpace(layer.id)
-    if (!sourceLayer) return
-    // Heal in DOC space. Sample All Layers controls only the source pixels;
-    // the final healed patch is masked before it reaches the destination, so
-    // sampling the composite never flattens unrelated layers into this one.
+    const l = engine.mutateLayerPixels(layer.id)
+    if (!l?.canvas) return
+    // heal in DOC space (masks are doc-sized): bake the offset into a work
+    // copy, then write the patch back through the offset — off-canvas pixels
+    // in the layer canvas survive untouched
+    const ox = l.offsetX ?? 0, oy = l.offsetY ?? 0
     const work = opts.sampleAllLayers === true
       ? cloneCanvas(getFlatComposite(doc))
-      : cloneCanvas(sourceLayer)
+      : createCanvas(doc.width, doc.height)
+    if (opts.sampleAllLayers !== true) ctx2d(work).drawImage(l.canvas, ox, oy)
     const img = getImageData(work)
-    const original = new ImageData(img.width, img.height)
-    original.data.set(img.data)
 
-    // Structure controls how tightly we preserve the painted footprint.
-    // Lower structure values synthesize a slightly wider neighborhood.
-    const structure = clamp(Number(opts.structure) || 5, 1, 7)
+    // hardness-aware mask, dilated 1px so edge pixels get resampled
     let m = getMaskAlpha(mask)
-    const dilation = Math.max(1, Math.round((8 - structure) / 2))
-    m = dilateMask(m, doc.width, doc.height, dilation)
+    m = dilateMask(m, doc.width, doc.height, 1)
     const hasMask = m.some(v => v > 0)
     if (!hasMask) return
 
@@ -400,42 +319,18 @@ export const spotHealingTool: Tool = {
       store.setProgress(null)
     }
 
-    // Photoshop-style Color adaptation: match the healed low-frequency tone
-    // to a local proximity reconstruction while retaining synthesized detail.
-    const colorAdapt = clamp(Number(opts.color) || 0, 0, 10)
-    if (colorAdapt > 0) {
-      const localTone = new ImageData(original.width, original.height)
-      localTone.data.set(original.data)
-      frequencyHealProximity(localTone, m, Math.max(6, (opts.size ?? 40) * (.35 + colorAdapt * .04)))
-      const lowR = Math.max(2, Math.round((opts.size ?? 40) * (.04 + colorAdapt * .018)))
-      frequencyHeal(img, localTone, m, lowR)
-    }
-
-    // Isolate ONLY the healed footprint. This is critical when Sample All
-    // Layers is enabled: the composite is a sampling source, never a flatten.
+    // commit through a patch canvas so the selection mask is respected
     const patch = createCanvas(doc.width, doc.height)
     putImageData(patch, img)
-    const alphaMask = createCanvas(doc.width, doc.height)
-    const amd = new ImageData(doc.width, doc.height)
-    for (let i = 0, j = 3; i < m.length; i++, j += 4) {
-      amd.data[j] = m[i]
-    }
-    putImageData(alphaMask, amd)
     const pc = ctx2d(patch)
-    pc.globalCompositeOperation = 'destination-in'
-    pc.drawImage(alphaMask, 0, 0)
-    if (doc.selection) pc.drawImage(doc.selection.mask, 0, 0)
-    pc.globalCompositeOperation = 'source-over'
-
-    if (outputNew) {
-      engine.addRasterLayer('Spot Healing', { canvas: patch })
-    } else {
-      const l = engine.mutateLayerPixels(layer.id)
-      if (!l?.canvas) return
-      ctx2d(l.canvas).drawImage(patch, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
-      engine.pushHistory('Spot Healing')
-      engine.emit()
+    if (doc.selection) {
+      pc.globalCompositeOperation = 'destination-in'
+      pc.drawImage(doc.selection.mask, 0, 0)
+      pc.globalCompositeOperation = 'source-over'
     }
+    ctx2d(l.canvas).drawImage(patch, -ox, -oy)
+    engine.pushHistory('Spot Healing')
+    engine.emit()
   },
 
     renderOverlay(ctx, view, w, h, mouse) {
@@ -598,49 +493,10 @@ function finalizeLasso() {
   for (let i = 0, j = 3; i < b.length; i++, j += 4) md.data[j] = b[i]
   putImageData(mask, md)
   lassoMask = mask
-  const patchOpts = getOptions('patch')
-  if (patchOpts.heal === 'pattern') {
-    commitPatternPatch()
-    return
-  }
   patchPhase = 'moving'
   moveDelta = { x: 0, y: 0 }
-  const direction = patchOpts.direction ?? 'source'
-  engine.ui?.toast(direction === 'destination'
-    ? 'Now drag the selected good pixels over the destination and release'
-    : 'Now drag the patch to a source area and release', 'info')
+  engine.ui?.toast('Now drag the patch to a source area and release', 'info')
   engine.requestRender()
-}
-
-function commitPatternPatch() {
-  const doc = engine.activeDoc
-  const layer = engine.activeLayer
-  if (!doc || !layer || !lassoMask) { resetPatch(); return }
-  const opts = getOptions('patch')
-  const l = engine.mutateLayerPixels(layer.id)
-  if (!l?.canvas) { resetPatch(); return }
-
-  const pattern = createCanvas(doc.width, doc.height)
-  const pc = ctx2d(pattern)
-  paintBuiltinPattern(pc, doc.width, doc.height, {
-    kind: String(opts.pattern ?? 'checker'),
-    scale: clamp((Number(opts.patternScale) || 100) / 100, .25, 4),
-    offsetX: Number(opts.patternOffsetX) || 0,
-    offsetY: Number(opts.patternOffsetY) || 0,
-    fg: getFgColor(),
-    bg: getBgColor(),
-    originX: 0,
-    originY: 0,
-  })
-  pc.globalCompositeOperation = 'destination-in'
-  pc.drawImage(lassoMask, 0, 0)
-  if (doc.selection) pc.drawImage(doc.selection.mask, 0, 0)
-  pc.globalCompositeOperation = 'source-over'
-
-  ctx2d(l.canvas).drawImage(pattern, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
-  resetPatch()
-  engine.pushHistory('Patch Pattern')
-  engine.emit()
 }
 
 export const patchTool: Tool = {
@@ -726,27 +582,18 @@ export const patchTool: Tool = {
       ctx.lineWidth = 1 / view.zoom
       ctx.setLineDash([4 / view.zoom, 3 / view.zoom])
       ctx.stroke(lassoPath)
-      // Ghost preview mirrors the actual commit direction.
-      // Source mode: moved outline samples the pixels UNDER the moved outline.
-      // Destination mode: the originally selected pixels travel with the outline.
+      // ghost: source preview at the dragged location
       const ghostLayer = engine.activeLayer
       const layerCv = ghostLayer ? engine.layerCanvas(ghostLayer.id) : null
       if (layerCv && ghostLayer) {
+        // raster canvases may be offset — register the ghost at its doc rect
         const gox = ghostLayer.kind === 'raster' ? (ghostLayer.offsetX ?? 0) : 0
         const goy = ghostLayer.kind === 'raster' ? (ghostLayer.offsetY ?? 0) : 0
-        const direction = getOptions('patch').direction ?? 'source'
         ctx.save()
         ctx.translate(dx, dy)
         ctx.clip(lassoPath)
         ctx.globalAlpha = 0.55
-        if (direction === 'source') {
-          // Keep image coordinates stationary while only the clip path moves.
-          ctx.translate(-dx, -dy)
-          ctx.drawImage(layerCv, gox, goy)
-        } else {
-          // Carry the selected source pixels with the dragged patch.
-          ctx.drawImage(layerCv, gox, goy)
-        }
+        ctx.drawImage(layerCv, gox, goy)
         ctx.restore()
       }
       ctx.save()
@@ -764,12 +611,9 @@ export const patchTool: Tool = {
       ctx.font = '11px ui-sans-serif, sans-serif'
       ctx.textAlign = 'center'
       ctx.fillStyle = 'rgba(0,0,0,0.75)'
-      const hint = (getOptions('patch').direction ?? 'source') === 'destination'
-        ? 'drag to destination · release to apply · Esc cancels'
-        : 'drag to source · release to apply · Esc cancels'
-      ctx.fillText(hint, hx + 1, hy + 1)
+      ctx.fillText('drag to source · release to apply · Esc cancels', hx + 1, hy + 1)
       ctx.fillStyle = '#4ec9b0'
-      ctx.fillText(hint, hx, hy)
+      ctx.fillText('drag to source · release to apply · Esc cancels', hx, hy)
       ctx.restore()
     } else {
       drawCross(ctx, mouse)
@@ -782,67 +626,51 @@ function commitPatch() {
   const layer = engine.activeLayer
   if (!doc || !layer || !lassoMask || !lassoBBox || !lassoPath) { resetPatch(); return }
   const opts = getOptions('patch')
-  const direction = opts.direction === 'destination' ? 'destination' : 'source'
 
-  // Sampling source and output destination are deliberately separate. When
-  // Sample All Layers is enabled we sample the flattened composite, but write
-  // only the healed patch into the active layer — never flatten other layers.
-  const activeBefore = engine.layerCanvasDocSpace(layer.id)
-  const sampled = opts.sampleAllLayers === true ? getFlatComposite(doc) : activeBefore
-  if (!activeBefore || !sampled) { resetPatch(); return }
-  const targetBefore = cloneCanvas(activeBefore)
-  const sourceBefore = cloneCanvas(sampled)
+  // snapshot the ORIGINAL pixels before mutation (source comes from here)
+  // — doc-space so the lasso/region math below (doc coords) aligns
+  const layerCv = engine.layerCanvasDocSpace(layer.id)
+  if (!layerCv) { resetPatch(); return }
+  const before = cloneCanvas(layerCv)
 
   const l = engine.mutateLayerPixels(layer.id)
   if (!l?.canvas) { resetPatch(); return }
 
   const dx = Math.round(moveDelta.x), dy = Math.round(moveDelta.y)
   if (Math.abs(dx) + Math.abs(dy) < 1) {
+    // no drag — treat as cancel but keep the lasso for a retry
     moveStart = null
     moveDelta = { x: 0, y: 0 }
     engine.requestRender()
     return
   }
 
-  const targetMask = direction === 'source'
-    ? cloneCanvas(lassoMask)
-    : (() => {
-        const m = createCanvas(doc.width, doc.height)
-        ctx2d(m).drawImage(lassoMask!, dx, dy)
-        return m
-      })()
-
-  // Build only the patch pixels. Source mode samples from the dragged-to area
-  // and writes back into the original lasso. Destination mode carries the
-  // originally selected good pixels to the dragged destination.
+  // copy the source region (translated) masked by the lasso
   const tmp = createCanvas(doc.width, doc.height)
   const tc = ctx2d(tmp)
-  if (direction === 'source') tc.drawImage(sourceBefore, -dx, -dy)
-  else tc.drawImage(sourceBefore, dx, dy)
+  // Destination stays in place; the dragged offset points at the source.
+  tc.drawImage(before, -dx, -dy)
   tc.globalCompositeOperation = 'destination-in'
-  tc.drawImage(targetMask, 0, 0)
+  tc.drawImage(lassoMask, 0, 0)
   tc.globalCompositeOperation = 'source-over'
 
-  const result = cloneCanvas(targetBefore)
+  // composited candidate = original + masked copy
+  const result = cloneCanvas(before)
   const rc = ctx2d(result)
   rc.drawImage(tmp, 0, 0)
 
-  const targetBBox: Rect = direction === 'source'
-    ? { ...lassoBBox }
-    : { x: lassoBBox.x + dx, y: lassoBBox.y + dy, w: lassoBBox.w, h: lassoBBox.h }
-
   if (opts.heal !== 'texture') {
-    // Match low-frequency color/lighting to the destination while retaining
-    // the sampled high-frequency texture.
+    // frequency matching: blend the destination's low frequency into the patch
     const pad = Math.max(4, Math.round(Math.min(lassoBBox.w, lassoBBox.h) / 6))
     const region = clampedRect(
-      { x: targetBBox.x - pad, y: targetBBox.y - pad, w: targetBBox.w + pad * 2, h: targetBBox.h + pad * 2 },
+      { x: Math.min(lassoBBox.x, lassoBBox.x + dx) - pad, y: Math.min(lassoBBox.y, lassoBBox.y + dy) - pad,
+        w: lassoBBox.w + Math.abs(dx) + pad * 2, h: lassoBBox.h + Math.abs(dy) + pad * 2 },
       doc.width, doc.height
     )
     if (region.w > 0 && region.h > 0) {
       const target = rc.getImageData(region.x, region.y, region.w, region.h)
-      const base = ctx2d(targetBefore).getImageData(region.x, region.y, region.w, region.h)
-      const maskRegion = ctx2d(targetMask).getImageData(region.x, region.y, region.w, region.h)
+      const base = ctx2d(before).getImageData(region.x, region.y, region.w, region.h)
+      const maskRegion = ctx2d(lassoMask).getImageData(region.x, region.y, region.w, region.h)
       const restrict = new Uint8ClampedArray(region.w * region.h)
       for (let i = 0, j = 3; i < restrict.length; i++, j += 4) restrict[i] = maskRegion.data[j]
       const diffusion = clamp(Number(opts.diffusion) || 5, 1, 7)
@@ -852,24 +680,11 @@ function commitPatch() {
     }
   }
 
-  // Respect any active selection in addition to the patch lasso.
-  if (doc.selection) {
-    const diff = createCanvas(doc.width, doc.height)
-    const dc = ctx2d(diff)
-    dc.drawImage(result, 0, 0)
-    dc.globalCompositeOperation = 'destination-in'
-    dc.drawImage(doc.selection.mask, 0, 0)
-    dc.globalCompositeOperation = 'source-over'
-    const final = cloneCanvas(targetBefore)
-    ctx2d(final).drawImage(diff, 0, 0)
-    // Only overwrite the document-space area; preserve raster pixels hanging
-    // outside the canvas so moving the layer back can still reveal them.
-    ctx2d(l.canvas).drawImage(final, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
-  } else {
-    ctx2d(l.canvas).drawImage(result, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
-  }
+  // draw the healed region back into the layer (outside the lasso the heal
+  // diff is ~0, so writing the full region rect is safe) — through the offset
+  ctx2d(l.canvas).drawImage(result, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
 
   resetPatch()
-  engine.pushHistory(direction === 'destination' ? 'Patch Destination' : 'Patch Source')
+  engine.pushHistory('Patch')
   engine.emit()
 }

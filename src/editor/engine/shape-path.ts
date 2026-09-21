@@ -4,28 +4,6 @@ import type { ShapeSpec } from '../types'
 export function traceShapePath(ctx: CanvasRenderingContext2D, spec: ShapeSpec) {
   const { x, y, w, h, shape } = spec
   ctx.beginPath()
-  if (shape === 'path' && spec.pathAnchors?.length) {
-    const a = spec.pathAnchors
-    ctx.moveTo(a[0].x, a[0].y)
-    for (let i = 1; i < a.length; i++) {
-      const p0 = a[i - 1], p1 = a[i]
-      ctx.bezierCurveTo(
-        p0.x + p0.outX, p0.y + p0.outY,
-        p1.x + p1.inX, p1.y + p1.inY,
-        p1.x, p1.y,
-      )
-    }
-    if (spec.pathClosed && a.length >= 2) {
-      const p0 = a[a.length - 1], p1 = a[0]
-      ctx.bezierCurveTo(
-        p0.x + p0.outX, p0.y + p0.outY,
-        p1.x + p1.inX, p1.y + p1.inY,
-        p1.x, p1.y,
-      )
-      ctx.closePath()
-    }
-    return
-  }
   if (shape === 'ellipse') {
     ctx.ellipse(x + w / 2, y + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2)
     return

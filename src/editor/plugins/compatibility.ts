@@ -2,12 +2,10 @@ import type { PluginCompatibilityReport, PluginManifest, StoredPlugin } from './
 
 const SUPPORTED_UXP = [
   'entrypoints.setup', 'photoshop.action.batchPlay', 'photoshop.core.executeAsModal',
-  'photoshop.app.activeDocument', 'photoshop.imaging', 'photoshop.imaging.getPixels',
-  'photoshop.imaging.putPixels', 'photoshop.imaging.getSelection', 'photoshop.imaging.putSelection',
-  'uxp.storage.localFileSystem',
+  'photoshop.app.activeDocument', 'uxp.storage.localFileSystem',
 ]
 const UNSUPPORTED_UXP = [
-  'photoshop.app.batch', 'uxp.shell.openExternal',
+  'photoshop.imaging', 'photoshop.app.batch', 'uxp.shell.openExternal',
   'entrypoints.panels', 'entrypoints.createPanel', 'require("fs")', "require('fs')",
 ]
 
@@ -24,9 +22,6 @@ export function analyzeUxpCompatibility(manifest: any, code = ''): PluginCompati
   const panelCount = entrypoints.filter((e: any) => e?.type === 'panel').length
   const commandCount = entrypoints.filter((e: any) => e?.type === 'command').length
   if (panelCount) warnings.push(`${panelCount} UXP panel entrypoint${panelCount === 1 ? '' : 's'} detected; panels are analyzed but not rendered yet.`)
-  if (/photoshop\s*\.\s*imaging|(?:^|[^a-z])imaging\s*\.\s*(?:getPixels|putPixels|getSelection|putSelection)/i.test(code)) {
-    warnings.push('Photoshop Imaging shim supports 8-bit RGBA get/put pixels, source/target bounds, resizing and selection masks. Advanced color-profile conversion and 16/32-bit component data are not emulated yet.')
-  }
   if (!commandCount && !/entrypoints\s*\.\s*setup/i.test(code)) warnings.push('No command entrypoint was detected. The plugin may only provide panels or background behavior.')
   const host = manifest?.host?.app || manifest?.host?.application || manifest?.host?.name
   if (host && !/photoshop|ps/i.test(String(host))) warnings.push(`Manifest host is ${String(host)}, not Photoshop.`)

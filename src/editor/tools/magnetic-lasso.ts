@@ -39,9 +39,7 @@ function optFeather(): number { return Number(getOptions(TOOL_ID).feather ?? 0.8
 
 // ---------- stroke state ----------
 let points: Vec[] = []            // doc-space dense polyline (~1.5px spacing)
-let anchors: Vec[] = []           // explicit magnetic/manual anchors
 let dragging = false
-let editingAnchor: number | null = null
 let lastDir: Vec | null = null    // unit direction of the last committed step
 let lastShift = false
 let lastAlt = false
@@ -77,7 +75,7 @@ function buildGradient(): void {
     const k = Math.sqrt(mp / 4_000_000)
     const w = Math.max(1, Math.round(doc.width / k))
     const h = Math.max(1, Math.round(doc.height / k))
-    work = resampleCanvas(sampled, w, h)
+    work = resampleCanvas(flat, w, h)
     scale = doc.width / w
   }
   const img = getImageData(work)
@@ -114,33 +112,6 @@ function gradAt(x: number, y: number): number {
 }
 
 // ---------- path following ----------
-
-function rebuildDensePath(): void {
-  if (!anchors.length) { points = []; return }
-  points = [{ ...anchors[0] }]
-  for (let i = 1; i < anchors.length; i++) pushSegment(points[points.length - 1], anchors[i])
-}
-
-function appendAnchor(p: Vec): void {
-  if (!anchors.length) {
-    anchors = [{ ...p }]
-    points = [{ ...p }]
-    return
-  }
-  const last = points[points.length - 1]
-  pushSegment(last, p)
-  anchors.push({ ...p })
-}
-
-function nearestAnchorIndex(x: number, y: number, zoom: number): number | null {
-  const tol = 9 / Math.max(.02, zoom)
-  let best = -1, bestD = tol
-  for (let i = 0; i < anchors.length; i++) {
-    const d = Math.hypot(x - anchors[i].x, y - anchors[i].y)
-    if (d <= bestD) { best = i; bestD = d }
-  }
-  return best >= 0 ? best : null
-}
 
 /** push vertices between a and b at ≤ INTERP_STEP spacing (b included) */
 function pushSegment(a: Vec, b: Vec): void {
@@ -209,7 +180,7 @@ function follow(target: Vec, freehand: boolean): void {
       : snapPoint(last, proj, lastDir ?? { x: ux, y: uy })
     const stepLen = Math.hypot(next.x - last.x, next.y - last.y)
     if (stepLen < 0.5) break // snap re-selected the same point — wait for travel
-    appendAnchor(next)
+    pushSegment(last, next)
     lastDir = { x: (next.x - last.x) / stepLen, y: (next.y - last.y) / stepLen }
   }
 }
@@ -223,8 +194,6 @@ function commit(modeArg?: SelectionCombine): void {
     engine.selectPolygon(points, optFeather(), mode, opts.antiAlias !== false)
   }
   points = []
-  anchors = []
-  editingAnchor = null
   lastDir = null
   dropGradient()
   engine.pokeOverlay()
@@ -233,8 +202,6 @@ function commit(modeArg?: SelectionCombine): void {
 function cancel(): void {
   if (!points.length && !grad) return
   points = []
-  anchors = []
-  editingAnchor = null
   lastDir = null
   dropGradient()
   engine.pokeOverlay()
@@ -253,18 +220,6 @@ export const magneticLassoTool: Tool = {
     lastShift = p.shift
     lastAlt = p.alt
 
-    // Ctrl/Cmd-drag an explicit anchor to reposition it. This rebuilds only
-    // the dense interpolation between the already-snapped anchor positions.
-    if ((p.ctrl || p.meta) && anchors.length) {
-      const hit = nearestAnchorIndex(p.docX, p.docY, doc.view.zoom)
-      if (hit !== null) {
-        editingAnchor = hit
-        dragging = false
-        engine.pokeOverlay()
-        return
-      }
-    }
-
     if (points.length) {
       // open path: close-zone click commits…
       const dStart = Math.hypot(p.docX - points[0].x, p.docY - points[0].y) * doc.view.zoom
@@ -274,10 +229,9 @@ export const magneticLassoTool: Tool = {
         return
       }
       // …otherwise seed a manual anchor at the click and keep tracing
-      appendAnchor({ x: p.docX, y: p.docY })
+      pushSegment(points[points.length - 1], { x: p.docX, y: p.docY })
     } else {
       // new stroke → snapshot the composite + build the gradient map
-      anchors = [{ x: p.docX, y: p.docY }]
       points = [{ x: p.docX, y: p.docY }]
       lastDir = null
       buildGradient()
@@ -287,13 +241,6 @@ export const magneticLassoTool: Tool = {
   },
 
   onPointerMove(p: PointerInfo) {
-    if (editingAnchor !== null) {
-      anchors[editingAnchor] = { x: p.docX, y: p.docY }
-      rebuildDensePath()
-      lastDir = null
-      engine.pokeOverlay()
-      return
-    }
     if (!dragging) {
       if (points.length) engine.pokeOverlay() // rubber line + close-zone ring
       return
@@ -304,11 +251,6 @@ export const magneticLassoTool: Tool = {
   },
 
   onPointerUp(p: PointerInfo) {
-    if (editingAnchor !== null) {
-      editingAnchor = null
-      engine.pokeOverlay()
-      return
-    }
     if (!dragging) return
     dragging = false
     lastShift = p.shift
@@ -324,10 +266,12 @@ export const magneticLassoTool: Tool = {
   onKeyDown(e: KeyboardEvent) {
     if (e.key === 'Enter') { if (points.length >= 3) { commit(); return true } }
     if (e.key === 'Escape') { if (points.length) { cancel(); return true } }
-    if ((e.key === 'Backspace' || e.key === 'Delete') && anchors.length > 1) {
+    if ((e.key === 'Backspace' || e.key === 'Delete') && points.length > 1) {
+      // Magnetic Lasso stores a dense interpolated path, so remove roughly
+      // one frequency step rather than a single invisible 1.5px vertex.
       e.preventDefault()
-      anchors.pop()
-      rebuildDensePath()
+      const n = Math.max(2, Math.ceil(optFrequency() / INTERP_STEP))
+      points.splice(Math.max(1, points.length - n))
       lastDir = null
       engine.pokeOverlay()
       return true
@@ -382,19 +326,6 @@ export const magneticLassoTool: Tool = {
       ctx.stroke()
       ctx.restore()
     }
-
-    // Explicit anchor markers: amber squares. Ctrl/Cmd-drag to reposition.
-    ctx.save()
-    for (let i = 0; i < anchors.length; i++) {
-      const ax = anchors[i].x * zoom + view.panX
-      const ay = anchors[i].y * zoom + view.panY
-      ctx.fillStyle = i === editingAnchor ? '#ffd27a' : '#e8a33d'
-      ctx.strokeStyle = 'rgba(0,0,0,.85)'
-      ctx.lineWidth = 1
-      ctx.fillRect(ax - 2.5, ay - 2.5, 5, 5)
-      ctx.strokeRect(ax - 3, ay - 3, 6, 6)
-    }
-    ctx.restore()
 
     // start point marker
     const fx = points[0].x * zoom + view.panX, fy = points[0].y * zoom + view.panY
