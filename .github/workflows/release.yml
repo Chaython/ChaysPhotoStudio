@@ -429,7 +429,22 @@ jobs:
           set -euo pipefail
           mkdir -p release
           while IFS= read -r -d '' file; do
-            name="$(basename "$file")"
+            rel="${file#dist/}"
+            artifact="${rel%%/*}"
+            original="$(basename "$file")"
+
+            # Preserve the artifact identity for desktop builds. Without this,
+            # Electron and WebView/Tauri packages have deceptively similar
+            # filenames after actions/download-artifact flattens them.
+            case "$artifact" in
+              electron-*|webview-*)
+                name="${artifact}--${original}"
+                ;;
+              *)
+                name="$original"
+                ;;
+            esac
+
             dest="release/$name"
             if [[ -e "$dest" ]]; then
               if cmp -s "$file" "$dest"; then
@@ -441,6 +456,7 @@ jobs:
               echo "  incoming: $file" >&2
               exit 1
             fi
+            echo "$artifact -> $name"
             cp "$file" "$dest"
           done < <(find dist -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \
             -o -name '*.deb' -o -name '*.zip' -o -name '*.tar.gz' \) -print0)
@@ -469,8 +485,8 @@ jobs:
             | Channel | Assets |
             |---|---|
             | 🌐 Web app | `web-standalone.tar.gz` for self-hosting; optional GitHub Pages when `ENABLE_GITHUB_PAGES=true` |
-            | 🖥️ Electron desktop (fully offline) | `ChaysPhotoStudio-Setup-*.exe` installer + `ChaysPhotoStudio-Portable-*-x64.exe` no-install build (Windows) · `ChaysPhotoStudio-*-x64.dmg` / `ChaysPhotoStudio-*-arm64.dmg` (macOS) · `*.AppImage` / `*.deb` (Linux) |
-            | 🪶 Webview shell (native system webview) | `chays-photo-studio-webview_*` bundles — static editor embedded by default |
+            | 🖥️ Electron desktop (fully offline) | Release filenames start with `electron-<platform>-<arch>--`, e.g. `electron-windows-x64--ChaysPhotoStudio-Setup-*.exe` and `electron-windows-x64--ChaysPhotoStudio-Portable-*.exe` |
+            | 🪶 WebView shell (native system webview) | Release filenames start with `webview-<platform>-<arch>--`, e.g. `webview-windows-x64--Chays.Photo.Studio_*_x64-setup.exe` |
             | 🧩 Browser plugin (self-contained — the whole editor bundled inside, works offline) | `chays-photo-studio-extension-*.zip` (Chrome) · `chays-photo-studio-extension-firefox-*.zip` |
             | 🏠 Self-hosting / PWA server | `web-standalone.tar.gz` (Node ≥ 20, `node server.js` — installable as an app from the browser) |
 
