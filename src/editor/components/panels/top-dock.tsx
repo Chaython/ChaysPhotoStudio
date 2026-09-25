@@ -99,7 +99,7 @@ function TopPanelBox({ id, hasDoc }: { id: string; hasDoc: boolean }) {
         <PanelActionsMenu id={id} />
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        {hasDoc ? <Content /> : (
+        {hasDoc || def.home ? <Content /> : (
           <div className="p-3 text-[11px] text-muted-foreground text-center leading-relaxed">
             Open an image or create a document to start editing.
           </div>
