@@ -25,9 +25,12 @@ export function PanelActionsMenu({
   const def = PANEL_MAP[id]
   if (!def) return null
 
+  const explicitSide: DockSide | undefined = Object.prototype.hasOwnProperty.call(dockSide, id)
+    ? dockSide[id]
+    : undefined
   const current: DockSide | 'floating' | 'home' = isFloating
     ? 'floating'
-    : dockSide[id] ?? (def.home ? 'home' : 'right')
+    : explicitSide ?? (def.home ? 'home' : 'right')
   const move = (side: DockSide) => useEditorStore.getState().dockPanel(id, side)
 
   return (
