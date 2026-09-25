@@ -40,7 +40,7 @@ export function canvasPixelCapabilities(): CanvasPixelCapabilities {
       } as any) as (CanvasRenderingContext2D & {
         getContextAttributes?: () => { colorType?: string; colorSpace?: string }
       }) | null
-      const attrs = ctx?.getContextAttributes?.()
+      const attrs = ctx?.getContextAttributes?.() as ({ colorType?: string; colorSpace?: string } | undefined)
       float16Context = attrs?.colorType === 'float16'
       displayP3 = attrs?.colorSpace === 'display-p3'
       if (ctx) {
