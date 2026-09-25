@@ -335,7 +335,7 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
       {activePanel && <DockPanelHeader id={activePanel.id} mobile={mobile} />}
 
       <div className="flex-1 min-h-0 flex flex-col">
-        {!hasDoc ? (
+        {!hasDoc && !activePanel?.home ? (
           <div className="p-4 text-[11px] text-muted-foreground text-center leading-relaxed">
             Open an image or create a document to start editing.
           </div>
@@ -470,7 +470,7 @@ function LeftDockOpen() {
 
       <div className="flex-1 min-h-0 flex flex-col">
         {ActiveContent ? (
-          hasDoc ? <ActiveContent /> : (
+          hasDoc || activePanel?.home ? <ActiveContent /> : (
             <div className="p-4 text-[11px] text-muted-foreground text-center leading-relaxed">
               Open an image or create a document to start editing.
             </div>
