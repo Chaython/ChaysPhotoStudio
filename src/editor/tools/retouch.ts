@@ -108,7 +108,9 @@ function makeRetouch(
       airPos = { x: p.docX, y: p.docY }
       airPointer = p
       const spacing = Math.max(2, (opts.size ?? 60) / 6)
-      for (const d of walkDabs(last.x, last.y, p.docX, p.docY, spacing)) op(d.x, d.y, p)
+      const dabs = walkDabs(last.x, last.y, p.docX, p.docY, spacing)
+      if (!dabs.length) return
+      for (const d of dabs) op(d.x, d.y, p)
       if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
       const doc = engine.activeDoc
       if (doc) invalidateFlat(doc)
@@ -209,6 +211,17 @@ function sharpenCorrection(
   return clamp(detail * amount * edgeWeight, -haloLimit, haloLimit)
 }
 
+let sampledFilterPatchScratch: HTMLCanvasElement | null = null
+
+function sampledFilterPatchCanvas(w: number, h: number): HTMLCanvasElement {
+  if (!sampledFilterPatchScratch || sampledFilterPatchScratch.width !== w || sampledFilterPatchScratch.height !== h) {
+    sampledFilterPatchScratch = createCanvas(w, h)
+  } else {
+    ctx2d(sampledFilterPatchScratch).clearRect(0, 0, w, h)
+  }
+  return sampledFilterPatchScratch
+}
+
 function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: PointerInfo): boolean {
   const state = retouchContext
   const doc = engine.activeDoc
@@ -272,7 +285,7 @@ function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: Poi
     }
   }
 
-  const patch = createCanvas(rw, rh)
+  const patch = sampledFilterPatchCanvas(rw, rh)
   putImageData(patch, out)
   ctx2d(target.canvas).drawImage(patch, x0, y0)
   target._v++

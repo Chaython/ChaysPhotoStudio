@@ -49,7 +49,7 @@ let lastAlt = false
 const INTERP_STEP = 1.5           // target px between committed vertices
 const MAX_POINTS = 12000          // hard committed-path runaway guard
 const MAX_PREVIEW_SEGMENTS = 2400 // display-only budget; committed geometry stays denser
-const MAX_GRADIENT_PIXELS = 2_000_000
+const MAX_GRADIENT_PIXELS = 1_000_000
 
 // ---------- gradient work map (built once per stroke) ----------
 let grad: Float32Array | null = null
@@ -62,7 +62,7 @@ function dropGradient(): void {
 }
 
 /** Sobel gradient magnitude of the flat composite. Edge finding is perceptual,
- *  so large documents use a ≤2MP work map while committed points stay in full
+ *  so large documents use a ≤1MP work map while committed points stay in full
  *  document space. This avoids multi-million-pixel Sobel stalls on tool-down. */
 function buildGradient(): void {
   dropGradient()

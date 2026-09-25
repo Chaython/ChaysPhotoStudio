@@ -30,12 +30,12 @@ export function brushSettingsFrom(opts: Record<string, any>, color?: string): Br
   }
 }
 
-const MAX_DABS_PER_POINTER_EVENT = 512
+const MAX_DABS_PER_POINTER_EVENT = 256
 
 /** Walk dab positions between two points honoring spacing.
  *
  * Pointer streams can occasionally coalesce into a very large jump. Never
- * create thousands of dabs in one JS turn: once the safety budget is reached,
+ * create hundreds or thousands of dabs in one JS turn: once the safety budget is reached,
  * distribute the capped dabs across the whole segment so the stroke still
  * reaches the current pointer without an apparent gap.
  */

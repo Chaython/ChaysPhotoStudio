@@ -17,6 +17,8 @@ let hover: { x: number; y: number } | null = null
 let lastShift = false
 let lastAlt = false
 let editingVertex: number | null = null
+const MAX_POLYGON_PREVIEW_SEGMENTS = 2048
+const MAX_POLYGON_VERTEX_MARKERS = 512
 
 function nearestVertex(p: PointerInfo): number | null {
   const doc = engine.activeDoc
@@ -125,7 +127,10 @@ export const polygonLassoTool: Tool = {
       engine.pokeOverlay()
       return
     }
-    hover = constrainedPoint(p)
+    const next = constrainedPoint(p)
+    const z = Math.max(engine.activeDoc?.view.zoom ?? 1, .02)
+    if (hover && Math.hypot(next.x - hover.x, next.y - hover.y) * z < 0.5) return
+    hover = next
     engine.pokeOverlay()
   },
 
@@ -169,7 +174,10 @@ export const polygonLassoTool: Tool = {
       // rubber band (dual-stroke for contrast on any background)
       ctx.beginPath()
       ctx.moveTo(pts[0].x, pts[0].y)
-      for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y)
+      const pathStride = Math.max(1, Math.ceil(pts.length / MAX_POLYGON_PREVIEW_SEGMENTS))
+      for (let i = pathStride; i < pts.length; i += pathStride) ctx.lineTo(pts[i].x, pts[i].y)
+      const tail = pts[pts.length - 1]
+      if ((pts.length - 1) % pathStride !== 0) ctx.lineTo(tail.x, tail.y)
       if (hover) ctx.lineTo(hover.x, hover.y)
       ctx.strokeStyle = 'rgba(0,0,0,0.8)'
       ctx.lineWidth = 2 / view.zoom
@@ -182,7 +190,8 @@ export const polygonLassoTool: Tool = {
 
       // vertex markers
       ctx.save()
-      for (let i = 0; i < pts.length; i++) {
+      const markerStride = Math.max(1, Math.ceil(pts.length / MAX_POLYGON_VERTEX_MARKERS))
+      for (let i = 0; i < pts.length; i += markerStride) {
         const p = pts[i]
         ctx.beginPath()
         ctx.arc(p.x * view.zoom + view.panX, p.y * view.zoom + view.panY, i === editingVertex ? 4.5 : 3, 0, Math.PI * 2)
@@ -191,6 +200,17 @@ export const polygonLassoTool: Tool = {
         ctx.strokeStyle = 'rgba(0,0,0,.75)'
         ctx.lineWidth = 1
         ctx.stroke()
+      }
+      if (editingVertex !== null && editingVertex % markerStride !== 0) {
+        const p = pts[editingVertex]
+        if (p) {
+          ctx.beginPath()
+          ctx.arc(p.x * view.zoom + view.panX, p.y * view.zoom + view.panY, 4.5, 0, Math.PI * 2)
+          ctx.fillStyle = '#e8a33d'
+          ctx.fill()
+          ctx.strokeStyle = 'rgba(0,0,0,.75)'
+          ctx.stroke()
+        }
       }
       ctx.restore()
 
