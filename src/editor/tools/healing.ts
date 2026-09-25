@@ -407,9 +407,9 @@ export const spotHealingTool: Tool = {
 
     // Read mask/source pixels only from the affected neighborhood.
     const maskPixels = ctx2d(mask).getImageData(workRect.x, workRect.y, workRect.w, workRect.h).data
-    let m = new Uint8ClampedArray(workRect.w * workRect.h)
-    for (let i = 0, j = 3; i < m.length; i++, j += 4) m[i] = maskPixels[j]
-    m = dilateMask(m, workRect.w, workRect.h, dilation)
+    const rawMask = new Uint8ClampedArray(workRect.w * workRect.h)
+    for (let i = 0, j = 3; i < rawMask.length; i++, j += 4) rawMask[i] = maskPixels[j]
+    const m = dilateMask(rawMask, workRect.w, workRect.h, dilation)
     if (!m.some(v => v > 0)) return
 
     const source = opts.sampleAllLayers === true ? getFlatComposite(doc) : sourceLayer
