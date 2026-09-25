@@ -105,11 +105,9 @@ function loadPanelLayout(): {
     const topOrder = Array.isArray(data.topOrder)
       ? data.topOrder.filter((id): id is string => typeof id === 'string').slice(0, 12)
       : []
-    // 'color' is a fixed collapsible SECTION of the right dock, never a tab —
-    // a persisted rightTab of 'color' would render the Color panel twice
     const rightTabRaw = typeof data.rightTab === 'string' ? data.rightTab : 'layers'
     return {
-      rightTab: rightTabRaw === 'color' ? 'layers' : rightTabRaw,
+      rightTab: rightTabRaw,
       floating,
       zTop: typeof data.zTop === 'number' ? data.zTop : Object.values(floating).reduce((m, r) => Math.max(m, r.z), 0),
       dockWidth: clampNum(Math.round(data.dockWidth ?? DOCK_WIDTH_DEFAULT), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX),
@@ -526,24 +524,18 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   dockPanel: (id, side) => set(s => {
-    // side resolution: explicit arg → the side the panel came from → right.
-    // The Color panel is a normal dockable panel everywhere (left dock tab,
-    // top strip box, floating window) — but on the RIGHT it renders as the
-    // fixed collapsible section instead of a tab, so it must never become
-    // rightTab (that would duplicate the Color panel in the dock body).
+    // Every registered panel is treated identically. Explicit side wins;
+    // otherwise a floating panel returns to its last dock, defaulting right.
     const eff: DockSide = side ?? s.panels.dockSide[id] ?? 'right'
-    const isTab = id !== 'color' // color has no tab on the right dock
     if (eff === (s.panels.dockSide[id] ?? 'right') && !s.panels.floating[id]) {
-      // already docked on that side — just activate / make visible
       const panels = {
         ...s.panels,
-        rightTab: eff === 'right' && isTab ? id : s.panels.rightTab,
+        rightTab: eff === 'right' ? id : s.panels.rightTab,
         leftTab: eff === 'left' ? id : s.panels.leftTab,
         leftOpen: eff === 'left' ? true : s.panels.leftOpen,
         topOrder: eff === 'top' && !s.panels.topOrder.includes(id)
           ? [...s.panels.topOrder, id]
           : s.panels.topOrder,
-        colorPanelOpen: id === 'color' && eff === 'right' ? true : s.panels.colorPanelOpen,
       }
       persistPanelLayout(panels)
       return { panels }
@@ -554,13 +546,12 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ...s.panels,
       floating,
       dockSide: { ...s.panels.dockSide, [id]: eff },
-      rightTab: eff === 'right' && isTab ? id : s.panels.rightTab,
+      rightTab: eff === 'right' ? id : s.panels.rightTab,
       leftTab: eff === 'left' ? id : s.panels.leftTab,
       leftOpen: eff === 'left' ? true : s.panels.leftOpen,
       topOrder: eff === 'top'
         ? (s.panels.topOrder.includes(id) ? s.panels.topOrder : [...s.panels.topOrder, id])
         : s.panels.topOrder.filter(tid => tid !== id),
-      colorPanelOpen: id === 'color' && eff === 'right' ? true : s.panels.colorPanelOpen,
     }
     persistPanelLayout(panels)
     return { panels }
@@ -579,10 +570,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (side === 'top') return {} // always visible in the top strip
     const panels = {
       ...s.panels,
-      rightTab: side === 'right' && id !== 'color' ? id : s.panels.rightTab,
+      rightTab: side === 'right' ? id : s.panels.rightTab,
       leftTab: side === 'left' ? id : s.panels.leftTab,
       leftOpen: side === 'left' ? true : s.panels.leftOpen,
-      colorPanelOpen: id === 'color' && side === 'right' ? true : s.panels.colorPanelOpen,
     }
     persistPanelLayout(panels)
     return { panels }
