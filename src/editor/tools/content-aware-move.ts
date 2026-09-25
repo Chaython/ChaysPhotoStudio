@@ -76,6 +76,163 @@ function clampRect(r: Rect, w: number, h: number): Rect {
   return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) }
 }
 
+function sourceCenter() {
+  if (!bounds) return { x: 0, y: 0 }
+  return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 }
+}
+
+function destinationCenter(dx = delta.x, dy = delta.y) {
+  const c = sourceCenter()
+  return { x: c.x + dx, y: c.y + dy }
+}
+
+function transformPoint(
+  x: number,
+  y: number,
+  dx = delta.x,
+  dy = delta.y,
+  t: TransformState = transform,
+) {
+  const sc = sourceCenter()
+  const dc = { x: sc.x + dx, y: sc.y + dy }
+  const ux = (x - sc.x) * t.sx
+  const uy = (y - sc.y) * t.sy
+  const cos = Math.cos(t.rotation), sin = Math.sin(t.rotation)
+  return {
+    x: dc.x + ux * cos - uy * sin,
+    y: dc.y + ux * sin + uy * cos,
+  }
+}
+
+function transformedCorners(
+  dx = delta.x,
+  dy = delta.y,
+  t: TransformState = transform,
+) {
+  if (!bounds) return [] as { x: number; y: number; id: 'nw' | 'ne' | 'se' | 'sw' }[]
+  return [
+    { ...transformPoint(bounds.x, bounds.y, dx, dy, t), id: 'nw' as const },
+    { ...transformPoint(bounds.x + bounds.w, bounds.y, dx, dy, t), id: 'ne' as const },
+    { ...transformPoint(bounds.x + bounds.w, bounds.y + bounds.h, dx, dy, t), id: 'se' as const },
+    { ...transformPoint(bounds.x, bounds.y + bounds.h, dx, dy, t), id: 'sw' as const },
+  ]
+}
+
+function transformedBounds(
+  dx = delta.x,
+  dy = delta.y,
+  t: TransformState = transform,
+): Rect {
+  const corners = transformedCorners(dx, dy, t)
+  if (!corners.length) return { x: 0, y: 0, w: 0, h: 0 }
+  const xs = corners.map(p => p.x), ys = corners.map(p => p.y)
+  const x0 = Math.min(...xs), x1 = Math.max(...xs)
+  const y0 = Math.min(...ys), y1 = Math.max(...ys)
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+function inverseTransformPoint(x: number, y: number) {
+  if (!bounds) return { x: 0, y: 0 }
+  const dc = destinationCenter()
+  const dx = x - dc.x, dy = y - dc.y
+  const cos = Math.cos(-transform.rotation), sin = Math.sin(-transform.rotation)
+  const rx = dx * cos - dy * sin
+  const ry = dx * sin + dy * cos
+  return {
+    x: rx / Math.max(.0001, transform.sx),
+    y: ry / Math.max(.0001, transform.sy),
+  }
+}
+
+function rotationHandlePoint(zoom = 1) {
+  if (!bounds) return { x: 0, y: 0 }
+  const top = transformPoint(bounds.x + bounds.w / 2, bounds.y)
+  const center = destinationCenter()
+  let vx = top.x - center.x, vy = top.y - center.y
+  const len = Math.hypot(vx, vy) || 1
+  vx /= len; vy /= len
+  const distance = 26 / Math.max(.02, zoom)
+  return { x: top.x + vx * distance, y: top.y + vy * distance }
+}
+
+function transformHandleAt(p: PointerInfo): TransformHandle | null {
+  if (!bounds) return null
+  const zoom = Math.max(engine.activeDoc?.view.zoom ?? 1, .02)
+  const hit = 9 / zoom
+  const rotate = rotationHandlePoint(zoom)
+  if (Math.hypot(p.docX - rotate.x, p.docY - rotate.y) <= hit) return 'rotate'
+
+  for (const corner of transformedCorners()) {
+    if (Math.hypot(p.docX - corner.x, p.docY - corner.y) <= hit) return corner.id
+  }
+
+  const local = inverseTransformPoint(p.docX, p.docY)
+  if (Math.abs(local.x) <= bounds.w / 2 && Math.abs(local.y) <= bounds.h / 2) return 'move'
+  return null
+}
+
+function beginTransformDrag(p: PointerInfo): boolean {
+  const handle = transformHandleAt(p)
+  if (!handle) return false
+  const center = destinationCenter()
+  transformDrag = {
+    kind: handle,
+    startX: p.docX,
+    startY: p.docY,
+    startDeltaX: delta.x,
+    startDeltaY: delta.y,
+    startRotation: transform.rotation,
+    startAngle: Math.atan2(p.docY - center.y, p.docX - center.x),
+  }
+  return true
+}
+
+function updateTransformDrag(p: PointerInfo) {
+  if (!bounds || !transformDrag) return
+  const drag = transformDrag
+  if (drag.kind === 'move') {
+    delta = {
+      x: drag.startDeltaX + p.docX - drag.startX,
+      y: drag.startDeltaY + p.docY - drag.startY,
+    }
+    return
+  }
+
+  const center = destinationCenter()
+  if (drag.kind === 'rotate') {
+    const angle = Math.atan2(p.docY - center.y, p.docX - center.x)
+    let rotation = drag.startRotation + angle - drag.startAngle
+    if (p.shift) {
+      const step = Math.PI / 12
+      rotation = Math.round(rotation / step) * step
+    }
+    transform = { ...transform, rotation }
+    return
+  }
+
+  // Corner handles scale around the destination center. Pointer movement is
+  // measured in the subject's unrotated axes; Shift constrains proportions.
+  const dx = p.docX - center.x, dy = p.docY - center.y
+  const cos = Math.cos(-transform.rotation), sin = Math.sin(-transform.rotation)
+  const rx = dx * cos - dy * sin
+  const ry = dx * sin + dy * cos
+  let sx = Math.max(.05, Math.abs(rx) / Math.max(.5, bounds.w / 2))
+  let sy = Math.max(.05, Math.abs(ry) / Math.max(.5, bounds.h / 2))
+  if (p.shift) {
+    const s = Math.max(sx, sy)
+    sx = s; sy = s
+  }
+  transform = { ...transform, sx: Math.min(20, sx), sy: Math.min(20, sy) }
+}
+
+function enterTransformStage() {
+  phase = 'transforming'
+  transform = { sx: 1, sy: 1, rotation: 0 }
+  transformDrag = null
+  engine.ui?.toast('Transform On Drop: drag inside to move, corners to scale, circle to rotate. Enter applies; Escape cancels.', 'info')
+  engine.pokeOverlay()
+}
+
 function finalizeLasso() {
   const doc = engine.activeDoc
   if (!doc || points.length < 3) { reset(); return }
