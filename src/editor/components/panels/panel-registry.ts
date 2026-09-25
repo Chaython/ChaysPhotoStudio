@@ -1,6 +1,6 @@
 'use client'
 // Panel registry — single source of truth for dockable/floating editor panels.
-// The dock renders tabs from this list; FloatingPanels renders windows from it.
+// Every panel follows the same lifecycle: dock left/right/top or float as a window.
 // NOTE: this module imports panel components (which import the store) — keep it
 // free of store imports to avoid a circular dependency.
 import type { ComponentType } from 'react'
@@ -33,70 +33,68 @@ export interface PanelDef {
   defaultFloat: { w: number; h: number }
   /** minimum floating window size */
   minFloat: { w: number; h: number }
-  /** 'tab' = icon tab in the dock; 'color' renders as the collapsible top section */
-  dockSlot: 'tab' | 'color'
 }
 
 export const PANELS: PanelDef[] = [
   {
     id: 'color', label: 'Color', icon: Palette, render: ColorPanel,
-    defaultFloat: { w: 252, h: 420 }, minFloat: { w: 200, h: 240 }, dockSlot: 'color',
+    defaultFloat: { w: 252, h: 420 }, minFloat: { w: 200, h: 240 },
   },
   {
     id: 'layers', label: 'Layers', icon: Layers, render: LayersPanel,
-    defaultFloat: { w: 288, h: 440 }, minFloat: { w: 230, h: 260 }, dockSlot: 'tab',
+    defaultFloat: { w: 288, h: 440 }, minFloat: { w: 230, h: 260 },
   },
   {
     id: 'channels', label: 'Channels', icon: GitBranch, render: ChannelsPanel,
-    defaultFloat: { w: 264, h: 400 }, minFloat: { w: 220, h: 240 }, dockSlot: 'tab',
+    defaultFloat: { w: 264, h: 400 }, minFloat: { w: 220, h: 240 },
   },
   {
     id: 'history', label: 'History', icon: History, render: HistoryPanel,
-    defaultFloat: { w: 264, h: 400 }, minFloat: { w: 220, h: 240 }, dockSlot: 'tab',
+    defaultFloat: { w: 264, h: 400 }, minFloat: { w: 220, h: 240 },
   },
   {
     id: 'actions', label: 'Actions', icon: Zap, render: ActionsPanel,
-    defaultFloat: { w: 304, h: 440 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
+    defaultFloat: { w: 304, h: 440 }, minFloat: { w: 240, h: 280 },
   },
   {
     id: 'adjustments', label: 'Adjust', icon: SlidersHorizontal, render: AdjustmentsPanel,
-    defaultFloat: { w: 264, h: 430 }, minFloat: { w: 220, h: 260 }, dockSlot: 'tab',
+    defaultFloat: { w: 264, h: 430 }, minFloat: { w: 220, h: 260 },
   },
   {
     id: 'properties', label: 'Props', icon: Settings, render: PropertiesPanel,
-    defaultFloat: { w: 288, h: 470 }, minFloat: { w: 230, h: 300 }, dockSlot: 'tab',
+    defaultFloat: { w: 288, h: 470 }, minFloat: { w: 230, h: 300 },
   },
   {
     id: 'navigator', label: 'Nav', icon: Compass, render: NavigatorPanel,
-    defaultFloat: { w: 268, h: 340 }, minFloat: { w: 220, h: 250 }, dockSlot: 'tab',
+    defaultFloat: { w: 268, h: 340 }, minFloat: { w: 220, h: 250 },
   },
   {
     id: 'histogram', label: 'Hist', icon: BarChart3, render: HistogramPanel,
-    defaultFloat: { w: 284, h: 320 }, minFloat: { w: 220, h: 220 }, dockSlot: 'tab',
+    defaultFloat: { w: 284, h: 320 }, minFloat: { w: 220, h: 220 },
   },
   {
     id: 'timeline', label: 'Timeline', icon: Film, render: TimelinePanel,
-    defaultFloat: { w: 680, h: 280 }, minFloat: { w: 460, h: 200 }, dockSlot: 'tab',
+    defaultFloat: { w: 680, h: 280 }, minFloat: { w: 460, h: 200 },
   },
   {
     id: 'clone-source', label: 'Clone', icon: Stamp, render: CloneSourcePanel,
-    defaultFloat: { w: 292, h: 420 }, minFloat: { w: 240, h: 300 }, dockSlot: 'tab',
+    defaultFloat: { w: 292, h: 420 }, minFloat: { w: 240, h: 300 },
   },
   {
     id: 'info', label: 'Info', icon: Info, render: InfoPanel,
-    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
+    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 },
   },
   {
     id: 'paths', label: 'Paths', icon: PenTool, render: PathsPanel,
-    defaultFloat: { w: 286, h: 420 }, minFloat: { w: 230, h: 260 }, dockSlot: 'tab',
+    defaultFloat: { w: 286, h: 420 }, minFloat: { w: 230, h: 260 },
   },
   {
     id: 'patterns', label: 'Patterns', icon: Grid2X2, render: PatternsPanel,
-    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
+    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 },
   },
   {
     id: 'tool-presets', label: 'Presets', icon: Sliders, render: ToolPresetsPanel,
-    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 }, dockSlot: 'tab',
+    defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 },
   },
 ]
 
@@ -104,5 +102,3 @@ export const PANEL_MAP: Record<string, PanelDef> = Object.fromEntries(
   PANELS.map(p => [p.id, p])
 ) as Record<string, PanelDef>
 
-/** tab-order panel ids (used by the dock tab bar) */
-export const TAB_PANELS: PanelDef[] = PANELS.filter(p => p.dockSlot === 'tab')
