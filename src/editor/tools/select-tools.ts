@@ -24,6 +24,9 @@ import { loadComfyConfig, runComfyWorkflow } from '../ai/providers'
 let drag = newDrag()
 let rect: Rect | null = null
 let objectLasso: { x: number; y: number }[] = []
+let objectLassoBounds: Rect | null = null
+let objectLassoSamplingMul = 1
+const MAX_OBJECT_LASSO_POINTS = 8192
 let objectClick: { x: number; y: number } | null = null
 let detecting = false
 let detectRect: Rect | null = null
@@ -76,7 +79,7 @@ function objectRegionMask(docW: number, docH: number, r: Rect, lasso: { x: numbe
   if (lasso?.length && lasso.length >= 3) {
     oc.beginPath()
     oc.moveTo(lasso[0].x, lasso[0].y)
-    for (const q of lasso.slice(1)) oc.lineTo(q.x, q.y)
+    for (let i = 1; i < lasso.length; i++) oc.lineTo(lasso[i].x, lasso[i].y)
     oc.closePath()
     oc.fill()
   } else {
@@ -147,6 +150,8 @@ export const objectSelectTool: Tool = {
     objectClick = geometry === 'click' ? { x: p.docX, y: p.docY } : null
     rect = geometry === 'click' ? clickSearchRect(p.docX, p.docY) : null
     objectLasso = geometry === 'lasso' ? [{ x: p.docX, y: p.docY }] : []
+    objectLassoBounds = geometry === 'lasso' ? { x: p.docX, y: p.docY, w: 0, h: 0 } : null
+    objectLassoSamplingMul = 1
     engine.pokeOverlay()
   },
 
@@ -155,12 +160,26 @@ export const objectSelectTool: Tool = {
     const geometry = getOptions('object-select').geometry
     if (geometry === 'lasso') {
       const last = objectLasso[objectLasso.length - 1]
-      const step = 1.5 / Math.max(engine.activeDoc?.view.zoom ?? 1, .25)
-      if (!last || Math.hypot(p.docX - last.x, p.docY - last.y) >= step) objectLasso.push({ x: p.docX, y: p.docY })
-      if (objectLasso.length) {
-        const xs = objectLasso.map(q => q.x), ys = objectLasso.map(q => q.y)
-        rect = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+      const step = (1.5 * objectLassoSamplingMul) / Math.max(engine.activeDoc?.view.zoom ?? 1, .25)
+      if (!last || Math.hypot(p.docX - last.x, p.docY - last.y) >= step) {
+        objectLasso.push({ x: p.docX, y: p.docY })
+        if (!objectLassoBounds) {
+          objectLassoBounds = { x: p.docX, y: p.docY, w: 0, h: 0 }
+        } else {
+          const x0 = Math.min(objectLassoBounds.x, p.docX)
+          const y0 = Math.min(objectLassoBounds.y, p.docY)
+          const x1 = Math.max(objectLassoBounds.x + objectLassoBounds.w, p.docX)
+          const y1 = Math.max(objectLassoBounds.y + objectLassoBounds.h, p.docY)
+          objectLassoBounds = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+        }
+        if (objectLasso.length >= MAX_OBJECT_LASSO_POINTS) {
+          const tail = objectLasso[objectLasso.length - 1]
+          objectLasso = objectLasso.filter((_, i) => i === 0 || (i & 1) === 0)
+          if (objectLasso[objectLasso.length - 1] !== tail) objectLasso.push(tail)
+          objectLassoSamplingMul *= 2
+        }
       }
+      rect = objectLassoBounds ? { ...objectLassoBounds } : rect
     } else if (geometry === 'click') {
       objectClick = { x: p.docX, y: p.docY }
       rect = clickSearchRect(p.docX, p.docY)
@@ -178,6 +197,8 @@ export const objectSelectTool: Tool = {
     const click = objectClick ? { ...objectClick } : null
     rect = null
     objectLasso = []
+    objectLassoBounds = null
+    objectLassoSamplingMul = 1
     objectClick = null
     if (!r || r.w < 4 || r.h < 4) { engine.pokeOverlay(); return }
     const opts = getOptions('object-select')
@@ -263,7 +284,10 @@ export const objectSelectTool: Tool = {
         ctx.scale(view.zoom, view.zoom)
         ctx.beginPath()
         ctx.moveTo(poly[0].x, poly[0].y)
-        for (const q of poly.slice(1)) ctx.lineTo(q.x, q.y)
+        const stride = Math.max(1, Math.ceil(poly.length / 2048))
+        for (let i = stride; i < poly.length; i += stride) ctx.lineTo(poly[i].x, poly[i].y)
+        const tail = poly[poly.length - 1]
+        if ((poly.length - 1) % stride !== 0) ctx.lineTo(tail.x, tail.y)
         if (detecting && poly.length >= 3) ctx.closePath()
         ctx.strokeStyle = '#fff'
         ctx.lineWidth = 1 / view.zoom
