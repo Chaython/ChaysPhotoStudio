@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
@@ -11,6 +11,7 @@ import { useEditorStore } from '../../store'
 import type { ControlDef, ToolId } from '../../types'
 import { BrushTipPicker } from './brush-tip-picker'
 import { cn } from '@/lib/utils'
+import * as gradientPresets from '../../plugins/gradient-presets'
 
 /** fixed-height vertical divider — shadcn Separator stretches h-full which
  *  breaks in a wrapping flex row, so the options bar uses plain divs */
@@ -104,6 +105,10 @@ export function ToolOptionsBar({ embedded = false }: { embedded?: boolean }) {
 type ToolGradientStop = { pos: number; color: string; opacity: number }
 
 function GradientToolStopsControl({ value, onChange }: { value: unknown; onChange: (v: ToolGradientStop[]) => void }) {
+  const [, setPresetVersion] = useState(0)
+  useEffect(() => gradientPresets.onChange(() => setPresetVersion(v => v + 1)), [])
+  const presets = gradientPresets.list()
+
   const initial: ToolGradientStop[] = Array.isArray(value) && value.length >= 2
     ? value.map((s: any) => ({
         pos: Math.min(1, Math.max(0, Number(s?.pos) || 0)),
@@ -125,10 +130,10 @@ function GradientToolStopsControl({ value, onChange }: { value: unknown; onChang
   }).join(', ')})`
 
   const replaceStop = (patch: Partial<ToolGradientStop>) => {
-    const next = stops.map((s, i) => i === sel ? { ...s, ...patch } : s).sort((a, b) => a.pos - b.pos)
-    const changed = next.findIndex(s => s === next[sel])
+    const updated = { ...stops[sel], ...patch }
+    const next = stops.map((s, i) => i === sel ? updated : s).sort((a, b) => a.pos - b.pos)
     onChange(next)
-    if (changed >= 0) setSelected(changed)
+    setSelected(Math.max(0, next.indexOf(updated)))
   }
 
   const addStop = () => {
@@ -193,6 +198,47 @@ function GradientToolStopsControl({ value, onChange }: { value: unknown; onChang
             onValueChange={v => replaceStop({ opacity: v[0] })}
           />
           <span className="w-10 text-right font-mono">{Math.round(current?.opacity ?? 100)}%</span>
+        </div>
+
+        <div className="mb-3 flex items-center gap-2">
+          <select
+            className="h-7 min-w-0 flex-1 rounded border border-border bg-background px-1.5 text-[10px]"
+            defaultValue=""
+            onChange={e => {
+              const preset = gradientPresets.getById(e.target.value)
+              if (!preset) return
+              const next = preset.stops.slice(0, 16).map(s => ({
+                pos: Math.min(1, Math.max(0, s.pos)),
+                color: `#${[s.r, s.g, s.b].map(v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('')}`,
+                opacity: Math.round(Math.min(1, Math.max(0, s.a)) * 100),
+              }))
+              if (next.length >= 2) {
+                onChange(next)
+                setSelected(0)
+              }
+              e.currentTarget.value = ''
+            }}
+            aria-label="Imported gradient preset"
+          >
+            <option value="">Imported gradient…</option>
+            {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button
+            type="button"
+            className="h-7 rounded border border-border px-2 text-[10px] hover:bg-accent"
+            onClick={async () => {
+              const preset = await gradientPresets.importGimpGradientFile()
+              if (!preset) return
+              const next = preset.stops.slice(0, 16).map(s => ({
+                pos: Math.min(1, Math.max(0, s.pos)),
+                color: `#${[s.r, s.g, s.b].map(v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('')}`,
+                opacity: Math.round(Math.min(1, Math.max(0, s.a)) * 100),
+              }))
+              if (next.length >= 2) onChange(next)
+            }}
+          >
+            Import .ggr
+          </button>
         </div>
 
         <div className="mt-3 flex items-center gap-2">
