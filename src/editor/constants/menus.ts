@@ -386,6 +386,12 @@ export const MENUS: MenuItem[][] = [
   ],
   // ================= WINDOW =================
   [
+    // Native workspace chrome remains in its built-in location until moved;
+    // revealPanel focuses it wherever the user has arranged it.
+    { id: 'win-tools', label: 'Tools', run: () => store().revealPanel('tools') },
+    { id: 'win-tool-options', label: 'Tool Options', run: () => store().revealPanel('tool-options') },
+    { id: 'win-documents', label: 'Open Files', run: () => store().revealPanel('documents') },
+    S(),
     // Every registered panel is available here, regardless of whether it is
     // docked left/right/top or floating. revealPanel focuses/activates it.
     { id: 'win-color', label: 'Color', run: () => store().revealPanel('color') },
