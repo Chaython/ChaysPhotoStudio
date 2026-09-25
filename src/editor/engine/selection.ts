@@ -1,6 +1,6 @@
 // Selection state management — masks, combine modes, marching-ants contours
 import type { Rect, SelectionCombine, SelectionState, PsDocument } from '../types'
-import { createCanvas, ctx2d, cloneCanvas, getImageData, putImageData, combineMaskAlpha, getMaskAlpha, setMaskAlpha, uid, clampRectToSize } from '../utils/canvas'
+import { createCanvas, ctx2d, cloneCanvas, getImageData, putImageData, setMaskAlpha, uid, clampRectToSize, unionRect } from '../utils/canvas'
 import { gaussianBlurChannel } from '../image-ops/core'
 
 export function maskCanvasFromAlpha(alpha: Uint8ClampedArray, w: number, h: number): HTMLCanvasElement {
@@ -16,15 +16,23 @@ export function selectionFromMask(mask: HTMLCanvasElement, v = 1): SelectionStat
 
 export function computeBounds(mask: HTMLCanvasElement): Rect {
   const { width: w, height: h } = mask
-  const d = getImageData(mask).data
+  const mc = ctx2d(mask)
   let minX = w, minY = h, maxX = -1, maxY = -1
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (d[(y * w + x) * 4 + 3] > 0) {
+
+  // Scan in strips to cap peak ImageData allocation on very large documents.
+  const rowsPerStrip = Math.max(1, Math.min(256, Math.floor(4_000_000 / Math.max(1, w))))
+  for (let y0 = 0; y0 < h; y0 += rowsPerStrip) {
+    const rows = Math.min(rowsPerStrip, h - y0)
+    const d = mc.getImageData(0, y0, w, rows).data
+    for (let y = 0; y < rows; y++) {
+      const gy = y0 + y
+      const row = y * w
+      for (let x = 0; x < w; x++) {
+        if (d[(row + x) * 4 + 3] <= 0) continue
         if (x < minX) minX = x
         if (x > maxX) maxX = x
-        if (y < minY) minY = y
-        if (y > maxY) maxY = y
+        if (gy < minY) minY = gy
+        if (gy > maxY) maxY = gy
       }
     }
   }
@@ -40,15 +48,35 @@ export function combineSelection(
     if (mode === 'new') return selectionFromMask(cloneCanvas(mask))
     return selectionFromMask(mask)
   }
-  const a = getMaskAlpha(existing.mask)
-  const b = getMaskAlpha(mask)
-  if (a.length !== b.length) return selectionFromMask(cloneCanvas(mask))
-  const combined = mode === 'add' ? combineMaskAlpha(a, b, 'add')
-    : mode === 'subtract' ? combineMaskAlpha(a, b, 'subtract')
-    : combineMaskAlpha(a, b, 'intersect')
-  const has = combined.some(v => v > 0)
-  if (!has) return null
-  return selectionFromMask(maskCanvasFromAlpha(combined, w, h))
+  if (existing.mask.width !== w || existing.mask.height !== h) return selectionFromMask(cloneCanvas(mask))
+
+  const incomingBounds = computeBounds(mask)
+  if (incomingBounds.w <= 0 || incomingBounds.h <= 0) {
+    return mode === 'intersect' ? null : existing
+  }
+
+  const region = clampRectToSize(
+    unionRect(existing.bounds, incomingBounds),
+    w,
+    h,
+  )
+  if (region.w <= 0 || region.h <= 0) return null
+
+  const aData = ctx2d(existing.mask).getImageData(region.x, region.y, region.w, region.h).data
+  const bData = ctx2d(mask).getImageData(region.x, region.y, region.w, region.h).data
+  const combined = new Uint8ClampedArray(region.w * region.h)
+
+  for (let i = 0, j = 3; i < combined.length; i++, j += 4) {
+    const a = aData[j]
+    const b = bData[j]
+    combined[i] = mode === 'add'
+      ? Math.max(a, b)
+      : mode === 'subtract'
+        ? Math.max(0, a - b)
+        : Math.min(a, b)
+  }
+
+  return selectionFromLocalAlpha(combined, region, w, h, Math.max(existing._v + 1, 1))
 }
 
 /** Build a document-space selection from a local alpha buffer without ever
