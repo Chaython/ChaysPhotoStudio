@@ -21,15 +21,16 @@ import { getViewport, setCursorCallbacks } from '../../engine/render'
 import { TOOL_DEFS } from '../../constants/tools'
 import { setActiveTool } from '../../tools/registry'
 import type { ToolId } from '../../types'
-import { Moon, Sun, PanelRight, Wrench, Sparkles, ImagePlus, X, Settings, Keyboard, Puzzle, Info, RotateCcw, LayoutGrid } from 'lucide-react'
+import { PanelRight, Wrench, ImagePlus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 
 export function EditorApp() {
   const hasDoc = useEditorStore(s => !!s.activeDocId)
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [theme, setTheme] = useState<'dark' | 'light' | 'oled'>(() => {
+    if (typeof window === 'undefined') return 'dark'
+    const saved = window.localStorage.getItem('chays-photo-studio-theme')
+    return saved === 'light' || saved === 'oled' || saved === 'dark' ? saved : 'dark'
+  })
   const [mobilePanels, setMobilePanels] = useState(false)
   const [mobileTools, setMobileTools] = useState(false)
   const [dropping, setDropping] = useState(false)
@@ -37,8 +38,10 @@ export function EditorApp() {
   useKeyboardShortcuts()
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark')
+    document.documentElement.classList.toggle('dark', theme !== 'light')
+    document.documentElement.classList.toggle('oled', theme === 'oled')
     document.documentElement.classList.toggle('zphoto', true)
+    window.localStorage.setItem('chays-photo-studio-theme', theme)
   }, [theme])
 
   // engine → store bridge + ui bridge
@@ -241,8 +244,7 @@ export function EditorApp() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none" style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
-      <TopBar theme={theme} setTheme={setTheme} />
-      <MenuBar />
+      <MenuBar theme={theme} setTheme={setTheme} />
       <div className="flex-1 min-h-0 flex flex-col-reverse md:flex-row">
         {/* mobile: panels drawer above canvas; desktop: toolbar + left dock + canvas + right dock */}
         <div className="flex flex-1 min-h-0 min-w-0">
@@ -306,79 +308,6 @@ export function EditorApp() {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-function TopBar({ theme, setTheme }: { theme: 'dark' | 'light'; setTheme: (t: 'dark' | 'light') => void }) {
-  const openDialog = useEditorStore(s => s.openDialog)
-  const resetLayout = useEditorStore(s => s.resetPanelLayout)
-  return (
-    <div className="h-9 flex items-center gap-2 px-3 bg-panel border-b flex-shrink-0">
-      <div className="flex items-center gap-2">
-        <div className="w-5 h-5 rounded bg-primary/20 border border-primary/40 flex items-center justify-center">
-          <span className="text-primary text-[10px] font-bold">C</span>
-        </div>
-        <span className="text-xs font-semibold tracking-tight">Chay's Photo Studio</span>
-        <span className="text-[9px] text-muted-foreground border rounded px-1 py-px">v1.0</span>
-      </div>
-      <span className="flex-1" />
-      <button
-        className="flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-primary/15 border border-primary/40 text-primary text-[11px] font-medium hover:bg-primary/25 active:scale-95 transition-all"
-        onClick={() => useEditorStore.getState().openDialog('ai-generate')}
-        title="AI Generate — create an image from a text prompt"
-        aria-label="AI Generate: create an image from a text prompt"
-      >
-        <Sparkles size={12} />
-        <span className="hidden sm:inline">Generate</span>
-      </button>
-      <button
-        className="text-muted-foreground hover:text-foreground p-1.5 rounded hover:bg-accent"
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        title="Toggle theme"
-        aria-label="Toggle theme"
-      >
-        {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-      </button>
-      {/* settings gear — always visible quick settings menu */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className="text-muted-foreground hover:text-foreground p-1.5 rounded hover:bg-accent"
-            title="Settings"
-            aria-label="Settings"
-          >
-            <Settings size={14} />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" align="end" className="z-50 min-w-52">
-          <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground select-none">Settings</div>
-          <DropdownMenuItem className="gap-2 text-xs" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
-            <span className="flex-1">{theme === 'dark' ? 'Light' : 'Dark'} theme</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('shortcuts')}>
-            <Keyboard size={13} />
-            <span className="flex-1">Keyboard shortcuts</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('customize-toolbar')}>
-            <LayoutGrid size={13} />
-            <span className="flex-1">Customize toolbar</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('plugin-manager')}>
-            <Puzzle size={13} />
-            <span className="flex-1">Plugin manager</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="gap-2 text-xs" onClick={() => resetLayout()}>
-            <RotateCcw size={13} />
-            <span className="flex-1">Reset panel layout</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('about')}>
-            <Info size={13} />
-            <span className="flex-1">About &amp; License</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </div>
   )
 }
