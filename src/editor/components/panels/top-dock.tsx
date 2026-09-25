@@ -81,7 +81,7 @@ function TopPanelBox({ id, hasDoc }: { id: string; hasDoc: boolean }) {
   if (!def) return null
   const Icon = def.icon
   const Content = def.render
-  const w = Math.max(200, Math.min(360, def.defaultFloat.w))
+  const w = def.topWidth ?? Math.max(200, Math.min(360, def.defaultFloat.w))
 
   return (
     <div role="listitem" className="flex flex-col border-r border-border/60 flex-shrink-0 bg-panel" style={{ width: w }}>
