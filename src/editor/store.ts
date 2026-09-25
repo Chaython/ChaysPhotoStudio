@@ -107,7 +107,7 @@ function loadPanelLayout(): {
       if (side === 'left' || side === 'right' || side === 'top') dockSide[id] = side
     }
     const topOrder = Array.isArray(data.topOrder)
-      ? data.topOrder.filter((id): id is string => typeof id === 'string').slice(0, 12)
+      ? data.topOrder.filter((id): id is string => typeof id === 'string').slice(0, 32)
       : []
     const rightTabRaw = typeof data.rightTab === 'string' ? data.rightTab : 'layers'
     return {
