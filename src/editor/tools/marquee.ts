@@ -151,7 +151,7 @@ function previewSelectionTransform(p: PointerInfo) {
     mc.translate(cx, cy)
     mc.rotate(a)
     mc.translate(-cx, -cy)
-    mc.drawImage(st.originalMask, 0, 0)
+    mc.drawImage(st.originalMask, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h)
     mc.setTransform(1, 0, 0, 1, 0, 0)
     nextBounds = rotatedBounds(b, a)
     st.changed = Math.abs(a) > 1e-4
@@ -162,7 +162,7 @@ function previewSelectionTransform(p: PointerInfo) {
       if (Math.abs(dx) >= Math.abs(dy)) dy = 0
       else dx = 0
     }
-    mc.drawImage(st.originalMask, dx, dy)
+    mc.drawImage(st.originalMask, b.x, b.y, b.w, b.h, b.x + dx, b.y + dy, b.w, b.h)
     nextBounds = { x: b.x + dx, y: b.y + dy, w: b.w, h: b.h }
     st.changed = !!(dx || dy)
   } else {
@@ -210,7 +210,8 @@ function previewSelectionMove(dx: number, dy: number) {
   const mask = selectionMove.previewMask
   const mc = ctx2d(mask)
   mc.clearRect(0, 0, mask.width, mask.height)
-  mc.drawImage(selectionMove.originalMask, dx, dy)
+  const b = selectionMove.bounds
+  mc.drawImage(selectionMove.originalMask, b.x, b.y, b.w, b.h, b.x + dx, b.y + dy, b.w, b.h)
   doc.selection = previewSelectionState(mask, clipSelectionBounds({
     x: selectionMove.bounds.x + dx,
     y: selectionMove.bounds.y + dy,
