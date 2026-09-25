@@ -88,7 +88,7 @@ function TopPanelBox({ id, hasDoc }: { id: string; hasDoc: boolean }) {
       <div
         className="h-7 flex items-center gap-1 px-1.5 border-b bg-panel/80 flex-shrink-0 cursor-grab active:cursor-grabbing"
         title={`${def.label} — drag or double-click to float`}
-        onDoubleClick={() => useEditorStore.getState().floatPanel(id)}
+        onDoubleClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
