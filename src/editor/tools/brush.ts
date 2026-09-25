@@ -59,6 +59,7 @@ const RAD = Math.PI / 180
 let decoratedDabCanvas: HTMLCanvasElement | null = null
 let dualMaskCanvas: HTMLCanvasElement | null = null
 const textureTiles = new Map<string, HTMLCanvasElement>()
+const MAX_TEXTURE_TILES = 128
 
 function scratchCanvas(which: 'dab' | 'dual', size: number): HTMLCanvasElement {
   const s = Math.max(4, Math.ceil(size))
@@ -115,6 +116,10 @@ function brushTextureTile(kind: string, scalePct: number, depthPct: number, inve
     img.data[i + 3] = alpha
   }
   cx.putImageData(img, 0, 0)
+  if (textureTiles.size >= MAX_TEXTURE_TILES) {
+    const oldest = textureTiles.keys().next().value
+    if (oldest !== undefined) textureTiles.delete(oldest)
+  }
   textureTiles.set(key, cv)
   return cv
 }
