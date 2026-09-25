@@ -500,6 +500,9 @@ export const contentAwareMoveTool: Tool = {
     } else if (phase === 'moving') {
       moveStart = { x: p.docX, y: p.docY }
       delta = { x: 0, y: 0 }
+      transform = { sx: 1, sy: 1, rotation: 0 }
+    } else if (phase === 'transforming') {
+      beginTransformDrag(p)
     }
   },
 
@@ -526,20 +529,30 @@ export const contentAwareMoveTool: Tool = {
       }
       delta = { x: dx, y: dy }
       engine.pokeOverlay()
+    } else if (phase === 'transforming' && transformDrag) {
+      updateTransformDrag(p)
+      engine.pokeOverlay()
     }
   },
 
   onPointerUp() {
     if (committing) return
-    if (phase === 'defining') finalizeLasso()
-    else if (phase === 'moving' && moveStart) {
+    if (phase === 'defining') {
+      finalizeLasso()
+    } else if (phase === 'moving' && moveStart) {
       moveStart = null
-      void commitMove()
+      const opts = getOptions('content-aware-move')
+      if (opts.transformOnDrop === true && Math.abs(delta.x) + Math.abs(delta.y) >= 1) enterTransformStage()
+      else void commitMove()
+    } else if (phase === 'transforming') {
+      transformDrag = null
+      engine.pokeOverlay()
     }
   },
 
   onDoubleClick() {
     if (phase === 'defining' && !committing) finalizeLasso()
+    else if (phase === 'transforming' && !committing) void commitMove()
   },
 
   onKeyDown(e: KeyboardEvent) {
@@ -548,6 +561,12 @@ export const contentAwareMoveTool: Tool = {
       return true
     }
     if (e.key === 'Enter' && phase === 'moving' && !committing) {
+      if (getOptions('content-aware-move').transformOnDrop === true) enterTransformStage()
+      else void commitMove()
+      return true
+    }
+    if (e.key === 'Enter' && phase === 'transforming' && !committing) {
+      transformDrag = null
       void commitMove()
       return true
     }
