@@ -319,8 +319,9 @@ async function commitMove() {
   const layer = engine.activeLayer
   if (!doc || !layer || !mask || !bounds) { reset(); return }
 
-  const dx = Math.round(delta.x), dy = Math.round(delta.y)
-  if (Math.abs(dx) + Math.abs(dy) < 1) {
+  const dx = delta.x, dy = delta.y
+  const transformChanged = Math.abs(transform.sx - 1) + Math.abs(transform.sy - 1) + Math.abs(transform.rotation) > .001
+  if (Math.abs(dx) + Math.abs(dy) < 1 && !transformChanged) {
     moveStart = null
     delta = { x: 0, y: 0 }
     engine.pokeOverlay()
@@ -337,11 +338,10 @@ async function commitMove() {
     const color = clamp(Number(opts.color) || 5, 0, 10)
     const edgeSigma = Math.max(.25, (8 - structure) * .42)
     const edgePad = Math.max(3, Math.ceil(edgeSigma * 4) + 2)
-    const colorPad = Math.max(3, Math.round(Math.min(bounds.w, bounds.h) * .08))
+    const destRect = transformedBounds(dx, dy, transform)
+    const colorPad = Math.max(3, Math.round(Math.min(destRect.w, destRect.h) * .08))
     const inpaintPad = Math.max(24, Math.ceil(Math.min(bounds.w, bounds.h) * .35))
     const pad = Math.max(edgePad, colorPad, inpaintPad)
-
-    const destRect = { x: bounds.x + dx, y: bounds.y + dy, w: bounds.w, h: bounds.h }
     const workRect = clampRectToSize(
       inflateRect(unionRect(bounds, destRect), pad),
       doc.width,
@@ -373,13 +373,30 @@ async function commitMove() {
       putImageData(base, healed)
     }
 
-    const destinationMask = softenedShiftedMaskLocal(sourceMask, dx, dy, edgeSigma)
+    const sc = sourceCenter()
+    const localSourceCx = sc.x - workRect.x
+    const localSourceCy = sc.y - workRect.y
+    const destinationMask = transformedSoftMaskLocal(
+      sourceMask,
+      localSourceCx,
+      localSourceCy,
+      dx,
+      dy,
+      transform,
+      edgeSigma,
+    )
 
-    // The cropped sampled image and mask share the same local registration, so
-    // the document-space move delta is also the correct local shift.
+    // Move/scale/rotate the sampled subject with the exact same transform as
+    // its destination mask. The mask discards all pixels outside the lasso.
     const patch = createCanvas(workRect.w, workRect.h)
     const pc = ctx2d(patch)
-    pc.drawImage(sampled, dx, dy)
+    pc.save()
+    pc.translate(localSourceCx + dx, localSourceCy + dy)
+    pc.rotate(transform.rotation)
+    pc.scale(transform.sx, transform.sy)
+    pc.translate(-localSourceCx, -localSourceCy)
+    pc.drawImage(sampled, 0, 0)
+    pc.restore()
     pc.globalCompositeOperation = 'destination-in'
     pc.drawImage(destinationMask, 0, 0)
     pc.globalCompositeOperation = 'source-over'
@@ -391,10 +408,10 @@ async function commitMove() {
     if (color > 0) {
       const localDest = clampRect(
         {
-          x: bounds.x + dx - workRect.x - colorPad,
-          y: bounds.y + dy - workRect.y - colorPad,
-          w: bounds.w + colorPad * 2,
-          h: bounds.h + colorPad * 2,
+          x: destRect.x - workRect.x - colorPad,
+          y: destRect.y - workRect.y - colorPad,
+          w: destRect.w + colorPad * 2,
+          h: destRect.h + colorPad * 2,
         },
         workRect.w,
         workRect.h,
@@ -406,7 +423,7 @@ async function commitMove() {
         const md = ctx2d(destinationMask).getImageData(localDest.x, localDest.y, localDest.w, localDest.h).data
         const restrict = new Uint8ClampedArray(localDest.w * localDest.h)
         for (let i = 0, j = 3; i < restrict.length; i++, j += 4) restrict[i] = md[j]
-        const lowR = Math.max(2, Math.round(Math.min(bounds.w, bounds.h) * (.025 + color * .012)))
+        const lowR = Math.max(2, Math.round(Math.min(destRect.w, destRect.h) * (.025 + color * .012)))
         frequencyHeal(target, baseData, restrict, lowR)
         rc.putImageData(target, localDest.x, localDest.y)
       }
