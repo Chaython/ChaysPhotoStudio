@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEditorStore, TOP_HEIGHT_DEFAULT } from '../../store'
 import { PANEL_MAP } from './panel-registry'
-import { PanelActionsMenu } from './panel-actions-menu'
+import { PanelContextMenu } from './panel-actions-menu'
 import { AddPanelMenu, useDockDrop } from './panel-dock'
 import { beginWindowDrag } from './floating-panels'
 import { cn } from '@/lib/utils'
@@ -85,19 +85,20 @@ function TopPanelBox({ id, hasDoc }: { id: string; hasDoc: boolean }) {
 
   return (
     <div role="listitem" className="flex flex-col border-r border-border/60 flex-shrink-0 bg-panel" style={{ width: w }}>
-      <div
-        className="h-7 flex items-center gap-1 px-1.5 border-b bg-panel/80 flex-shrink-0 cursor-grab active:cursor-grabbing"
-        title={`${def.label} — drag or double-click to float`}
-        onDoubleClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
-        onPointerDown={onDown}
-        onPointerMove={onMove}
-        onPointerUp={onUp}
-        onPointerCancel={onUp}
-      >
-        <Icon size={11} className="text-primary shrink-0" />
-        <span className="text-[11px] font-medium truncate flex-1 pl-0.5">{def.label}</span>
-        <PanelActionsMenu id={id} />
-      </div>
+      <PanelContextMenu id={id}>
+        <div
+          className="h-7 flex items-center gap-1 px-1.5 border-b bg-panel/80 flex-shrink-0 cursor-grab active:cursor-grabbing"
+          title={`${def.label} — drag/double-click to float · right-click for panel options`}
+          onDoubleClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
+        >
+          <Icon size={11} className="text-primary shrink-0" />
+          <span className="text-[11px] font-medium truncate flex-1 pl-0.5">{def.label}</span>
+        </div>
+      </PanelContextMenu>
       <div className="flex-1 min-h-0 overflow-hidden">
         {hasDoc || def.home ? <Content /> : (
           <div className="p-3 text-[11px] text-muted-foreground text-center leading-relaxed">
