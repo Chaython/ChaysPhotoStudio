@@ -86,8 +86,14 @@ function makeEraser(): Tool {
   }
 
   /** effective per-dab angle: angleFollow → EMA travel direction + offset */
-  function dabAngle(opts: Record<string, any>): number {
+  function dabAngle(opts: Record<string, any>, p?: PointerInfo | null): number {
     const offset = clamp(opts.angle ?? 0, -360, 720)
+    if (p?.pointerType === 'pen') {
+      if (opts.twistAngle === true && Math.abs(p.twist) > .01) return p.twist + offset
+      if (opts.tiltAngle === true && Math.hypot(p.tiltX, p.tiltY) > 1) {
+        return Math.atan2(p.tiltY, p.tiltX) / RAD + offset
+      }
+    }
     if (opts.angleFollow === true && hasDir) {
       return Math.atan2(dirY, dirX) / RAD + offset
     }
@@ -229,20 +235,42 @@ function makeEraser(): Tool {
     }
     lastDab = { x, y }
 
+    const pressure = p?.pointerType === 'pen' ? clamp(p.pressure, 0, 1) : 1
     let radius = settings.size / 2
-    if (p && p.pointerType === 'pen' && opts.pressureSize === true) {
-      radius *= 0.25 + 0.75 * clamp(p.pressure, 0, 1)
+    if (p?.pointerType === 'pen' && opts.pressureSize === true) {
+      const minDiameter = clamp(Number(opts.minDiameter ?? 25), 1, 100) / 100
+      radius *= minDiameter + (1 - minDiameter) * pressure
+    }
+    const sizeJitter = clamp(Number(opts.sizeJitter ?? 0), 0, 100) / 100
+    if (sizeJitter > 0) {
+      const minDiameter = clamp(Number(opts.minDiameter ?? 25), 1, 100) / 100
+      radius *= Math.max(minDiameter, 1 - Math.random() * sizeJitter)
     }
 
-    // ---- flow (pen pressure → opacity; mouse/touch full flow) ----
+    // ---- flow (pen pressure + transfer jitter) ----
     let flow = clamp(settings.flow / 100, 0, 1)
-    if (p && p.pointerType === 'pen' && opts.pressure !== false) flow *= 0.3 + 0.7 * clamp(p.pressure, 0, 1)
+    if (p?.pointerType === 'pen' && opts.pressure !== false) flow *= 0.3 + 0.7 * pressure
+    const flowJitter = clamp(Number(opts.flowJitter ?? 0), 0, 100) / 100
+    if (flowJitter > 0) flow *= 1 - Math.random() * flowJitter
     if (flow <= 0) return
 
     // ---- tip: erase dabs draw in WHITE (destination-out on commit) ----
     const tip = getTip(tipFor(opts))!
-    const tipAngle = tip.rotatable ? dabAngle(opts) : 0
-    const roundness = clamp(opts.roundness ?? 100, 10, 100)
+    let tipAngle = tip.rotatable ? dabAngle(opts, p) : 0
+    if (tip.rotatable) {
+      const angleJitter = clamp(Number(opts.angleJitter ?? 0), 0, 100) / 100
+      if (angleJitter > 0) tipAngle += (Math.random() * 2 - 1) * 180 * angleJitter
+    }
+    let roundness = clamp(opts.roundness ?? 100, 10, 100)
+    if (p?.pointerType === 'pen' && opts.tiltRoundness === true) {
+      const tilt = clamp(Math.hypot(p.tiltX, p.tiltY) / 90, 0, 1)
+      roundness = clamp(roundness * (1 - tilt * .72), 10, 100)
+    }
+    const roundnessJitter = clamp(Number(opts.roundnessJitter ?? 0), 0, 100) / 100
+    if (roundnessJitter > 0) {
+      const minRoundness = clamp(Number(opts.minRoundness ?? 25), 1, 100)
+      roundness = Math.max(minRoundness, roundness * (1 - Math.random() * roundnessJitter))
+    }
     const extent = tipExtentMul(tip.id)
 
     const mode = opts.mode ?? 'brush'
