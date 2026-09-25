@@ -299,7 +299,13 @@ export const moveTool: Tool = {
       const hit = pickLayerAt(p.docX, p.docY)
       if (hit) {
         target = hit
+        const selected = doc.selectedLayerIds ?? []
+        const alreadySelected = selected.includes(hit)
         doc.activeLayerId = hit
+        // Clicking an unselected canvas layer should make it the sole selection.
+        // Preserve an existing multi-selection when the grabbed layer is already
+        // selected so any selected member can still drag the whole group.
+        if (!alreadySelected || selected.length === 0) doc.selectedLayerIds = [hit]
         engine.emit()
       }
     }
