@@ -1,78 +1,84 @@
 'use client'
-import { ArrowUp, Check, Ellipsis, Home, Maximize2, PanelLeft, PanelRight } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, ChevronUp, Home, Maximize2, PanelLeft, PanelRight } from 'lucide-react'
 import { useEditorStore, type DockSide } from '../../store'
 import { PANEL_MAP } from './panel-registry'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 
-export function PanelActionsMenu({
+/**
+ * Zero-footprint panel controls. Right-click panel chrome (tab/title/drag
+ * handle) to arrange it; no visible ellipsis or action button is required.
+ */
+export function PanelContextMenu({
   id,
-  floating = false,
-  className,
+  children,
 }: {
   id: string
-  floating?: boolean
-  className?: string
+  children: React.ReactElement
 }) {
   const dockSide = useEditorStore(s => s.panels.dockSide)
-  const isFloating = useEditorStore(s => !!s.panels.floating[id])
+  const floatingRect = useEditorStore(s => s.panels.floating[id])
   const def = PANEL_MAP[id]
-  if (!def) return null
+  if (!def) return children
 
   const explicitSide: DockSide | undefined = Object.prototype.hasOwnProperty.call(dockSide, id)
     ? dockSide[id]
     : undefined
-  const current: DockSide | 'floating' | 'home' = isFloating
+  const current: DockSide | 'floating' | 'home' = floatingRect
     ? 'floating'
     : explicitSide ?? (def.home ? 'home' : 'right')
+
   const move = (side: DockSide) => useEditorStore.getState().dockPanel(id, side)
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            'h-5 w-5 flex items-center justify-center rounded-sm text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors',
-            className,
-          )}
-          title={`${def.label} panel options`}
-          aria-label={`${def.label} panel options`}
-        >
-          <Ellipsis size={12} />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align="end" className="z-[80] min-w-48">
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent className="z-[90] min-w-52">
         {def.home && (
           <>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => useEditorStore.getState().homePanel(id)}>
+            <ContextMenuItem className="gap-2 text-xs" onSelect={() => useEditorStore.getState().homePanel(id)}>
               <Home size={13} />
               <span className="flex-1">Return to default position</span>
               {current === 'home' && <Check size={12} className="text-primary" />}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            </ContextMenuItem>
+            <ContextMenuSeparator />
           </>
         )}
-        {!floating && current !== 'floating' && (
+
+        {floatingRect ? (
           <>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}>
+            <ContextMenuItem
+              className="gap-2 text-xs"
+              onSelect={() => useEditorStore.getState().collapsePanel(id, !floatingRect.collapsed)}
+            >
+              {floatingRect.collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+              <span className="flex-1">{floatingRect.collapsed ? 'Expand panel' : 'Collapse panel'}</span>
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        ) : (
+          <>
+            <ContextMenuItem
+              className="gap-2 text-xs"
+              onSelect={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
+            >
               <Maximize2 size={13} />
               <span className="flex-1">Float panel</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            </ContextMenuItem>
+            <ContextMenuSeparator />
           </>
         )}
-        <DockItem id={id} label="Dock left" side="left" current={current} onClick={() => move('left')} />
-        <DockItem id={id} label="Dock right" side="right" current={current} onClick={() => move('right')} />
-        <DockItem id={id} label="Dock top" side="top" current={current} onClick={() => move('top')} />
-      </DropdownMenuContent>
-    </DropdownMenu>
+
+        <DockItem id={id} label="Dock left" side="left" current={current} onSelect={() => move('left')} />
+        <DockItem id={id} label="Dock right" side="right" current={current} onSelect={() => move('right')} />
+        <DockItem id={id} label="Dock top" side="top" current={current} onSelect={() => move('top')} />
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -81,20 +87,24 @@ function DockItem({
   label,
   side,
   current,
-  onClick,
+  onSelect,
 }: {
   id: string
   label: string
   side: DockSide
   current: DockSide | 'floating' | 'home'
-  onClick: () => void
+  onSelect: () => void
 }) {
   const Icon = side === 'left' ? PanelLeft : side === 'right' ? PanelRight : ArrowUp
   return (
-    <DropdownMenuItem className="gap-2 text-xs" onClick={onClick} aria-label={`${label}: ${PANEL_MAP[id]?.label ?? id}`}>
+    <ContextMenuItem
+      className="gap-2 text-xs"
+      onSelect={onSelect}
+      aria-label={`${label}: ${PANEL_MAP[id]?.label ?? id}`}
+    >
       <Icon size={13} />
       <span className="flex-1">{label}</span>
       {current === side && <Check size={12} className="text-primary" />}
-    </DropdownMenuItem>
+    </ContextMenuItem>
   )
 }
