@@ -19,10 +19,9 @@
 // CustomEvent (detail.side), and the edge strips render a translucent
 // indicator in this layer.
 import { memo, useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useEditorStore, type PanelRect, type DockSide } from '../../store'
 import { PANEL_MAP } from './panel-registry'
-import { PanelActionsMenu } from './panel-actions-menu'
+import { PanelContextMenu } from './panel-actions-menu'
 import { cn } from '@/lib/utils'
 
 type ResizeEdge = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
@@ -353,24 +352,17 @@ const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps)
       }}
       onPointerDown={focus}
     >
-      {/* title bar = drag handle */}
-      <div
-        className="panel-window-titlebar h-7 flex items-center gap-1 px-1.5 border-b bg-panel/80 flex-shrink-0"
-        onPointerDown={onTitlePointerDown}
-      >
-        <Icon size={11} className="text-primary shrink-0" />
-        <span className="text-[11px] font-medium truncate flex-1 pl-0.5">{def.label}</span>
-        <button
-          type="button"
-          className="h-5 w-5 flex items-center justify-center rounded-sm text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-          title={rect.collapsed ? 'Expand' : 'Collapse'}
-          aria-label={rect.collapsed ? 'Expand panel' : 'Collapse panel'}
-          onClick={() => useEditorStore.getState().collapsePanel(id, !rect.collapsed)}
+      {/* title bar = drag handle; right-click exposes all window actions */}
+      <PanelContextMenu id={id}>
+        <div
+          className="panel-window-titlebar h-7 flex items-center gap-1 px-1.5 border-b bg-panel/80 flex-shrink-0"
+          title={`${def.label} — drag to move · right-click for panel options`}
+          onPointerDown={onTitlePointerDown}
         >
-          {rect.collapsed ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
-        </button>
-        <PanelActionsMenu id={id} floating />
-      </div>
+          <Icon size={11} className="text-primary shrink-0" />
+          <span className="text-[11px] font-medium truncate flex-1 pl-0.5">{def.label}</span>
+        </div>
+      </PanelContextMenu>
 
       {/* content (unmounted while collapsed — re-mounted expands) */}
       {!rect.collapsed && (
