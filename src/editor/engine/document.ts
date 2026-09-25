@@ -623,7 +623,7 @@ function renderLayerRange(
     // gather clipping stack
     let j = i + 1
     const stack: Layer[] = []
-    while (j < layers.length && layers[j].clipped) { stack.push(layers[j]); j++ }
+    while (j < end && layers[j].clipped) { stack.push(layers[j]); j++ }
 
     if (!base.visible) { i = j; continue }
 
@@ -764,6 +764,77 @@ export function buildLiveDrag(doc: PsDocument, layerId: string): LiveLayerDrag |
     below, stack, stackX, stackY, above, clipMask,
     blendMode: base.blendMode, opacity: base.opacity,
   }
+}
+
+/**
+ * Build a sampling composite for retouch/color tools.
+ *
+ * Photoshop exposes Current Layer, Current & Below, and All Layers sampling.
+ * ignoreAdjustments mirrors the ignore-adjustment-layers sampling toggle.
+ * Current-layer sampling is returned from prepareLayer so masks/styles are
+ * represented the way the user sees that layer.
+ */
+export function getSamplingComposite(
+  doc: PsDocument,
+  layerId: string,
+  mode: 'layer' | 'current-below' | 'all',
+  ignoreAdjustments = false,
+): HTMLCanvasElement | null {
+  const idx = doc.layers.findIndex(l => l.id === layerId)
+  if (idx < 0) return null
+
+  if (mode === 'layer') {
+    const layer = doc.layers[idx]
+    if (layer.kind === 'adjustment') return null
+    const prepared = prepareLayer(doc, layer)
+    return prepared ? cloneCanvas(prepared) : null
+  }
+
+  const out = createCanvas(doc.width, doc.height)
+  const oc = ctx2d(out)
+  const end = mode === 'current-below' ? idx + 1 : doc.layers.length
+
+  if (!ignoreAdjustments) {
+    renderLayerRange(doc, 0, end, out, oc)
+    return out
+  }
+
+  // Same layer-order/clipping semantics as renderLayerRange, except adjustment
+  // layers are omitted from the sampling result.
+  let i = 0
+  while (i < end) {
+    const base = doc.layers[i]
+    let j = i + 1
+    const stack: Layer[] = []
+    while (j < end && doc.layers[j].clipped) { stack.push(doc.layers[j]); j++ }
+
+    if (!base.visible || base.kind === 'adjustment') { i = j; continue }
+
+    const basePrepared = prepareLayer(doc, base)
+    if (!basePrepared) { i = j; continue }
+    const stackCanvas = cloneCanvas(basePrepared)
+    const stackCtx = ctx2d(stackCanvas)
+
+    for (const cl of stack) {
+      if (!cl.visible || cl.kind === 'adjustment') continue
+      const prepared = prepareLayer(doc, cl)
+      if (!prepared) continue
+      const clipped = createCanvas(doc.width, doc.height)
+      const cc = ctx2d(clipped)
+      cc.drawImage(prepared, 0, 0)
+      cc.globalCompositeOperation = 'destination-in'
+      cc.drawImage(stackCanvas, 0, 0)
+      stackCtx.save()
+      stackCtx.globalAlpha = cl.opacity / 100
+      try { stackCtx.globalCompositeOperation = BLEND_GCO[cl.blendMode] || 'source-over' } catch { /* noop */ }
+      stackCtx.drawImage(clipped, 0, 0)
+      stackCtx.restore()
+    }
+
+    drawWithBlendIf(oc, stackCanvas, base, out)
+    i = j
+  }
+  return out
 }
 
 export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement): HTMLCanvasElement {
