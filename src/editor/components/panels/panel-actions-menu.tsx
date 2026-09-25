@@ -58,7 +58,7 @@ export function PanelActionsMenu({
         )}
         {!floating && current !== 'floating' && (
           <>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => useEditorStore.getState().floatPanel(id)}>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}>
               <Maximize2 size={13} />
               <span className="flex-1">Float panel</span>
             </DropdownMenuItem>
