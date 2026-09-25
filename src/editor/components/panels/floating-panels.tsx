@@ -226,8 +226,7 @@ function commitSession(cancel: boolean) {
   if (s.mode === 'move') {
     store.movePanel(s.id, s.last.x, s.last.y)
   } else {
-    store.movePanel(s.id, s.last.x, s.last.y)
-    store.resizePanel(s.id, s.last.w, s.last.h)
+    store.setPanelRect(s.id, s.last)
   }
 }
 
