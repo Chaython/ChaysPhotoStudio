@@ -6,6 +6,17 @@ type Pt = { x: number; y: number }
 let pts: Pt[] = []
 let active = false
 let startMods = { shift: false, alt: false }
+let samplingMul = 1
+const MAX_LASSO_POINTS = 8192
+const MAX_LASSO_PREVIEW_SEGMENTS = 2048
+
+function compactLivePath() {
+  if (pts.length < MAX_LASSO_POINTS) return
+  const last = pts[pts.length - 1]
+  pts = pts.filter((_, i) => i === 0 || (i & 1) === 0)
+  if (pts[pts.length - 1] !== last) pts.push(last)
+  samplingMul *= 2
+}
 
 function pointLineDistance(p: Pt, a: Pt, b: Pt): number {
   const dx = b.x - a.x, dy = b.y - a.y
@@ -39,6 +50,7 @@ function simplify(points: Pt[], tolerance: number): Pt[] {
 function cancel() {
   active = false
   pts = []
+  samplingMul = 1
   engine.pokeOverlay()
 }
 
@@ -49,6 +61,7 @@ export const lassoTool: Tool = {
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
     pts = [{ x: p.docX, y: p.docY }]
+    samplingMul = 1
     startMods = { shift: p.shift, alt: p.alt }
     active = true
     engine.pokeOverlay()
@@ -57,8 +70,10 @@ export const lassoTool: Tool = {
   onPointerMove(p: PointerInfo) {
     if (!active) return
     const last = pts[pts.length - 1]
-    const step = 1.5 / Math.max(engine.activeDoc?.view.zoom ?? 1, .25)
-    if (Math.hypot(p.docX - last.x, p.docY - last.y) > step) pts.push({ x: p.docX, y: p.docY })
+    const step = (1.5 * samplingMul) / Math.max(engine.activeDoc?.view.zoom ?? 1, .25)
+    if (Math.hypot(p.docX - last.x, p.docY - last.y) <= step) return
+    pts.push({ x: p.docX, y: p.docY })
+    compactLivePath()
     engine.pokeOverlay()
   },
 
@@ -73,6 +88,7 @@ export const lassoTool: Tool = {
       engine.selectPolygon(cleaned, opts.feather ?? 0, mode, opts.antiAlias !== false)
     }
     pts = []
+    samplingMul = 1
     engine.pokeOverlay()
   },
 
@@ -91,7 +107,10 @@ export const lassoTool: Tool = {
       ctx.scale(view.zoom, view.zoom)
       ctx.beginPath()
       ctx.moveTo(pts[0].x, pts[0].y)
-      for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y)
+      const stride = Math.max(1, Math.ceil(pts.length / MAX_LASSO_PREVIEW_SEGMENTS))
+      for (let i = stride; i < pts.length; i += stride) ctx.lineTo(pts[i].x, pts[i].y)
+      const tail = pts[pts.length - 1]
+      if ((pts.length - 1) % stride !== 0) ctx.lineTo(tail.x, tail.y)
       ctx.strokeStyle = 'rgba(0,0,0,.75)'
       ctx.lineWidth = 3 / view.zoom
       ctx.stroke()
