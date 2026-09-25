@@ -194,6 +194,7 @@ export class Engine {
     const doc: PsDocument = {
       id: uid(), name: opts.name || `Untitled-${this.docs.length + 1}`,
       width, height,
+      workingBitDepth: 8, sourceBitDepth: 8, workingColorSpace: 'srgb',
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0 },
@@ -220,10 +221,17 @@ export class Engine {
     return doc
   }
 
-  addCanvasDocument(canvas: HTMLCanvasElement, name: string): PsDocument {
+  addCanvasDocument(
+    canvas: HTMLCanvasElement,
+    name: string,
+    meta: { sourceBitDepth?: number; workingColorSpace?: 'srgb' | 'display-p3' } = {},
+  ): PsDocument {
     const doc: PsDocument = {
       id: uid(), name,
       width: canvas.width, height: canvas.height,
+      workingBitDepth: 8,
+      sourceBitDepth: meta.sourceBitDepth ?? 8,
+      workingColorSpace: meta.workingColorSpace ?? 'srgb',
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0 },

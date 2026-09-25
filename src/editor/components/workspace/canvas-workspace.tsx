@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { ZoomIn, ZoomOut, Maximize2, Frame } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { fileToCanvas } from '../../utils/canvas'
+import { canvasPixelCapabilities, fileToCanvas } from '../../utils/canvas'
 import { TOOL_MAP } from '../../constants/tools'
 import { DocumentTabs } from './document-tabs'
 import { NativeModuleShell } from '../panels/native-module-shell'
@@ -239,6 +239,21 @@ function StatusBar() {
   void renderTick // re-renders the GPU badge when the toggle changes state
   const gpuActive = engine.isGpuActive()
   const gpuInfo = engine.gpuInfo()
+  const pixelCaps = canvasPixelCapabilities()
+  const engineDoc = engine.activeDoc
+  const workingBits = engineDoc?.workingBitDepth ?? 8
+  const sourceBits = engineDoc?.sourceBitDepth ?? workingBits
+  const precisionLabel = engineDoc
+    ? `${workingBits}-bit ${engineDoc.workingColorSpace === 'display-p3' ? 'Display-P3' : 'sRGB'} working raster`
+    : '8-bit sRGB working raster'
+  const precisionTitle = [
+    `Current editable raster storage: ${workingBits}-bit ${engineDoc?.workingColorSpace === 'display-p3' ? 'Display-P3' : 'sRGB'}.`,
+    sourceBits > workingBits ? `Source was ${sourceBits}-bit and is currently normalized to ${workingBits}-bit for editing.` : '',
+    pixelCaps.float16Context || pixelCaps.float16ImageData
+      ? 'This runtime supports float16 Canvas/ImageData APIs; the editor does not silently enable them because existing pixel processors still use 0..255 ImageData semantics.'
+      : 'This runtime did not expose a usable float16 Canvas/ImageData path.',
+    pixelCaps.displayP3 ? 'Display-P3 canvas capability detected.' : '',
+  ].filter(Boolean).join(' ')
   const measurement = (window as any).__zphotoMeasure as { length: number; angleDeg: number } | undefined
   return (
     <div className="h-7 flex items-center gap-4 px-3 bg-panel border-t text-[10px] text-muted-foreground flex-shrink-0 overflow-hidden">
@@ -265,7 +280,11 @@ function StatusBar() {
               aria-hidden
             />
             {gpuActive ? 'GPU' : 'CPU'}
-            <span className="text-muted-foreground/60">· Chay's Photo Studio · 16-bit pipeline · non-destructive engine</span>
+            <span className="text-muted-foreground/60" title={precisionTitle}>
+              · Chay's Photo Studio · {precisionLabel}
+              {(pixelCaps.float16Context || pixelCaps.float16ImageData) ? ' · 16F capable' : ''}
+              · non-destructive engine
+            </span>
           </span>
         </>
       )}
