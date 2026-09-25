@@ -357,11 +357,32 @@ function eyedropRadius(): number {
 
 let eyedropDragging = false
 let eyedropToBackground = false
+let eyedropSampleKey = ''
 
 function sampleEyedropper(p: PointerInfo, commit: boolean) {
   const opts = getOptions('eyedropper')
-  const hex = engine.sampleColor(p.docX, p.docY, opts.sample ?? 'composite', eyedropRadius())
-  if (!hex) return
+  const radius = eyedropRadius()
+  const scope = opts.sample ?? 'composite'
+  const key = `${scope}:${radius}:${Math.round(p.docX)}:${Math.round(p.docY)}`
+
+  // Pointer hardware often reports several sub-pixel events inside the same
+  // sampled pixel. Reuse the readout instead of repeating getImageData.
+  if (key === eyedropSampleKey && eyedropPreview) {
+    if (commit) {
+      const store = useEditorStore.getState()
+      if (eyedropToBackground) store.setBgColor(eyedropPreview)
+      else store.setFgColor(eyedropPreview)
+    }
+    return
+  }
+
+  const hex = engine.sampleColor(p.docX, p.docY, scope, radius)
+  eyedropSampleKey = key
+  if (!hex) {
+    eyedropPreview = null
+    engine.pokeOverlay()
+    return
+  }
   eyedropPreview = hex
   if (commit) {
     const store = useEditorStore.getState()
@@ -386,7 +407,7 @@ export const eyedropperTool: Tool = {
     sampleEyedropper(p, eyedropDragging)
   },
   onPointerUp() { eyedropDragging = false },
-  onDeactivate() { eyedropPreview = null; eyedropDragging = false },
+  onDeactivate() { eyedropPreview = null; eyedropDragging = false; eyedropSampleKey = '' },
   renderOverlay(ctx, view, w, h, mouse) {
     void view; void w; void h
     if (mouse && eyedropPreview) {
