@@ -23,8 +23,9 @@
 //     putImageData()s the result, so history/undo are unaffected.
 //
 // Pooling: max 2 workers, spawned lazily; a pending queue drains as
-// workers go idle. 20 s per-op timeout. Graceful degradation: any
-// spawn failure / worker error / timeout latches the pool OFF for
+// workers go idle. Heavy blur filters get a much longer timeout so a legitimate
+// long-running worker is never killed only to be re-run on the UI thread.
+// Graceful degradation: any spawn failure / worker error / timeout latches the pool OFF for
 // the session (one console warning) and every op runs synchronously
 // through the very same image-ops functions.
 //
@@ -75,6 +76,16 @@ const MAX_WORKERS = 2
 /** below this many pixels the worker round-trip costs more than the op — run sync */
 export const SIZE_THRESHOLD_PX = 300_000 // 0.3 MP
 const OP_TIMEOUT_MS = 20_000
+const HEAVY_FILTER_TIMEOUT_MS = 180_000
+
+function timeoutForJob(job: InternalJob): number {
+  if (job.op.kind !== 'filter') return OP_TIMEOUT_MS
+  const type = job.op.type
+  if (type === 'gaussian-blur' || type === 'box-blur' || type === 'motion-blur' || type === 'radial-blur') {
+    return HEAVY_FILTER_TIMEOUT_MS
+  }
+  return OP_TIMEOUT_MS
+}
 
 // ------------------------------------------------------------ pool state (client only — never touched during SSR)
 interface InternalJob {
@@ -274,13 +285,14 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
 function dispatch(entry: WorkerEntry, job: InternalJob): void {
   entry.job = job
   job.entry = entry
+  const timeoutMs = timeoutForJob(job)
   job.timer = setTimeout(() => {
-    warnOnce('op timed out after 20s')
+    warnOnce(`op timed out after ${Math.round(timeoutMs / 1000)}s`)
     try { entry.worker.terminate() } catch { /* already dead */ }
     pool = pool.filter(e => e !== entry)
     recoverJob(job, 'timeout')
     flushPendingSync()
-  }, OP_TIMEOUT_MS)
+  }, timeoutMs)
   const transfer: ArrayBuffer[] = [job.buffer]
   if (job.sourceBuffer) transfer.push(job.sourceBuffer)
   entry.worker.postMessage(
