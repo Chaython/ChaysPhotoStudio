@@ -3,7 +3,7 @@
 // Every panel follows the same lifecycle: dock left/right/top or float as a window.
 // NOTE: this module imports panel components (which import the store) — keep it
 // free of store imports to avoid a circular dependency.
-import type { ComponentType } from 'react'
+import { createElement, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders, Wrench, Files,
@@ -43,9 +43,9 @@ export interface PanelDef {
   topWidth?: number
 }
 
-const ToolsModule = () => <Toolbar embedded />
-const ToolOptionsModule = () => <ToolOptionsBar embedded />
-const DocumentsModule = () => <DocumentTabs embedded />
+const ToolsModule = () => createElement(Toolbar, { embedded: true })
+const ToolOptionsModule = () => createElement(ToolOptionsBar, { embedded: true })
+const DocumentsModule = () => createElement(DocumentTabs, { embedded: true })
 
 export const PANELS: PanelDef[] = [
   {
