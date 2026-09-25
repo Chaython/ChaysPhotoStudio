@@ -209,6 +209,17 @@ function sharpenCorrection(
   return clamp(detail * amount * edgeWeight, -haloLimit, haloLimit)
 }
 
+let sampledFilterPatchScratch: HTMLCanvasElement | null = null
+
+function sampledFilterPatchCanvas(w: number, h: number): HTMLCanvasElement {
+  if (!sampledFilterPatchScratch || sampledFilterPatchScratch.width !== w || sampledFilterPatchScratch.height !== h) {
+    sampledFilterPatchScratch = createCanvas(w, h)
+  } else {
+    ctx2d(sampledFilterPatchScratch).clearRect(0, 0, w, h)
+  }
+  return sampledFilterPatchScratch
+}
+
 function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: PointerInfo): boolean {
   const state = retouchContext
   const doc = engine.activeDoc
@@ -272,7 +283,7 @@ function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: Poi
     }
   }
 
-  const patch = createCanvas(rw, rh)
+  const patch = sampledFilterPatchCanvas(rw, rh)
   putImageData(patch, out)
   ctx2d(target.canvas).drawImage(patch, x0, y0)
   target._v++
