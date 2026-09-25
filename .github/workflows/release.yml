@@ -143,6 +143,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # upload-artifact omits dotfiles by default, so recreate the Pages
+          # marker after downloading the static-site artifact.
+          touch site/.nojekyll
           test -f site/index.html
           test -d site/_next
           test -f site/.nojekyll
