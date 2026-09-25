@@ -20,6 +20,9 @@ export interface RawImage {
   width: number
   height: number
   rgba: Uint8ClampedArray<ArrayBuffer>
+  /** Original decoded component depth before normalization to the current
+   * 8-bit RGBA working raster. */
+  sourceBitDepth?: number
 }
 
 // ---------- shared helpers ----------
@@ -457,7 +460,7 @@ export async function decodeTiff(bytes: Uint8Array): Promise<RawImage> {
   }
 
   combinePlanes(out, planes, width * height, photometric, alphaSample, assocAlpha, invertGray, palette)
-  return { width, height, rgba: out }
+  return { width, height, rgba: out, sourceBitDepth: bps }
 }
 
 function copyIntoPlane(
