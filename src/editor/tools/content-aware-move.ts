@@ -598,39 +598,81 @@ export const contentAwareMoveTool: Tool = {
       return
     }
 
-    if (phase === 'moving' && path && bounds) {
+    if ((phase === 'moving' || phase === 'transforming') && path && bounds) {
       const opts = getOptions('content-aware-move')
       const src = previewSource
+      const sc = sourceCenter()
+      const dc = destinationCenter()
+
       ctx.save()
       ctx.translate(view.panX, view.panY)
       ctx.scale(view.zoom, view.zoom)
 
-      // Original source outline.
+      // Original source outline stays fixed so Move mode clearly shows the
+      // region that will be synthesized after the subject leaves.
       ctx.strokeStyle = 'rgba(255,255,255,.7)'
       ctx.lineWidth = 1 / view.zoom
       ctx.setLineDash([4 / view.zoom, 3 / view.zoom])
       ctx.stroke(path)
 
-      // Moved subject ghost.
+      // Moved/transformed subject ghost.
       ctx.save()
-      ctx.translate(delta.x, delta.y)
+      ctx.translate(dc.x, dc.y)
+      ctx.rotate(transform.rotation)
+      ctx.scale(transform.sx, transform.sy)
+      ctx.translate(-sc.x, -sc.y)
       ctx.clip(path)
       ctx.globalAlpha = .62
       if (src) ctx.drawImage(src, 0, 0)
       ctx.restore()
 
       ctx.save()
-      ctx.translate(delta.x, delta.y)
+      ctx.translate(dc.x, dc.y)
+      ctx.rotate(transform.rotation)
+      ctx.scale(transform.sx, transform.sy)
+      ctx.translate(-sc.x, -sc.y)
       ctx.strokeStyle = '#4ec9b0'
-      ctx.lineWidth = 1.5 / view.zoom
+      ctx.lineWidth = 1.5 / (view.zoom * Math.max(.05, Math.sqrt(transform.sx * transform.sy)))
       ctx.setLineDash([])
       ctx.stroke(path)
       ctx.restore()
+
+      if (phase === 'transforming') {
+        const corners = transformedCorners()
+        const top = transformPoint(bounds.x + bounds.w / 2, bounds.y)
+        const rotate = rotationHandlePoint(view.zoom)
+        const hs = 4 / view.zoom
+
+        ctx.setLineDash([])
+        ctx.lineWidth = 1 / view.zoom
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'
+        ctx.beginPath()
+        ctx.moveTo(top.x, top.y)
+        ctx.lineTo(rotate.x, rotate.y)
+        ctx.stroke()
+
+        for (const point of corners) {
+          ctx.fillStyle = '#ffffff'
+          ctx.strokeStyle = '#111111'
+          ctx.fillRect(point.x - hs, point.y - hs, hs * 2, hs * 2)
+          ctx.strokeRect(point.x - hs, point.y - hs, hs * 2, hs * 2)
+        }
+        ctx.beginPath()
+        ctx.arc(rotate.x, rotate.y, 5 / view.zoom, 0, Math.PI * 2)
+        ctx.fillStyle = '#4ec9b0'
+        ctx.fill()
+        ctx.strokeStyle = '#111111'
+        ctx.stroke()
+      }
       ctx.restore()
 
-      const hx = (bounds.x + delta.x + bounds.w / 2) * view.zoom + view.panX
-      const hy = (bounds.y + delta.y + bounds.h / 2) * view.zoom + view.panY
-      const label = opts.mode === 'extend' ? 'Extend · release to blend' : 'Move · release to heal + blend'
+      const hx = dc.x * view.zoom + view.panX
+      const hy = dc.y * view.zoom + view.panY
+      const label = phase === 'transforming'
+        ? 'Transform · drag inside/corners/rotate handle · Enter applies'
+        : opts.transformOnDrop === true
+          ? (opts.mode === 'extend' ? 'Extend · release to transform' : 'Move · release to transform')
+          : (opts.mode === 'extend' ? 'Extend · release to blend' : 'Move · release to heal + blend')
       ctx.save()
       ctx.font = '11px ui-sans-serif, sans-serif'
       ctx.textAlign = 'center'
