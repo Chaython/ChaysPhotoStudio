@@ -68,9 +68,8 @@ export function gaussianBlurFloat(buf: Float32Array, w: number, h: number, sigma
   return a
 }
 
-/** Gaussian blur of an ImageData's RGB channels in place (alpha preserved). */
-export function blurImageData(img: ImageData, sigma: number): void {
-  if (!(sigma >= 0.4)) return
+/** Exact full-resolution RGB blur used for small images/radii. */
+function blurImageDataExact(img: ImageData, sigma: number): void {
   const { width: w, height: h, data } = img
   const n = w * h
   const ch = new Float32Array(n)
@@ -79,6 +78,105 @@ export function blurImageData(img: ImageData, sigma: number): void {
     gaussianBlurFloat(ch, w, h, sigma)
     for (let i = 0, j = c; i < n; i++, j += 4) data[j] = ch[i]
   }
+}
+
+/**
+ * Choose a conservative power-of-two proxy scale for large Gaussian blurs.
+ * A broad blur does not need every source pixel to be processed at full
+ * resolution. Keeping the low-resolution sigma >= ~2 px avoids visible
+ * blockiness while cutting the expensive box passes by 4-64x.
+ */
+function blurProxyScale(w: number, h: number, sigma: number): number {
+  const pixels = w * h
+  if (pixels < 4_000_000 || sigma < 3.5) return 1
+  const maxBySigma = sigma >= 32 ? 8 : sigma >= 14 ? 4 : 2
+  let scale = 1
+  while (
+    scale < maxBySigma &&
+    scale < 8 &&
+    pixels / (scale * scale) > 4_000_000
+  ) scale *= 2
+  return scale
+}
+
+/** Area-average RGB downsample. Alpha is intentionally ignored: final alpha
+ * is preserved from the original ImageData exactly, matching the old blur. */
+function downsampleBlurProxy(img: ImageData, scale: number): ImageData {
+  const sw = img.width, sh = img.height
+  const dw = Math.max(1, Math.ceil(sw / scale))
+  const dh = Math.max(1, Math.ceil(sh / scale))
+  const out = new ImageData(dw, dh)
+  const src = img.data, dst = out.data
+  for (let y = 0; y < dh; y++) {
+    const y0 = y * scale
+    const y1 = Math.min(sh, y0 + scale)
+    for (let x = 0; x < dw; x++) {
+      const x0 = x * scale
+      const x1 = Math.min(sw, x0 + scale)
+      let r = 0, g = 0, b = 0, count = 0
+      for (let sy = y0; sy < y1; sy++) {
+        let i = (sy * sw + x0) * 4
+        for (let sx = x0; sx < x1; sx++, i += 4) {
+          r += src[i]; g += src[i + 1]; b += src[i + 2]; count++
+        }
+      }
+      const o = (y * dw + x) * 4
+      const inv = count ? 1 / count : 1
+      dst[o] = r * inv
+      dst[o + 1] = g * inv
+      dst[o + 2] = b * inv
+      dst[o + 3] = 255
+    }
+  }
+  return out
+}
+
+/** Bilinear RGB upsample back into the original image; alpha is untouched. */
+function upsampleBlurProxy(proxy: ImageData, target: ImageData): void {
+  const sw = proxy.width, sh = proxy.height
+  const dw = target.width, dh = target.height
+  const src = proxy.data, dst = target.data
+  const sxScale = sw / dw
+  const syScale = sh / dh
+  for (let y = 0; y < dh; y++) {
+    const sy = Math.max(0, Math.min(sh - 1, (y + 0.5) * syScale - 0.5))
+    const y0 = sy | 0
+    const y1 = Math.min(sh - 1, y0 + 1)
+    const fy = sy - y0
+    for (let x = 0; x < dw; x++) {
+      const sx = Math.max(0, Math.min(sw - 1, (x + 0.5) * sxScale - 0.5))
+      const x0 = sx | 0
+      const x1 = Math.min(sw - 1, x0 + 1)
+      const fx = sx - x0
+      const i00 = (y0 * sw + x0) * 4
+      const i10 = (y0 * sw + x1) * 4
+      const i01 = (y1 * sw + x0) * 4
+      const i11 = (y1 * sw + x1) * 4
+      const o = (y * dw + x) * 4
+      for (let ch = 0; ch < 3; ch++) {
+        const top = src[i00 + ch] + (src[i10 + ch] - src[i00 + ch]) * fx
+        const bot = src[i01 + ch] + (src[i11 + ch] - src[i01 + ch]) * fx
+        dst[o + ch] = top + (bot - top) * fy
+      }
+    }
+  }
+}
+
+/**
+ * Gaussian blur of an ImageData's RGB channels in place (alpha preserved).
+ * Large/broad blurs use a conservative downsampled proxy so a 20-50 MP image
+ * cannot turn into hundreds of millions of JS pixel operations.
+ */
+export function blurImageData(img: ImageData, sigma: number): void {
+  if (!(sigma >= 0.4)) return
+  const scale = blurProxyScale(img.width, img.height, sigma)
+  if (scale === 1) {
+    blurImageDataExact(img, sigma)
+    return
+  }
+  const proxy = downsampleBlurProxy(img, scale)
+  blurImageDataExact(proxy, sigma / scale)
+  upsampleBlurProxy(proxy, img)
 }
 
 /**
