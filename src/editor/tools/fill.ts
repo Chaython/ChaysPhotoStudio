@@ -18,6 +18,7 @@ import { ditherGradient } from './dab-utils'
 import { getFlatComposite } from '../engine/document'
 import { BLEND_GCO } from '../constants/tools'
 import { paintBuiltinPattern } from './patterns'
+import { rgbToLab, labToRgb } from '../image-ops/color'
 
 // ============================================================
 // Gradient
@@ -45,6 +46,9 @@ interface GradientStopRGBA {
   h: number
   s: number
   l: number
+  labL: number
+  labA: number
+  labB: number
 }
 
 function rgbToHslLocal(r: number, g: number, b: number): [number, number, number] {
@@ -86,31 +90,51 @@ function parsedStops(stops: [number, string][]): GradientStopRGBA[] {
     const g = parseInt(hex.slice(2, 4), 16)
     const b = parseInt(hex.slice(4, 6), 16)
     const [h, s, l] = rgbToHslLocal(r, g, b)
-    return { p, r, g, b, a: parseInt(ah, 16), h, s, l }
+    const lab = [0, 0, 0]
+    rgbToLab(r, g, b, lab)
+    return { p, r, g, b, a: parseInt(ah, 16), h, s, l, labL: lab[0], labA: lab[1], labB: lab[2] }
   }).sort((a, b) => a.p - b.p)
 }
 
-function interpolateGradientStop(stops: GradientStopRGBA[], t: number, hsl: boolean): [number, number, number, number] {
+function interpolateGradientStop(
+  stops: GradientStopRGBA[],
+  t: number,
+  space: 'rgb' | 'hsl' | 'lab',
+): [number, number, number, number] {
   t = clamp(t, 0, 1)
   let a = stops[0], b = stops[stops.length - 1]
   for (let k = 1; k < stops.length; k++) {
     if (t <= stops[k].p) { a = stops[k - 1]; b = stops[k]; break }
   }
   const q = b.p === a.p ? 0 : clamp((t - a.p) / (b.p - a.p), 0, 1)
-  if (!hsl) {
-    return [
-      a.r + (b.r - a.r) * q,
-      a.g + (b.g - a.g) * q,
-      a.b + (b.b - a.b) * q,
-      a.a + (b.a - a.a) * q,
-    ]
+  const alpha = a.a + (b.a - a.a) * q
+
+  if (space === 'hsl') {
+    const dh = ((b.h - a.h + 540) % 360) - 180
+    const hh = a.h + dh * q
+    const ss = a.s + (b.s - a.s) * q
+    const ll = a.l + (b.l - a.l) * q
+    const [r, g, bl] = hslToRgbLocal(hh, ss, ll)
+    return [r, g, bl, alpha]
   }
-  const dh = ((b.h - a.h + 540) % 360) - 180
-  const hh = a.h + dh * q
-  const ss = a.s + (b.s - a.s) * q
-  const ll = a.l + (b.l - a.l) * q
-  const [r, g, bl] = hslToRgbLocal(hh, ss, ll)
-  return [r, g, bl, a.a + (b.a - a.a) * q]
+
+  if (space === 'lab') {
+    const rgb = [0, 0, 0]
+    labToRgb(
+      a.labL + (b.labL - a.labL) * q,
+      a.labA + (b.labA - a.labA) * q,
+      a.labB + (b.labB - a.labB) * q,
+      rgb,
+    )
+    return [rgb[0], rgb[1], rgb[2], alpha]
+  }
+
+  return [
+    a.r + (b.r - a.r) * q,
+    a.g + (b.g - a.g) * q,
+    a.b + (b.b - a.b) * q,
+    alpha,
+  ]
 }
 
 function paintManualGradient(
@@ -119,7 +143,7 @@ function paintManualGradient(
   x0: number, y0: number, x1: number, y1: number,
   mode: string,
   stops: [number, string][],
-  hsl: boolean,
+  space: 'rgb' | 'hsl' | 'lab',
 ) {
   const parsed = parsedStops(stops)
   const dx = x1 - x0, dy = y1 - y0
@@ -145,7 +169,7 @@ function paintManualGradient(
       } else {
         t = (rx * dx + ry * dy) / dist2
       }
-      const [r, g, b, a] = interpolateGradientStop(parsed, t, hsl)
+      const [r, g, b, a] = interpolateGradientStop(parsed, t, space)
       const j = (yy * w + xx) * 4
       img.data[j] = r
       img.data[j + 1] = g
@@ -163,12 +187,27 @@ function buildStops(type: string, reverse: boolean, transparency = true, opts?: 
   else if (type === 'bw') stops = [[0, '#000000'], [1, '#ffffff']]
   else if (type === 'spectrum') stops = [[0, '#ff0000'], [0.17, '#ffff00'], [0.33, '#00ff00'], [0.5, '#00ffff'], [0.67, '#0000ff'], [0.83, '#ff00ff'], [1, '#ff0000']]
   else if (type === 'custom') {
-    const mid = clamp((Number(opts?.customMidpoint) || 50) / 100, .01, .99)
-    stops = [
-      [0, colorWithOpacity(String(opts?.customStart || '#000000'), Number(opts?.customStartOpacity ?? 100), transparency)],
-      [mid, colorWithOpacity(String(opts?.customMid || '#808080'), Number(opts?.customMidOpacity ?? 100), transparency)],
-      [1, colorWithOpacity(String(opts?.customEnd || '#ffffff'), Number(opts?.customEndOpacity ?? 100), transparency)],
-    ]
+    const custom = Array.isArray(opts?.stops)
+      ? opts!.stops
+          .filter((s: any) => s && Number.isFinite(Number(s.pos)) && typeof s.color === 'string')
+          .slice(0, 16)
+          .map((s: any) => [
+            clamp(Number(s.pos), 0, 1),
+            colorWithOpacity(String(s.color), Number(s.opacity ?? 100), transparency),
+          ] as [number, string])
+          .sort((a: [number, string], b: [number, string]) => a[0] - b[0])
+      : []
+    if (custom.length >= 2) {
+      stops = custom
+    } else {
+      // Migration fallback for tool presets saved before the arbitrary-stop editor.
+      const mid = clamp((Number(opts?.customMidpoint) || 50) / 100, .01, .99)
+      stops = [
+        [0, colorWithOpacity(String(opts?.customStart || '#000000'), Number(opts?.customStartOpacity ?? 100), transparency)],
+        [mid, colorWithOpacity(String(opts?.customMid || '#808080'), Number(opts?.customMidOpacity ?? 100), transparency)],
+        [1, colorWithOpacity(String(opts?.customEnd || '#ffffff'), Number(opts?.customEndOpacity ?? 100), transparency)],
+      ]
+    }
   } else stops = [[0, fg], [1, bg]]
   return reverse ? stops.map(([p, c]) => [1 - p, c] as [number, string]).reverse() : stops
 }
@@ -192,8 +231,13 @@ function paintGradient(c: CanvasRenderingContext2D, w: number, h: number, x0: nu
   const mode = opts.mode ?? 'linear'
   const stops = buildStops(opts.type ?? 'fg-bg', opts.reverse === true, opts.transparency !== false, opts)
   const angle = Math.atan2(y1 - y0, x1 - x0)
-  if (opts.interpolation === 'hsl') {
-    paintManualGradient(c, w, h, x0, y0, x1, y1, mode, stops, true)
+  const interpolation = opts.interpolation === 'lab'
+    ? 'lab'
+    : opts.interpolation === 'hsl'
+      ? 'hsl'
+      : 'rgb'
+  if (interpolation !== 'rgb') {
+    paintManualGradient(c, w, h, x0, y0, x1, y1, mode, stops, interpolation)
     return
   }
   let grad: CanvasGradient
