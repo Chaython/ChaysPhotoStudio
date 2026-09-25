@@ -19,7 +19,7 @@
 // ============================================================
 import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross, toolMaskCanvas } from './shared'
+import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawCross, toolMaskCanvas } from './shared'
 import { buildSourceDab, sourcePointFor, frequencyHeal, pressureFlow } from './dab-utils'
 import { createCanvas, ctx2d, getImageData, putImageData, cloneCanvas, clamp } from '../utils/canvas'
 import { dilateMask, gaussianBlurChannel } from '../image-ops/core'
@@ -99,15 +99,45 @@ function buildHealingPatternDab(x: number, y: number, radius: number, hardness: 
   })
   oc.globalCompositeOperation = 'destination-in'
   const inner = radius * clamp(hardness / 100, 0, .98)
-  const grad = oc.createRadialGradient(center, center, inner, center, center, Math.max(radius, .5))
+  const roundness = clamp((Number(opts.brushRoundness) || 100) / 100, .05, 1)
+  const angle = ((Number(opts.brushAngle) || 0) * Math.PI) / 180
+  oc.save()
+  oc.translate(center, center)
+  oc.rotate(angle)
+  oc.scale(1, roundness)
+  const grad = oc.createRadialGradient(0, 0, inner, 0, 0, Math.max(radius, .5))
   grad.addColorStop(0, 'rgba(255,255,255,1)')
   grad.addColorStop(1, 'rgba(255,255,255,0)')
   oc.fillStyle = grad
   oc.beginPath()
-  oc.arc(center, center, Math.max(radius, .5), 0, Math.PI * 2)
+  oc.arc(0, 0, Math.max(radius, .5), 0, Math.PI * 2)
   oc.fill()
+  oc.restore()
   oc.globalCompositeOperation = 'source-over'
   return out
+}
+
+function drawHealingCursor(
+  ctx: CanvasRenderingContext2D,
+  mouse: { x: number; y: number } | null,
+  zoom: number,
+  opts: Record<string, any>,
+) {
+  if (!mouse) return
+  const rx = Math.max(2, (Number(opts.size) || 40) * .5 * zoom)
+  const ry = Math.max(1, rx * clamp((Number(opts.brushRoundness) || 100) / 100, .05, 1))
+  ctx.save()
+  ctx.translate(mouse.x, mouse.y)
+  ctx.rotate(((Number(opts.brushAngle) || 0) * Math.PI) / 180)
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.strokeStyle = 'rgba(0,0,0,.7)'
+  ctx.setLineDash([2, 2])
+  ctx.stroke()
+  ctx.restore()
 }
 
 export const healingBrushTool: Tool = {
@@ -255,8 +285,7 @@ export const healingBrushTool: Tool = {
     void w; void h
     const opts = getOptions('healing-brush')
     const size = opts.size ?? 40
-    if (hst.active || healingUsesPattern(opts)) drawBrushCursor(ctx, mouse, size, view.zoom)
-    else if (engine.cloneSource && hst.source) drawBrushCursor(ctx, mouse, size, view.zoom)
+    if (hst.active || healingUsesPattern(opts) || (engine.cloneSource && hst.source)) drawHealingCursor(ctx, mouse, view.zoom, opts)
     else drawCross(ctx, mouse)
   },
 }
@@ -266,7 +295,9 @@ function healDab(x: number, y: number, p: PointerInfo) {
   if (!doc) return
   const opts = getOptions('healing-brush')
   const settings = brushSettingsFrom(opts)
-  const r = settings.size / 2
+  const pressure = p.pointerType === 'pen' ? clamp(p.pressure, 0, 1) : 1
+  const sizeScale = p.pointerType === 'pen' && opts.pressureSize === true ? .25 + .75 * pressure : 1
+  const r = settings.size * sizeScale / 2
   let dabCanvas: HTMLCanvasElement | null = null
 
   if (healingUsesPattern(opts)) {
@@ -278,8 +309,10 @@ function healDab(x: number, y: number, p: PointerInfo) {
     const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
     const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
     const mirrored = opts.mirrored === true
+    const brushRoundness = clamp((Number(opts.brushRoundness) || 100) / 100, .05, 1)
+    const brushAngle = ((Number(opts.brushAngle) || 0) * Math.PI) / 180
     const sp = sourcePointFor(x, y, hst.ref.x, hst.ref.y, src.x, src.y, rot, mirrored, scale)
-    dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale)
+    dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale, brushRoundness, brushAngle)
   }
 
   if (!dabCanvas) return
