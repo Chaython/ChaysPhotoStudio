@@ -7,7 +7,11 @@ free Pollinations engine (no account or key) or your own OpenAI-compatible endpo
 
 ![Chay's Photo Studio](public/icon.svg)
 
-## Quick start (web)
+**Live app:** https://chaython.github.io/ChaysPhotoStudio/
+
+The GitHub Pages site serves the editor itself. The commands below are only for running a local development copy.
+
+## Quick start (local development)
 
 ```bash
 bun install          # or: npm install

@@ -22,20 +22,17 @@ bun install
 bun run icons          # → public/icons, build/icons, webview/src-tauri/icons
 ```
 
-Optional **repository variables** (GitHub → Settings → Secrets and variables →
+Optional **repository variable** (GitHub → Settings → Secrets and variables →
 Actions → *Variables*):
 
 | Variable | Used by | Default |
 |---|---|---|
-| `ENABLE_GITHUB_PAGES` | Enables the optional Pages deployment job | unset / disabled |
 | `WEBVIEW_APP_URL` | Optional Tauri thin-shell URL override | unset — Tauri embeds `build/webapp-export` |
 
-The **browser plugin and default Tauri release are self-contained**. They do not
-need GitHub Pages. To publish the optional hosted build, first go to **Settings →
-Pages → Build and deployment → Source → GitHub Actions**, then create the Actions
-repository variable `ENABLE_GITHUB_PAGES=true`. GitHub requires repository
-admin/maintainer configuration for the publishing source; CI no longer tries to
-auto-create the Pages site.
+The **browser plugin and default Tauri release are self-contained**. GitHub Pages
+publishes the static live editor automatically from default-branch builds. The
+repository's one-time Pages setting must use **Settings → Pages → Build and
+deployment → Source → GitHub Actions**.
 
 ## 2. Releasing (GitHub automation)
 
@@ -43,7 +40,7 @@ auto-create the Pages site.
 Distribute**, which:
 
 1. validates distribution metadata, then builds the web bundle + icons + static exports (`web` job)
-2. optionally deploys the **static web app to GitHub Pages** when `ENABLE_GITHUB_PAGES=true`
+2. deploys the **static live editor to GitHub Pages** from the default branch
 3. packages **Electron desktop builds** on native platform/architecture runners — Windows NSIS
    (`ChaysPhotoStudio-Setup-*.exe`) **and a no-install portable EXE**
    (`ChaysPhotoStudio-Portable-*-x64.exe`), macOS Intel + Apple Silicon DMGs, Linux AppImage + `.deb`

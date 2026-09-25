@@ -133,6 +133,44 @@
   --panel: #232323;
 }
 
+/* True-black OLED / high-contrast theme. The root also keeps the `dark`
+   class so Tailwind dark variants continue to behave normally. */
+.oled {
+  color-scheme: dark;
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #000000;
+  --card-foreground: #ffffff;
+  --popover: #000000;
+  --popover-foreground: #ffffff;
+  --primary: #f5b54a;
+  --primary-foreground: #000000;
+  --secondary: #0a0a0a;
+  --secondary-foreground: #ffffff;
+  --muted: #0a0a0a;
+  --muted-foreground: #d0d0d0;
+  --accent: #111111;
+  --accent-foreground: #ffffff;
+  --destructive: #ff5b5b;
+  --border: rgb(255 255 255 / 32%);
+  --input: rgb(255 255 255 / 42%);
+  --ring: #f5b54a;
+  --sidebar: #000000;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #f5b54a;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #111111;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 32%);
+  --sidebar-ring: #f5b54a;
+  --workspace: #000000;
+  --panel: #000000;
+}
+
+.oled body {
+  background: #000000;
+}
+
 .bg-panel { background: var(--panel); }
 .bg-workspace { background: var(--workspace); }
 

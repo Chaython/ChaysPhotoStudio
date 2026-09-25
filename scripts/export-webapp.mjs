@@ -93,6 +93,27 @@ for (const f of flavors) {
   runNextBuild(f.basePath)
   fs.rmSync(f.out, { recursive: true, force: true })
   fs.cpSync(path.join(COPY, 'out'), f.out, { recursive: true })
+
+  if (f.label === 'pages') {
+    // GitHub Pages serves the app from /ChaysPhotoStudio/. Keep the PWA
+    // manifest scoped to that sub-path rather than sending installed launches
+    // to the account root, and bypass Jekyll processing entirely.
+    fs.writeFileSync(path.join(f.out, '.nojekyll'), '')
+    const manifestPath = path.join(f.out, 'manifest.webmanifest')
+    if (fs.existsSync(manifestPath)) {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+      const prefix = (value) => value === '/' ? `${f.basePath}/` : `${f.basePath}${value}`
+      manifest.id = prefix('/')
+      manifest.start_url = prefix('/')
+      manifest.scope = prefix('/')
+      manifest.icons = (manifest.icons ?? []).map(icon => ({
+        ...icon,
+        src: typeof icon.src === 'string' && icon.src.startsWith('/') ? prefix(icon.src) : icon.src,
+      }))
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
+    }
+  }
+
   const count = (function walk(d) {
     let n = 0
     for (const e of fs.readdirSync(d, { withFileTypes: true })) { n++; if (e.isDirectory()) n += walk(path.join(d, e.name)) }

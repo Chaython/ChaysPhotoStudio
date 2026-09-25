@@ -77,6 +77,9 @@ jobs:
       - name: Build browser extensions
         run: bun run ext:build
 
+      - name: Build GitHub Pages static app
+        run: node scripts/export-webapp.mjs pages
+
       - name: Validate embedded webview configuration
         run: |
           # ext:build already produced build/webapp-export above.
@@ -95,6 +98,10 @@ jobs:
           test -d build/electron/app/.next/static
           test -f build/webapp-export/index.html
           node -e "const fs=require('fs'); const h=fs.readFileSync('build/webapp-export/index.html','utf8'); if (!/(?:src|href)=[\"']\\/_next\\//.test(h) || /(?:src|href)=[\"']\\.\\/_next\\//.test(h)) process.exit(1)"
+          test -f build/webapp-export-pages/index.html
+          test -f build/webapp-export-pages/.nojekyll
+          grep -q '/ChaysPhotoStudio/_next/' build/webapp-export-pages/index.html
+          node -e "const fs=require('fs'); const m=JSON.parse(fs.readFileSync('./build/webapp-export-pages/manifest.webmanifest','utf8')); if(m.start_url!=='/ChaysPhotoStudio/' || m.scope!=='/ChaysPhotoStudio/' || !m.icons.every(i=>i.src.startsWith('/ChaysPhotoStudio/'))) process.exit(1)"
           test -f build/extension/unpacked/manifest.json
           test -f build/extension/firefox/manifest.json
           VERSION="$(node -p "require('./package.json').version")"

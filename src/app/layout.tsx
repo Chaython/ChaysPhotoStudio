@@ -14,21 +14,24 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const basePath = process.env.NEXT_BASE_PATH || "";
+const asset = (path: string) => `${basePath}${path}`;
+
 export const metadata: Metadata = {
   title: "Chay's Photo Studio — Web Image Editor",
   description: "A Photoshop-class raster image editor that runs entirely in your browser: layers, masks, smart objects, content-aware fill, actions and scripting.",
   keywords: ["image editor", "photo editor", "layers", "masks", "content-aware fill", "web photoshop"],
   authors: [{ name: "Chaython Meredith" }],
   applicationName: "Chay's Photo Studio",
-  manifest: "/manifest.webmanifest",
+  manifest: asset("/manifest.webmanifest"),
   icons: {
     icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
-      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+      { url: asset("/icon.svg"), type: "image/svg+xml" },
+      { url: asset("/icons/icon-192.png"), sizes: "192x192", type: "image/png" },
+      { url: asset("/icons/icon-512.png"), sizes: "512x512", type: "image/png" },
+      { url: asset("/favicon.ico"), sizes: "16x16 32x32 48x48" },
     ],
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+    apple: [{ url: asset("/icons/apple-touch-icon.png"), sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,
@@ -38,7 +41,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1c1c1c",
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
 };

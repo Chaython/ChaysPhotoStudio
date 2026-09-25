@@ -9,8 +9,7 @@
 #
 # Products (every run):
 #   • Web (self-hostable Next.js standalone bundle — the PWA)
-#   • Optional GitHub Pages deployment of the static webapp
-#     (enabled with the repository variable ENABLE_GITHUB_PAGES=true)
+#   • GitHub Pages deployment of the static live editor on default-branch builds
 #   • Electron desktop packages (Windows NSIS + portable, macOS dmg
 #     (Intel + Apple Silicon), Linux AppImage + deb) — fully offline
 #   • System-webview shell (Tauri: deb/AppImage/dmg/nsis)
@@ -20,9 +19,7 @@
 #   • GitHub Release with all assets + SHA256SUMS.txt
 #
 # Repository variables (Settings → Secrets and variables → Actions
-# → Variables) — all optional:
-#   ENABLE_GITHUB_PAGES  set to true after enabling Pages with the
-#                        "GitHub Actions" source in repository settings
+# → Variables) — optional:
 #   WEBVIEW_APP_URL      optional deployed editor URL. If unset, the
 #                        Tauri shell embeds the static editor and is offline.
 # ============================================================
@@ -116,12 +113,11 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------
-  # GitHub Pages — optional static deployment. GitHub does not allow every
-  # GITHUB_TOKEN to create/enable a Pages site, so repository setup is a
-  # deliberate one-time action instead of a permanently red CI job.
+  # GitHub Pages — deploy the real static editor from default-branch builds.
+  # The repository's Pages source must be set to "GitHub Actions".
   # ---------------------------------------------------------
   pages:
-    if: ${{ vars.ENABLE_GITHUB_PAGES == 'true' }}
+    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-24.04
     needs: web
     permissions:
@@ -142,6 +138,15 @@ jobs:
         with:
           name: webapp-static-pages
           path: site
+
+      - name: Verify Pages payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f site/index.html
+          test -d site/_next
+          test -f site/.nojekyll
+          grep -q '/ChaysPhotoStudio/_next/' site/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
@@ -484,7 +489,7 @@ jobs:
 
             | Channel | Assets |
             |---|---|
-            | 🌐 Web app | `web-standalone.tar.gz` for self-hosting; optional GitHub Pages when `ENABLE_GITHUB_PAGES=true` |
+            | 🌐 Web app | Live on GitHub Pages from `main`; `web-standalone.tar.gz` for self-hosting |
             | 🖥️ Electron desktop (fully offline) | Release filenames start with `electron-<platform>-<arch>--`, e.g. `electron-windows-x64--ChaysPhotoStudio-Setup-*.exe` and `electron-windows-x64--ChaysPhotoStudio-Portable-*.exe` |
             | 🪶 WebView shell (native system webview) | Release filenames start with `webview-<platform>-<arch>--`, e.g. `webview-windows-x64--Chays.Photo.Studio_*_x64-setup.exe` |
             | 🧩 Browser plugin (self-contained — the whole editor bundled inside, works offline) | `chays-photo-studio-extension-*.zip` (Chrome) · `chays-photo-studio-extension-firefox-*.zip` |
@@ -493,7 +498,7 @@ jobs:
             Continuous builds are published on every push to the default branch;
             stable `v*.*.*` tags are marked as the latest release. See `DISTRIBUTION.md`
             in the repository for install instructions, repository variables
-            (`ENABLE_GITHUB_PAGES`, optional `WEBVIEW_APP_URL`), and signing notes.
+            (optional `WEBVIEW_APP_URL`) and signing notes.
 
             © Chaython Meredith — free for consumer and education use · commercial
             licensing: chaython@live.ca · support development:
