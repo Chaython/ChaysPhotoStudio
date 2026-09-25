@@ -21,6 +21,7 @@ function decontaminateMagicEdge(
   offsetX: number,
   offsetY: number,
   amountPct: number,
+  maskBounds: { x: number; y: number; w: number; h: number },
 ) {
   const amount = clamp(amountPct / 100, 0, 1)
   if (amount <= 0) return
@@ -29,10 +30,15 @@ function decontaminateMagicEdge(
   const src = new Uint8ClampedArray(img.data)
   const around = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]] as const
 
-  for (let ly = 0; ly < canvas.height; ly++) {
+  const lx0 = Math.max(0, Math.floor(maskBounds.x - offsetX))
+  const ly0 = Math.max(0, Math.floor(maskBounds.y - offsetY))
+  const lx1 = Math.min(canvas.width, Math.ceil(maskBounds.x + maskBounds.w - offsetX))
+  const ly1 = Math.min(canvas.height, Math.ceil(maskBounds.y + maskBounds.h - offsetY))
+
+  for (let ly = ly0; ly < ly1; ly++) {
     const dy = ly + offsetY
     if (dy < 0 || dy >= docHeight) continue
-    for (let lx = 0; lx < canvas.width; lx++) {
+    for (let lx = lx0; lx < lx1; lx++) {
       const dx = lx + offsetX
       if (dx < 0 || dx >= docWidth) continue
       const mi = dy * docWidth + dx
@@ -97,25 +103,40 @@ export const magicEraserTool: Tool = {
       matchAlpha: false,
     })
 
-    let any = false
-    const maskData = new ImageData(doc.width, doc.height)
-    for (let i = 0, j = 0; i < alpha.length; i++, j += 4) {
-      const a = alpha[i]
-      if (!a) continue
-      any = true
-      maskData.data[j] = 255
-      maskData.data[j + 1] = 255
-      maskData.data[j + 2] = 255
-      maskData.data[j + 3] = a
+    let minX = doc.width, minY = doc.height, maxX = -1, maxY = -1
+    for (let i = 0; i < alpha.length; i++) {
+      if (!alpha[i]) continue
+      const x = i % doc.width
+      const y = (i / doc.width) | 0
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
     }
-    if (!any) return
+    if (maxX < minX || maxY < minY) return
 
-    const mask = createCanvas(doc.width, doc.height)
+    const maskBounds = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
+    const maskData = new ImageData(maskBounds.w, maskBounds.h)
+    for (let y = 0; y < maskBounds.h; y++) {
+      const gy = minY + y
+      for (let x = 0; x < maskBounds.w; x++) {
+        const gx = minX + x
+        const a = alpha[gy * doc.width + gx]
+        if (!a) continue
+        const j = (y * maskBounds.w + x) * 4
+        maskData.data[j] = 255
+        maskData.data[j + 1] = 255
+        maskData.data[j + 2] = 255
+        maskData.data[j + 3] = a
+      }
+    }
+
+    const mask = createCanvas(maskBounds.w, maskBounds.h)
     putImageData(mask, maskData)
     const mc = ctx2d(mask)
     if (doc.selection) {
       mc.globalCompositeOperation = 'destination-in'
-      mc.drawImage(doc.selection.mask, 0, 0)
+      mc.drawImage(doc.selection.mask, -maskBounds.x, -maskBounds.y)
       mc.globalCompositeOperation = 'source-over'
     }
 
@@ -137,7 +158,7 @@ export const magicEraserTool: Tool = {
       lc.save()
       lc.globalAlpha = eraseOpacity
       lc.globalCompositeOperation = 'destination-out'
-      lc.drawImage(mask, 0, 0)
+      lc.drawImage(mask, maskBounds.x, maskBounds.y)
       lc.restore()
       layer._mv++
       invalidateFlat(doc)
@@ -156,12 +177,17 @@ export const magicEraserTool: Tool = {
       target.offsetX ?? 0,
       target.offsetY ?? 0,
       Number(opts.decontaminate) || 0,
+      maskBounds,
     )
     const tc = ctx2d(target.canvas)
     tc.save()
     tc.globalAlpha = eraseOpacity
     tc.globalCompositeOperation = 'destination-out'
-    tc.drawImage(mask, -(target.offsetX ?? 0), -(target.offsetY ?? 0))
+    tc.drawImage(
+      mask,
+      maskBounds.x - (target.offsetX ?? 0),
+      maskBounds.y - (target.offsetY ?? 0),
+    )
     tc.restore()
 
     engine.pushHistory('Magic Eraser')
