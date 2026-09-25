@@ -1,10 +1,11 @@
 'use client'
 import { useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { TOOL_MAP } from '../../constants/tools'
 import { useEditorStore } from '../../store'
 import type { ControlDef, ToolId } from '../../types'
@@ -100,6 +101,143 @@ export function ToolOptionsBar({ embedded = false }: { embedded?: boolean }) {
   )
 }
 
+type ToolGradientStop = { pos: number; color: string; opacity: number }
+
+function GradientToolStopsControl({ value, onChange }: { value: unknown; onChange: (v: ToolGradientStop[]) => void }) {
+  const initial: ToolGradientStop[] = Array.isArray(value) && value.length >= 2
+    ? value.map((s: any) => ({
+        pos: Math.min(1, Math.max(0, Number(s?.pos) || 0)),
+        color: typeof s?.color === 'string' ? s.color : '#ffffff',
+        opacity: Math.min(100, Math.max(0, Number(s?.opacity ?? 100))),
+      }))
+    : [
+        { pos: 0, color: '#000000', opacity: 100 },
+        { pos: 0.5, color: '#808080', opacity: 100 },
+        { pos: 1, color: '#ffffff', opacity: 100 },
+      ]
+  const stops = [...initial].sort((a, b) => a.pos - b.pos)
+  const [selected, setSelected] = useState(0)
+  const sel = Math.min(Math.max(0, selected), stops.length - 1)
+  const current = stops[sel]
+  const css = `linear-gradient(to right, ${stops.map(s => {
+    const alpha = Math.round(s.opacity * 2.55).toString(16).padStart(2, '0')
+    return `${s.color}${alpha} ${(s.pos * 100).toFixed(1)}%`
+  }).join(', ')})`
+
+  const replaceStop = (patch: Partial<ToolGradientStop>) => {
+    const next = stops.map((s, i) => i === sel ? { ...s, ...patch } : s).sort((a, b) => a.pos - b.pos)
+    const changed = next.findIndex(s => s === next[sel])
+    onChange(next)
+    if (changed >= 0) setSelected(changed)
+  }
+
+  const addStop = () => {
+    if (stops.length >= 16) return
+    const pos = current
+      ? Math.min(.99, Math.max(.01, current.pos + .1))
+      : .5
+    const next = [...stops, { pos, color: current?.color ?? '#e8a33d', opacity: current?.opacity ?? 100 }]
+      .sort((a, b) => a.pos - b.pos)
+    onChange(next)
+    setSelected(next.findIndex(s => Math.abs(s.pos - pos) < 1e-6))
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="h-6 w-28 rounded border border-border px-1.5 text-left text-[10px] hover:bg-accent"
+          title="Edit gradient color and opacity stops"
+        >
+          <span className="block h-3.5 w-full rounded-sm border border-black/20" style={{ background: css }} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align="start" className="z-[100] w-80 p-3">
+        <div className="mb-2 text-xs font-medium">Gradient Editor</div>
+        <div className="relative mb-4 h-8 rounded border border-border" style={{ background: css }}>
+          {stops.map((s, i) => (
+            <button
+              key={`${i}:${s.pos}`}
+              type="button"
+              aria-label={`Gradient stop ${i + 1}`}
+              onClick={() => setSelected(i)}
+              className="absolute -bottom-2 h-4 w-4 -translate-x-1/2 rotate-45 border-2 shadow-sm"
+              style={{
+                left: `${s.pos * 100}%`,
+                backgroundColor: s.color,
+                borderColor: i === sel ? 'var(--primary)' : 'var(--border)',
+                opacity: Math.max(.25, s.opacity / 100),
+              }}
+            />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[10px]">
+          <span>Position</span>
+          <Slider
+            value={[current?.pos ?? 0]}
+            min={0}
+            max={1}
+            step={0.005}
+            onValueChange={v => replaceStop({ pos: v[0] })}
+          />
+          <span className="w-10 text-right font-mono">{Math.round((current?.pos ?? 0) * 100)}%</span>
+
+          <span>Opacity</span>
+          <Slider
+            value={[current?.opacity ?? 100]}
+            min={0}
+            max={100}
+            step={1}
+            onValueChange={v => replaceStop({ opacity: v[0] })}
+          />
+          <span className="w-10 text-right font-mono">{Math.round(current?.opacity ?? 100)}%</span>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            type="color"
+            value={current?.color ?? '#ffffff'}
+            onChange={e => replaceStop({ color: e.target.value })}
+            className="h-7 w-9 rounded border bg-transparent p-0"
+            aria-label="Gradient stop color"
+          />
+          <Input
+            value={current?.color ?? '#ffffff'}
+            onChange={e => {
+              const v = e.target.value.trim()
+              if (/^#[0-9a-f]{6}$/i.test(v)) replaceStop({ color: v })
+            }}
+            className="h-7 flex-1 font-mono text-[10px]"
+            aria-label="Gradient stop hex color"
+          />
+          <button type="button" onClick={addStop} className="h-7 rounded border border-border px-2 hover:bg-accent" title="Add stop">
+            <Plus size={12} />
+          </button>
+          <button
+            type="button"
+            disabled={stops.length <= 2}
+            onClick={() => {
+              if (stops.length <= 2) return
+              const next = stops.filter((_, i) => i !== sel)
+              onChange(next)
+              setSelected(Math.min(sel, next.length - 1))
+            }}
+            className="h-7 rounded border border-border px-2 hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+            title="Remove stop"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+        <div className="mt-2 text-[9px] text-muted-foreground">
+          Up to 16 independent color/opacity stops. Select a diamond, then adjust position, opacity, or color.
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 export function ControlRenderer({ control, value, onChange, compact = true }: {
   control: ControlDef
   value: any
@@ -187,6 +325,16 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
           {label}
         </div>
       )
+    case 'custom':
+      if (control.customId === 'gradient-tool-stops') {
+        return (
+          <div className="flex items-center gap-2 shrink-0 h-7">
+            {label}
+            <GradientToolStopsControl value={value} onChange={onChange} />
+          </div>
+        )
+      }
+      return null
     case 'color':
       return (
         <div className="flex items-center gap-2 shrink-0 h-7">
