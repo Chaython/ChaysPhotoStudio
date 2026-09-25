@@ -19,13 +19,13 @@
 // ============================================================
 import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross, toolMaskCanvas, softDab } from './shared'
+import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawCross, toolMaskCanvas } from './shared'
 import { buildSourceDab, sourcePointFor, frequencyHeal, pressureFlow } from './dab-utils'
 import { createCanvas, ctx2d, getImageData, putImageData, cloneCanvas, clamp } from '../utils/canvas'
 import { dilateMask, gaussianBlurChannel } from '../image-ops/core'
 import { useEditorStore } from '../store'
 import * as imageOps from '../image-ops'
-import { getFlatComposite, invalidateFlat, newLayer } from '../engine/document'
+import { getFlatComposite, getSamplingComposite, invalidateFlat, newLayer } from '../engine/document'
 import { paintBuiltinPattern } from './patterns'
 
 /** rect clamped to doc bounds */
@@ -65,6 +65,23 @@ function getHealingPatternScratch(side: number): HTMLCanvasElement {
   return healingPatternScratch
 }
 
+function healingUsesPattern(opts: Record<string, any>): boolean {
+  // Backward-compatible with older saved presets where Pattern lived in the
+  // Sample control rather than the Source control.
+  return opts.source === 'pattern' || opts.sample === 'pattern'
+}
+
+function healingSamplingCanvas(layerId: string, opts: Record<string, any>): HTMLCanvasElement | null {
+  const doc = engine.activeDoc
+  if (!doc) return null
+  const mode = opts.sample === 'current-below'
+    ? 'current-below'
+    : opts.sample === 'composite'
+      ? 'all'
+      : 'layer'
+  return getSamplingComposite(doc, layerId, mode, opts.ignoreAdjustments === true)
+}
+
 function buildHealingPatternDab(x: number, y: number, radius: number, hardness: number, opts: Record<string, any>) {
   const side = Math.max(4, Math.ceil(radius * 2) + 4)
   const center = side / 2
@@ -82,15 +99,45 @@ function buildHealingPatternDab(x: number, y: number, radius: number, hardness: 
   })
   oc.globalCompositeOperation = 'destination-in'
   const inner = radius * clamp(hardness / 100, 0, .98)
-  const grad = oc.createRadialGradient(center, center, inner, center, center, Math.max(radius, .5))
+  const roundness = clamp((Number(opts.brushRoundness) || 100) / 100, .05, 1)
+  const angle = ((Number(opts.brushAngle) || 0) * Math.PI) / 180
+  oc.save()
+  oc.translate(center, center)
+  oc.rotate(angle)
+  oc.scale(1, roundness)
+  const grad = oc.createRadialGradient(0, 0, inner, 0, 0, Math.max(radius, .5))
   grad.addColorStop(0, 'rgba(255,255,255,1)')
   grad.addColorStop(1, 'rgba(255,255,255,0)')
   oc.fillStyle = grad
   oc.beginPath()
-  oc.arc(center, center, Math.max(radius, .5), 0, Math.PI * 2)
+  oc.arc(0, 0, Math.max(radius, .5), 0, Math.PI * 2)
   oc.fill()
+  oc.restore()
   oc.globalCompositeOperation = 'source-over'
   return out
+}
+
+function drawHealingCursor(
+  ctx: CanvasRenderingContext2D,
+  mouse: { x: number; y: number } | null,
+  zoom: number,
+  opts: Record<string, any>,
+) {
+  if (!mouse) return
+  const rx = Math.max(2, (Number(opts.size) || 40) * .5 * zoom)
+  const ry = Math.max(1, rx * clamp((Number(opts.brushRoundness) || 100) / 100, .05, 1))
+  ctx.save()
+  ctx.translate(mouse.x, mouse.y)
+  ctx.rotate(((Number(opts.brushAngle) || 0) * Math.PI) / 180)
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.strokeStyle = 'rgba(0,0,0,.7)'
+  ctx.setLineDash([2, 2])
+  ctx.stroke()
+  ctx.restore()
 }
 
 export const healingBrushTool: Tool = {
@@ -105,13 +152,13 @@ export const healingBrushTool: Tool = {
     if (!doc || !layer) return
     const opts = getOptions('healing-brush')
 
-    const patternMode = opts.sample === 'pattern'
+    const patternMode = healingUsesPattern(opts)
     if (p.alt && !patternMode) {
       // ---- set healing source (layer snapshot, doc-space) ----
-      const c = opts.sample === 'composite' ? getFlatComposite(doc) : engine.layerCanvasDocSpace(layer.id)
-      if (!c) return
+      const sample = healingSamplingCanvas(layer.id, opts)
+      if (!sample) return
       engine.cloneSource = { x: p.docX, y: p.docY, layerId: layer.id }
-      hst.source = cloneCanvas(c)
+      hst.source = sample
       hst.ref = null
       engine.ui?.toast('Healing source set', 'info')
       engine.requestRender()
@@ -197,7 +244,7 @@ export const healingBrushTool: Tool = {
     const opts = getOptions('healing-brush')
     const size = opts.size ?? 40
     const src = engine.cloneSource
-    const patternMode = opts.sample === 'pattern'
+    const patternMode = healingUsesPattern(opts)
 
     // source marker
     if (!patternMode && src && hst.source) {
@@ -238,8 +285,7 @@ export const healingBrushTool: Tool = {
     void w; void h
     const opts = getOptions('healing-brush')
     const size = opts.size ?? 40
-    if (hst.active || opts.sample === 'pattern') drawBrushCursor(ctx, mouse, size, view.zoom)
-    else if (engine.cloneSource && hst.source) drawBrushCursor(ctx, mouse, size, view.zoom)
+    if (hst.active || healingUsesPattern(opts) || (engine.cloneSource && hst.source)) drawHealingCursor(ctx, mouse, view.zoom, opts)
     else drawCross(ctx, mouse)
   },
 }
@@ -249,10 +295,12 @@ function healDab(x: number, y: number, p: PointerInfo) {
   if (!doc) return
   const opts = getOptions('healing-brush')
   const settings = brushSettingsFrom(opts)
-  const r = settings.size / 2
+  const pressure = p.pointerType === 'pen' ? clamp(p.pressure, 0, 1) : 1
+  const sizeScale = p.pointerType === 'pen' && opts.pressureSize === true ? .25 + .75 * pressure : 1
+  const r = settings.size * sizeScale / 2
   let dabCanvas: HTMLCanvasElement | null = null
 
-  if (opts.sample === 'pattern') {
+  if (healingUsesPattern(opts)) {
     dabCanvas = buildHealingPatternDab(x, y, r, settings.hardness, opts)
   } else {
     if (!hst.source || !hst.ref) return
@@ -261,8 +309,10 @@ function healDab(x: number, y: number, p: PointerInfo) {
     const rot = ((Number(opts.rotate) || 0) * Math.PI) / 180
     const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
     const mirrored = opts.mirrored === true
+    const brushRoundness = clamp((Number(opts.brushRoundness) || 100) / 100, .05, 1)
+    const brushAngle = ((Number(opts.brushAngle) || 0) * Math.PI) / 180
     const sp = sourcePointFor(x, y, hst.ref.x, hst.ref.y, src.x, src.y, rot, mirrored, scale)
-    dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale)
+    dabCanvas = buildSourceDab(hst.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale, brushRoundness, brushAngle)
   }
 
   if (!dabCanvas) return
@@ -362,7 +412,7 @@ export const spotHealingTool: Tool = {
   onPointerMove(p: PointerInfo) {
     if (!spotActive || !spotLast || !spotMask) return
     const opts = getOptions('spot-healing')
-    const spacing = Math.max(2, (opts.size ?? 40) / 3)
+    const spacing = Math.max(1, (Number(opts.size) || 40) * Math.max(.01, (Number(opts.spacing) || 25) / 100))
     for (const d of walkDabs(spotLast.x, spotLast.y, p.docX, p.docY, spacing)) spotMark(d.x, d.y)
     if (Math.hypot(p.docX - spotLast.x, p.docY - spotLast.y) >= spacing) spotLast = { x: p.docX, y: p.docY }
     engine.pokeOverlay()
@@ -430,6 +480,9 @@ export const spotHealingTool: Tool = {
           const j = i * 4
           for (let ch = 0; ch < 3; ch++) img.data[j + ch] = img.data[j + ch] * (1 - a) + blurred.data[j + ch] * a
         }
+      } else if (opts.type === 'texture') {
+        store.setProgress({ active: true, label: 'Spot Healing (Create Texture)', value: 0.5 })
+        textureHeal(img, m, Math.max(8, brushSize * .75))
       } else {
         store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: 0 })
         await imageOps.inpaint(img, m, v => {
@@ -500,8 +553,64 @@ export const spotHealingTool: Tool = {
   renderCursor(ctx, view, w, h, mouse) {
     void w; void h
     const opts = getOptions('spot-healing')
-    drawBrushCursor(ctx, mouse, opts.size ?? 40, view.zoom)
+    drawSpotCursor(ctx, mouse, view.zoom, opts)
   },
+}
+
+/**
+ * Create Texture mode: synthesize the painted area from nearby unmasked
+ * texture samples, then let the existing Color adaptation stage match local
+ * illumination. The deterministic hash avoids flicker/repeated seams while
+ * keeping this local and dependency-free.
+ */
+function textureHeal(img: ImageData, mask: Uint8ClampedArray, radius: number) {
+  const { width: w, height: h, data } = img
+  let minX = w, minY = h, maxX = -1, maxY = -1
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i]) continue
+    const x = i % w, y = (i / w) | 0
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+  }
+  if (maxX < minX) return
+
+  const pad = Math.max(4, Math.round(radius))
+  const x0 = Math.max(0, minX - pad), x1 = Math.min(w - 1, maxX + pad)
+  const y0 = Math.max(0, minY - pad), y1 = Math.min(h - 1, maxY + pad)
+  const candidates: number[] = []
+  const area = Math.max(1, (x1 - x0 + 1) * (y1 - y0 + 1))
+  const stride = Math.max(1, Math.ceil(Math.sqrt(area / 8192)))
+  for (let y = y0; y <= y1; y += stride) {
+    for (let x = x0; x <= x1; x += stride) {
+      const i = y * w + x
+      if (mask[i] < 8 && data[i * 4 + 3] > 0) candidates.push(i)
+    }
+  }
+  if (!candidates.length) return
+
+  const src = new Uint8ClampedArray(data)
+  const hash = (x: number, y: number, salt: number) => {
+    let n = (x * 374761393 + y * 668265263 + salt * 69069) | 0
+    n = (n ^ (n >>> 13)) * 1274126177
+    return (n ^ (n >>> 16)) >>> 0
+  }
+
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const i = y * w + x
+      const a = mask[i] / 255
+      if (a <= 0) continue
+      const c0 = candidates[hash(x, y, 1) % candidates.length]
+      const c1 = candidates[hash(x, y, 2) % candidates.length]
+      const j = i * 4, j0 = c0 * 4, j1 = c1 * 4
+      for (let ch = 0; ch < 3; ch++) {
+        const tex = src[j0 + ch] * .75 + src[j1 + ch] * .25
+        data[j + ch] = src[j + ch] * (1 - a) + tex * a
+      }
+    }
+  }
 }
 
 /** replace masked pixels with a diffusion of the surrounding ring color (proximity match) */
@@ -584,12 +693,63 @@ function frequencyHealProximity(img: ImageData, mask: Uint8ClampedArray, radius:
   }
 }
 
+function drawSpotMaskDab(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  hardness: number,
+  roundnessPct: number,
+  angleDeg: number,
+) {
+  const roundness = clamp(roundnessPct / 100, .05, 1)
+  const inner = radius * clamp(hardness / 100, 0, .98)
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate((angleDeg * Math.PI) / 180)
+  ctx.scale(1, roundness)
+  const grad = ctx.createRadialGradient(0, 0, inner, 0, 0, Math.max(radius, .5))
+  grad.addColorStop(0, 'rgba(255,255,255,1)')
+  grad.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = grad
+  ctx.beginPath()
+  ctx.arc(0, 0, Math.max(radius, .5), 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}
+
+function drawSpotCursor(
+  ctx: CanvasRenderingContext2D,
+  mouse: { x: number; y: number } | null,
+  viewZoom: number,
+  opts: Record<string, any>,
+) {
+  if (!mouse) return
+  const rx = Math.max(2, (Number(opts.size) || 40) * .5 * viewZoom)
+  const ry = Math.max(1, rx * clamp((Number(opts.roundness) || 100) / 100, .05, 1))
+  ctx.save()
+  ctx.translate(mouse.x, mouse.y)
+  ctx.rotate(((Number(opts.angle) || 0) * Math.PI) / 180)
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.strokeStyle = 'rgba(0,0,0,.65)'
+  ctx.setLineDash([2, 2])
+  ctx.stroke()
+  ctx.restore()
+}
+
 function spotMark(x: number, y: number) {
   if (!spotMask) return
   const opts = getOptions('spot-healing')
-  const radius = (opts.size ?? 40) / 2
-  softDab(ctx2d(spotMask), x, y, radius, opts.hardness ?? 60, '#ffffff')
-  const box = { x: x - radius - 2, y: y - radius - 2, w: radius * 2 + 4, h: radius * 2 + 4 }
+  const radius = (Number(opts.size) || 40) / 2
+  const roundness = clamp(Number(opts.roundness) || 100, 5, 100)
+  const angle = Number(opts.angle) || 0
+  drawSpotMaskDab(ctx2d(spotMask), x, y, radius, Number(opts.hardness) || 60, roundness, angle)
+  const extent = radius + 3
+  const box = { x: x - extent, y: y - extent, w: extent * 2, h: extent * 2 }
   if (!spotBounds) spotBounds = box
   else {
     const x0 = Math.min(spotBounds.x, box.x)
@@ -909,29 +1069,62 @@ function commitPatch() {
 
   const result = cloneCanvas(targetBefore)
   const rc = ctx2d(result)
+
+  // Photoshop Normal Patch can optionally carry transparency from the sampled
+  // source. Clearing the target footprint first allows the patch alpha to
+  // replace destination alpha; without Transparent we use normal source-over.
+  if (opts.heal === 'texture' && opts.transparent === true) {
+    rc.save()
+    rc.globalCompositeOperation = 'destination-out'
+    rc.drawImage(targetMask, 0, 0)
+    rc.restore()
+  }
   rc.drawImage(tmp, 0, 0)
 
   const targetBBox: Rect = direction === 'source'
     ? { ...lassoBBox }
     : { x: lassoBBox.x + dx, y: lassoBBox.y + dy, w: lassoBBox.w, h: lassoBBox.h }
 
-  if (opts.heal !== 'texture') {
-    // Match low-frequency color/lighting to the destination while retaining
-    // the sampled high-frequency texture.
-    const pad = Math.max(4, Math.round(Math.min(lassoBBox.w, lassoBBox.h) / 6))
+  if (opts.heal === 'content-aware') {
+    // Content-Aware Patch exposes separate Structure (shape/texture fidelity)
+    // and Color (low-frequency adaptation) controls. Diffusion still controls
+    // how quickly the repair transitions across local detail.
+    const structure = clamp(Number(opts.structure) || 5, 1, 7)
+    const colorMix = clamp((Number(opts.color) || 0) / 10, 0, 1)
+    const diffusion = clamp(Number(opts.diffusion) || 5, 1, 7)
+    const pad = Math.max(
+      4,
+      Math.round(Math.min(lassoBBox.w, lassoBBox.h) * (.08 + (8 - structure) * .012)),
+    )
     const region = clampedRect(
       { x: targetBBox.x - pad, y: targetBBox.y - pad, w: targetBBox.w + pad * 2, h: targetBBox.h + pad * 2 },
-      doc.width, doc.height
+      doc.width, doc.height,
     )
-    if (region.w > 0 && region.h > 0) {
+    if (region.w > 0 && region.h > 0 && colorMix > 0) {
       const target = rc.getImageData(region.x, region.y, region.w, region.h)
+      const raw = new Uint8ClampedArray(target.data)
       const base = ctx2d(targetBefore).getImageData(region.x, region.y, region.w, region.h)
       const maskRegion = ctx2d(targetMask).getImageData(region.x, region.y, region.w, region.h)
       const restrict = new Uint8ClampedArray(region.w * region.h)
       for (let i = 0, j = 3; i < restrict.length; i++, j += 4) restrict[i] = maskRegion.data[j]
-      const diffusion = clamp(Number(opts.diffusion) || 5, 1, 7)
-      const lowR = Math.max(2, Math.round(Math.min(lassoBBox.w, lassoBBox.h) * (0.04 + diffusion * 0.012)))
+
+      const structureScale = 1.32 - (structure - 1) * .075
+      const lowR = Math.max(
+        2,
+        Math.round(Math.min(lassoBBox.w, lassoBBox.h) * (0.025 + diffusion * .01) * structureScale),
+      )
       frequencyHeal(target, base, restrict, lowR)
+
+      if (colorMix < 1) {
+        for (let i = 0, j = 0; i < restrict.length; i++, j += 4) {
+          const a = restrict[i] / 255
+          if (a <= 0) continue
+          const mix = colorMix * a
+          target.data[j] = raw[j] * (1 - mix) + target.data[j] * mix
+          target.data[j + 1] = raw[j + 1] * (1 - mix) + target.data[j + 1] * mix
+          target.data[j + 2] = raw[j + 2] * (1 - mix) + target.data[j + 2] * mix
+        }
+      }
       rc.putImageData(target, region.x, region.y)
     }
   }
