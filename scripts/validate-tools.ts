@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { TOOL_CYCLES, TOOL_DEFS } from '../src/editor/constants/tools'
+import { TOOLS } from '../src/editor/tools/registry'
 
 const fail = (message: string): never => {
   throw new Error(`Tool validation failed: ${message}`)
@@ -47,6 +48,14 @@ const assertSameIds = (label: string, ids: string[]) => {
 }
 assertSameIds('TOOL_DEFS', defIds)
 assertSameIds('TOOLS registry', registryIds)
+assertSameIds('loaded TOOLS', Object.keys(TOOLS))
+
+for (const [id, tool] of Object.entries(TOOLS)) {
+  if (tool.id !== id) fail(`registry key "${id}" loads a tool whose id is "${tool.id}"`)
+  if (!tool.onPointerDown && !tool.onKeyDown && !tool.onDoubleClick) {
+    fail(`${id} exposes no interaction handler`)
+  }
+}
 
 const cycleIds = TOOL_CYCLES.flat().map(String)
 for (const id of cycleIds) if (!expected.has(id)) fail(`TOOL_CYCLES references unknown tool "${id}"`)
