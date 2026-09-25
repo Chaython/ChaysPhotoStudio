@@ -350,6 +350,15 @@ export interface PsDocument {
   name: string
   width: number
   height: number
+  /** Raster layer storage currently used by the editor. Kept explicit so the
+   * UI/project format never claims a higher working precision than is real. */
+  workingBitDepth?: 8 | 16
+  /** Original decoded component depth when known (for example 16-bit TIFF/PSD
+   * imported into today's 8-bit working raster). */
+  sourceBitDepth?: number
+  /** Working canvas color space. The current default is sRGB; Display-P3 is
+   * capability-probed separately before any future wide-gamut migration. */
+  workingColorSpace?: 'srgb' | 'display-p3'
   layers: Layer[]            // index 0 = bottom
   activeLayerId: string | null
   /** Multi-layer selection. activeLayerId is the primary/anchor layer. */
