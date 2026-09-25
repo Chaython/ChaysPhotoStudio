@@ -35,7 +35,7 @@ function reset() {
   moveStart = null
   delta = { x: 0, y: 0 }
   committing = false
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 function polygonPath(pts: { x: number; y: number }[]) {
@@ -83,7 +83,7 @@ function finalizeLasso() {
   moveStart = null
   delta = { x: 0, y: 0 }
   engine.ui?.toast('Drag the selected subject to its new location', 'info')
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 function maskAlpha(m: HTMLCanvasElement): Uint8ClampedArray {
@@ -121,7 +121,7 @@ async function commitMove() {
   if (Math.abs(dx) + Math.abs(dy) < 1) {
     moveStart = null
     delta = { x: 0, y: 0 }
-    engine.requestRender()
+    engine.pokeOverlay()
     return
   }
 
@@ -239,7 +239,7 @@ async function commitMove() {
   } catch (err) {
     committing = false
     engine.ui?.toast(err instanceof Error ? err.message : 'Content-Aware Move failed', 'error')
-    engine.requestRender()
+    engine.pokeOverlay()
   }
 }
 
@@ -258,7 +258,7 @@ export const contentAwareMoveTool: Tool = {
       path = null
       mask = null
       bounds = null
-      engine.requestRender()
+      engine.pokeOverlay()
     } else if (phase === 'moving') {
       moveStart = { x: p.docX, y: p.docY }
       delta = { x: 0, y: 0 }
@@ -272,7 +272,7 @@ export const contentAwareMoveTool: Tool = {
       if (!last || Math.hypot(p.docX - last.x, p.docY - last.y) >= 1.5) {
         points.push({ x: p.docX, y: p.docY })
       }
-      engine.requestRender()
+      engine.pokeOverlay()
     } else if (phase === 'moving' && moveStart) {
       let dx = p.docX - moveStart.x
       let dy = p.docY - moveStart.y
@@ -281,7 +281,7 @@ export const contentAwareMoveTool: Tool = {
         else dx = 0
       }
       delta = { x: dx, y: dy }
-      engine.requestRender()
+      engine.pokeOverlay()
     }
   },
 
