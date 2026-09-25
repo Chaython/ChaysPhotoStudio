@@ -21,14 +21,25 @@ async function sniffFormat(file: File): Promise<ImportFormatId | null> {
   }
 }
 
-/** decode a file to a single canvas through the full pipeline */
-async function decodeToCanvas(file: File): Promise<HTMLCanvasElement> {
+interface DecodedCanvas {
+  canvas: HTMLCanvasElement
+  sourceBitDepth: number
+}
+
+/** Decode a file to a canvas while retaining source precision metadata. The
+ * current working raster remains 8-bit; this prevents 16-bit input from being
+ * silently presented as a 16-bit editing pipeline. */
+async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
   const format = await sniffFormat(file)
-  if (format && CODEC_FORMATS.includes(format)) return (await decodeFile(file)).canvas
+  if (format && CODEC_FORMATS.includes(format)) {
+    const decoded = await decodeFile(file)
+    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8 }
+  }
   try {
-    return await fileToCanvas(file)
+    return { canvas: await fileToCanvas(file), sourceBitDepth: 8 }
   } catch {
-    return (await decodeFile(file)).canvas
+    const decoded = await decodeFile(file)
+    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8 }
   }
 }
 
@@ -45,12 +56,18 @@ export async function openFiles(files: File[], asLayer = false) {
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded); continue }
-        engine.addCanvasDocument(decoded.canvas, file.name)
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8 })
         continue
       }
-      const canvas = await decodeToCanvas(file)
-      if (asLayer && engine.activeDoc) engine.addLayerFromCanvas(canvas, file.name.replace(/\.[^.]+$/, ''))
-      else engine.addCanvasDocument(canvas, file.name)
+      const decoded = await decodeToCanvas(file)
+      if (asLayer && engine.activeDoc) {
+        engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
+        if (decoded.sourceBitDepth > 8) {
+          store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source normalized to the current 8-bit working raster`, 'info')
+        }
+      } else {
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth })
+      }
     } catch (err) {
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
       store.pushToast(`Failed to open ${file.name}${why}`, 'error')
@@ -63,6 +80,9 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   const { width, height } = decoded
   const doc: PsDocument = {
     id: uid(), name, width, height,
+    workingBitDepth: 8,
+    sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
     selection: null, channelView: 'rgb', savedChannels: [],
     guides: [],
@@ -96,8 +116,11 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
 export async function placeImageAsSmartLayer(file: File) {
   const store = useEditorStore.getState()
   try {
-    const canvas = await decodeToCanvas(file)
-    engine.placeSmartLayer(canvas, file.name.replace(/\.[^.]+$/, ''))
+    const decoded = await decodeToCanvas(file)
+    engine.placeSmartLayer(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
+    if (decoded.sourceBitDepth > 8) {
+      store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source is preserved only as an 8-bit smart-object raster today`, 'info')
+    }
     store.pushToast(`Placed ${file.name} as Smart Object`, 'success')
   } catch {
     store.pushToast(`Failed to place ${file.name}`, 'error')
@@ -125,6 +148,9 @@ export interface SerializedProject {
     frames?: any[]
     activeLayerId?: string | null
     historyBrushSourceIndex?: number
+    workingBitDepth?: 8 | 16
+    sourceBitDepth?: number
+    workingColorSpace?: 'srgb' | 'display-p3'
     colorSamplers?: { id: string; x: number; y: number }[]
     measurements?: import('../types').SavedMeasurement[]
     savedPaths?: import('../types').SavedPath[]
@@ -158,6 +184,9 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       channelView: doc.channelView, guides: doc.guides ?? [], view: { ...doc.view },
       frames: doc.frames ? structuredClone(doc.frames) : undefined, activeLayerId: doc.activeLayerId,
       historyBrushSourceIndex: doc.historyBrushSourceIndex ?? 0,
+      workingBitDepth: doc.workingBitDepth ?? 8,
+      sourceBitDepth: doc.sourceBitDepth ?? doc.workingBitDepth ?? 8,
+      workingColorSpace: doc.workingColorSpace ?? 'srgb',
       colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
       measurements: (doc.measurements ?? []).map(m => ({
         ...m,
@@ -226,6 +255,9 @@ export async function openSerializedProject(project: SerializedProject, label = 
   if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) throw new Error('Invalid project dimensions')
   const doc: PsDocument = {
     id: uid(), name, width, height,
+    workingBitDepth: project.doc.workingBitDepth === 16 ? 16 : 8,
+    sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth) ? Number(project.doc.sourceBitDepth) : (project.doc.workingBitDepth === 16 ? 16 : 8),
+    workingColorSpace: project.doc.workingColorSpace === 'display-p3' ? 'display-p3' : 'srgb',
     layers: [], activeLayerId: null, selection: null,
     channelView: (channelView ?? 'rgb') as PsDocument['channelView'], savedChannels: [],
     guides: Array.isArray(project.doc.guides) ? project.doc.guides : [],
