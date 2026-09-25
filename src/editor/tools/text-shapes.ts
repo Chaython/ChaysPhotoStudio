@@ -450,6 +450,19 @@ function applyPreviewDash(ctx: CanvasRenderingContext2D, spec: ShapeSpec, width:
   else ctx.setLineDash([])
 }
 
+let shapePreviewScratch: HTMLCanvasElement | null = null
+
+function getShapePreviewScratch(width: number, height: number): HTMLCanvasElement {
+  const w = Math.max(1, Math.ceil(width))
+  const h = Math.max(1, Math.ceil(height))
+  if (!shapePreviewScratch || shapePreviewScratch.width !== w || shapePreviewScratch.height !== h) {
+    shapePreviewScratch = createCanvas(w, h)
+  } else {
+    ctx2d(shapePreviewScratch).clearRect(0, 0, w, h)
+  }
+  return shapePreviewScratch
+}
+
 function drawShapePreview(
   ctx: CanvasRenderingContext2D,
   spec: ShapeSpec,
@@ -491,7 +504,7 @@ function drawShapePreview(
   if (align === 'outside') {
     // Build outside strokes offscreen so punching out the shape interior does
     // not erase the fill preview or unrelated overlays beneath it.
-    const tmp = createCanvas(Math.max(1, viewportW), Math.max(1, viewportH))
+    const tmp = getShapePreviewScratch(viewportW, viewportH)
     const tc = ctx2d(tmp)
     tc.translate(view.panX, view.panY)
     tc.scale(view.zoom, view.zoom)
