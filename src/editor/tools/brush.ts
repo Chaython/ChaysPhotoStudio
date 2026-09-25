@@ -332,12 +332,25 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     const fadeMul = fade > 0 ? Math.max(0, 1 - st.traveled / fade) : 1
     if (fadeMul <= 0) return // stroke fully faded out
 
-    // ---- pen pressure → flow (mouse/touch gets full flow) ----
-    const pressureMul = p && p.pointerType === 'pen' && opts.pressureFlow !== false
-      ? 0.3 + 0.7 * clamp(p.pressure, 0, 1)
+    const penPressure = p && p.pointerType === 'pen'
+      ? clamp(p.pressure, 0, 1)
       : 1
 
-    let flowEff = (settings.flow / 100) * fadeMul * pressureMul * flowScale
+    // Photoshop separates stroke opacity from per-dab flow. We approximate
+    // opacity dynamics in the stroke buffer while the fixed stroke opacity
+    // remains handled by engine.beginStroke().
+    let flowEff = (settings.flow / 100) * fadeMul * flowScale
+    if (p?.pointerType === 'pen' && opts.pressureFlow !== false) {
+      flowEff *= 0.3 + 0.7 * penPressure
+    }
+    if (p?.pointerType === 'pen' && opts.pressureOpacity === true) {
+      flowEff *= 0.15 + 0.85 * penPressure
+    }
+
+    const flowJitter = clamp(Number(opts.flowJitter ?? 0), 0, 100) / 100
+    if (flowJitter > 0) flowEff *= 1 - Math.random() * flowJitter
+    const opacityJitter = clamp(Number(opts.opacityJitter ?? 0), 0, 100) / 100
+    if (opacityJitter > 0) flowEff *= 1 - Math.random() * opacityJitter
 
     // ---- velocity → opacity dynamics: fast strokes go lighter ----
     if (opts.dynamics === 'velocity-opacity') {
@@ -347,14 +360,20 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     const flow = clamp(flowEff, 0, 1)
     if (flow <= 0) return
 
-    // ---- size dynamics: velocity (existing) and pen pressure → size ----
+    // ---- size dynamics: pressure, jitter and legacy velocity controls ----
     let radius = settings.size / 2
     if (opts.dynamics === 'velocity') {
       const k = clamp(1 - st.speed / (settings.size * 10), 0.35, 1)
       radius *= k
     }
-    if (opts.dynamics === 'pressure' && p && p.pointerType === 'pen') {
-      radius *= 0.35 + 0.65 * clamp(p.pressure, 0, 1)
+    if ((opts.dynamics === 'pressure' || opts.pressureSize === true) && p?.pointerType === 'pen') {
+      const minDiameter = clamp(Number(opts.minDiameter ?? 25), 1, 100) / 100
+      radius *= minDiameter + (1 - minDiameter) * penPressure
+    }
+    const sizeJitter = clamp(Number(opts.sizeJitter ?? 0), 0, 100) / 100
+    if (sizeJitter > 0) {
+      const minDiameter = clamp(Number(opts.minDiameter ?? 25), 1, 100) / 100
+      radius *= Math.max(minDiameter, 1 - Math.random() * sizeJitter)
     }
 
     // ---- per-dab color: jittered palette entry or the fg color ----
@@ -364,11 +383,21 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       : baseColor
 
     const tip = kind === 'brush' && !st.stamp ? getTip(st.tipId) : undefined
-    const tipAngle = tip?.rotatable ? dabAngle(opts, p) : 0
+    let tipAngle = tip?.rotatable ? dabAngle(opts, p) : 0
+    if (tip?.rotatable) {
+      const angleJitter = clamp(Number(opts.angleJitter ?? 0), 0, 100) / 100
+      if (angleJitter > 0) tipAngle += (Math.random() * 2 - 1) * 180 * angleJitter
+    }
+
     let roundness = clamp(opts.roundness ?? 100, 10, 100)
     if (kind === 'brush' && p?.pointerType === 'pen' && opts.tiltRoundness === true) {
       const tilt = clamp(Math.hypot(p.tiltX, p.tiltY) / 90, 0, 1)
       roundness = clamp(roundness * (1 - tilt * 0.72), 10, 100)
+    }
+    const roundnessJitter = clamp(Number(opts.roundnessJitter ?? 0), 0, 100) / 100
+    if (roundnessJitter > 0) {
+      const minRoundness = clamp(Number(opts.minRoundness ?? 25), 1, 100)
+      roundness = Math.max(minRoundness, roundness * (1 - Math.random() * roundnessJitter))
     }
 
     const rawDrawFn: (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void = kind === 'pencil'
@@ -405,18 +434,33 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     // ---- symmetry expansion (positions may land off-canvas; dabs just clip) ----
     const pts = symmetricPoints(x, y, symmetryConfig(opts, doc.width, doc.height))
 
-    // ---- scatter: uniform disk sampling, per mirrored dab independently ----
+    // ---- Photoshop-style scattering + count ----
     const scatterR = (clamp(opts.scatter ?? 0, 0, 300) / 100) * (settings.size / 2)
+    const baseCount = clamp(Math.round(Number(opts.count ?? 1)), 1, 16)
+    const countJitter = clamp(Number(opts.countJitter ?? 0), 0, 100) / 100
+    const count = clamp(
+      Math.round(baseCount * (1 - Math.random() * countJitter)),
+      1,
+      16,
+    )
 
     for (const pt of pts) {
-      let px = pt.x, py = pt.y
-      if (scatterR > 0.5) {
-        const r = scatterR * Math.sqrt(Math.random())
-        const a = Math.PI * 2 * Math.random()
-        px += Math.cos(a) * r
-        py += Math.sin(a) * r
+      for (let n = 0; n < count; n++) {
+        let px = pt.x, py = pt.y
+        if (scatterR > 0.5) {
+          if (opts.scatterBothAxes === false && st.hasDir) {
+            const across = (Math.random() * 2 - 1) * scatterR
+            px += -st.dirY * across
+            py += st.dirX * across
+          } else {
+            const sr = scatterR * Math.sqrt(Math.random())
+            const a = Math.PI * 2 * Math.random()
+            px += Math.cos(a) * sr
+            py += Math.sin(a) * sr
+          }
+        }
+        engine.dab(px, py, drawFn, flow, Math.max(4, radius * extent))
       }
-      engine.dab(px, py, drawFn, flow, Math.max(4, radius * extent))
     }
   }
 
