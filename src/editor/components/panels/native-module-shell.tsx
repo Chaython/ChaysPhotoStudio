@@ -2,7 +2,7 @@
 import { useRef } from 'react'
 import { GripHorizontal, GripVertical } from 'lucide-react'
 import { useEditorStore } from '../../store'
-import { PanelActionsMenu } from './panel-actions-menu'
+import { PanelContextMenu } from './panel-actions-menu'
 import { beginWindowDrag } from './floating-panels'
 import { PANEL_MAP } from './panel-registry'
 import { cn } from '@/lib/utils'
@@ -55,32 +55,27 @@ export function NativeModuleShell({
         className,
       )}
     >
-      <div
-        className={cn(
-          'flex items-center justify-center flex-shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10',
-          'cursor-grab active:cursor-grabbing select-none',
-          vertical ? 'h-6 border-b' : 'w-7 border-r',
-        )}
-        title={`${def.label} — drag or double-click to float`}
-        onDoubleClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
-        onPointerDown={onDown}
-        onPointerMove={onMove}
-        onPointerUp={onUp}
-        onPointerCancel={onUp}
-      >
-        {vertical ? <GripHorizontal size={13} /> : <GripVertical size={13} />}
-      </div>
+      <PanelContextMenu id={id}>
+        <div
+          className={cn(
+            'flex items-center justify-center flex-shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10',
+            'cursor-grab active:cursor-grabbing select-none',
+            vertical ? 'h-6 border-b' : 'w-7 border-r',
+          )}
+          title={`${def.label} — drag/double-click to float · right-click for panel options`}
+          onDoubleClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
+        >
+          {vertical ? <GripHorizontal size={13} /> : <GripVertical size={13} />}
+        </div>
+      </PanelContextMenu>
       <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
         {children}
       </div>
-      <div
-        className={cn(
-          'flex items-center justify-center flex-shrink-0',
-          vertical ? 'h-6 border-t' : 'w-7 border-l',
-        )}
-      >
-        <PanelActionsMenu id={id} />
-      </div>
+
     </div>
   )
 }
