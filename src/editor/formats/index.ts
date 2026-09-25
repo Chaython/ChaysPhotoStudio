@@ -38,6 +38,9 @@ export interface DecodedImage {
   height: number
   hasAlpha: boolean
   format: string
+  /** Original component depth before normalization to the editor's working
+   * raster. Browser-native formats default to 8 when not introspectable. */
+  sourceBitDepth?: number
   psdLayers?: {
     name: string
     canvas: HTMLCanvasElement      // pixels of the layer rect (canvas space)
@@ -110,6 +113,7 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
     height: raw.height,
     hasAlpha: scanAlpha(raw.rgba),
     format,
+    sourceBitDepth: raw.sourceBitDepth ?? 8,
   }
 }
 
@@ -133,6 +137,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
         height: canvas.height,
         hasAlpha: scanAlpha(getImageData(canvas).data),
         format: file.type,
+        sourceBitDepth: 8,
       }
     }
     throw new Error(`Unsupported image format${file.type ? ` (${file.type})` : ''} — the file type could not be detected`)
@@ -154,6 +159,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
         height: psd.height,
         hasAlpha: psd.hasAlpha,
         format: 'psd',
+        sourceBitDepth: psd.depth,
         psdLayers: psd.layers.map(l => ({
           name: l.name,
           canvas: l.canvas,
@@ -177,6 +183,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
         height: canvas.height,
         hasAlpha: scanAlpha(getImageData(canvas).data),
         format,
+        sourceBitDepth: 8,
       }
     }
   }
