@@ -21,11 +21,11 @@ const registrySource = readFileSync(new URL('../src/editor/tools/registry.ts', i
 
 const toolIdBlock = typesSource.match(/export type ToolId\s*=([\s\S]*?)\n\nexport type SelectionCombine/)
 if (!toolIdBlock) fail('could not parse ToolId union')
-const typeIds = [...toolIdBlock[1].matchAll(/'([^']+)'/g)].map(m => m[1])
+const typeIds = [...toolIdBlock![1].matchAll(/'([^']+)'/g)].map(m => m[1])
 
 const registryBlock = registrySource.match(/export const TOOLS:[\s\S]*?=\s*\{([\s\S]*?)\n\}/)
 if (!registryBlock) fail('could not parse TOOLS registry')
-const registryIds = [...registryBlock[1].matchAll(/^\s*'([^']+)'\s*:/gm)].map(m => m[1])
+const registryIds = [...registryBlock![1].matchAll(/^\s*'([^']+)'\s*:/gm)].map(m => m[1])
 
 const defIds = TOOL_DEFS.map(t => t.id as string)
 for (const [label, ids] of [
