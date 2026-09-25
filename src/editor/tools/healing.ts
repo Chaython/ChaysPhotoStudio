@@ -546,6 +546,8 @@ function spotMark(x: number, y: number) {
 type PatchPhase = 'idle' | 'defining' | 'moving'
 let patchPhase: PatchPhase = 'idle'
 let lassoPts: { x: number; y: number }[] = []
+let patchSamplingMul = 1
+const MAX_PATCH_LASSO_POINTS = 8192
 let lassoMask: HTMLCanvasElement | null = null    // full-size soft lasso mask
 let lassoPath: Path2D | null = null
 let lassoBBox: Rect | null = null
@@ -555,18 +557,19 @@ let moveDelta: { x: number; y: number } = { x: 0, y: 0 }
 function resetPatch() {
   patchPhase = 'idle'
   lassoPts = []
+  patchSamplingMul = 1
   lassoMask = null
   lassoPath = null
   lassoBBox = null
   moveStart = null
   moveDelta = { x: 0, y: 0 }
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 function lassoPolygonPath(pts: { x: number; y: number }[]): Path2D {
   const path = new Path2D()
   path.moveTo(pts[0].x, pts[0].y)
-  for (const p of pts.slice(1)) path.lineTo(p.x, p.y)
+  for (let i = 1; i < pts.length; i++) path.lineTo(pts[i].x, pts[i].y)
   path.closePath()
   return path
 }
@@ -590,13 +593,20 @@ function finalizeLasso() {
   mc.fillStyle = '#ffffff'
   lassoPath = lassoPolygonPath(lassoPts)
   mc.fill(lassoPath)
-  // 1px soft edge
-  const md = getImageData(mask)
-  const f = new Float32Array(doc.width * doc.height)
-  for (let i = 0, j = 3; i < f.length; i++, j += 4) f[i] = md.data[j]
-  const b = gaussianBlurChannel(f, doc.width, doc.height, 0.8)
-  for (let i = 0, j = 3; i < b.length; i++, j += 4) md.data[j] = b[i]
-  putImageData(mask, md)
+  // 1px soft edge. Blur only a padded lasso rectangle rather than allocating
+  // Float32 buffers for the entire document.
+  const pad = 4
+  const bx = Math.max(0, Math.floor(lassoBBox.x) - pad)
+  const by = Math.max(0, Math.floor(lassoBBox.y) - pad)
+  const bx1 = Math.min(doc.width, Math.ceil(lassoBBox.x + lassoBBox.w) + pad)
+  const by1 = Math.min(doc.height, Math.ceil(lassoBBox.y + lassoBBox.h) + pad)
+  const bw = Math.max(1, bx1 - bx), bh = Math.max(1, by1 - by)
+  const md = mc.getImageData(bx, by, bw, bh)
+  const feather = new Float32Array(bw * bh)
+  for (let i = 0, j = 3; i < feather.length; i++, j += 4) feather[i] = md.data[j]
+  const softened = gaussianBlurChannel(feather, bw, bh, 0.8)
+  for (let i = 0, j = 3; i < softened.length; i++, j += 4) md.data[j] = softened[i]
+  mc.putImageData(md, bx, by)
   lassoMask = mask
   const patchOpts = getOptions('patch')
   if (patchOpts.heal === 'pattern') {
@@ -609,7 +619,7 @@ function finalizeLasso() {
   engine.ui?.toast(direction === 'destination'
     ? 'Now drag the selected good pixels over the destination and release'
     : 'Now drag the patch to a source area and release', 'info')
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 function commitPatternPatch() {
@@ -656,9 +666,10 @@ export const patchTool: Tool = {
       // (re)start freehand lasso
       patchPhase = 'defining'
       lassoPts = [{ x: p.docX, y: p.docY }]
+      patchSamplingMul = 1
       lassoMask = null
       lassoPath = null
-      engine.requestRender()
+      engine.pokeOverlay()
     } else if (patchPhase === 'moving') {
       moveStart = { x: p.docX, y: p.docY }
       moveDelta = { x: 0, y: 0 }
@@ -668,11 +679,21 @@ export const patchTool: Tool = {
   onPointerMove(p: PointerInfo) {
     if (patchPhase === 'defining') {
       const last = lassoPts[lassoPts.length - 1]
-      if (!last || Math.hypot(p.docX - last.x, p.docY - last.y) > 1.5) lassoPts.push({ x: p.docX, y: p.docY })
-      engine.requestRender()
+      const step = (1.5 * patchSamplingMul) / Math.max(engine.activeDoc?.view.zoom ?? 1, .25)
+      if (last && Math.hypot(p.docX - last.x, p.docY - last.y) <= step) return
+      lassoPts.push({ x: p.docX, y: p.docY })
+      if (lassoPts.length >= MAX_PATCH_LASSO_POINTS) {
+        const tail = lassoPts[lassoPts.length - 1]
+        lassoPts = lassoPts.filter((_, i) => i === 0 || (i & 1) === 0)
+        if (lassoPts[lassoPts.length - 1] !== tail) lassoPts.push(tail)
+        patchSamplingMul *= 2
+      }
+      engine.pokeOverlay()
     } else if (patchPhase === 'moving' && moveStart) {
-      moveDelta = { x: p.docX - moveStart.x, y: p.docY - moveStart.y }
-      engine.requestRender()
+      const next = { x: p.docX - moveStart.x, y: p.docY - moveStart.y }
+      if (Math.abs(next.x - moveDelta.x) < .01 && Math.abs(next.y - moveDelta.y) < .01) return
+      moveDelta = next
+      engine.pokeOverlay()
     }
   },
 
@@ -706,7 +727,10 @@ export const patchTool: Tool = {
       ctx.scale(view.zoom, view.zoom)
       ctx.beginPath()
       ctx.moveTo(lassoPts[0].x, lassoPts[0].y)
-      for (const p of lassoPts.slice(1)) ctx.lineTo(p.x, p.y)
+      const previewStride = Math.max(1, Math.ceil(lassoPts.length / 2048))
+      for (let i = previewStride; i < lassoPts.length; i += previewStride) ctx.lineTo(lassoPts[i].x, lassoPts[i].y)
+      const previewTail = lassoPts[lassoPts.length - 1]
+      if ((lassoPts.length - 1) % previewStride !== 0) ctx.lineTo(previewTail.x, previewTail.y)
       if (mouse) ctx.lineTo((mouse.x - view.panX) / view.zoom, (mouse.y - view.panY) / view.zoom)
       ctx.strokeStyle = '#ffffff'
       ctx.lineWidth = 1.5 / view.zoom
@@ -800,7 +824,7 @@ function commitPatch() {
   if (Math.abs(dx) + Math.abs(dy) < 1) {
     moveStart = null
     moveDelta = { x: 0, y: 0 }
-    engine.requestRender()
+    engine.pokeOverlay()
     return
   }
 
