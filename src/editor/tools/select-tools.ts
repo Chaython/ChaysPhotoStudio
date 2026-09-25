@@ -350,7 +350,6 @@ export const objectSelectTool: Tool = {
 // ============================================================
 let qsActive = false
 let qsMask: HTMLCanvasElement | null = null
-let qsImg: ImageData | null = null
 let qsSource: HTMLCanvasElement | null = null
 let qsAlpha: Uint8ClampedArray | null = null
 let qsRefining = false
@@ -372,7 +371,6 @@ export const quickSelectTool: Tool = {
       : getFlatComposite(doc)
     if (!source) return
     qsSource = source
-    qsImg = getImageData(source)
     qsMask = toolMaskCanvas()
     qsAlpha = new Uint8ClampedArray(doc.width * doc.height)
     qsCombineMode = combineMode(p, opts.mode ?? 'new')
@@ -382,7 +380,7 @@ export const quickSelectTool: Tool = {
   },
 
   onPointerMove(p: PointerInfo) {
-    if (!qsActive || !qsImg || !qsAlpha) return
+    if (!qsActive || !qsSource || !qsAlpha) return
     // Work in screen-space cadence. At low zoom, a 1 document-pixel threshold
     // can run dozens of flood grows for motion the user cannot even see.
     const zoom = Math.max(engine.activeDoc?.view.zoom ?? 1, .02)
@@ -466,7 +464,6 @@ async function finishQuickSelection() {
     if (out.some(v => v > 0)) engine.setSelectionAlpha(out, qsCombineMode, 'Quick Selection')
   } finally {
     qsMask = null
-    qsImg = null
     qsSource = null
     qsAlpha = null
     lastDab = null
@@ -480,22 +477,35 @@ async function finishQuickSelection() {
  *  disk's sub-rectangle is written back to the preview canvas */
 function qsGrow(cx: number, cy: number) {
   const doc = engine.activeDoc
-  if (!doc || !qsImg || !qsAlpha || !qsMask) return
+  if (!doc || !qsSource || !qsAlpha || !qsMask) return
   const opts = getOptions('quick-select')
   const size = opts.size ?? 40
-  const r = size / 2
+  const r = Math.max(2, size / 2)
   const tol = clamp((opts.tolerance ?? 30) * 2.4, 1, 255)
-  const ref = diskAverageColor(qsImg, cx, cy, r)
-  const grow = growDiskRegion(qsImg, cx, cy, r, ref, tol)
 
-  // The old path allocated mask/seen/stack arrays at DOCUMENT size for every
-  // pointer event. Only this brush-local rectangle can possibly change.
+  // Read only the brush-local source rectangle. The previous stroke cache
+  // copied the entire document into ImageData on pointer-down, which could
+  // allocate 100+ MB and stall badly on large photos before the first dab.
+  const x0 = Math.max(0, Math.floor(cx - r))
+  const y0 = Math.max(0, Math.floor(cy - r))
+  const x1 = Math.min(doc.width - 1, Math.ceil(cx + r))
+  const y1 = Math.min(doc.height - 1, Math.ceil(cy + r))
+  const rw = Math.max(1, x1 - x0 + 1)
+  const rh = Math.max(1, y1 - y0 + 1)
+  const local = ctx2d(qsSource).getImageData(x0, y0, rw, rh)
+  const localX = cx - x0
+  const localY = cy - y0
+  const ref = diskAverageColor(local, localX, localY, r)
+  const grow = growDiskRegion(local, localX, localY, r, ref, tol)
+  const gx0 = x0 + grow.x
+  const gy0 = y0 + grow.y
+
   const cur = qsAlpha
   const sub = new ImageData(grow.w, grow.h)
   let changed = false
   for (let y = 0; y < grow.h; y++) {
     const growRow = y * grow.w
-    const docRow = (grow.y + y) * doc.width + grow.x
+    const docRow = (gy0 + y) * doc.width + gx0
     for (let x = 0; x < grow.w; x++) {
       const li = growRow + x
       const gi = docRow + x
@@ -513,6 +523,6 @@ function qsGrow(cx: number, cy: number) {
     }
   }
   if (!changed) return
-  ctx2d(qsMask).putImageData(sub, grow.x, grow.y)
+  ctx2d(qsMask).putImageData(sub, gx0, gy0)
   engine.pokeOverlay()
 }
