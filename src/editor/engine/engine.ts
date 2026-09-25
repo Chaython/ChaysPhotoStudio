@@ -31,6 +31,35 @@ import { homography, projectPoint, quadOutputSize, warpCanvasPerspective, type P
 
 export const MAX_HISTORY = 50
 
+function processSelectionMaskRegion(
+  mask: HTMLCanvasElement,
+  bounds: Rect,
+  feather: number,
+  hardThreshold: boolean,
+): void {
+  const sigma = Math.max(0, feather)
+  const pad = Math.max(2, sigma > 0 ? Math.ceil(sigma * 3) + 2 : 2)
+  const x0 = Math.max(0, Math.floor(bounds.x) - pad)
+  const y0 = Math.max(0, Math.floor(bounds.y) - pad)
+  const x1 = Math.min(mask.width, Math.ceil(bounds.x + bounds.w) + pad)
+  const y1 = Math.min(mask.height, Math.ceil(bounds.y + bounds.h) + pad)
+  const w = x1 - x0, h = y1 - y0
+  if (w <= 0 || h <= 0) return
+
+  const mc = ctx2d(mask)
+  const md = mc.getImageData(x0, y0, w, h)
+  if (hardThreshold) {
+    for (let i = 3; i < md.data.length; i += 4) md.data[i] = md.data[i] >= 128 ? 255 : 0
+  }
+  if (sigma > 0) {
+    const alpha = new Float32Array(w * h)
+    for (let i = 0, j = 3; i < alpha.length; i++, j += 4) alpha[i] = md.data[j]
+    const blurred = gaussianBlurChannel(alpha, w, h, sigma)
+    for (let i = 0, j = 3; i < blurred.length; i++, j += 4) md.data[j] = blurred[i]
+  }
+  mc.putImageData(md, x0, y0)
+}
+
 type Listener = () => void
 
 /** 1×1 scratch context for measuring text (layerContentRect) — measureText
@@ -1747,19 +1776,8 @@ export class Engine {
       c.ellipse(rect.x + rect.w / 2, rect.y + rect.h / 2, Math.abs(rect.w / 2), Math.abs(rect.h / 2), 0, 0, Math.PI * 2)
       c.fill()
     }
-    if (!antiAlias && kind === 'ellipse') {
-      const md = getImageData(mask)
-      for (let i = 3; i < md.data.length; i += 4) md.data[i] = md.data[i] >= 128 ? 255 : 0
-      putImageData(mask, md)
-    }
-    if (feather > 0) {
-      const f = new Float32Array(doc.width * doc.height)
-      const md = getImageData(mask)
-      for (let i = 0, j = 3; i < f.length; i++, j += 4) f[i] = md.data[j]
-      const b = gaussianBlurChannel(f, doc.width, doc.height, feather)
-      const out = new Uint8ClampedArray(b)
-      for (let i = 0, j = 3; i < out.length; i++, j += 4) md.data[j] = out[i]
-      putImageData(mask, md)
+    if ((!antiAlias && kind === 'ellipse') || feather > 0) {
+      processSelectionMaskRegion(mask, rect, feather, !antiAlias && kind === 'ellipse')
     }
     this.setSelectionMask(mask, mode, 'Marquee Selection')
   }
@@ -1772,22 +1790,22 @@ export class Engine {
     c.fillStyle = '#ffffff'
     c.beginPath()
     c.moveTo(points[0].x, points[0].y)
-    for (const p of points.slice(1)) c.lineTo(p.x, p.y)
+    let minX = points[0].x, minY = points[0].y, maxX = points[0].x, maxY = points[0].y
+    for (let i = 1; i < points.length; i++) {
+      const p = points[i]
+      c.lineTo(p.x, p.y)
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y)
+    }
     c.closePath()
     c.fill()
-    if (!antiAlias) {
-      const md = getImageData(mask)
-      for (let i = 3; i < md.data.length; i += 4) md.data[i] = md.data[i] >= 128 ? 255 : 0
-      putImageData(mask, md)
-    }
-    if (feather > 0) {
-      const f = new Float32Array(doc.width * doc.height)
-      const md = getImageData(mask)
-      for (let i = 0, j = 3; i < f.length; i++, j += 4) f[i] = md.data[j]
-      const b = gaussianBlurChannel(f, doc.width, doc.height, feather)
-      const out = new Uint8ClampedArray(b)
-      for (let i = 0, j = 3; i < out.length; i++, j += 4) md.data[j] = out[i]
-      putImageData(mask, md)
+    if (!antiAlias || feather > 0) {
+      processSelectionMaskRegion(
+        mask,
+        { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+        feather,
+        !antiAlias,
+      )
     }
     this.setSelectionMask(mask, mode, 'Lasso Selection')
   }
@@ -2312,30 +2330,52 @@ export class Engine {
   ): string | null {
     const doc = this.activeDoc
     if (!doc) return null
-    // Layer sampling must be in DOCUMENT space; sampling layer.canvas directly
-    // was wrong as soon as a raster layer had a non-zero move offset.
-    const src = scope === 'layer' && this.activeLayer
-      ? this.layerCanvasDocSpace(this.activeLayer.id)
-      : getFlatComposite(doc)
-    if (!src) return null
     const px = clamp(Math.round(x), 0, doc.width - 1)
     const py = clamp(Math.round(y), 0, doc.height - 1)
     const r = clamp(Math.floor(radius), 0, 32)
-    const x0 = clamp(px - r, 0, doc.width - 1)
-    const y0 = clamp(py - r, 0, doc.height - 1)
-    const x1 = clamp(px + r, 0, doc.width - 1)
-    const y1 = clamp(py + r, 0, doc.height - 1)
-    const data = ctx2d(src).getImageData(x0, y0, x1 - x0 + 1, y1 - y0 + 1).data
-    let rr = 0, gg = 0, bb = 0, aa = 0, weight = 0
+    const docX0 = clamp(px - r, 0, doc.width - 1)
+    const docY0 = clamp(py - r, 0, doc.height - 1)
+    const docX1 = clamp(px + r, 0, doc.width - 1)
+    const docY1 = clamp(py + r, 0, doc.height - 1)
+
+    let src: HTMLCanvasElement | null
+    let srcX0 = docX0, srcY0 = docY0
+    let srcX1 = docX1, srcY1 = docY1
+
+    if (scope === 'layer' && this.activeLayer) {
+      const layer = this.activeLayer
+      src = this.layerCanvas(layer.id)
+      if (!src) return null
+      // Raster layers can retain pixels outside the document after Move. Sample
+      // their backing canvas directly and translate the requested doc rectangle
+      // instead of allocating a full document-sized registration copy per dab.
+      if (layer.kind === 'raster') {
+        const ox = layer.offsetX ?? 0
+        const oy = layer.offsetY ?? 0
+        srcX0 = Math.max(0, docX0 - ox)
+        srcY0 = Math.max(0, docY0 - oy)
+        srcX1 = Math.min(src.width - 1, docX1 - ox)
+        srcY1 = Math.min(src.height - 1, docY1 - oy)
+        if (srcX1 < srcX0 || srcY1 < srcY0) return null
+      }
+    } else {
+      src = getFlatComposite(doc)
+      if (!src) return null
+    }
+
+    const data = ctx2d(src).getImageData(
+      Math.floor(srcX0), Math.floor(srcY0),
+      Math.floor(srcX1 - srcX0 + 1), Math.floor(srcY1 - srcY0 + 1),
+    ).data
+    let rr = 0, gg = 0, bb = 0, weight = 0
     // Alpha-weighted average avoids transparent RGB garbage contaminating
-    // large eyedropper samples around cut-out subjects.
+    // large eyedropper / Mixer Brush samples around cut-out subjects.
     for (let i = 0; i < data.length; i += 4) {
       const a = data[i + 3] / 255
       if (a <= 0) continue
       rr += data[i] * a; gg += data[i + 1] * a; bb += data[i + 2] * a
-      aa += data[i + 3]; weight += a
+      weight += a
     }
-    void aa
     if (weight <= 0) return null
     return rgbToHex(rr / weight, gg / weight, bb / weight)
   }

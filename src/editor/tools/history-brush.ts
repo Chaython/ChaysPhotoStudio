@@ -14,6 +14,17 @@ import { createCanvas, ctx2d, clamp } from '../utils/canvas'
 let active = false
 let last: { x: number; y: number } | null = null
 let source: HTMLCanvasElement | null = null
+let historyBrushScratch: HTMLCanvasElement | null = null
+
+function getHistoryBrushScratch(side: number): HTMLCanvasElement {
+  const s = Math.max(3, Math.ceil(side))
+  if (!historyBrushScratch || historyBrushScratch.width !== s || historyBrushScratch.height !== s) {
+    historyBrushScratch = createCanvas(s, s)
+  } else {
+    ctx2d(historyBrushScratch).clearRect(0, 0, s, s)
+  }
+  return historyBrushScratch
+}
 
 function sourceCanvas(layerId: string): HTMLCanvasElement | null {
   const doc = engine.activeDoc
@@ -48,7 +59,7 @@ function historyDab(x: number, y: number, p: PointerInfo) {
 
   const side = Math.max(3, Math.ceil(size) + 4)
   const center = side / 2
-  const patch = createCanvas(side, side)
+  const patch = getHistoryBrushScratch(side)
   const pc = ctx2d(patch)
   pc.drawImage(source, x - center, y - center, side, side, 0, 0, side, side)
   pc.globalCompositeOperation = 'destination-in'

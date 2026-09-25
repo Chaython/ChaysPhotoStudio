@@ -14,6 +14,17 @@ import { paintBuiltinPattern } from './patterns'
 let active = false
 let last: { x: number; y: number } | null = null
 let strokeAnchor: { x: number; y: number } | null = null
+let patternScratch: HTMLCanvasElement | null = null
+
+function getPatternScratch(side: number): HTMLCanvasElement {
+  const s = Math.max(4, Math.ceil(side))
+  if (!patternScratch || patternScratch.width !== s || patternScratch.height !== s) {
+    patternScratch = createCanvas(s, s)
+  } else {
+    ctx2d(patternScratch).clearRect(0, 0, s, s)
+  }
+  return patternScratch
+}
 
 function stampDab(x: number, y: number, p: PointerInfo) {
   if (!active) return
@@ -27,7 +38,7 @@ function stampDab(x: number, y: number, p: PointerInfo) {
   const r = size / 2
   const side = Math.max(4, Math.ceil(size) + 6)
   const half = side / 2
-  const patch = createCanvas(side, side)
+  const patch = getPatternScratch(side)
   const pc = ctx2d(patch)
   const patchDocX = x - half
   const patchDocY = y - half

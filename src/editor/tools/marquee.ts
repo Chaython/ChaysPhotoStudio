@@ -1,4 +1,4 @@
-import type { Tool, PointerInfo, Rect } from '../types'
+import type { Tool, PointerInfo, Rect, SelectionState } from '../types'
 import { engine } from '../engine/engine'
 import { newDrag, getOptions, combineMode, drawDashedRect, drawCross } from './shared'
 import { rectFromPoints, cloneCanvas, createCanvas, ctx2d } from '../utils/canvas'
@@ -25,6 +25,7 @@ interface SelectionMove {
   dx: number
   dy: number
   bounds: Rect
+  previewMask: HTMLCanvasElement
 }
 let selectionMove: SelectionMove | null = null
 
@@ -37,8 +38,40 @@ interface SelectionTransform {
   startY: number
   startAngle: number
   changed: boolean
+  previewMask: HTMLCanvasElement
 }
 let selectionTransform: SelectionTransform | null = null
+
+function clipSelectionBounds(r: Rect, w: number, h: number): Rect {
+  const x0 = Math.max(0, r.x)
+  const y0 = Math.max(0, r.y)
+  const x1 = Math.min(w, r.x + r.w)
+  const y1 = Math.min(h, r.y + r.h)
+  return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) }
+}
+
+function previewSelectionState(mask: HTMLCanvasElement, bounds: Rect): SelectionState {
+  return { mask, bounds, _v: 1, _pathsV: -1, _paths: null }
+}
+
+function rotatedBounds(r: Rect, angle: number): Rect {
+  const cx = r.x + r.w / 2
+  const cy = r.y + r.h / 2
+  const ca = Math.cos(angle), sa = Math.sin(angle)
+  const corners = [
+    [r.x, r.y], [r.x + r.w, r.y],
+    [r.x + r.w, r.y + r.h], [r.x, r.y + r.h],
+  ]
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const [x, y] of corners) {
+    const dx = x - cx, dy = y - cy
+    const rx = cx + dx * ca - dy * sa
+    const ry = cy + dx * sa + dy * ca
+    minX = Math.min(minX, rx); minY = Math.min(minY, ry)
+    maxX = Math.max(maxX, rx); maxY = Math.max(maxY, ry)
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+}
 
 function transformHandlePoints(r: Rect) {
   const cx = r.x + r.w / 2, cy = r.y + r.h / 2
@@ -101,9 +134,12 @@ function previewSelectionTransform(p: PointerInfo) {
   const doc = engine.activeDoc
   const st = selectionTransform
   if (!doc || !st) return
-  const mask = createCanvas(doc.width, doc.height)
+  const mask = st.previewMask
   const mc = ctx2d(mask)
+  mc.setTransform(1, 0, 0, 1, 0, 0)
+  mc.clearRect(0, 0, mask.width, mask.height)
   const b = st.startRect
+  let nextBounds = { ...b }
 
   if (st.handle === 'rotate') {
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2
@@ -116,6 +152,8 @@ function previewSelectionTransform(p: PointerInfo) {
     mc.rotate(a)
     mc.translate(-cx, -cy)
     mc.drawImage(st.originalMask, 0, 0)
+    mc.setTransform(1, 0, 0, 1, 0, 0)
+    nextBounds = rotatedBounds(b, a)
     st.changed = Math.abs(a) > 1e-4
   } else if (st.handle === 'inside') {
     let dx = Math.round(p.docX - st.startX)
@@ -125,9 +163,11 @@ function previewSelectionTransform(p: PointerInfo) {
       else dx = 0
     }
     mc.drawImage(st.originalMask, dx, dy)
+    nextBounds = { x: b.x + dx, y: b.y + dy, w: b.w, h: b.h }
     st.changed = !!(dx || dy)
   } else {
     const r = transformedRect(b, st.handle, p, st.startX, st.startY)
+    nextBounds = r
     if (r.w > .5 && r.h > .5) {
       mc.imageSmoothingEnabled = true
       mc.imageSmoothingQuality = 'high'
@@ -135,7 +175,7 @@ function previewSelectionTransform(p: PointerInfo) {
       st.changed = Math.abs(r.x - b.x) > .01 || Math.abs(r.y - b.y) > .01 || Math.abs(r.w - b.w) > .01 || Math.abs(r.h - b.h) > .01
     }
   }
-  doc.selection = selectionFromMask(mask)
+  doc.selection = previewSelectionState(mask, clipSelectionBounds(nextBounds, doc.width, doc.height))
   engine.pokeOverlay()
 }
 
@@ -167,9 +207,16 @@ function pointInSelection(x: number, y: number): boolean {
 function previewSelectionMove(dx: number, dy: number) {
   const doc = engine.activeDoc
   if (!doc || !selectionMove) return
-  const mask = createCanvas(doc.width, doc.height)
-  ctx2d(mask).drawImage(selectionMove.originalMask, dx, dy)
-  doc.selection = selectionFromMask(mask)
+  const mask = selectionMove.previewMask
+  const mc = ctx2d(mask)
+  mc.clearRect(0, 0, mask.width, mask.height)
+  mc.drawImage(selectionMove.originalMask, dx, dy)
+  doc.selection = previewSelectionState(mask, clipSelectionBounds({
+    x: selectionMove.bounds.x + dx,
+    y: selectionMove.bounds.y + dy,
+    w: selectionMove.bounds.w,
+    h: selectionMove.bounds.h,
+  }, doc.width, doc.height))
   engine.pokeOverlay()
 }
 
@@ -248,6 +295,7 @@ function make(kind: 'rect' | 'ellipse'): Tool {
             startY: p.docY,
             startAngle: Math.atan2(p.docY - cy, p.docX - cx),
             changed: false,
+            previewMask: createCanvas(doc.width, doc.height),
           }
           drag.active = false
           current = null
@@ -265,6 +313,7 @@ function make(kind: 'rect' | 'ellipse'): Tool {
           dx: 0,
           dy: 0,
           bounds: { ...doc.selection.bounds },
+          previewMask: createCanvas(doc.width, doc.height),
         }
         drag.active = false
         current = null

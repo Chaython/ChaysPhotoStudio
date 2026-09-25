@@ -33,6 +33,18 @@ import { getTip, drawTipCursor, tipExtentMul, ERASER_TIP_IDS } from './brush-tip
 const DIR_EMA = 0.35
 const RAD = Math.PI / 180
 
+let historyEraserScratch: HTMLCanvasElement | null = null
+
+function getHistoryEraserScratch(side: number): HTMLCanvasElement {
+  const s = Math.max(4, Math.ceil(side))
+  if (!historyEraserScratch || historyEraserScratch.width !== s || historyEraserScratch.height !== s) {
+    historyEraserScratch = createCanvas(s, s)
+  } else {
+    ctx2d(historyEraserScratch).clearRect(0, 0, s, s)
+  }
+  return historyEraserScratch
+}
+
 function makeEraser(): Tool {
   let active = false
   let last: { x: number; y: number } | null = null
@@ -260,7 +272,7 @@ function makeEraser(): Tool {
       if (eraseToHistory && historySource) {
         const side = Math.max(4, Math.ceil(radius * 2 * extent) + 6)
         const half = side / 2
-        const patch = createCanvas(side, side)
+        const patch = getHistoryEraserScratch(side)
         const pc = ctx2d(patch)
         pc.drawImage(
           historySource,

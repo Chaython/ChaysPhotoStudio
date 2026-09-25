@@ -19,29 +19,34 @@ import * as imageOps from '../image-ops'
 type Phase = 'idle' | 'defining' | 'moving'
 let phase: Phase = 'idle'
 let points: { x: number; y: number }[] = []
+let samplingMul = 1
+const MAX_CONTENT_AWARE_POINTS = 8192
 let path: Path2D | null = null
 let mask: HTMLCanvasElement | null = null
 let bounds: Rect | null = null
 let moveStart: { x: number; y: number } | null = null
 let delta = { x: 0, y: 0 }
 let committing = false
+let previewSource: HTMLCanvasElement | null = null
 
 function reset() {
   phase = 'idle'
   points = []
+  samplingMul = 1
   path = null
   mask = null
   bounds = null
   moveStart = null
   delta = { x: 0, y: 0 }
   committing = false
-  engine.requestRender()
+  previewSource = null
+  engine.pokeOverlay()
 }
 
 function polygonPath(pts: { x: number; y: number }[]) {
   const p = new Path2D()
   p.moveTo(pts[0].x, pts[0].y)
-  for (const q of pts.slice(1)) p.lineTo(q.x, q.y)
+  for (let i = 1; i < pts.length; i++) p.lineTo(pts[i].x, pts[i].y)
   p.closePath()
   return p
 }
@@ -71,19 +76,29 @@ function finalizeLasso() {
   mc.fillStyle = '#fff'
   mc.fill(path)
 
-  // Small AA feather; adaptation adds additional softness at commit time.
-  const md = getImageData(m)
-  const alpha = new Float32Array(doc.width * doc.height)
+  // Small AA feather; only the padded lasso rectangle needs processing.
+  const pad = 4
+  const ax = Math.max(0, bounds.x - pad)
+  const ay = Math.max(0, bounds.y - pad)
+  const ax1 = Math.min(doc.width, bounds.x + bounds.w + pad)
+  const ay1 = Math.min(doc.height, bounds.y + bounds.h + pad)
+  const aw = Math.max(1, ax1 - ax), ah = Math.max(1, ay1 - ay)
+  const md = mc.getImageData(ax, ay, aw, ah)
+  const alpha = new Float32Array(aw * ah)
   for (let i = 0, j = 3; i < alpha.length; i++, j += 4) alpha[i] = md.data[j]
-  const aa = gaussianBlurChannel(alpha, doc.width, doc.height, .65)
+  const aa = gaussianBlurChannel(alpha, aw, ah, .65)
   for (let i = 0, j = 3; i < aa.length; i++, j += 4) md.data[j] = aa[i]
-  putImageData(m, md)
+  mc.putImageData(md, ax, ay)
   mask = m
   phase = 'moving'
+  const active = engine.activeLayer
+  previewSource = getOptions('content-aware-move').sampleAllLayers === true
+    ? getFlatComposite(doc)
+    : active ? engine.layerCanvasDocSpace(active.id) : null
   moveStart = null
   delta = { x: 0, y: 0 }
   engine.ui?.toast('Drag the selected subject to its new location', 'info')
-  engine.requestRender()
+  engine.pokeOverlay()
 }
 
 function maskAlpha(m: HTMLCanvasElement): Uint8ClampedArray {
@@ -101,14 +116,24 @@ function softenedShiftedMask(
 ): HTMLCanvasElement {
   const doc = engine.activeDoc!
   const out = createCanvas(doc.width, doc.height)
-  ctx2d(out).drawImage(source, dx, dy)
-  if (sigma <= .05) return out
-  const d = getImageData(out)
-  const a = new Float32Array(doc.width * doc.height)
+  const oc = ctx2d(out)
+  oc.drawImage(source, dx, dy)
+  if (sigma <= .05 || !bounds) return out
+
+  const pad = Math.max(3, Math.ceil(sigma * 3) + 1)
+  const r = clampRect({
+    x: bounds.x + dx - pad,
+    y: bounds.y + dy - pad,
+    w: bounds.w + pad * 2,
+    h: bounds.h + pad * 2,
+  }, doc.width, doc.height)
+  if (r.w <= 0 || r.h <= 0) return out
+  const d = oc.getImageData(r.x, r.y, r.w, r.h)
+  const a = new Float32Array(r.w * r.h)
   for (let i = 0, j = 3; i < a.length; i++, j += 4) a[i] = d.data[j]
-  const b = gaussianBlurChannel(a, doc.width, doc.height, sigma)
+  const b = gaussianBlurChannel(a, r.w, r.h, sigma)
   for (let i = 0, j = 3; i < b.length; i++, j += 4) d.data[j] = b[i]
-  putImageData(out, d)
+  oc.putImageData(d, r.x, r.y)
   return out
 }
 
@@ -121,7 +146,7 @@ async function commitMove() {
   if (Math.abs(dx) + Math.abs(dy) < 1) {
     moveStart = null
     delta = { x: 0, y: 0 }
-    engine.requestRender()
+    engine.pokeOverlay()
     return
   }
 
@@ -239,7 +264,7 @@ async function commitMove() {
   } catch (err) {
     committing = false
     engine.ui?.toast(err instanceof Error ? err.message : 'Content-Aware Move failed', 'error')
-    engine.requestRender()
+    engine.pokeOverlay()
   }
 }
 
@@ -255,10 +280,11 @@ export const contentAwareMoveTool: Tool = {
     if (phase === 'idle' || phase === 'defining') {
       phase = 'defining'
       points = [{ x: p.docX, y: p.docY }]
+      samplingMul = 1
       path = null
       mask = null
       bounds = null
-      engine.requestRender()
+      engine.pokeOverlay()
     } else if (phase === 'moving') {
       moveStart = { x: p.docX, y: p.docY }
       delta = { x: 0, y: 0 }
@@ -269,10 +295,16 @@ export const contentAwareMoveTool: Tool = {
     if (committing) return
     if (phase === 'defining') {
       const last = points[points.length - 1]
-      if (!last || Math.hypot(p.docX - last.x, p.docY - last.y) >= 1.5) {
-        points.push({ x: p.docX, y: p.docY })
+      const step = (1.5 * samplingMul) / Math.max(engine.activeDoc?.view.zoom ?? 1, .25)
+      if (last && Math.hypot(p.docX - last.x, p.docY - last.y) < step) return
+      points.push({ x: p.docX, y: p.docY })
+      if (points.length >= MAX_CONTENT_AWARE_POINTS) {
+        const tail = points[points.length - 1]
+        points = points.filter((_, i) => i === 0 || (i & 1) === 0)
+        if (points[points.length - 1] !== tail) points.push(tail)
+        samplingMul *= 2
       }
-      engine.requestRender()
+      engine.pokeOverlay()
     } else if (phase === 'moving' && moveStart) {
       let dx = p.docX - moveStart.x
       let dy = p.docY - moveStart.y
@@ -281,7 +313,7 @@ export const contentAwareMoveTool: Tool = {
         else dx = 0
       }
       delta = { x: dx, y: dy }
-      engine.requestRender()
+      engine.pokeOverlay()
     }
   },
 
@@ -322,7 +354,10 @@ export const contentAwareMoveTool: Tool = {
       ctx.scale(view.zoom, view.zoom)
       ctx.beginPath()
       ctx.moveTo(points[0].x, points[0].y)
-      for (const p of points.slice(1)) ctx.lineTo(p.x, p.y)
+      const stride = Math.max(1, Math.ceil(points.length / 2048))
+      for (let i = stride; i < points.length; i += stride) ctx.lineTo(points[i].x, points[i].y)
+      const tail = points[points.length - 1]
+      if ((points.length - 1) % stride !== 0) ctx.lineTo(tail.x, tail.y)
       if (mouse) ctx.lineTo((mouse.x - view.panX) / view.zoom, (mouse.y - view.panY) / view.zoom)
       ctx.strokeStyle = '#fff'
       ctx.lineWidth = 1.5 / view.zoom
@@ -334,9 +369,7 @@ export const contentAwareMoveTool: Tool = {
 
     if (phase === 'moving' && path && bounds) {
       const opts = getOptions('content-aware-move')
-      const src = opts.sampleAllLayers === true
-        ? engine.activeDoc ? getFlatComposite(engine.activeDoc) : null
-        : engine.activeLayer ? engine.layerCanvasDocSpace(engine.activeLayer.id) : null
+      const src = previewSource
       ctx.save()
       ctx.translate(view.panX, view.panY)
       ctx.scale(view.zoom, view.zoom)

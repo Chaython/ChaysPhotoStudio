@@ -46,8 +46,10 @@ let lastDir: Vec | null = null    // unit direction of the last committed step
 let lastShift = false
 let lastAlt = false
 
-const INTERP_STEP = 1.5           // px between interpolated vertices
-const MAX_POINTS = 12000          // ~18k px of path — runaway guard
+const INTERP_STEP = 1.5           // target px between committed vertices
+const MAX_POINTS = 12000          // hard committed-path runaway guard
+const MAX_PREVIEW_SEGMENTS = 2400 // display-only budget; committed geometry stays denser
+const MAX_GRADIENT_PIXELS = 2_000_000
 
 // ---------- gradient work map (built once per stroke) ----------
 let grad: Float32Array | null = null
@@ -59,8 +61,9 @@ function dropGradient(): void {
   grad = null; gradW = 0; gradH = 0; gradScale = 1
 }
 
-/** Sobel gradient magnitude of the flat composite; > 12MP docs are
- *  downsampled to a ≤ 4MP work map (coordinates scaled by gradScale). */
+/** Sobel gradient magnitude of the flat composite. Edge finding is perceptual,
+ *  so large documents use a ≤2MP work map while committed points stay in full
+ *  document space. This avoids multi-million-pixel Sobel stalls on tool-down. */
 function buildGradient(): void {
   dropGradient()
   const doc = engine.activeDoc
@@ -72,9 +75,9 @@ function buildGradient(): void {
   if (!sampled) return
   let work = sampled
   let scale = 1
-  const mp = doc.width * doc.height
-  if (mp > 12_000_000) {
-    const k = Math.sqrt(mp / 4_000_000)
+  const pixels = doc.width * doc.height
+  if (pixels > MAX_GRADIENT_PIXELS) {
+    const k = Math.sqrt(pixels / MAX_GRADIENT_PIXELS)
     const w = Math.max(1, Math.round(doc.width / k))
     const h = Math.max(1, Math.round(doc.height / k))
     work = resampleCanvas(sampled, w, h)
@@ -147,7 +150,11 @@ function pushSegment(a: Vec, b: Vec): void {
   const dx = b.x - a.x, dy = b.y - a.y
   const d = Math.hypot(dx, dy)
   if (d < 0.01) return
-  const n = Math.max(1, Math.ceil(d / INTERP_STEP))
+  const remaining = MAX_POINTS - points.length
+  if (remaining <= 0) return
+  // Always span the full segment. If an extreme document/path would exceed
+  // the global cap, increase spacing instead of truncating before the cursor.
+  const n = Math.min(remaining, Math.max(1, Math.ceil(d / INTERP_STEP)))
   for (let i = 1; i <= n; i++) {
     const t = i / n
     points.push({ x: a.x + dx * t, y: a.y + dy * t })
@@ -352,7 +359,12 @@ export const magneticLassoTool: Tool = {
       ctx.scale(zoom, zoom)
       ctx.beginPath()
       ctx.moveTo(points[0].x, points[0].y)
-      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y)
+      const previewStride = Math.max(1, Math.ceil(points.length / MAX_PREVIEW_SEGMENTS))
+      for (let i = previewStride; i < points.length; i += previewStride) {
+        ctx.lineTo(points[i].x, points[i].y)
+      }
+      const tail = points[points.length - 1]
+      if ((points.length - 1) % previewStride !== 0) ctx.lineTo(tail.x, tail.y)
       ctx.strokeStyle = 'rgba(0,0,0,0.75)'
       ctx.lineWidth = 2 / zoom
       ctx.setLineDash([])

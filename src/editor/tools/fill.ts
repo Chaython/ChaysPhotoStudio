@@ -277,7 +277,7 @@ export const gradientTool: Tool = {
     drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
     gradLine = { x0: p.docX, y0: p.docY, x1: p.docX, y1: p.docY }
     rebuildPreview()
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
@@ -286,7 +286,7 @@ export const gradientTool: Tool = {
     gradLine.y1 = p.docY
     if (p.shift) snapLine(gradLine)
     rebuildPreview()
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerUp() {
@@ -294,10 +294,10 @@ export const gradientTool: Tool = {
     drag.active = false
     const layer = engine.activeLayer
     const doc = engine.activeDoc
-    if (!layer || !doc) { gradLine = null; gradPreview = null; engine.requestRender(); return }
+    if (!layer || !doc) { gradLine = null; gradPreview = null; engine.pokeOverlay(); return }
     const { x0, y0, x1, y1 } = gradLine
     const dist = Math.hypot(x1 - x0, y1 - y0)
-    if (dist < 2) { gradLine = null; gradPreview = null; engine.requestRender(); return }
+    if (dist < 2) { gradLine = null; gradPreview = null; engine.pokeOverlay(); return }
     const opts = getOptions('gradient')
 
     const l = engine.mutateLayerPixels(layer.id)

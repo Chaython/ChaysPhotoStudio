@@ -30,6 +30,18 @@ export function sourcePointFor(
   return { x: srcX + dx, y: srcY + dy }
 }
 
+let sourceDabScratch: HTMLCanvasElement | null = null
+
+function getSourceDabScratch(size: number): HTMLCanvasElement {
+  const s = Math.max(4, Math.ceil(size))
+  if (!sourceDabScratch || sourceDabScratch.width !== s || sourceDabScratch.height !== s) {
+    sourceDabScratch = createCanvas(s, s)
+  } else {
+    ctx2d(sourceDabScratch).clearRect(0, 0, s, s)
+  }
+  return sourceDabScratch
+}
+
 /**
  * Build a soft-edged dab canvas sampling `source` around (sx, sy) with the
  * brush hardness applied as a radial alpha mask (destination-in), so hardness
@@ -44,7 +56,7 @@ export function buildSourceDab(
   const r = Math.max(1, radius)
   if (r < 0.5) return null
   const size = Math.ceil(r * 2) + 2
-  const dab = createCanvas(size, size)
+  const dab = getSourceDabScratch(size)
   const ctx = ctx2d(dab)
   const c = size / 2
   ctx.save()
@@ -140,40 +152,98 @@ export function diskAverageColor(img: ImageData, cx: number, cy: number, radius:
   return [ar / n, ag / n, ab / n]
 }
 
+export interface DiskGrowRegion {
+  x: number
+  y: number
+  w: number
+  h: number
+  data: Uint8ClampedArray
+}
+
 /**
- * Flood-grow a selection from (cx, cy) bounded to a disk of `radius`, matching
- * a reference color within tolerance (0..255 scale). Returns a full-size mask.
+ * Flood-grow only the brush-local rectangle instead of allocating three
+ * document-sized arrays for every Quick Selection pointer event.
  */
-export function growDisk(
-  img: ImageData, cx: number, cy: number, radius: number, ref: [number, number, number] | null, tol: number
-): Uint8ClampedArray {
+export function growDiskRegion(
+  img: ImageData, cx: number, cy: number, radius: number,
+  ref: [number, number, number] | null, tol: number,
+): DiskGrowRegion {
   const { width: w, height: h, data } = img
-  const mask = new Uint8ClampedArray(w * h)
-  const seedX = clamp(Math.round(cx), 0, w - 1)
-  const seedY = clamp(Math.round(cy), 0, h - 1)
   const r = Math.max(2, radius)
+  const x0 = Math.max(0, Math.floor(cx - r))
+  const y0 = Math.max(0, Math.floor(cy - r))
+  const x1 = Math.min(w - 1, Math.ceil(cx + r))
+  const y1 = Math.min(h - 1, Math.ceil(cy + r))
+  const rw = Math.max(1, x1 - x0 + 1)
+  const rh = Math.max(1, y1 - y0 + 1)
+  const mask = new Uint8ClampedArray(rw * rh)
+  const seen = new Uint8Array(rw * rh)
+  const queue = new Int32Array(rw * rh)
+
+  const seedX = clamp(Math.round(cx), x0, x1)
+  const seedY = clamp(Math.round(cy), y0, y1)
+  const seedGlobal = seedY * w + seedX
+  const [rr, rg, rb] = ref ?? [
+    data[seedGlobal * 4],
+    data[seedGlobal * 4 + 1],
+    data[seedGlobal * 4 + 2],
+  ]
   const r2 = r * r
   const tol2 = (tol + 1) * (tol + 1) * 3
-  const [rr, rg, rb] = ref ?? [data[(seedY * w + seedX) * 4], data[(seedY * w + seedX) * 4 + 1], data[(seedY * w + seedX) * 4 + 2]]
-  const seen = new Uint8Array(w * h)
-  const stack: number[] = [seedX, seedY]
-  while (stack.length) {
-    const y = stack.pop()!, x = stack.pop()!
-    const p = y * w + x
-    if (seen[p]) continue
-    seen[p] = 1
+  let head = 0, tail = 0
+  const seedLocal = (seedY - y0) * rw + (seedX - x0)
+  queue[tail++] = seedLocal
+  seen[seedLocal] = 1
+
+  while (head < tail) {
+    const li = queue[head++]
+    const lx = li % rw
+    const ly = Math.floor(li / rw)
+    const x = x0 + lx
+    const y = y0 + ly
     const dx = x - cx, dy = y - cy
     if (dx * dx + dy * dy > r2) continue
-    const i = p * 4
+
+    const gi = y * w + x
+    const i = gi * 4
     const dr = data[i] - rr, dg = data[i + 1] - rg, db = data[i + 2] - rb
     if ((dr * dr + dg * dg + db * db) * 0.34 > tol2) continue
-    mask[p] = 255
-    if (x + 1 < w) stack.push(x + 1, y)
-    if (x > 0) stack.push(x - 1, y)
-    if (y + 1 < h) stack.push(x, y + 1)
-    if (y > 0) stack.push(x, y - 1)
+    mask[li] = 255
+
+    if (lx + 1 < rw) {
+      const n = li + 1
+      if (!seen[n]) { seen[n] = 1; queue[tail++] = n }
+    }
+    if (lx > 0) {
+      const n = li - 1
+      if (!seen[n]) { seen[n] = 1; queue[tail++] = n }
+    }
+    if (ly + 1 < rh) {
+      const n = li + rw
+      if (!seen[n]) { seen[n] = 1; queue[tail++] = n }
+    }
+    if (ly > 0) {
+      const n = li - rw
+      if (!seen[n]) { seen[n] = 1; queue[tail++] = n }
+    }
   }
-  return mask
+  return { x: x0, y: y0, w: rw, h: rh, data: mask }
+}
+
+/** Backward-compatible full-size form for callers that explicitly need one. */
+export function growDisk(
+  img: ImageData, cx: number, cy: number, radius: number,
+  ref: [number, number, number] | null, tol: number,
+): Uint8ClampedArray {
+  const region = growDiskRegion(img, cx, cy, radius, ref, tol)
+  const out = new Uint8ClampedArray(img.width * img.height)
+  for (let y = 0; y < region.h; y++) {
+    out.set(
+      region.data.subarray(y * region.w, (y + 1) * region.w),
+      (region.y + y) * img.width + region.x,
+    )
+  }
+  return out
 }
 
 // ---------- gradient dithering ----------

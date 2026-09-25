@@ -39,6 +39,9 @@ jobs:
       - name: Validate distribution metadata
         run: bun run dist:validate
 
+      - name: Validate all editor tools
+        run: bun run tools:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
