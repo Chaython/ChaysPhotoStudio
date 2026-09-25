@@ -53,10 +53,22 @@ let healConnectFrom: { x: number; y: number } | null = null
 let healConnectDocId: string | null = null
 let healConnectLayerId: string | null = null
 
+let healingPatternScratch: HTMLCanvasElement | null = null
+
+function getHealingPatternScratch(side: number): HTMLCanvasElement {
+  const s = Math.max(4, Math.ceil(side))
+  if (!healingPatternScratch || healingPatternScratch.width !== s || healingPatternScratch.height !== s) {
+    healingPatternScratch = createCanvas(s, s)
+  } else {
+    ctx2d(healingPatternScratch).clearRect(0, 0, s, s)
+  }
+  return healingPatternScratch
+}
+
 function buildHealingPatternDab(x: number, y: number, radius: number, hardness: number, opts: Record<string, any>) {
   const side = Math.max(4, Math.ceil(radius * 2) + 4)
   const center = side / 2
-  const out = createCanvas(side, side)
+  const out = getHealingPatternScratch(side)
   const oc = ctx2d(out)
   paintBuiltinPattern(oc, side, side, {
     kind: String(opts.pattern ?? 'checker'),
