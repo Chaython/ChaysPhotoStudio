@@ -11,7 +11,7 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross } from './shared'
+import { getOptions, brushSettingsFrom, walkDabs, drawCross } from './shared'
 import { buildSourceDab, sourcePointFor, pressureFlow } from './dab-utils'
 import { cloneCanvas } from '../utils/canvas'
 import { getSamplingComposite } from '../engine/document'
@@ -127,6 +127,29 @@ function resolveSourceCanvas(layerId: string): HTMLCanvasElement | null {
       ? 'all'
       : 'layer'
   return getSamplingComposite(doc, layerId, mode, opts.ignoreAdjustments === true)
+}
+
+function drawCloneCursor(
+  ctx: CanvasRenderingContext2D,
+  mouse: { x: number; y: number } | null,
+  zoom: number,
+  opts: Record<string, any>,
+) {
+  if (!mouse) return
+  const rx = Math.max(2, (Number(opts.size) || 60) * .5 * zoom)
+  const ry = Math.max(1, rx * Math.max(.05, Math.min(1, (Number(opts.brushRoundness) || 100) / 100)))
+  ctx.save()
+  ctx.translate(mouse.x, mouse.y)
+  ctx.rotate(((Number(opts.brushAngle) || 0) * Math.PI) / 180)
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.strokeStyle = 'rgba(0,0,0,.7)'
+  ctx.setLineDash([2, 2])
+  ctx.stroke()
+  ctx.restore()
 }
 
 function currentSourcePoint(docX: number, docY: number) {
@@ -265,15 +288,27 @@ export const cloneStampTool: Tool = {
           const rot = ((opts.rotate ?? 0) * Math.PI) / 180
           const mirrored = opts.mirrored === true
           const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
-          const preview = buildSourceDab(st.source, sp.x, sp.y, rDoc, 100, rot, mirrored, scale)
+          const brushRoundness = Math.max(.05, Math.min(1, (Number(opts.brushRoundness) || 100) / 100))
+          const brushAngle = ((Number(opts.brushAngle) || 0) * Math.PI) / 180
+          const preview = buildSourceDab(st.source, sp.x, sp.y, rDoc, 100, rot, mirrored, scale, brushRoundness, brushAngle)
           if (preview) {
             const dw = preview.width * view.zoom
             const dh = preview.height * view.zoom
             ctx.save()
             ctx.globalAlpha = Math.max(0, Math.min(1, (Number(opts.overlayOpacity) || 0) / 100))
-            ctx.beginPath()
-            ctx.arc(mouse.x, mouse.y, r, 0, Math.PI * 2)
-            ctx.clip()
+            const overlayBlend = opts.overlayBlend === 'darken' || opts.overlayBlend === 'lighten' || opts.overlayBlend === 'difference'
+              ? opts.overlayBlend
+              : 'source-over'
+            ctx.globalCompositeOperation = overlayBlend
+            if (opts.overlayClipped !== false) {
+              ctx.translate(mouse.x, mouse.y)
+              ctx.rotate(brushAngle)
+              ctx.scale(1, brushRoundness)
+              ctx.beginPath()
+              ctx.arc(0, 0, r, 0, Math.PI * 2)
+              ctx.clip()
+              ctx.setTransform(1, 0, 0, 1, 0, 0)
+            }
             if (opts.overlayInvert === true) ctx.filter = 'invert(1)'
             ctx.drawImage(preview, mouse.x - dw / 2, mouse.y - dh / 2, dw, dh)
             ctx.restore()
@@ -284,9 +319,14 @@ export const cloneStampTool: Tool = {
         ctx.setLineDash([4, 3])
         ctx.strokeStyle = 'rgba(78,201,176,0.9)'
         ctx.lineWidth = 1.5
+        ctx.save()
+        ctx.translate(gx, gy)
+        ctx.rotate(((Number(opts.brushAngle) || 0) * Math.PI) / 180)
+        ctx.scale(1, Math.max(.05, Math.min(1, (Number(opts.brushRoundness) || 100) / 100)))
         ctx.beginPath()
-        ctx.arc(gx, gy, r, 0, Math.PI * 2)
+        ctx.arc(0, 0, r, 0, Math.PI * 2)
         ctx.stroke()
+        ctx.restore()
         // thin tether line from cursor to source ghost while stroking
         if (st.active) {
           ctx.setLineDash([2, 4])
@@ -305,8 +345,7 @@ export const cloneStampTool: Tool = {
     void w; void h
     const opts = getOptions('clone-stamp')
     const size = opts.size ?? 60
-    if (st.active) drawBrushCursor(ctx, mouse, size, view.zoom)
-    else if (st.point && st.source) drawBrushCursor(ctx, mouse, size, view.zoom)
+    if (st.active || (st.point && st.source)) drawCloneCursor(ctx, mouse, view.zoom, opts)
     else drawCross(ctx, mouse)
   },
 }
@@ -316,17 +355,22 @@ function dab(x: number, y: number, p: PointerInfo) {
   if (!doc || !st.source || !st.ref) return
   const opts = getOptions('clone-stamp')
   const settings = brushSettingsFrom(opts)
-  const r = settings.size / 2
+  const pressure = p.pointerType === 'pen' ? Math.max(0, Math.min(1, p.pressure)) : 1
+  const sizeScale = p.pointerType === 'pen' && opts.pressureSize === true ? .25 + .75 * pressure : 1
+  const r = settings.size * sizeScale / 2
   const rot = ((opts.rotate ?? 0) * Math.PI) / 180
   const mirrored = opts.mirrored === true
   const scale = Math.max(.25, Math.min(4, (Number(opts.scale) || 100) / 100))
+  const brushRoundness = Math.max(.05, Math.min(1, (Number(opts.brushRoundness) || 100) / 100))
+  const brushAngle = ((Number(opts.brushAngle) || 0) * Math.PI) / 180
   const src = st.point
   if (!src) return
 
   const sp = sourcePointFor(x, y, st.ref.x, st.ref.y, src.x, src.y, rot, mirrored, scale)
-  const dabCanvas = buildSourceDab(st.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale)
+  const dabCanvas = buildSourceDab(st.source, sp.x, sp.y, r, settings.hardness, rot, mirrored, scale, brushRoundness, brushAngle)
   if (!dabCanvas) return
-  const flow = pressureFlow(p.pressure, p.pointerType === 'pen', settings.flow / 100)
+  const pressureAffectsOpacity = p.pointerType === 'pen' && opts.pressureOpacity !== false
+  const flow = pressureFlow(p.pressure, pressureAffectsOpacity, settings.flow / 100)
   engine.dab(x, y, (ctx, dx, dy) => {
     ctx.drawImage(dabCanvas, dx - dabCanvas.width / 2, dy - dabCanvas.height / 2)
   }, flow)
