@@ -284,15 +284,24 @@ function maskAlpha(m: HTMLCanvasElement): Uint8ClampedArray {
   return out
 }
 
-function softenedShiftedMaskLocal(
+function transformedSoftMaskLocal(
   source: HTMLCanvasElement,
+  sourceCx: number,
+  sourceCy: number,
   dx: number,
   dy: number,
+  t: TransformState,
   sigma: number,
 ): HTMLCanvasElement {
   const out = createCanvas(source.width, source.height)
   const oc = ctx2d(out)
-  oc.drawImage(source, dx, dy)
+  oc.save()
+  oc.translate(sourceCx + dx, sourceCy + dy)
+  oc.rotate(t.rotation)
+  oc.scale(t.sx, t.sy)
+  oc.translate(-sourceCx, -sourceCy)
+  oc.drawImage(source, 0, 0)
+  oc.restore()
   if (sigma <= .05) return out
 
   const d = oc.getImageData(0, 0, out.width, out.height)
