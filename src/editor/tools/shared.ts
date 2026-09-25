@@ -197,6 +197,24 @@ export function pickLayerAt(docX: number, docY: number): string | null {
   return null
 }
 
+let regionFalloffScratch = new Float32Array(0)
+let regionFalloffBusy = false
+
+function borrowRegionFalloff(length: number): Float32Array {
+  // All current region processors are synchronous. Keep a reusable buffer for
+  // the normal path, but remain safe if a callback ever nests regionProcess.
+  if (!regionFalloffBusy) {
+    if (regionFalloffScratch.length < length) {
+      let capacity = Math.max(1024, regionFalloffScratch.length || 1024)
+      while (capacity < length) capacity *= 2
+      regionFalloffScratch = new Float32Array(capacity)
+    }
+    regionFalloffBusy = true
+    return regionFalloffScratch.subarray(0, length)
+  }
+  return new Float32Array(length)
+}
+
 /** apply region-based pixel processing with soft falloff (used by blur/dodge/etc.)
  *  cx/cy are DOC coordinates — translated into the layer's canvas space. */
 export function regionProcess(
@@ -207,7 +225,7 @@ export function regionProcess(
   const layer = engine.layerById(layerId)
   const doc = engine.activeDoc
   if (!layer?.canvas || !doc) return
-  const r = Math.round(radius)
+  const r = Math.max(1, Math.round(radius))
   const ox = layer.kind === 'raster' ? (layer.offsetX ?? 0) : 0
   const oy = layer.kind === 'raster' ? (layer.offsetY ?? 0) : 0
   const ccx = cx - ox, ccy = cy - oy
@@ -219,31 +237,61 @@ export function regionProcess(
   if (rw <= 0 || rh <= 0) return
   const c = ctx2d(layer.canvas)
   const region = c.getImageData(x0, y0, rw, rh)
-  const falloff = new Float32Array(rw * rh)
+  const falloff = borrowRegionFalloff(rw * rh)
+  const ownsScratch = falloff.buffer === regionFalloffScratch.buffer
+  const inner = clamp(hardness / 100, 0, 0.98)
+  const invSoft = 1 / Math.max(0.02, 1 - inner)
   for (let y = 0; y < rh; y++) {
     for (let x = 0; x < rw; x++) {
       const dx = x0 + x - ccx, dy = y0 + y - ccy
       const d = Math.hypot(dx, dy) / r
-      // Photoshop-style hardness: 0% begins fading from the center, 100%
-      // stays hard almost to the brush edge. The previous fixed 55% profile
-      // made every retouch tool's Hardness option cosmetic only.
-      const inner = clamp(hardness / 100, 0, 0.98)
-      falloff[y * rw + x] = d <= inner ? 1 : clamp(1 - (d - inner) / Math.max(0.02, 1 - inner), 0, 1)
+      falloff[y * rw + x] = d <= inner ? 1 : clamp(1 - (d - inner) * invSoft, 0, 1)
     }
   }
-  // selection restrict (mask is doc-space — sample the doc-space region rect)
+
+  // Selection mask is document-space while raster backing stores may be
+  // offset and extend outside the document. The previous code clipped the
+  // source rectangle but always multiplied from falloff[0], shifting the
+  // selection restriction whenever the layer crossed the top/left canvas edge.
   if (doc.selection) {
-    const sx0 = clamp(x0 + ox, 0, doc.width), sy0 = clamp(y0 + oy, 0, doc.height)
-    const sd = ctx2d(doc.selection.mask).getImageData(sx0, sy0, Math.min(rw, doc.width - sx0), Math.min(rh, doc.height - sy0))
-    for (let y = 0; y < Math.min(rh, sd.height); y++) {
-      for (let x = 0; x < Math.min(rw, sd.width); x++) {
-        const sel = sd.data[(y * sd.width + x) * 4 + 3] / 255
-        falloff[y * rw + x] *= sel
+    const docLeft = x0 + ox
+    const docTop = y0 + oy
+    const sx0 = Math.max(0, docLeft)
+    const sy0 = Math.max(0, docTop)
+    const sx1 = Math.min(doc.width, docLeft + rw)
+    const sy1 = Math.min(doc.height, docTop + rh)
+    const dstX = sx0 - docLeft
+    const dstY = sy0 - docTop
+    const sw = Math.max(0, sx1 - sx0)
+    const sh = Math.max(0, sy1 - sy0)
+
+    // Everything outside document space is outside the active selection.
+    if (dstY > 0) falloff.fill(0, 0, dstY * rw)
+    if (dstY + sh < rh) falloff.fill(0, (dstY + sh) * rw, rw * rh)
+    for (let y = dstY; y < dstY + sh; y++) {
+      const row = y * rw
+      if (dstX > 0) falloff.fill(0, row, row + dstX)
+      if (dstX + sw < rw) falloff.fill(0, row + dstX + sw, row + rw)
+    }
+
+    if (sw > 0 && sh > 0) {
+      const sd = ctx2d(doc.selection.mask).getImageData(sx0, sy0, sw, sh)
+      for (let y = 0; y < sh; y++) {
+        const dstRow = (dstY + y) * rw + dstX
+        const srcRow = y * sw
+        for (let x = 0; x < sw; x++) {
+          falloff[dstRow + x] *= sd.data[(srcRow + x) * 4 + 3] / 255
+        }
       }
     }
   }
-  fn(region, falloff, rw, rh)
-  c.putImageData(region, x0, y0)
+
+  try {
+    fn(region, falloff, rw, rh)
+    c.putImageData(region, x0, y0)
+  } finally {
+    if (ownsScratch) regionFalloffBusy = false
+  }
 }
 
 /** create a canvas for accumulating tool masks */
