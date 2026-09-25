@@ -19,6 +19,7 @@ import {
 import { gaussianBlurChannel } from '../image-ops/core'
 import { autoTone, autoContrast, autoColor } from '../image-ops/auto'
 import { runPixelOpFromCanvas, type PixelOpSpec } from './pixel-worker'
+import { runWandMaskAsync } from './wand-worker'
 import { isGlEnabled, setGlEnabled, glInfo, glAvailable } from './gl/gl-core'
 import { resampleCanvas } from '../utils/canvas'
 import {
@@ -1858,6 +1859,58 @@ export class Engine {
       if ((opts.feather ?? 0) > 0) refined = modifySelection(refined, 'feather', opts.feather ?? 0) ?? refined
       // Refinement already produced a document-space mask. Avoid extracting a
       // second full-document alpha buffer only to recreate the same mask.
+      this.setSelectionMask(refined.mask, opts.mode, 'Magic Wand')
+      return
+    }
+    this.setSelectionAlpha(mask, opts.mode, 'Magic Wand')
+  }
+
+  async magicWandAsync(x: number, y: number, opts: {
+    tolerance: number
+    contiguous: boolean
+    sample: 'composite' | 'layer'
+    mode: SelectionCombine
+    antiAlias?: boolean
+    diagonal?: boolean
+    sampleRadius?: number
+    edgeAware?: number
+    adaptive?: boolean
+    matchAlpha?: boolean
+    exactPixels?: boolean
+    feather?: number
+    smooth?: number
+  }): Promise<void> {
+    const doc = this.activeDoc
+    if (!doc) return
+    const docId = doc.id
+    const src = opts.sample === 'layer' && this.activeLayer
+      ? this.layerCanvasDocSpace(this.activeLayer.id)
+      : getFlatComposite(doc)
+    if (!src) return
+    const img = getImageData(src)
+    const cx = clamp(Math.round(x), 0, doc.width - 1)
+    const cy = clamp(Math.round(y), 0, doc.height - 1)
+    const mask = await runWandMaskAsync(img, cx, cy, {
+      tolerance: opts.tolerance,
+      contiguous: opts.contiguous,
+      antiAlias: opts.antiAlias,
+      diagonal: opts.diagonal,
+      sampleRadius: opts.sampleRadius,
+      edgeAware: opts.edgeAware,
+      adaptive: opts.adaptive,
+      matchAlpha: opts.matchAlpha,
+      exactPixels: opts.exactPixels,
+    })
+
+    // Do not apply a delayed worker result to a document the user switched
+    // away from while the selection was being computed.
+    if (this.activeDoc?.id !== docId) return
+
+    if ((opts.smooth ?? 0) > 0 || (opts.feather ?? 0) > 0) {
+      const temp = selectionFromMask(maskCanvasFromAlpha(mask, doc.width, doc.height))
+      let refined = temp
+      if ((opts.smooth ?? 0) > 0) refined = modifySelection(refined, 'smooth', opts.smooth ?? 0) ?? refined
+      if ((opts.feather ?? 0) > 0) refined = modifySelection(refined, 'feather', opts.feather ?? 0) ?? refined
       this.setSelectionMask(refined.mask, opts.mode, 'Magic Wand')
       return
     }
