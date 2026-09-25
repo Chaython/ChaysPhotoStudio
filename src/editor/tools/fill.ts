@@ -383,15 +383,35 @@ function paintBucketPattern(
   h: number,
   opts: Record<string, any>,
   swapColors: boolean,
+  originX = 0,
+  originY = 0,
 ) {
   paintBuiltinPattern(ctx, w, h, {
     kind: String(opts.pattern ?? 'checker'),
     scale: clamp((Number(opts.patternScale) || 100) / 100, .25, 4),
     offsetX: Number(opts.patternOffsetX) || 0,
     offsetY: Number(opts.patternOffsetY) || 0,
+    originX,
+    originY,
     fg: swapColors ? getBgColor() : getFgColor(),
     bg: swapColors ? getFgColor() : getBgColor(),
   })
+}
+
+function maskBounds(alpha: Uint8ClampedArray, w: number, h: number) {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1
+  for (let i = 0; i < alpha.length; i++) {
+    if (!alpha[i]) continue
+    const x = i % w
+    const y = (i / w) | 0
+    if (x < x0) x0 = x
+    if (x > x1) x1 = x
+    if (y < y0) y0 = y
+    if (y > y1) y1 = y
+  }
+  return x1 >= x0 && y1 >= y0
+    ? { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }
+    : null
 }
 
 // ============================================================
@@ -430,32 +450,58 @@ export const paintBucketTool: Tool = {
           tolerance: Math.round((opts.tolerance ?? 32) * 2.55),
           contiguous: opts.contiguous !== false,
         })
-    const has = fillMask.some(v => v > 0)
-    if (!has) return
+    let bounds = maskBounds(fillMask, doc.width, doc.height)
+    if (!bounds) return
 
-    // Optional post-smoothing is intentionally separate from anti-aliasing:
-    // AA softens only the boundary; Smooth removes tiny one-pixel stair steps.
+    // Optional post-smoothing is intentionally separate from anti-aliasing.
+    // Work only around the filled region rather than allocating/blurring a
+    // Float32 buffer for the entire document.
     const smooth = Math.max(0, Number(opts.smooth) || 0)
     if (smooth > 0 || (opts.perceptual === false && opts.antiAlias !== false)) {
-      const f = new Float32Array(fillMask.length)
-      for (let i = 0; i < fillMask.length; i++) f[i] = fillMask[i]
-      const soft = gaussianBlurChannel(f, doc.width, doc.height, smooth > 0 ? Math.max(.6, smooth * .65) : .6)
-      fillMask = new Uint8ClampedArray(soft)
+      const sigma = smooth > 0 ? Math.max(.6, smooth * .65) : .6
+      const pad = Math.max(2, Math.ceil(sigma * 3) + 1)
+      const sx = Math.max(0, bounds.x - pad)
+      const sy = Math.max(0, bounds.y - pad)
+      const ex = Math.min(doc.width, bounds.x + bounds.w + pad)
+      const ey = Math.min(doc.height, bounds.y + bounds.h + pad)
+      const sw = Math.max(1, ex - sx)
+      const sh = Math.max(1, ey - sy)
+      const local = new Float32Array(sw * sh)
+      for (let y = 0; y < sh; y++) {
+        const srcRow = (sy + y) * doc.width + sx
+        const dstRow = y * sw
+        for (let x = 0; x < sw; x++) local[dstRow + x] = fillMask[srcRow + x]
+      }
+      const soft = gaussianBlurChannel(local, sw, sh, sigma)
+      for (let y = 0; y < sh; y++) {
+        const dstRow = (sy + y) * doc.width + sx
+        const srcRow = y * sw
+        for (let x = 0; x < sw; x++) fillMask[dstRow + x] = soft[srcRow + x]
+      }
+      bounds = { x: sx, y: sy, w: sw, h: sh }
     }
 
     const l = engine.mutateLayerPixels(layer.id)
     if (!l?.canvas) return
 
-    // Build the fill content independently from the region mask. Pattern mode
-    // uses foreground/background swatches and keeps scale/offset in document
-    // space so repeated fills line up consistently.
-    const tmp = createCanvas(doc.width, doc.height)
+    // Build only the affected region. Pattern phase remains anchored to
+    // document coordinates via originX/originY.
+    const tmp = createCanvas(bounds.w, bounds.h)
     const tc = ctx2d(tmp)
+    const maskData = new ImageData(bounds.w, bounds.h)
+    for (let y = 0; y < bounds.h; y++) {
+      const srcRow = (bounds.y + y) * doc.width + bounds.x
+      const dstRow = y * bounds.w
+      for (let x = 0; x < bounds.w; x++) {
+        const a = fillMask[srcRow + x]
+        if (!a) continue
+        maskData.data[(dstRow + x) * 4 + 3] = Math.min(255, a)
+      }
+    }
+
     if (opts.fill === 'pattern') {
-      paintBucketPattern(tc, doc.width, doc.height, opts, p.alt)
-      const maskCanvas = createCanvas(doc.width, doc.height)
-      const maskData = new ImageData(doc.width, doc.height)
-      for (let i = 0; i < fillMask.length; i++) maskData.data[i * 4 + 3] = Math.min(255, fillMask[i])
+      paintBucketPattern(tc, bounds.w, bounds.h, opts, p.alt, bounds.x, bounds.y)
+      const maskCanvas = createCanvas(bounds.w, bounds.h)
       putImageData(maskCanvas, maskData)
       tc.globalCompositeOperation = 'destination-in'
       tc.drawImage(maskCanvas, 0, 0)
@@ -463,27 +509,31 @@ export const paintBucketTool: Tool = {
     } else {
       const fillColor = p.alt || opts.fill === 'background' ? getBgColor() : getFgColor()
       const [r, g, b] = hexToRgb(fillColor)
-      const id = new ImageData(doc.width, doc.height)
-      for (let i = 0; i < fillMask.length; i++) {
-        const a = fillMask[i]
-        if (a <= 0) continue
-        id.data[i * 4] = r; id.data[i * 4 + 1] = g; id.data[i * 4 + 2] = b
-        id.data[i * 4 + 3] = a > 255 ? 255 : a
+      for (let i = 0; i < maskData.data.length; i += 4) {
+        const a = maskData.data[i + 3]
+        if (!a) continue
+        maskData.data[i] = r
+        maskData.data[i + 1] = g
+        maskData.data[i + 2] = b
       }
-      putImageData(tmp, id)
+      putImageData(tmp, maskData)
     }
-    // respect the selection mask
+
+    // Respect the document selection without expanding back to a full-doc temp.
     if (doc.selection) {
       tc.globalCompositeOperation = 'destination-in'
-      tc.drawImage(doc.selection.mask, 0, 0)
+      tc.drawImage(doc.selection.mask, -bounds.x, -bounds.y)
       tc.globalCompositeOperation = 'source-over'
     }
     const c = ctx2d(l.canvas)
     c.save()
     c.globalAlpha = (opts.opacity ?? 100) / 100
     try { c.globalCompositeOperation = BLEND_GCO[opts.blendMode] || 'source-over' } catch { /* noop */ }
-    // tmp is doc-space — align to the layer's offset registration
-    c.drawImage(tmp, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
+    c.drawImage(
+      tmp,
+      bounds.x - (l.offsetX ?? 0),
+      bounds.y - (l.offsetY ?? 0),
+    )
     c.restore()
     engine.pushHistory(opts.fill === 'pattern' ? 'Pattern Fill' : 'Paint Bucket')
     engine.emit()
