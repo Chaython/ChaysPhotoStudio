@@ -55,6 +55,9 @@ for (const [id, tool] of Object.entries(TOOLS)) {
   if (!tool.onPointerDown && !tool.onKeyDown && !tool.onDoubleClick) {
     fail(`${id} exposes no interaction handler`)
   }
+  if (tool.onPointerDown && tool.onPointerMove && !tool.onPointerUp && !tool.onDeactivate) {
+    fail(`${id} has a drag handler but no pointer-up/deactivate cleanup path`)
+  }
   const def = TOOL_DEFS.find(d => d.id === id)
   if (!def) throw new Error(`Tool validation failed: ${id} loaded without a ToolDef`)
   if (!!def.requiresLayer !== !!tool.requiresLayer) {
@@ -103,6 +106,38 @@ for (const def of TOOL_DEFS) {
   }
 }
 
+// Idle-render smoke test every tool. This deliberately uses no active document
+// and no mouse position: each overlay/cursor implementation must tolerate the
+// editor's empty/startup state without throwing.
+const gradient = { addColorStop() {} }
+const fakeCtx = new Proxy({
+  canvas: { width: 800, height: 600 },
+  measureText(text: string) { return { width: String(text).length * 7 } },
+  createLinearGradient() { return gradient },
+  createRadialGradient() { return gradient },
+  createPattern() { return null },
+  getTransform() { return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 } },
+}, {
+  get(target, prop) {
+    if (prop in target) return (target as Record<PropertyKey, unknown>)[prop]
+    return () => undefined
+  },
+  set(target, prop, value) {
+    ;(target as Record<PropertyKey, unknown>)[prop] = value
+    return true
+  },
+}) as unknown as CanvasRenderingContext2D
+
+const idleView = { zoom: 1, panX: 0, panY: 0, autoFit: true }
+for (const [id, tool] of Object.entries(TOOLS)) {
+  try {
+    tool.renderOverlay?.(fakeCtx, idleView, 800, 600, null)
+    tool.renderCursor?.(fakeCtx, idleView, 800, 600, null)
+  } catch (err) {
+    fail(`${id} throws during idle render: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 console.log(
-  `Validated ${typeIds.length} tools: ToolId, definitions, registry, cycles, control schemas and defaults are consistent.`,
+  `Validated ${typeIds.length} tools: registry/definitions/cycles/defaults, drag lifecycle, and idle rendering are consistent.`,
 )
