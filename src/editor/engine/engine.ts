@@ -2134,7 +2134,15 @@ export class Engine {
     }
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
-    const out = await runPixelOpFromCanvas(l.canvas, { kind: 'filter', type, params })
+    let out: ImageData
+    try {
+      out = await runPixelOpFromCanvas(l.canvas, { kind: 'filter', type, params })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.ui?.toast(`Filter not applied: ${message}`, 'error')
+      console.error('[zphoto] filter worker failed safely', err)
+      return
+    }
     putImageData(l.canvas, out)
     invalidateFlat(doc)
     this.pushHistory(filterLabel(type))
