@@ -147,14 +147,20 @@ export function perceptualWandMask(
   }
 
   // Pixel queue with a fixed typed-array backing avoids millions of temporary
-  // arrays on large photos. seen=1 means queued/visited, not necessarily kept.
+  // arrays on large photos. When the caller provides search bounds (Object
+  // Select/click detection, etc.), queue/visited storage is region-sized rather
+  // than document-sized. The output mask remains document-space for API
+  // compatibility.
   const n = w * h
-  const queue = new Int32Array(n)
-  const seen = new Uint8Array(n)
+  const bw = ex - bx
+  const bh = ey - by
+  const queue = new Int32Array(Math.max(1, bw * bh))
+  const seen = new Uint8Array(Math.max(1, bw * bh))
+  const localIndex = (x: number, y: number) => (y - by) * bw + (x - bx)
   let qh = 0, qt = 0
   const start = y0 * w + x0
   queue[qt++] = start
-  seen[start] = 1
+  seen[localIndex(x0, y0)] = 1
 
   // Running model: starts at the sampled seed; accepted pixels update it with
   // a capped EMA. This lets gradual gradients remain connected without the
@@ -194,12 +200,14 @@ export function perceptualWandMask(
 
     for (const d of dirs8) {
       const q = p + d
-      if (q < 0 || q >= n || seen[q]) continue
+      if (q < 0 || q >= n) continue
       const qx = q % w, qy = (q / w) | 0
       if (qx < bx || qx >= ex || qy < by || qy >= ey) continue
       // Prevent row wrapping for +/-1 and diagonal offsets.
       if (Math.abs(qx - x) > 1 || Math.abs(qy - y) > 1) continue
-      seen[q] = 1
+      const qi = localIndex(qx, qy)
+      if (seen[qi]) continue
+      seen[qi] = 1
       if (edgeK > 0) {
         const edge = neighborEdgePenalty(data, w, p, q)
         // Rather than fully blocking all edges, turn the barrier into a small
