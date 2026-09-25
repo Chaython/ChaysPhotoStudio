@@ -101,11 +101,9 @@ function dockedPanels(side: 'left' | 'right', floating: Record<string, unknown>,
 function useDelayedDockPresence(hasPanels: boolean, delay = EMPTY_DOCK_HIDE_DELAY): boolean {
   const [visible, setVisible] = useState(hasPanels)
   useEffect(() => {
-    if (hasPanels) {
-      setVisible(true)
-      return
-    }
-    const timer = window.setTimeout(() => setVisible(false), delay)
+    // Use the timer callback for both transitions: showing remains effectively
+    // immediate, while an emptied dock gets a short grace period before hiding.
+    const timer = window.setTimeout(() => setVisible(hasPanels), hasPanels ? 0 : delay)
     return () => window.clearTimeout(timer)
   }, [hasPanels, delay])
   return visible
