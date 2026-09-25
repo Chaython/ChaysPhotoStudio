@@ -558,7 +558,7 @@ export const shapeTool: Tool = {
     drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
     shapeRect = null
     shapeVec = null
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
@@ -566,7 +566,7 @@ export const shapeTool: Tool = {
     const spec = currentShapeSpec(p, true)
     if (spec) shapeRect = { x: spec.x, y: spec.y, w: spec.w, h: spec.h }
     shapeVec = spec ? { x0: spec.x, y0: spec.y, x1: spec.x + spec.w, y1: spec.y + spec.h } : null
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   onPointerUp(p: PointerInfo) {
@@ -577,7 +577,7 @@ export const shapeTool: Tool = {
     shapeVec = null
     const isLine = spec?.shape === 'line'
     if (!spec || (!isLine && (Math.abs(spec.w) < 2 || Math.abs(spec.h) < 2)) || (isLine && Math.hypot(spec.w, spec.h) < 2)) {
-      engine.requestRender()
+      engine.pokeOverlay()
       return
     }
     engine.addShapeLayer(spec)
