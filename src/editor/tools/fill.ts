@@ -25,6 +25,7 @@ import { paintBuiltinPattern } from './patterns'
 let drag = newDrag()
 let gradLine: { x0: number; y0: number; x1: number; y1: number } | null = null
 let gradPreview: HTMLCanvasElement | null = null
+let gradPreviewEnd: { x: number; y: number } | null = null
 
 function colorWithOpacity(color: string, opacity: number, transparency: boolean): string {
   let h = String(color || '#000000').replace('#', '').trim()
@@ -276,7 +277,9 @@ export const gradientTool: Tool = {
     if (p.button !== 0) return
     drag = { startX: p.docX, startY: p.docY, lastX: p.docX, lastY: p.docY, active: true }
     gradLine = { x0: p.docX, y0: p.docY, x1: p.docX, y1: p.docY }
+    gradPreviewEnd = null
     rebuildPreview()
+    gradPreviewEnd = { x: gradLine.x1, y: gradLine.y1 }
     engine.pokeOverlay()
   },
 
@@ -285,7 +288,16 @@ export const gradientTool: Tool = {
     gradLine.x1 = p.docX
     gradLine.y1 = p.docY
     if (p.shift) snapLine(gradLine)
-    rebuildPreview()
+    const zoom = Math.max(engine.activeDoc?.view.zoom ?? 1, .02)
+    const changedPx = gradPreviewEnd
+      ? Math.hypot(gradLine.x1 - gradPreviewEnd.x, gradLine.y1 - gradPreviewEnd.y) * zoom
+      : Infinity
+    // Repainting a ~900px gradient preview on every high-rate stylus event is
+    // wasted when the endpoint moved less than a screen pixel.
+    if (changedPx >= 1) {
+      rebuildPreview()
+      gradPreviewEnd = { x: gradLine.x1, y: gradLine.y1 }
+    }
     engine.pokeOverlay()
   },
 
@@ -294,10 +306,10 @@ export const gradientTool: Tool = {
     drag.active = false
     const layer = engine.activeLayer
     const doc = engine.activeDoc
-    if (!layer || !doc) { gradLine = null; gradPreview = null; engine.pokeOverlay(); return }
+    if (!layer || !doc) { gradLine = null; gradPreview = null; gradPreviewEnd = null; engine.pokeOverlay(); return }
     const { x0, y0, x1, y1 } = gradLine
     const dist = Math.hypot(x1 - x0, y1 - y0)
-    if (dist < 2) { gradLine = null; gradPreview = null; engine.pokeOverlay(); return }
+    if (dist < 2) { gradLine = null; gradPreview = null; gradPreviewEnd = null; engine.pokeOverlay(); return }
     const opts = getOptions('gradient')
 
     const l = engine.mutateLayerPixels(layer.id)
@@ -327,6 +339,7 @@ export const gradientTool: Tool = {
 
     gradLine = null
     gradPreview = null
+    gradPreviewEnd = null
     engine.pushHistory('Gradient')
     engine.emit()
   },
