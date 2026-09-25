@@ -21,8 +21,8 @@ import { useEditorStore, defaultToolbarLayout } from '../../store'
 import { formatCombo } from '../../shortcuts'
 import type { ToolDef, ToolId, ToolbarSection } from '../../types'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { cn } from '@/lib/utils'
 import { engine } from '../../engine/engine'
 import { setActiveTool } from '../../tools/registry'
@@ -212,43 +212,34 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
                 : embedded
                   ? 'flex-col p-1 gap-0.5'
                   : 'flex-col p-1 gap-0.5 border-b border-border/40 mb-1', hovered && 'ring-1 ring-primary/70')}>
-            <div className="relative group/tool">
-              <ToolButton
-                def={main} shortcut={keys[main.id]} active={!!activeInGroup}
-                onSelect={selectTool} compact={compact} hasGroup
-                dragHandle={dnd ? { onDragStart: itemDragStart(main.id), onDragEnd: endDrag } : undefined}
-              />
-            </div>
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className={cn(
-                    'text-muted-foreground hover:text-foreground hover:bg-accent rounded-sm transition-colors flex items-center justify-center',
-                    compact ? 'w-4 h-10' : 'h-3 w-10'
-                  )}
-                  aria-label="More tools"
-                >
-                  <Icons.ChevronRight size={10} className={compact || embedded ? '' : 'rotate-90'} />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side={compact || embedded ? 'bottom' : 'right'} align="start" className="z-50">
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div className="relative group/tool">
+                  <ToolButton
+                    def={main} shortcut={keys[main.id]} active={!!activeInGroup}
+                    onSelect={selectTool} compact={compact} hasGroup
+                    dragHandle={dnd ? { onDragStart: itemDragStart(main.id), onDragEnd: endDrag } : undefined}
+                  />
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="z-[90] min-w-48">
                 {tools.map(t => (
-                  <DropdownMenuItem
+                  <ContextMenuItem
                     key={t.id}
-                    onClick={() => selectTool(t.id)}
+                    onSelect={() => selectTool(t.id)}
                     className="gap-2 text-xs"
                     draggable={dnd}
                     onDragStart={dnd ? itemDragStart(t.id) : undefined}
                     onDragEnd={dnd ? endDrag : undefined}
-                    title={dnd ? 'Drag out of the menu onto the toolbar to pin it' : undefined}
+                    title={dnd ? 'Drag onto the toolbar to pin this tool' : undefined}
                   >
                     <ToolIcon icon={t.icon} />
                     <span className="flex-1">{t.label}</span>
                     <span className="text-muted-foreground font-mono text-[10px]">{formatCombo(keys[t.id])}</span>
-                  </DropdownMenuItem>
+                  </ContextMenuItem>
                 ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </ContextMenuContent>
+            </ContextMenu>
           </div>
         )
       })}
@@ -273,7 +264,7 @@ function ToolButton({ def, shortcut, active, onSelect, compact, hasGroup, dragHa
       draggable={!!dragHandle}
       onDragStart={dragHandle?.onDragStart}
       onDragEnd={dragHandle?.onDragEnd}
-      title={`${def.label} (${shortcut ? shortcut.toUpperCase() : '—'})${dragHandle ? ' · drag to rearrange the toolbar' : ''}`}
+      title={`${def.label} (${shortcut ? shortcut.toUpperCase() : '—'})${dragHandle ? ' · drag to rearrange the toolbar' : ''}${hasGroup ? ' · right-click for related tools' : ''}`}
       aria-label={def.label}
       aria-pressed={active}
       className={cn(
