@@ -23,8 +23,9 @@
 //     putImageData()s the result, so history/undo are unaffected.
 //
 // Pooling: max 2 workers, spawned lazily; a pending queue drains as
-// workers go idle. 20 s per-op timeout. Graceful degradation: any
-// spawn failure / worker error / timeout latches the pool OFF for
+// workers go idle. Heavy blur filters get a much longer timeout so a legitimate
+// long-running worker is never killed only to be re-run on the UI thread.
+// Graceful degradation: any spawn failure / worker error / timeout latches the pool OFF for
 // the session (one console warning) and every op runs synchronously
 // through the very same image-ops functions.
 //
@@ -75,6 +76,30 @@ const MAX_WORKERS = 2
 /** below this many pixels the worker round-trip costs more than the op — run sync */
 export const SIZE_THRESHOLD_PX = 300_000 // 0.3 MP
 const OP_TIMEOUT_MS = 20_000
+const HEAVY_FILTER_TIMEOUT_MS = 180_000
+const MAIN_THREAD_HEAVY_LIMIT_PX = 2_000_000
+const NEVER_SYNC_FILTERS = new Set(['gaussian-blur', 'motion-blur', 'radial-blur'])
+
+function avoidMainThreadFallback(width: number, height: number, op: PixelOpSpec): boolean {
+  return op.kind === 'filter' &&
+    width * height >= MAIN_THREAD_HEAVY_LIMIT_PX &&
+    NEVER_SYNC_FILTERS.has(String(op.type ?? ''))
+}
+
+function workerRequiredError(op: PixelOpSpec): PixelOpUnrecoverableError {
+  return new PixelOpUnrecoverableError(
+    `${String(op.type ?? 'pixel operation')} requires the pixel worker at this image size; refusing a main-thread fallback that could freeze the editor`,
+  )
+}
+
+function timeoutForJob(job: InternalJob): number {
+  if (job.op.kind !== 'filter') return OP_TIMEOUT_MS
+  const type = job.op.type
+  if (type === 'gaussian-blur' || type === 'box-blur' || type === 'motion-blur' || type === 'radial-blur') {
+    return HEAVY_FILTER_TIMEOUT_MS
+  }
+  return OP_TIMEOUT_MS
+}
 
 // ------------------------------------------------------------ pool state (client only — never touched during SSR)
 interface InternalJob {
@@ -180,6 +205,10 @@ function flushPendingSync(): void {
   const queued = pending
   pending = []
   for (const job of queued) {
+    if (avoidMainThreadFallback(job.width, job.height, job.op)) {
+      job.reject(workerRequiredError(job.op))
+      continue
+    }
     try {
       const img = new ImageData(new Uint8ClampedArray(job.buffer), job.width, job.height)
       job.resolve(runPixelOpSync(img, job.op))
@@ -196,6 +225,10 @@ function recoverJob(job: InternalJob, reason: string): void {
   if (job.entry) job.entry.job = null
   job.entry = null
   if (job.original) {
+    if (avoidMainThreadFallback(job.width, job.height, job.op)) {
+      job.reject(workerRequiredError(job.op))
+      return
+    }
     // keepInput — the caller's ImageData was never transferred; re-run synchronously
     try {
       job.resolve(runPixelOpSync(job.original, job.op))
@@ -251,7 +284,9 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
     // e.g. no ImageData constructor in that worker) or partially mutated (the op
     // threw mid-run; a deterministic op fails identically on re-run, so this is
     // either a correct result or the same error surfaces again).
-    if (msg.buffer) {
+    if (avoidMainThreadFallback(job.width, job.height, job.op)) {
+      job.reject(workerRequiredError(job.op))
+    } else if (msg.buffer) {
       try {
         const img = new ImageData(new Uint8ClampedArray(msg.buffer), job.width, job.height)
         job.resolve(runPixelOpSync(img, job.op))
@@ -274,13 +309,14 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
 function dispatch(entry: WorkerEntry, job: InternalJob): void {
   entry.job = job
   job.entry = entry
+  const timeoutMs = timeoutForJob(job)
   job.timer = setTimeout(() => {
-    warnOnce('op timed out after 20s')
+    warnOnce(`op timed out after ${Math.round(timeoutMs / 1000)}s`)
     try { entry.worker.terminate() } catch { /* already dead */ }
     pool = pool.filter(e => e !== entry)
     recoverJob(job, 'timeout')
     flushPendingSync()
-  }, OP_TIMEOUT_MS)
+  }, timeoutMs)
   const transfer: ArrayBuffer[] = [job.buffer]
   if (job.sourceBuffer) transfer.push(job.sourceBuffer)
   entry.worker.postMessage(
@@ -341,7 +377,11 @@ export function runPixelOpAsync(img: ImageData, op: PixelOpSpec, opts: PixelOpRu
   if (img.width * img.height < SIZE_THRESHOLD_PX) {
     return Promise.resolve(runPixelOpSync(img, op))
   }
-  if (broken || typeof window === 'undefined') {
+  if (typeof window === 'undefined') {
+    return Promise.resolve(runPixelOpSync(img, op))
+  }
+  if (broken) {
+    if (avoidMainThreadFallback(img.width, img.height, op)) return Promise.reject(workerRequiredError(op))
     return Promise.resolve(runPixelOpSync(img, op))
   }
 
@@ -403,7 +443,8 @@ export async function runPixelOpFromCanvas(canvas: HTMLCanvasElement, op: PixelO
     return await runPixelOpAsync(img, op)
   } catch (err) {
     if (err instanceof PixelOpUnrecoverableError) {
-      // the canvas was never written — re-fetch and run synchronously
+      if (avoidMainThreadFallback(canvas.width, canvas.height, op)) throw err
+      // the canvas was never written — re-fetch and run synchronously when safe
       return runPixelOpSync(getImageData(canvas), op)
     }
     throw err

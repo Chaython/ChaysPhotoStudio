@@ -109,9 +109,21 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
     if (!def || !layerId) return
     if (smartFilterId) {
       if (preview) engine.updateSmartFilter(layerId, smartFilterId, params)
-    } else if (preview) {
-      engine.setPreviewFilter(layerId, type, params)
+      return
     }
+    if (!preview) {
+      engine.clearPreviewFilter()
+      return
+    }
+
+    // Slider input can arrive far faster than an expensive document preview can
+    // be composited. Coalesce it so broad blurs cannot stack main-thread work.
+    const isBlur = type === 'gaussian-blur' || type === 'box-blur' || type === 'motion-blur' || type === 'radial-blur'
+    const timer = window.setTimeout(
+      () => engine.setPreviewFilter(layerId, type, params),
+      isBlur ? 80 : 24,
+    )
+    return () => window.clearTimeout(timer)
   }, [params, preview, type, def, layerId, smartFilterId])
 
   if (!def || !layerId) return null

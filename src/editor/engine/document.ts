@@ -448,6 +448,29 @@ function applyAdjustmentLayerOver(target: HTMLCanvasElement, layer: Layer) {
 }
 
 // ---------- layer preparation (cached) ----------
+/**
+ * Blur dialogs used to run the full JS pixel filter synchronously inside the
+ * compositor on every slider tick. On a large document that can monopolize
+ * the UI thread before the user even presses OK. Canvas2D's native blur is a
+ * sufficiently close live-preview approximation; the committed operation
+ * still uses the image-ops implementation in the pixel worker.
+ */
+function applyFastPreviewFilter(out: HTMLCanvasElement, type: FilterType, params: Record<string, any>): boolean {
+  if (type !== 'gaussian-blur' && type !== 'box-blur') return false
+  const radius = Math.max(0, Number(params.radius) || 0)
+  if (radius < 0.1) return true
+  const tmp = createCanvas(out.width, out.height)
+  const tc = ctx2d(tmp)
+  if (!('filter' in tc)) return false
+  tc.filter = `blur(${Math.min(250, radius)}px)`
+  tc.drawImage(out, 0, 0)
+  tc.filter = 'none'
+  const oc = ctx2d(out)
+  oc.clearRect(0, 0, out.width, out.height)
+  oc.drawImage(tmp, 0, 0)
+  return true
+}
+
 export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement | null {
   const cacheKey = `${doc._epoch}|${layer._v}|${layer._mv}|${layer.maskEnabled ? 1 : 0}|vm${layer.vectorMask?.enabled === false ? 0 : layer.vectorMask ? 1 : 0}|${doc.previewFilter && doc.previewFilter.layerId === layer.id ? JSON.stringify(doc.previewFilter) : ''}|${doc._strokeLayerId === layer.id ? `st${doc._strokeV}` : ''}|${layer.fx ? 'fx' : ''}`
   const anyLayer = layer as any
@@ -493,11 +516,14 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
     }
   }
 
-  // dialog live-preview filter
+  // dialog live-preview filter. Broad blurs use native Canvas2D preview
+  // instead of synchronous full-resolution JS pixel math on every slider tick.
   if (doc.previewFilter && doc.previewFilter.layerId === layer.id) {
-    const img = getImageData(out)
-    imageOps.applyFilter(img, doc.previewFilter.type, doc.previewFilter.params)
-    putImageData(out, img)
+    if (!applyFastPreviewFilter(out, doc.previewFilter.type, doc.previewFilter.params)) {
+      const img = getImageData(out)
+      imageOps.applyFilter(img, doc.previewFilter.type, doc.previewFilter.params)
+      putImageData(out, img)
+    }
   }
 
   // active stroke buffer
