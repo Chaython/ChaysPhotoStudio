@@ -10,6 +10,7 @@ import { engine } from '../engine/engine'
 import { getOptions, drawCross } from './shared'
 import {
   createCanvas, ctx2d, cloneCanvas, getImageData, putImageData, clamp,
+  clampRectToSize, cropCanvasRegion, inflateRect, unionRect,
 } from '../utils/canvas'
 import { getFlatComposite, invalidateFlat, newLayer } from '../engine/document'
 import { gaussianBlurChannel } from '../image-ops/core'
@@ -108,32 +109,23 @@ function maskAlpha(m: HTMLCanvasElement): Uint8ClampedArray {
   return out
 }
 
-function softenedShiftedMask(
+function softenedShiftedMaskLocal(
   source: HTMLCanvasElement,
   dx: number,
   dy: number,
   sigma: number,
 ): HTMLCanvasElement {
-  const doc = engine.activeDoc!
-  const out = createCanvas(doc.width, doc.height)
+  const out = createCanvas(source.width, source.height)
   const oc = ctx2d(out)
   oc.drawImage(source, dx, dy)
-  if (sigma <= .05 || !bounds) return out
+  if (sigma <= .05) return out
 
-  const pad = Math.max(3, Math.ceil(sigma * 3) + 1)
-  const r = clampRect({
-    x: bounds.x + dx - pad,
-    y: bounds.y + dy - pad,
-    w: bounds.w + pad * 2,
-    h: bounds.h + pad * 2,
-  }, doc.width, doc.height)
-  if (r.w <= 0 || r.h <= 0) return out
-  const d = oc.getImageData(r.x, r.y, r.w, r.h)
-  const a = new Float32Array(r.w * r.h)
+  const d = oc.getImageData(0, 0, out.width, out.height)
+  const a = new Float32Array(out.width * out.height)
   for (let i = 0, j = 3; i < a.length; i++, j += 4) a[i] = d.data[j]
-  const b = gaussianBlurChannel(a, r.w, r.h, sigma)
+  const b = gaussianBlurChannel(a, out.width, out.height, sigma)
   for (let i = 0, j = 3; i < b.length; i++, j += 4) d.data[j] = b[i]
-  oc.putImageData(d, r.x, r.y)
+  oc.putImageData(d, 0, 0)
   return out
 }
 
@@ -142,6 +134,7 @@ async function commitMove() {
   const doc = engine.activeDoc
   const layer = engine.activeLayer
   if (!doc || !layer || !mask || !bounds) { reset(); return }
+
   const dx = Math.round(delta.x), dy = Math.round(delta.y)
   if (Math.abs(dx) + Math.abs(dy) < 1) {
     moveStart = null
@@ -155,15 +148,34 @@ async function commitMove() {
     const opts = getOptions('content-aware-move')
     const target0 = engine.layerCanvasDocSpace(layer.id)
     if (!target0) { reset(); return }
-    const targetBefore = cloneCanvas(target0)
-    const sampled = opts.sampleAllLayers === true ? cloneCanvas(getFlatComposite(doc)) : cloneCanvas(target0)
 
-    // Respect an existing document selection as an outer constraint.
-    const sourceMask = cloneCanvas(mask)
+    const structure = clamp(Number(opts.structure) || 5, 1, 7)
+    const color = clamp(Number(opts.color) || 5, 0, 10)
+    const edgeSigma = Math.max(.25, (8 - structure) * .42)
+    const edgePad = Math.max(3, Math.ceil(edgeSigma * 4) + 2)
+    const colorPad = Math.max(3, Math.round(Math.min(bounds.w, bounds.h) * .08))
+    const inpaintPad = Math.max(24, Math.ceil(Math.min(bounds.w, bounds.h) * .35))
+    const pad = Math.max(edgePad, colorPad, inpaintPad)
+
+    const destRect = { x: bounds.x + dx, y: bounds.y + dy, w: bounds.w, h: bounds.h }
+    const workRect = clampRectToSize(
+      inflateRect(unionRect(bounds, destRect), pad),
+      doc.width,
+      doc.height,
+    )
+    if (workRect.w <= 0 || workRect.h <= 0) { reset(); return }
+
+    // Crop all expensive source/base/mask work to one affected neighborhood.
+    const targetBefore = cropCanvasRegion(target0, workRect)
+    const sampleSource = opts.sampleAllLayers === true ? getFlatComposite(doc) : target0
+    const sampled = cropCanvasRegion(sampleSource, workRect)
+
+    const sourceMask = createCanvas(workRect.w, workRect.h)
+    const smc = ctx2d(sourceMask)
+    smc.drawImage(mask, -workRect.x, -workRect.y)
     if (doc.selection) {
-      const smc = ctx2d(sourceMask)
       smc.globalCompositeOperation = 'destination-in'
-      smc.drawImage(doc.selection.mask, 0, 0)
+      smc.drawImage(doc.selection.mask, -workRect.x, -workRect.y)
       smc.globalCompositeOperation = 'source-over'
     }
 
@@ -173,17 +185,15 @@ async function commitMove() {
     if (mode === 'move') {
       const healed = getImageData(targetBefore)
       await imageOps.inpaint(healed, maskAlpha(sourceMask))
-      base = createCanvas(doc.width, doc.height)
+      base = createCanvas(workRect.w, workRect.h)
       putImageData(base, healed)
     }
 
-    const structure = clamp(Number(opts.structure) || 5, 1, 7)
-    const color = clamp(Number(opts.color) || 5, 0, 10)
-    const edgeSigma = Math.max(.25, (8 - structure) * .42)
-    const destinationMask = softenedShiftedMask(sourceMask, dx, dy, edgeSigma)
+    const destinationMask = softenedShiftedMaskLocal(sourceMask, dx, dy, edgeSigma)
 
-    // Move the sampled subject; the mask keeps only the lassoed pixels.
-    const patch = createCanvas(doc.width, doc.height)
+    // The cropped sampled image and mask share the same local registration, so
+    // the document-space move delta is also the correct local shift.
+    const patch = createCanvas(workRect.w, workRect.h)
     const pc = ctx2d(patch)
     pc.drawImage(sampled, dx, dy)
     pc.globalCompositeOperation = 'destination-in'
@@ -193,43 +203,46 @@ async function commitMove() {
     const result = cloneCanvas(base)
     ctx2d(result).drawImage(patch, 0, 0)
 
-    // Color adaptation: retain the moved high-frequency structure while
-    // matching lower-frequency illumination/chroma to the destination.
+    // Color adaptation remains local to the moved destination.
     if (color > 0) {
-      const destBounds = clampRect(
-        { x: bounds.x + dx, y: bounds.y + dy, w: bounds.w, h: bounds.h },
-        doc.width, doc.height,
+      const localDest = clampRect(
+        {
+          x: bounds.x + dx - workRect.x - colorPad,
+          y: bounds.y + dy - workRect.y - colorPad,
+          w: bounds.w + colorPad * 2,
+          h: bounds.h + colorPad * 2,
+        },
+        workRect.w,
+        workRect.h,
       )
-      const pad = Math.max(3, Math.round(Math.min(bounds.w, bounds.h) * .08))
-      const region = clampRect(
-        { x: destBounds.x - pad, y: destBounds.y - pad, w: destBounds.w + pad * 2, h: destBounds.h + pad * 2 },
-        doc.width, doc.height,
-      )
-      if (region.w > 0 && region.h > 0) {
+      if (localDest.w > 0 && localDest.h > 0) {
         const rc = ctx2d(result)
-        const target = rc.getImageData(region.x, region.y, region.w, region.h)
-        const baseData = ctx2d(base).getImageData(region.x, region.y, region.w, region.h)
-        const md = ctx2d(destinationMask).getImageData(region.x, region.y, region.w, region.h).data
-        const restrict = new Uint8ClampedArray(region.w * region.h)
+        const target = rc.getImageData(localDest.x, localDest.y, localDest.w, localDest.h)
+        const baseData = ctx2d(base).getImageData(localDest.x, localDest.y, localDest.w, localDest.h)
+        const md = ctx2d(destinationMask).getImageData(localDest.x, localDest.y, localDest.w, localDest.h).data
+        const restrict = new Uint8ClampedArray(localDest.w * localDest.h)
         for (let i = 0, j = 3; i < restrict.length; i++, j += 4) restrict[i] = md[j]
         const lowR = Math.max(2, Math.round(Math.min(bounds.w, bounds.h) * (.025 + color * .012)))
         frequencyHeal(target, baseData, restrict, lowR)
-        rc.putImageData(target, region.x, region.y)
+        rc.putImageData(target, localDest.x, localDest.y)
       }
     }
 
     if (opts.output === 'new') {
-      // Preserve the source layer intact. A full-document result layer takes
-      // its place visually and inherits the source layer's blend/opacity;
-      // hiding rather than deleting the original keeps the operation fully
-      // reversible beyond ordinary history.
+      // A separate output must still contain unchanged pixels outside the work
+      // region, but this is now the only full layer copy in the operation.
+      const outCanvas = cloneCanvas(target0)
+      const oc = ctx2d(outCanvas)
+      oc.clearRect(workRect.x, workRect.y, workRect.w, workRect.h)
+      oc.drawImage(result, workRect.x, workRect.y)
+
       const out = newLayer(
         'raster',
         mode === 'move' ? `${layer.name} — Content-Aware Move` : `${layer.name} — Content-Aware Extend`,
         doc.width,
         doc.height,
       )
-      out.canvas = cloneCanvas(result)
+      out.canvas = outCanvas
       out.opacity = layer.opacity
       out.blendMode = layer.blendMode
       out.clipped = layer.clipped
@@ -249,13 +262,11 @@ async function commitMove() {
 
     const l = engine.mutateLayerPixels(layer.id)
     if (!l?.canvas) { reset(); return }
+    const lx = workRect.x - (l.offsetX ?? 0)
+    const ly = workRect.y - (l.offsetY ?? 0)
     const lc = ctx2d(l.canvas)
-    // Replace only the document-space rectangle, preserving pixels outside the
-    // canvas in oversized raster backing stores.
-    lc.save()
-    lc.globalCompositeOperation = 'copy'
-    lc.drawImage(result, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
-    lc.restore()
+    lc.clearRect(lx, ly, workRect.w, workRect.h)
+    lc.drawImage(result, lx, ly)
     l._v++
     invalidateFlat(doc)
     engine.pushHistory(mode === 'move' ? 'Content-Aware Move' : 'Content-Aware Extend')
