@@ -65,6 +65,9 @@ export interface PsdDecoded {
   canvas: HTMLCanvasElement      // merged composite
   width: number
   height: number
+  /** Original PSD/PSB component depth. Raster canvases are currently
+   * normalized to 8-bit after decoding. */
+  depth: 8 | 16
   hasAlpha: boolean
   layers: PsdLayer[]             // bottom-first (PSD storage order)
 }
@@ -481,7 +484,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
   }
 
-  return { canvas: composite, width, height, hasAlpha, layers }
+  return { canvas: composite, width, height, depth: depth as 8 | 16, hasAlpha, layers }
 }
 
 // ============================================================
