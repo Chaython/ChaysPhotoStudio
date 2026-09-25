@@ -14,7 +14,7 @@ import { newDrag, getOptions, combineMode, drawDashedRect, drawCross, drawBrushC
 import { getImageData, rectFromPoints, clamp, ctx2d, createCanvas, getMaskAlpha } from '../utils/canvas'
 import { gaussianBlurChannel } from '../image-ops/core'
 import { getFlatComposite } from '../engine/document'
-import { diskAverageColor, growDisk } from './dab-utils'
+import { diskAverageColor, growDiskRegion } from './dab-utils'
 import * as imageOps from '../image-ops'
 import { loadComfyConfig, runComfyWorkflow } from '../ai/providers'
 
@@ -439,27 +439,33 @@ function qsGrow(cx: number, cy: number) {
   const r = size / 2
   const tol = clamp((opts.tolerance ?? 30) * 2.4, 1, 255)
   const ref = diskAverageColor(qsImg, cx, cy, r)
-  const grow = growDisk(qsImg, cx, cy, r, ref, tol)
+  const grow = growDiskRegion(qsImg, cx, cy, r, ref, tol)
 
+  // The old path allocated mask/seen/stack arrays at DOCUMENT size for every
+  // pointer event. Only this brush-local rectangle can possibly change.
   const cur = qsAlpha
-  const x0 = clamp(Math.floor(cx - r) - 1, 0, doc.width - 1)
-  const y0 = clamp(Math.floor(cy - r) - 1, 0, doc.height - 1)
-  const x1 = clamp(Math.ceil(cx + r) + 1, 0, doc.width)
-  const y1 = clamp(Math.ceil(cy + r) + 1, 0, doc.height)
-  const rw = x1 - x0, rh = y1 - y0
-  if (rw <= 0 || rh <= 0) return
-  // union the grow into the accumulated mask + write only the dirty sub-rect
-  const sub = new ImageData(rw, rh)
-  for (let y = 0; y < rh; y++) {
-    for (let x = 0; x < rw; x++) {
-      const gi = (y0 + y) * doc.width + (x0 + x)
-      const v = grow[gi] > cur[gi] ? grow[gi] : cur[gi]
-      cur[gi] = v
-      const j = (y * rw + x) * 4
-      sub.data[j] = 255; sub.data[j + 1] = 255; sub.data[j + 2] = 255
+  const sub = new ImageData(grow.w, grow.h)
+  let changed = false
+  for (let y = 0; y < grow.h; y++) {
+    const growRow = y * grow.w
+    const docRow = (grow.y + y) * doc.width + grow.x
+    for (let x = 0; x < grow.w; x++) {
+      const li = growRow + x
+      const gi = docRow + x
+      const before = cur[gi]
+      const v = grow.data[li] > before ? grow.data[li] : before
+      if (v !== before) {
+        cur[gi] = v
+        changed = true
+      }
+      const j = li * 4
+      sub.data[j] = 255
+      sub.data[j + 1] = 255
+      sub.data[j + 2] = 255
       sub.data[j + 3] = v
     }
   }
-  ctx2d(qsMask).putImageData(sub, x0, y0)
+  if (!changed) return
+  ctx2d(qsMask).putImageData(sub, grow.x, grow.y)
   engine.pokeOverlay()
 }
