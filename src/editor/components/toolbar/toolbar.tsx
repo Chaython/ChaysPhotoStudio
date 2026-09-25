@@ -14,15 +14,15 @@
 // flyout. Compact (mobile) keeps the same layout but skips
 // DnD (touch drags aren't reliable) — use Customize Toolbar.
 // ============================================================
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { TOOL_MAP } from '../../constants/tools'
 import { useEditorStore, defaultToolbarLayout } from '../../store'
 import { formatCombo } from '../../shortcuts'
 import type { ToolDef, ToolId, ToolbarSection } from '../../types'
 import {
-  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger,
-} from '@/components/ui/context-menu'
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { engine } from '../../engine/engine'
 import { setActiveTool } from '../../tools/registry'
@@ -212,34 +212,19 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
                 : embedded
                   ? 'flex-col p-1 gap-0.5'
                   : 'flex-col p-1 gap-0.5 border-b border-border/40 mb-1', hovered && 'ring-1 ring-primary/70')}>
-            <ContextMenu>
-              <ContextMenuTrigger asChild>
-                <div className="relative group/tool">
-                  <ToolButton
-                    def={main} shortcut={keys[main.id]} active={!!activeInGroup}
-                    onSelect={selectTool} compact={compact} hasGroup
-                    dragHandle={dnd ? { onDragStart: itemDragStart(main.id), onDragEnd: endDrag } : undefined}
-                  />
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent className="z-[90] min-w-48">
-                {tools.map(t => (
-                  <ContextMenuItem
-                    key={t.id}
-                    onSelect={() => selectTool(t.id)}
-                    className="gap-2 text-xs"
-                    draggable={dnd}
-                    onDragStart={dnd ? itemDragStart(t.id) : undefined}
-                    onDragEnd={dnd ? endDrag : undefined}
-                    title={dnd ? 'Drag onto the toolbar to pin this tool' : undefined}
-                  >
-                    <ToolIcon icon={t.icon} />
-                    <span className="flex-1">{t.label}</span>
-                    <span className="text-muted-foreground font-mono text-[10px]">{formatCombo(keys[t.id])}</span>
-                  </ContextMenuItem>
-                ))}
-              </ContextMenuContent>
-            </ContextMenu>
+            <ToolGroupButton
+              tools={tools}
+              main={main}
+              active={!!activeInGroup}
+              activeTool={activeTool}
+              keys={keys}
+              onSelect={selectTool}
+              compact={compact}
+              embedded={embedded}
+              dnd={dnd}
+              itemDragStart={itemDragStart}
+              endDrag={endDrag}
+            />
           </div>
         )
       })}
@@ -247,7 +232,143 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
   )
 }
 
-function ToolButton({ def, shortcut, active, onSelect, compact, hasGroup, dragHandle }: {
+const TOOL_LONG_PRESS_MS = 450
+const TOOL_LONG_PRESS_MOVE_PX = 8
+
+function ToolGroupButton({
+  tools, main, active, activeTool, keys, onSelect, compact, embedded, dnd, itemDragStart, endDrag,
+}: {
+  tools: ToolDef[]
+  main: ToolDef
+  active: boolean
+  activeTool: ToolId
+  keys: Record<ToolId, string>
+  onSelect: (id: ToolId) => void
+  compact: boolean
+  embedded: boolean
+  dnd: boolean
+  itemDragStart: (id: ToolId) => (e: React.DragEvent) => void
+  endDrag: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null)
+  const suppressNextSelect = useRef(false)
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current)
+    longPressTimer.current = null
+    pressOrigin.current = null
+  }
+
+  const beginLongPress = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return
+    cancelLongPress()
+    pressOrigin.current = { x: e.clientX, y: e.clientY }
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null
+      pressOrigin.current = null
+      suppressNextSelect.current = true
+      setOpen(true)
+    }, TOOL_LONG_PRESS_MS)
+  }
+
+  const trackLongPress = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const start = pressOrigin.current
+    if (!start) return
+    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > TOOL_LONG_PRESS_MOVE_PX) cancelLongPress()
+  }
+
+  const openFromContextMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    cancelLongPress()
+    suppressNextSelect.current = false
+    setOpen(true)
+  }
+
+  const beforeSelect = () => {
+    if (!suppressNextSelect.current) return false
+    suppressNextSelect.current = false
+    return true
+  }
+
+  const dragHandle = dnd ? {
+    onDragStart: (e: React.DragEvent<HTMLButtonElement>) => {
+      cancelLongPress()
+      itemDragStart(main.id)(e)
+    },
+    onDragEnd: () => {
+      cancelLongPress()
+      endDrag()
+    },
+  } : undefined
+
+  return (
+    <div className="relative group/tool">
+      <ToolButton
+        def={main}
+        shortcut={keys[main.id]}
+        active={active}
+        onSelect={onSelect}
+        compact={compact}
+        hasGroup
+        beforeSelect={beforeSelect}
+        onContextMenu={openFromContextMenu}
+        onPointerDown={beginLongPress}
+        onPointerMove={trackLongPress}
+        onPointerUp={cancelLongPress}
+        onPointerCancel={cancelLongPress}
+        onPointerLeave={cancelLongPress}
+        dragHandle={dragHandle}
+      />
+
+      <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              'absolute right-0 bottom-0 z-10 flex items-center justify-center rounded-tl-sm',
+              'text-muted-foreground hover:text-foreground hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary',
+              compact ? 'w-4 h-4' : 'w-3.5 h-3.5',
+            )}
+            title="Show related tools"
+            aria-label={`Show tools related to ${main.label}`}
+            aria-haspopup="menu"
+          >
+            <Icons.ChevronDown size={9} strokeWidth={2.25} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          side={compact || embedded ? 'bottom' : 'right'}
+          align="start"
+          className="z-[90] min-w-48"
+        >
+          {tools.map(t => (
+            <DropdownMenuItem
+              key={t.id}
+              onSelect={() => onSelect(t.id)}
+              className="gap-2 text-xs"
+              draggable={dnd}
+              onDragStart={dnd ? itemDragStart(t.id) : undefined}
+              onDragEnd={dnd ? endDrag : undefined}
+              title={dnd ? 'Drag onto the toolbar to pin this tool' : undefined}
+            >
+              <ToolIcon icon={t.icon} />
+              <span className="flex-1">{t.label}</span>
+              {t.id === activeTool && <Icons.Check size={11} className="text-primary" />}
+              <span className="text-muted-foreground font-mono text-[10px]">{formatCombo(keys[t.id])}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+function ToolButton({
+  def, shortcut, active, onSelect, compact, hasGroup, dragHandle, beforeSelect,
+  onContextMenu, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onPointerLeave,
+}: {
   def: ToolDef
   /** live activation key (already reflects user overrides) */
   shortcut: string
@@ -255,16 +376,32 @@ function ToolButton({ def, shortcut, active, onSelect, compact, hasGroup, dragHa
   onSelect: (id: ToolId) => void
   compact?: boolean
   hasGroup?: boolean
+  beforeSelect?: () => boolean
+  onContextMenu?: React.MouseEventHandler<HTMLButtonElement>
+  onPointerDown?: React.PointerEventHandler<HTMLButtonElement>
+  onPointerMove?: React.PointerEventHandler<HTMLButtonElement>
+  onPointerUp?: React.PointerEventHandler<HTMLButtonElement>
+  onPointerCancel?: React.PointerEventHandler<HTMLButtonElement>
+  onPointerLeave?: React.PointerEventHandler<HTMLButtonElement>
   /** rail DnD — present on desktop: makes the button a drag source for its tool */
   dragHandle?: { onDragStart: (e: React.DragEvent<HTMLButtonElement>) => void; onDragEnd: () => void }
 }) {
   return (
     <button
-      onClick={() => onSelect(def.id)}
+      onClick={() => {
+        if (beforeSelect?.()) return
+        onSelect(def.id)
+      }}
+      onContextMenu={onContextMenu}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onPointerLeave={onPointerLeave}
       draggable={!!dragHandle}
       onDragStart={dragHandle?.onDragStart}
       onDragEnd={dragHandle?.onDragEnd}
-      title={`${def.label} (${shortcut ? shortcut.toUpperCase() : '—'})${dragHandle ? ' · drag to rearrange the toolbar' : ''}${hasGroup ? ' · right-click for related tools' : ''}`}
+      title={`${def.label} (${shortcut ? shortcut.toUpperCase() : '—'})${dragHandle ? ' · drag to rearrange the toolbar' : ''}${hasGroup ? ' · dropdown, long-press, or right-click for related tools' : ''}`}
       aria-label={def.label}
       aria-pressed={active}
       className={cn(
