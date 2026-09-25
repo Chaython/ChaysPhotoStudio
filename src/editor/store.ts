@@ -329,6 +329,8 @@ interface EditorStore {
   revealPanel(id: string): void
   movePanel(id: string, x: number, y: number): void
   resizePanel(id: string, w: number, h: number): void
+  /** atomically commit floating geometry (used by north/west/corner resizes) */
+  setPanelRect(id: string, rect: Pick<PanelRect, 'x' | 'y' | 'w' | 'h'>): void
   /** bring a floating window to front (z bump) */
   focusPanel(id: string): void
   collapsePanel(id: string, collapsed: boolean): void
@@ -605,6 +607,23 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         ...s.panels.floating,
         [id]: { ...r, w: clampNum(w, 180, Math.max(180, vw)), h: clampNum(h, 100, Math.max(100, vh)) },
       },
+    }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+
+  setPanelRect: (id, next) => set(s => {
+    const r = s.panels.floating[id]
+    if (!r) return {}
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800
+    const w = clampNum(next.w, 180, Math.max(180, vw))
+    const h = clampNum(next.h, 100, Math.max(100, vh))
+    const x = clampNum(next.x, -w + 80, Math.max(-w + 80, vw - 80))
+    const y = clampNum(next.y, 48, Math.max(48, vh - 60))
+    const panels = {
+      ...s.panels,
+      floating: { ...s.panels.floating, [id]: { ...r, x, y, w, h } },
     }
     persistPanelLayout(panels)
     return { panels }
