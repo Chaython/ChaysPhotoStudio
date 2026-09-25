@@ -155,22 +155,29 @@ export function selectionContours(sel: SelectionState): Path2D[] {
   const d = getImageData(sel.mask).data
   const at = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] >= 128
   const paths: Path2D[] = []
-  const visited = new Uint8Array(w * h)
+  const bx0 = Math.max(0, Math.floor(sel.bounds.x))
+  const by0 = Math.max(0, Math.floor(sel.bounds.y))
+  const bx1 = Math.min(w - 1, Math.ceil(sel.bounds.x + sel.bounds.w))
+  const by1 = Math.min(h - 1, Math.ceil(sel.bounds.y + sel.bounds.h))
+  const bw = Math.max(1, bx1 - bx0 + 1)
+  const bh = Math.max(1, by1 - by0 + 1)
+  const visited = new Uint8Array(bw * bh)
+  const visitIndex = (x: number, y: number) => (y - by0) * bw + (x - bx0)
   const dirs = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]]
   let usedSegments = 0
 
   outer:
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+  for (let y = by0; y <= by1; y++) {
+    for (let x = bx0; x <= bx1; x++) {
       if (usedSegments >= MAX_ANTS_SEGMENTS) break outer
-      if (!at(x, y) || visited[y * w + x]) continue
+      if (!at(x, y) || visited[visitIndex(x, y)]) continue
 
       let isBoundary = false
       for (const [dx, dy] of dirs) {
         if (!at(x + dx, y + dy)) { isBoundary = true; break }
       }
       if (!isBoundary) {
-        visited[y * w + x] = 1
+        visited[visitIndex(x, y)] = 1
         continue
       }
 
@@ -180,7 +187,7 @@ export function selectionContours(sel: SelectionState): Path2D[] {
       let lastDir = -1
       let guard = 0
       const maxGuard = Math.max((w + h) * 8, 4096)
-      visited[cy * w + cx] = 1
+      visited[visitIndex(cx, cy)] = 1
 
       do {
         let found = false
@@ -197,7 +204,7 @@ export function selectionContours(sel: SelectionState): Path2D[] {
           cy = ny
           dir = nd
           found = true
-          visited[cy * w + cx] = 1
+          visited[visitIndex(cx, cy)] = 1
           break
         }
         if (!found) break
