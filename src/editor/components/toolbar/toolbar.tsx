@@ -54,7 +54,7 @@ function useToolKeys(): Record<ToolId, string> {
   }, [overrides])
 }
 
-export function Toolbar({ compact = false }: { compact?: boolean }) {
+export function Toolbar({ compact = false, embedded = false }: { compact?: boolean; embedded?: boolean }) {
   const activeTool = useEditorStore(s => s.activeTool)
   const setTool = useEditorStore(s => s.setTool)
   const renderTick = useEditorStore(s => s.renderTick)
@@ -155,7 +155,11 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
       {...railDnd}
       className={cn(
         'flex bg-panel border-r flex-shrink-0 z-20 transition-all',
-        compact ? 'flex-row overflow-x-auto w-full h-14 border-b' : 'flex-col w-12 h-full',
+        compact
+          ? 'flex-row overflow-x-auto w-full h-14 border-b'
+          : embedded
+            ? 'flex-row flex-wrap content-start overflow-y-auto w-full h-full border-0 p-1'
+            : 'flex-col w-12 h-full',
         dragActive && 'ring-1 ring-primary/60'
       )}
       role="toolbar"
@@ -169,7 +173,11 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
           const def = TOOL_MAP[sec.tool]
           if (!def) return null
           return (
-            <div key={`${sec.tool}-${i}`} {...secDnd} className={cn('flex flex-shrink-0 rounded-sm', compact ? 'flex-row px-1.5 gap-1 items-center' : 'flex-col p-1 gap-0.5 border-b border-border/40 mb-1', hovered && 'ring-1 ring-primary/70')}>
+            <div key={`${sec.tool}-${i}`} {...secDnd} className={cn('flex flex-shrink-0 rounded-sm', compact
+                ? 'flex-row px-1.5 gap-1 items-center'
+                : embedded
+                  ? 'flex-col p-1 gap-0.5'
+                  : 'flex-col p-1 gap-0.5 border-b border-border/40 mb-1', hovered && 'ring-1 ring-primary/70')}>
               <ToolButton
                 def={def} shortcut={keys[sec.tool]} active={activeTool === sec.tool}
                 onSelect={selectTool} compact={compact}
@@ -182,7 +190,11 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
         const tools = sec.tools.map(t => TOOL_MAP[t]).filter(Boolean)
         if (tools.length === 1) {
           return (
-            <div key={`${sec.tools[0]}-${i}`} {...secDnd} className={cn('flex flex-shrink-0 rounded-sm', compact ? 'flex-row px-1.5 gap-1 items-center' : 'flex-col p-1 gap-0.5 border-b border-border/40 mb-1', hovered && 'ring-1 ring-primary/70')}>
+            <div key={`${sec.tools[0]}-${i}`} {...secDnd} className={cn('flex flex-shrink-0 rounded-sm', compact
+                ? 'flex-row px-1.5 gap-1 items-center'
+                : embedded
+                  ? 'flex-col p-1 gap-0.5'
+                  : 'flex-col p-1 gap-0.5 border-b border-border/40 mb-1', hovered && 'ring-1 ring-primary/70')}>
               <ToolButton
                 def={tools[0]} shortcut={keys[tools[0].id]} active={activeTool === tools[0].id}
                 onSelect={selectTool} compact={compact}
@@ -195,7 +207,11 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
         const activeInGroup = tools.find(t => t.id === activeTool)
         const main = activeInGroup ?? tools[0]
         return (
-          <div key={`grp-${i}`} {...secDnd} className={cn('flex flex-shrink-0 rounded-sm', compact ? 'flex-row px-1.5 gap-1 items-center' : 'flex-col p-1 gap-0.5 border-b border-border/40 mb-1', hovered && 'ring-1 ring-primary/70')}>
+          <div key={`grp-${i}`} {...secDnd} className={cn('flex flex-shrink-0 rounded-sm', compact
+                ? 'flex-row px-1.5 gap-1 items-center'
+                : embedded
+                  ? 'flex-col p-1 gap-0.5'
+                  : 'flex-col p-1 gap-0.5 border-b border-border/40 mb-1', hovered && 'ring-1 ring-primary/70')}>
             <div className="relative group/tool">
               <ToolButton
                 def={main} shortcut={keys[main.id]} active={!!activeInGroup}
@@ -212,10 +228,10 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
                   )}
                   aria-label="More tools"
                 >
-                  <Icons.ChevronRight size={compact ? 10 : 10} className={compact ? '' : 'rotate-90'} />
+                  <Icons.ChevronRight size={10} className={compact || embedded ? '' : 'rotate-90'} />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side={compact ? 'bottom' : 'right'} align="start" className="z-50">
+              <DropdownMenuContent side={compact || embedded ? 'bottom' : 'right'} align="start" className="z-50">
                 {tools.map(t => (
                   <DropdownMenuItem
                     key={t.id}
