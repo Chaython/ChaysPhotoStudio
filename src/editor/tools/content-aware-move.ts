@@ -17,7 +17,19 @@ import { gaussianBlurChannel } from '../image-ops/core'
 import { frequencyHeal } from './dab-utils'
 import * as imageOps from '../image-ops'
 
-type Phase = 'idle' | 'defining' | 'moving'
+type Phase = 'idle' | 'defining' | 'moving' | 'transforming'
+type TransformHandle = 'move' | 'rotate' | 'nw' | 'ne' | 'se' | 'sw'
+interface TransformState { sx: number; sy: number; rotation: number }
+interface TransformDrag {
+  kind: TransformHandle
+  startX: number
+  startY: number
+  startDeltaX: number
+  startDeltaY: number
+  startRotation: number
+  startAngle: number
+}
+
 let phase: Phase = 'idle'
 let points: { x: number; y: number }[] = []
 let samplingMul = 1
@@ -27,6 +39,8 @@ let mask: HTMLCanvasElement | null = null
 let bounds: Rect | null = null
 let moveStart: { x: number; y: number } | null = null
 let delta = { x: 0, y: 0 }
+let transform: TransformState = { sx: 1, sy: 1, rotation: 0 }
+let transformDrag: TransformDrag | null = null
 let committing = false
 let previewSource: HTMLCanvasElement | null = null
 
@@ -39,6 +53,8 @@ function reset() {
   bounds = null
   moveStart = null
   delta = { x: 0, y: 0 }
+  transform = { sx: 1, sy: 1, rotation: 0 }
+  transformDrag = null
   committing = false
   previewSource = null
   engine.pokeOverlay()
@@ -98,6 +114,8 @@ function finalizeLasso() {
     : active ? engine.layerCanvasDocSpace(active.id) : null
   moveStart = null
   delta = { x: 0, y: 0 }
+  transform = { sx: 1, sy: 1, rotation: 0 }
+  transformDrag = null
   engine.ui?.toast('Drag the selected subject to its new location', 'info')
   engine.pokeOverlay()
 }
