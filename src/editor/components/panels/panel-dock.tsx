@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { PanelLeft, PanelLeftClose, Plus, RotateCcw } from 'lucide-react'
 import { useEditorStore, DOCK_WIDTH_DEFAULT } from '../../store'
 import { PANEL_MAP, PANELS } from './panel-registry'
-import { PanelActionsMenu } from './panel-actions-menu'
+import { PanelContextMenu } from './panel-actions-menu'
 import { beginWindowDrag, DOCK_DROP_EVENT } from './floating-panels'
 import { cn } from '@/lib/utils'
 import { engine } from '../../engine/engine'
@@ -157,12 +157,12 @@ function DockTabs({ side, mobile, extra }: {
         </div>
       ) : tabs.map(t => {
         const Icon = t.icon
-        return (
+        const tabButton = (
           <button
             key={t.id}
             role="tab"
             aria-selected={activeTab === t.id}
-            title={mobile ? t.label : `${t.label} — drag or double-click to float`}
+            title={mobile ? t.label : `${t.label} — drag/double-click to float · right-click for panel options`}
             className={cn(
               'flex-1 min-w-8 h-8 flex items-center justify-center relative',
               activeTab === t.id ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
@@ -185,6 +185,7 @@ function DockTabs({ side, mobile, extra }: {
             {activeTab === t.id && <span className="absolute bottom-0 left-1 right-1 h-0.5 bg-primary rounded-t" />}
           </button>
         )
+        return mobile ? tabButton : <PanelContextMenu key={t.id} id={t.id}>{tabButton}</PanelContextMenu>
       })}
       <div className="flex items-center flex-shrink-0">
         {extra}
@@ -198,13 +199,16 @@ function DockPanelHeader({ id, mobile }: { id: string; mobile: boolean }) {
   const def = PANEL_MAP[id]
   if (!def) return null
   const Icon = def.icon
-  return (
-    <div className="h-7 px-2 flex items-center gap-1.5 border-b bg-panel/80 flex-shrink-0">
+  const header = (
+    <div
+      className="h-7 px-2 flex items-center gap-1.5 border-b bg-panel/80 flex-shrink-0"
+      title={mobile ? def.label : `${def.label} — right-click for panel options`}
+    >
       <Icon size={11} className="text-primary shrink-0" />
       <span className="text-[11px] font-medium truncate flex-1">{def.label}</span>
-      {!mobile && <PanelActionsMenu id={id} />}
     </div>
   )
+  return mobile ? header : <PanelContextMenu id={id}>{header}</PanelContextMenu>
 }
 
 function WidthDivider({ side, width, onWidth, onReset }: {
