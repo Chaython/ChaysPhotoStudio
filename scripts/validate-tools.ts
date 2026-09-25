@@ -55,6 +55,11 @@ for (const [id, tool] of Object.entries(TOOLS)) {
   if (!tool.onPointerDown && !tool.onKeyDown && !tool.onDoubleClick) {
     fail(`${id} exposes no interaction handler`)
   }
+  const def = TOOL_DEFS.find(d => d.id === id)
+  if (!def) fail(`${id} loaded without a ToolDef`)
+  if (!!def.requiresLayer !== !!tool.requiresLayer) {
+    fail(`${id} requiresLayer differs between ToolDef (${!!def.requiresLayer}) and implementation (${!!tool.requiresLayer})`)
+  }
 }
 
 const cycleIds = TOOL_CYCLES.flat().map(String)
