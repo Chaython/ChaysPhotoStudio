@@ -344,6 +344,18 @@ function sharpenOp(x: number, y: number, p: PointerInfo) {
 }
 
 // ---------- smudge (multi-tap smear along the drag vector) ----------
+let smudgeScratch: HTMLCanvasElement | null = null
+
+function getSmudgeScratch(size: number): HTMLCanvasElement {
+  const s = Math.max(4, Math.ceil(size))
+  if (!smudgeScratch || smudgeScratch.width !== s || smudgeScratch.height !== s) {
+    smudgeScratch = createCanvas(s, s)
+  } else {
+    ctx2d(smudgeScratch).clearRect(0, 0, s, s)
+  }
+  return smudgeScratch
+}
+
 function makeSmudgeTool(): Tool {
   let prev: { x: number; y: number } | null = null
   let stroking = false
@@ -353,24 +365,31 @@ function makeSmudgeTool(): Tool {
     () => { prev = null; stroking = true },     // reset the smear tracker at stroke start
     () => { stroking = false; prev = null }     // and at stroke end (pointermove also fires on hover)
   )
-  // smudge taps much finer than the generic spacing: one every ~2px
+  // Fine interpolation is useful for small brushes, but a fixed 2px cadence
+  // turns a 300-400px Smudge into hundreds of large temporary operations.
+  // Span every pointer segment with a bounded number of size-aware taps.
   const origMove = tool.onPointerMove!
   tool.onPointerMove = (p: PointerInfo) => {
     if (!stroking) return
     if (!prev) return origMove(p)
-    const step = 2
-    let { x: px, y: py } = prev
-    const dx = p.docX - px, dy = p.docY - py
+    const opts = getOptions('smudge')
+    const step = clamp((Number(opts.size) || 50) * 0.05, 2, 8)
+    const start = { ...prev }
+    const dx = p.docX - start.x, dy = p.docY - start.y
     const dist = Math.hypot(dx, dy)
     if (dist < 0.01) return
-    const n = Math.min(64, Math.floor(dist / step))
+    const n = Math.min(48, Math.max(1, Math.ceil(dist / step)))
+    let px = start.x, py = start.y
     for (let i = 1; i <= n; i++) {
-      const t = (i * step) / dist
-      const nx = px + dx * t, ny = py + dy * t
+      const t = i / n
+      const nx = start.x + dx * t, ny = start.y + dy * t
       smudgeTap(nx, ny, p, () => ({ x: px, y: py }), () => {})
       px = nx; py = ny
     }
-    prev = { x: px, y: py }
+    prev = { x: p.docX, y: p.docY }
+    const doc = engine.activeDoc
+    if (doc) invalidateFlat(doc)
+    engine.requestRender()
   }
   return tool
 }
@@ -392,7 +411,7 @@ function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: num
   const hardness = clamp((opts.hardness ?? 70) / 100, 0, 0.96)
   const ctx = ctx2d(l.canvas)
   const size = Math.ceil(r * 2) + 2
-  const tmp = createCanvas(size, size)
+  const tmp = getSmudgeScratch(size)
   const tctx = ctx2d(tmp)
   const c = size / 2
   // doc coords → canvas space (raster layers may be offset after a move)
