@@ -64,6 +64,7 @@ export class Viewport {
   private overlayDirty = true
   private composite: HTMLCanvasElement | null = null
   private antsOffset = 0
+  private lastAntsPaint = 0
   private lastT = 0
   private spaceDown = false
   private panning = false
@@ -205,10 +206,14 @@ export class Viewport {
       this.drawMain()
       this.needsDraw = false
     }
-    // overlay: content changes, ants animation, or any pointer activity
-    if (this.overlayDirty || hasAnts) {
+    // Selection ants do not need a 60/120/144 Hz repaint. Complex wand
+    // contours are expensive to stroke even after simplification; 20 fps keeps
+    // the animation visibly smooth while cutting overlay work dramatically.
+    const antsFrame = hasAnts && (t - this.lastAntsPaint >= 50)
+    if (this.overlayDirty || antsFrame) {
       this.drawOverlay()
       this.overlayDirty = false
+      if (hasAnts) this.lastAntsPaint = t
     }
     // cursor: every frame while a mouse is over the canvas — never freezes
     if (this.lastMouse) this.drawCursor()
