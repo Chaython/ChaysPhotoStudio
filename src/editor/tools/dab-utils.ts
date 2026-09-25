@@ -51,34 +51,43 @@ function getSourceDabScratch(size: number): HTMLCanvasElement {
  */
 export function buildSourceDab(
   source: HTMLCanvasElement, sx: number, sy: number, radius: number, hardness: number,
-  rotateRad = 0, mirrored = false, sourceScale = 1
+  rotateRad = 0, mirrored = false, sourceScale = 1,
+  brushRoundness = 1, brushAngleRad = 0,
 ): HTMLCanvasElement | null {
   const r = Math.max(1, radius)
   if (r < 0.5) return null
   const size = Math.ceil(r * 2) + 2
   const dab = getSourceDabScratch(size)
   const ctx = ctx2d(dab)
-  const c = size / 2
+  const center = size / 2
   ctx.save()
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
-  ctx.translate(c, c)
+  ctx.translate(center, center)
   if (rotateRad) ctx.rotate(rotateRad)
   if (mirrored) ctx.scale(-1, 1)
   const scale = Math.max(0.01, Math.abs(sourceScale) || 1)
   ctx.scale(scale, scale)
   ctx.drawImage(source, -sx, -sy)
   ctx.restore()
-  // radial alpha mask honoring hardness (soft edges like PS clone stamp)
+
+  // Photoshop brush geometry: the source transform and brush-tip transform
+  // are independent. Roundness/angle shape only the alpha mask.
   const inner = clamp(hardness / 100, 0, 0.96)
+  const roundness = clamp(brushRoundness, .05, 1)
   ctx.globalCompositeOperation = 'destination-in'
-  const grad = ctx.createRadialGradient(c, c, r * inner, c, c, r)
+  ctx.save()
+  ctx.translate(center, center)
+  if (brushAngleRad) ctx.rotate(brushAngleRad)
+  ctx.scale(1, roundness)
+  const grad = ctx.createRadialGradient(0, 0, r * inner, 0, 0, r)
   grad.addColorStop(0, 'rgba(255,255,255,1)')
   grad.addColorStop(1, 'rgba(255,255,255,0)')
   ctx.fillStyle = grad
   ctx.beginPath()
-  ctx.arc(c, c, r, 0, Math.PI * 2)
+  ctx.arc(0, 0, r, 0, Math.PI * 2)
   ctx.fill()
+  ctx.restore()
   ctx.globalCompositeOperation = 'source-over'
   return dab
 }
