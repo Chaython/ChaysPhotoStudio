@@ -14,7 +14,7 @@ import { engine } from '../engine/engine'
 import { getOptions, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross } from './shared'
 import { buildSourceDab, sourcePointFor, pressureFlow } from './dab-utils'
 import { cloneCanvas } from '../utils/canvas'
-import { getFlatComposite } from '../engine/document'
+import { getSamplingComposite } from '../engine/document'
 
 interface ClonePoint { x: number; y: number; layerId: string | null }
 interface CloneSlot {
@@ -121,9 +121,12 @@ function resolveSourceCanvas(layerId: string): HTMLCanvasElement | null {
   const doc = engine.activeDoc
   if (!doc) return null
   const opts = getOptions('clone-stamp')
-  if (opts.sample === 'composite') return cloneCanvas(getFlatComposite(doc))
-  const c = engine.layerCanvasDocSpace(layerId)
-  return c ? cloneCanvas(c) : null
+  const mode = opts.sample === 'current-below'
+    ? 'current-below'
+    : opts.sample === 'composite'
+      ? 'all'
+      : 'layer'
+  return getSamplingComposite(doc, layerId, mode, opts.ignoreAdjustments === true)
 }
 
 function currentSourcePoint(docX: number, docY: number) {
