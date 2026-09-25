@@ -347,6 +347,9 @@ export const spotHealingTool: Tool = {
     spotActive = true
     spotLast = { x: p.docX, y: p.docY }
     spotMark(p.docX, p.docY)
+    // The stroke is only a mask preview until pointer-up; never recomposite
+    // the whole document for it.
+    engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
@@ -355,7 +358,7 @@ export const spotHealingTool: Tool = {
     const spacing = Math.max(2, (opts.size ?? 40) / 3)
     for (const d of walkDabs(spotLast.x, spotLast.y, p.docX, p.docY, spacing)) spotMark(d.x, d.y)
     if (Math.hypot(p.docX - spotLast.x, p.docY - spotLast.y) >= spacing) spotLast = { x: p.docX, y: p.docY }
-    engine.requestRender()
+    engine.pokeOverlay()
   },
 
   async onPointerUp() {
