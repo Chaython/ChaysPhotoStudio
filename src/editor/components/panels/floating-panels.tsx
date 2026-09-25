@@ -19,12 +19,14 @@
 // CustomEvent (detail.side), and the edge strips render a translucent
 // indicator in this layer.
 import { memo, useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Minimize2 } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useEditorStore, type PanelRect, type DockSide } from '../../store'
 import { PANEL_MAP } from './panel-registry'
+import { PanelActionsMenu } from './panel-actions-menu'
 import { cn } from '@/lib/utils'
 
-type DragMode = 'move' | 'resize-se' | 'resize-e' | 'resize-s'
+type ResizeEdge = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
+type DragMode = 'move' | `resize-${ResizeEdge}`
 
 export const DOCK_DROP_EVENT = 'zphoto-dockdrop'
 
@@ -114,8 +116,23 @@ function onSessionMove(e: PointerEvent) {
     x = clampNum(s.startRect.x + dx, -s.startRect.w + 80, Math.max(-s.startRect.w + 80, vw - 80))
     y = clampNum(s.startRect.y + dy, 48, Math.max(48, vh - 40))
   } else {
-    if (s.mode.includes('e')) w = clampNum(s.startRect.w + dx, minW, vw)
-    if (s.mode.includes('s')) h = clampNum(s.startRect.h + dy, minH, vh)
+    const edge = s.mode.slice('resize-'.length) as ResizeEdge
+    if (edge.includes('e')) {
+      w = clampNum(s.startRect.w + dx, minW, Math.max(minW, vw - s.startRect.x))
+    }
+    if (edge.includes('s')) {
+      h = clampNum(s.startRect.h + dy, minH, Math.max(minH, vh - s.startRect.y))
+    }
+    if (edge.includes('w')) {
+      w = clampNum(s.startRect.w - dx, minW, vw)
+      x = s.startRect.x + (s.startRect.w - w)
+      x = clampNum(x, -w + 80, s.startRect.x + s.startRect.w - minW)
+    }
+    if (edge.includes('n')) {
+      h = clampNum(s.startRect.h - dy, minH, vh)
+      y = s.startRect.y + (s.startRect.h - h)
+      y = clampNum(y, 48, s.startRect.y + s.startRect.h - minH)
+    }
   }
   s.last = { x, y, w, h }
 
@@ -206,8 +223,12 @@ function commitSession(cancel: boolean) {
     store.dockPanel(s.id, s.dockZone) // drop over a dock zone → dock on that side
     return
   }
-  if (s.mode === 'move') store.movePanel(s.id, s.last.x, s.last.y)
-  else store.resizePanel(s.id, s.last.w, s.last.h)
+  if (s.mode === 'move') {
+    store.movePanel(s.id, s.last.x, s.last.y)
+  } else {
+    store.movePanel(s.id, s.last.x, s.last.y)
+    store.resizePanel(s.id, s.last.w, s.last.h)
+  }
 }
 
 function startSession(
@@ -276,7 +297,6 @@ interface FloatingWindowProps {
 
 const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps) {
   const rect = useEditorStore(s => s.panels.floating[id])
-  const [docking, setDocking] = useState(false)
   const def = PANEL_MAP[id]
   if (!rect || !def) return null
   const Icon = def.icon
@@ -304,21 +324,12 @@ const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps)
     startSession(id, e.pointerId, mode, { x: e.clientX, y: e.clientY }, r)
   }
 
-  const dockBack = () => {
-    if (docking) return
-    setDocking(true)
-    window.setTimeout(() => {
-      useEditorStore.getState().dockPanel(id)
-      setDocking(false)
-    }, 140)
-  }
-
   return (
     <div
       data-floating-panel={id}
       className={cn(
         'panel-window pointer-events-auto bg-panel border border-border rounded-md shadow-2xl',
-        docking ? 'animate-out fade-out zoom-out-95 duration-150' : 'animate-in fade-in zoom-in-95 duration-150'
+        'animate-in fade-in zoom-in-95 duration-150'
       )}
       style={{
         left: rect.x,
@@ -345,15 +356,7 @@ const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps)
         >
           {rect.collapsed ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
         </button>
-        <button
-          type="button"
-          className="h-5 w-5 flex items-center justify-center rounded-sm text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-          title="Dock panel"
-          aria-label="Dock panel back into its dock"
-          onClick={dockBack}
-        >
-          <Minimize2 size={11} />
-        </button>
+        <PanelActionsMenu id={id} floating />
       </div>
 
       {/* content (unmounted while collapsed — re-mounted expands) */}
@@ -363,29 +366,47 @@ const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps)
         </div>
       )}
 
-      {/* resize handles — above the content */}
-      {!rect.collapsed && !docking && (
+      {/* eight-way resize handles — every floating panel behaves like a real window */}
+      {!rect.collapsed && (
         <>
-          <div
-            className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize z-30"
-            style={{ touchAction: 'none' }}
-            onPointerDown={startResize('resize-se')}
-          />
-          <div
-            className="absolute top-0 bottom-0 right-0 w-[4px] cursor-ew-resize z-30"
-            style={{ touchAction: 'none' }}
-            onPointerDown={startResize('resize-e')}
-          />
-          <div
-            className="absolute bottom-0 left-0 right-0 h-[4px] cursor-ns-resize z-30"
-            style={{ touchAction: 'none' }}
-            onPointerDown={startResize('resize-s')}
-          />
+          <ResizeHandle edge="n" onPointerDown={startResize('resize-n')} />
+          <ResizeHandle edge="ne" onPointerDown={startResize('resize-ne')} />
+          <ResizeHandle edge="e" onPointerDown={startResize('resize-e')} />
+          <ResizeHandle edge="se" onPointerDown={startResize('resize-se')} />
+          <ResizeHandle edge="s" onPointerDown={startResize('resize-s')} />
+          <ResizeHandle edge="sw" onPointerDown={startResize('resize-sw')} />
+          <ResizeHandle edge="w" onPointerDown={startResize('resize-w')} />
+          <ResizeHandle edge="nw" onPointerDown={startResize('resize-nw')} />
         </>
       )}
     </div>
   )
 })
+
+
+function ResizeHandle({ edge, onPointerDown }: {
+  edge: ResizeEdge
+  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void
+}) {
+  const classes: Record<ResizeEdge, string> = {
+    n: 'top-0 left-3 right-3 h-[5px] cursor-ns-resize',
+    ne: 'top-0 right-0 w-3 h-3 cursor-nesw-resize',
+    e: 'top-3 bottom-3 right-0 w-[5px] cursor-ew-resize',
+    se: 'bottom-0 right-0 w-3 h-3 cursor-nwse-resize',
+    s: 'bottom-0 left-3 right-3 h-[5px] cursor-ns-resize',
+    sw: 'bottom-0 left-0 w-3 h-3 cursor-nesw-resize',
+    w: 'top-3 bottom-3 left-0 w-[5px] cursor-ew-resize',
+    nw: 'top-0 left-0 w-3 h-3 cursor-nwse-resize',
+  }
+  return (
+    <div
+      className={`absolute z-30 ${classes[edge]}`}
+      style={{ touchAction: 'none' }}
+      onPointerDown={onPointerDown}
+      aria-hidden
+    />
+  )
+}
 
 export const FloatingPanels = memo(function FloatingPanels() {
   const floating = useEditorStore(s => s.panels.floating)
