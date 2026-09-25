@@ -9,6 +9,7 @@ import { CanvasWorkspace } from '../workspace/canvas-workspace'
 import { PanelDock, LeftDock } from '../panels/panel-dock'
 import { TopDock } from '../panels/top-dock'
 import { FloatingPanels } from '../panels/floating-panels'
+import { NativeModuleShell } from '../panels/native-module-shell'
 import { DialogManager } from '../dialogs/dialog-manager'
 import { WelcomeScreen } from './welcome-screen'
 import { useKeyboardShortcuts } from '../../keyboard-shortcuts'
@@ -249,14 +250,21 @@ export function EditorApp() {
         {/* mobile: panels drawer above canvas; desktop: toolbar + left dock + canvas + right dock */}
         <div className="flex flex-1 min-h-0 min-w-0">
           <div className="hidden md:flex flex-col">
-            <Toolbar />
+            <NativeModuleShell id="tools" axis="vertical">
+              <Toolbar />
+            </NativeModuleShell>
           </div>
           <LeftDock />
           <div data-workspace className="flex flex-1 min-w-0 flex-col">
             <div className="md:hidden">
               <Toolbar compact />
+              <ToolOptionsBar />
             </div>
-            <ToolOptionsBar />
+            <div className="hidden md:block">
+              <NativeModuleShell id="tool-options" axis="horizontal">
+                <ToolOptionsBar embedded />
+              </NativeModuleShell>
+            </div>
             {/* top dock strip — panels dropped at the top of the canvas dock here */}
             <TopDock />
             {hasDoc ? <CanvasWorkspace /> : (
