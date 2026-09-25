@@ -177,7 +177,7 @@ function DockTabs({ side, mobile, extra }: {
               }
               setTab(t.id)
             }}
-            onDoubleClick={() => !mobile && useEditorStore.getState().floatPanel(t.id)}
+            onDoubleClick={() => !mobile && useEditorStore.getState().floatPanel(t.id, t.defaultFloat)}
             onPointerDown={onPullDown(t.id)}
             onPointerMove={onPullMove}
             onPointerUp={onPullUp}
