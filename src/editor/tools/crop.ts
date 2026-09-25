@@ -2,10 +2,12 @@
 import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, newDrag, drawCross, drawDashedRect } from './shared'
-import { rectFromPoints, clamp } from '../utils/canvas'
+import { rectFromPoints, clamp, createCanvas, ctx2d, getImageData, putImageData } from '../utils/canvas'
 import { useEditorStore } from '../store'
 import { snapToGuides } from '../engine/guides'
 import { colorReadoutLines } from './color-readout'
+import { newLayer } from '../engine/document'
+import * as imageOps from '../image-ops'
 
 function snapPoint(x: number, y: number): { x: number; y: number } {
   const doc = engine.activeDoc
@@ -28,6 +30,7 @@ let cropMode: CropMode = 'new'
 let cropHandle: CropHandle | null = null
 let straightenStart: { x: number; y: number } | null = null
 let straightenEnd: { x: number; y: number } | null = null
+let cropCommitting = false
 
 function ratioValue(raw: unknown): number | null {
   if (!raw || raw === 'free') return null
@@ -200,7 +203,7 @@ export const cropTool: Tool = {
     cropHandle = null
   },
 
-  onDoubleClick() { commitCrop() },
+  onDoubleClick() { void commitCrop() },
 
   onKeyDown(e: KeyboardEvent) {
     if (e.key === 'Escape' && straightenStart) {
@@ -210,7 +213,7 @@ export const cropTool: Tool = {
       engine.pokeOverlay()
       return true
     }
-    if (e.key === 'Enter' && cropRect) { commitCrop(); return true }
+    if (e.key === 'Enter' && cropRect) { void commitCrop(); return true }
     if (e.key === 'Escape' && cropRect) {
       cropRect = null; cropStartRect = null; cropHandle = null; cropDrag.active = false
       engine.pokeOverlay(); return true
@@ -331,12 +334,16 @@ export const cropTool: Tool = {
   },
 }
 
-function commitCrop() {
+async function commitCrop() {
   const doc = engine.activeDoc
-  if (!doc || !cropRect) return
-  const r = cropRect
-  cropRect = null
-  if (r.w < 1 || r.h < 1) { engine.pokeOverlay(); return }
+  if (!doc || !cropRect || cropCommitting) return
+  const r = {
+    x: Math.round(cropRect.x),
+    y: Math.round(cropRect.y),
+    w: Math.max(1, Math.round(cropRect.w)),
+    h: Math.max(1, Math.round(cropRect.h)),
+  }
+  if (r.w < 1 || r.h < 1) { cropRect = null; engine.pokeOverlay(); return }
   const opts = getOptions('crop')
   const target = opts.ratio === 'target'
     ? {
@@ -344,7 +351,70 @@ function commitCrop() {
         targetH: Math.max(1, Math.round(Number(opts.targetHeight) || r.h)),
       }
     : {}
-  engine.cropTo(r, { deletePixels: opts.deletePixels !== false, ...target })
+
+  cropCommitting = true
+  try {
+    const expands = r.x < 0 || r.y < 0 || r.x + r.w > doc.width || r.y + r.h > doc.height
+    if (opts.contentAware === true && expands) {
+      const store = useEditorStore.getState()
+      store.setProgress({ active: true, label: 'Content-Aware Crop', value: 0 })
+
+      // Build the requested crop in target-local coordinates. The synthesis
+      // mask covers ONLY pixels outside the original canvas, so transparency
+      // that already existed inside the artwork remains untouched.
+      const flat = engine.flatComposite()
+      if (flat) {
+        const work = createCanvas(r.w, r.h)
+        ctx2d(work).drawImage(flat, -r.x, -r.y)
+        const img = getImageData(work)
+        const mask = new Uint8ClampedArray(r.w * r.h)
+        let masked = 0
+        for (let y = 0; y < r.h; y++) {
+          const gy = r.y + y
+          const outsideY = gy < 0 || gy >= doc.height
+          for (let x = 0; x < r.w; x++) {
+            const gx = r.x + x
+            if (outsideY || gx < 0 || gx >= doc.width) {
+              mask[y * r.w + x] = 255
+              masked++
+            }
+          }
+        }
+
+        if (masked > 0) {
+          await imageOps.inpaint(img, mask, p => {
+            store.setProgress({ active: true, label: 'Content-Aware Crop', value: p })
+          })
+
+          // Keep only the generated extension on a separate editable layer.
+          // Add it before cropTo without its own history entry: cropTo will
+          // include this layer in the single Crop history state.
+          for (let i = 0; i < mask.length; i++) {
+            if (mask[i]) continue
+            img.data[i * 4 + 3] = 0
+          }
+          const fillCanvas = createCanvas(r.w, r.h)
+          putImageData(fillCanvas, img)
+          const fill = newLayer('raster', 'Content-Aware Crop Fill', r.w, r.h)
+          fill.canvas = fillCanvas
+          fill.offsetX = r.x
+          fill.offsetY = r.y
+          doc.layers.push(fill)
+          doc.activeLayerId = fill.id
+          doc.selectedLayerIds = [fill.id]
+        }
+      }
+    }
+
+    cropRect = null
+    engine.cropTo(r, { deletePixels: opts.deletePixels !== false, ...target })
+  } catch (err) {
+    engine.ui?.toast(err instanceof Error ? err.message : 'Content-Aware Crop failed', 'error')
+  } finally {
+    useEditorStore.getState().setProgress(null)
+    cropCommitting = false
+    engine.pokeOverlay()
+  }
 }
 
 // ============================================================
