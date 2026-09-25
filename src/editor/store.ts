@@ -51,6 +51,10 @@ export const TOP_HEIGHT_DEFAULT = 232
 export const TOP_HEIGHT_MIN = 120
 export const TOP_HEIGHT_MAX = 480
 export type DockSide = 'left' | 'right' | 'top'
+export const NATIVE_PANEL_IDS = ['tools', 'tool-options', 'documents'] as const
+export type NativePanelId = typeof NATIVE_PANEL_IDS[number]
+export const isNativePanelId = (id: string): id is NativePanelId =>
+  (NATIVE_PANEL_IDS as readonly string[]).includes(id)
 
 const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
@@ -103,7 +107,7 @@ function loadPanelLayout(): {
       if (side === 'left' || side === 'right' || side === 'top') dockSide[id] = side
     }
     const topOrder = Array.isArray(data.topOrder)
-      ? data.topOrder.filter((id): id is string => typeof id === 'string').slice(0, 12)
+      ? data.topOrder.filter((id): id is string => typeof id === 'string').slice(0, 32)
       : []
     const rightTabRaw = typeof data.rightTab === 'string' ? data.rightTab : 'layers'
     return {
@@ -327,6 +331,8 @@ interface EditorStore {
   dockPanel(id: string, side?: DockSide): void
   /** reveal a panel wherever it lives (focus window / activate its dock tab) */
   revealPanel(id: string): void
+  /** return movable workspace chrome to its built-in location */
+  homePanel(id: string): void
   movePanel(id: string, x: number, y: number): void
   resizePanel(id: string, w: number, h: number): void
   /** atomically commit floating geometry (used by north/west/corner resizes) */
@@ -559,6 +565,21 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { panels }
   }),
 
+  homePanel: (id) => set(s => {
+    const floating = { ...s.panels.floating }
+    delete floating[id]
+    const dockSide = { ...s.panels.dockSide }
+    delete dockSide[id]
+    const panels = {
+      ...s.panels,
+      floating,
+      dockSide,
+      topOrder: s.panels.topOrder.filter(tid => tid !== id),
+    }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+
   revealPanel: (id) => set(s => {
     if (s.panels.floating[id]) {
       const r = s.panels.floating[id]
@@ -568,6 +589,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       persistPanelLayout(panels)
       return { panels }
     }
+    // Native workspace modules are already visible at home until the user
+    // explicitly docks/floats them; revealing one should not move it right.
+    if (isNativePanelId(id) && !s.panels.dockSide[id]) return {}
     const side: DockSide = s.panels.dockSide[id] ?? 'right'
     if (side === 'top') return {} // always visible in the top strip
     const panels = {

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 const PULL_THRESHOLD = 14
+const EMPTY_DOCK_HIDE_DELAY = 650
 
 export type DockTabSide = 'left' | 'right' | 'top'
 
@@ -44,7 +45,7 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
   const dockSide = useEditorStore(s => s.panels.dockSide)
   if (mobile) return null
 
-  const sideLabel: Record<string, string> = { left: 'Left', right: 'Right', top: 'Top', Window: 'Window' }
+  const sideLabel: Record<string, string> = { left: 'Left', right: 'Right', top: 'Top', Window: 'Window', Home: 'Home' }
 
   return (
     <DropdownMenu>
@@ -63,7 +64,7 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
           Move to {side === 'top' ? 'top strip' : `${side} dock`}
         </div>
         {PANELS.map(p => {
-          const at = floating[p.id] ? 'Window' : (dockSide[p.id] ?? 'right')
+          const at = floating[p.id] ? 'Window' : (dockSide[p.id] ?? (p.home ? 'Home' : 'right'))
           const Icon = p.icon
           return (
             <DropdownMenuItem
@@ -87,8 +88,25 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
   )
 }
 
+function resolvedDockSide(id: string, dockSide: Record<string, string>): 'left' | 'right' | 'top' | null {
+  const explicit = dockSide[id]
+  if (explicit === 'left' || explicit === 'right' || explicit === 'top') return explicit
+  return PANEL_MAP[id]?.home ? null : 'right'
+}
+
 function dockedPanels(side: 'left' | 'right', floating: Record<string, unknown>, dockSide: Record<string, string>) {
-  return PANELS.filter(p => !floating[p.id] && (dockSide[p.id] ?? 'right') === side)
+  return PANELS.filter(p => !floating[p.id] && resolvedDockSide(p.id, dockSide) === side)
+}
+
+function useDelayedDockPresence(hasPanels: boolean, delay = EMPTY_DOCK_HIDE_DELAY): boolean {
+  const [visible, setVisible] = useState(hasPanels)
+  useEffect(() => {
+    // Use the timer callback for both transitions: showing remains effectively
+    // immediate, while an emptied dock gets a short grace period before hiding.
+    const timer = window.setTimeout(() => setVisible(hasPanels), hasPanels ? 0 : delay)
+    return () => window.clearTimeout(timer)
+  }, [hasPanels, delay])
+  return visible
 }
 
 function DockTabs({ side, mobile, extra }: {
@@ -157,7 +175,7 @@ function DockTabs({ side, mobile, extra }: {
               }
               setTab(t.id)
             }}
-            onDoubleClick={() => !mobile && useEditorStore.getState().floatPanel(t.id)}
+            onDoubleClick={() => !mobile && useEditorStore.getState().floatPanel(t.id, t.defaultFloat)}
             onPointerDown={onPullDown(t.id)}
             onPointerMove={onPullMove}
             onPointerUp={onPullUp}
@@ -272,13 +290,15 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
   const resetLayout = useEditorStore(s => s.resetPanelLayout)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
   const dropActive = useDockDrop('right', mobile)
+  const rightCount = mobile ? PANELS.length : dockedPanels('right', floating, dockSide).length
+  const dockVisible = useDelayedDockPresence(mobile || rightCount > 0)
 
   const activePanel = PANEL_MAP[rightTab]
-  const activeHere = !!activePanel && !floating[rightTab] && (mobile || (dockSide[rightTab] ?? 'right') === 'right')
+  const activeHere = !!activePanel && !floating[rightTab] && (mobile || resolvedDockSide(rightTab, dockSide) === 'right')
   const ActiveContent = activeHere ? activePanel.render : null
 
   useEffect(() => {
-    const valid = !!PANEL_MAP[rightTab] && !floating[rightTab] && (mobile || (dockSide[rightTab] ?? 'right') === 'right')
+    const valid = !!PANEL_MAP[rightTab] && !floating[rightTab] && (mobile || resolvedDockSide(rightTab, dockSide) === 'right')
     if (valid) return
     const first = mobile
       ? PANELS.find(p => !floating[p.id])
@@ -286,6 +306,8 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
     const healed = first?.id ?? ''
     if (healed !== rightTab) setTab(healed)
   }, [rightTab, floating, dockSide, mobile, setTab])
+
+  if (!mobile && !dockVisible) return null
 
   return (
     <aside
@@ -311,7 +333,7 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
       {activePanel && <DockPanelHeader id={activePanel.id} mobile={mobile} />}
 
       <div className="flex-1 min-h-0 flex flex-col">
-        {!hasDoc ? (
+        {!hasDoc && !activePanel?.home ? (
           <div className="p-4 text-[11px] text-muted-foreground text-center leading-relaxed">
             Open an image or create a document to start editing.
           </div>
@@ -345,6 +367,12 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
 
 export function LeftDock() {
   const leftOpen = useEditorStore(s => s.panels.leftOpen)
+  const floating = useEditorStore(s => s.panels.floating)
+  const dockSide = useEditorStore(s => s.panels.dockSide)
+  const count = dockedPanels('left', floating, dockSide).length
+  const visible = useDelayedDockPresence(count > 0)
+
+  if (!visible) return null
   return leftOpen ? <LeftDockOpen /> : <LeftRail />
 }
 
@@ -394,12 +422,12 @@ function LeftDockOpen() {
   const dropActive = useDockDrop('left', false)
 
   const activePanel = PANEL_MAP[leftTab]
-  const ActiveContent = activePanel && !floating[leftTab] && (dockSide[leftTab] ?? 'right') === 'left'
+  const ActiveContent = activePanel && !floating[leftTab] && resolvedDockSide(leftTab, dockSide) === 'left'
     ? activePanel.render
     : null
 
   useEffect(() => {
-    const valid = !!PANEL_MAP[leftTab] && !floating[leftTab] && (dockSide[leftTab] ?? 'right') === 'left'
+    const valid = !!PANEL_MAP[leftTab] && !floating[leftTab] && resolvedDockSide(leftTab, dockSide) === 'left'
     if (valid) return
     const first = dockedPanels('left', floating, dockSide)[0]
     const healed = first?.id ?? ''
@@ -440,7 +468,7 @@ function LeftDockOpen() {
 
       <div className="flex-1 min-h-0 flex flex-col">
         {ActiveContent ? (
-          hasDoc ? <ActiveContent /> : (
+          hasDoc || activePanel?.home ? <ActiveContent /> : (
             <div className="p-4 text-[11px] text-muted-foreground text-center leading-relaxed">
               Open an image or create a document to start editing.
             </div>

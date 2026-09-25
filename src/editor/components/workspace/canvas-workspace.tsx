@@ -5,16 +5,16 @@ import { useEditorStore } from '../../store'
 import { engine } from '../../engine/engine'
 import { setActiveTool, getActiveToolId } from '../../tools/registry'
 import { pickLayerAt } from '../../tools/shared'
-import { IMPORT_ACCEPT } from '../../formats'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { CanvasLayerMenuContent } from './canvas-context-menu'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import { X, Plus, ZoomIn, ZoomOut, Maximize2, Frame } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize2, Frame } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { openFiles } from '../../engine/io'
 import { fileToCanvas } from '../../utils/canvas'
 import { TOOL_MAP } from '../../constants/tools'
+import { DocumentTabs } from './document-tabs'
+import { NativeModuleShell } from '../panels/native-module-shell'
 
 export function CanvasWorkspace() {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -22,7 +22,6 @@ export function CanvasWorkspace() {
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const cursorRef = useRef<HTMLCanvasElement>(null)
   const activeDocId = useEditorStore(s => s.activeDocId)
-  const docs = useEditorStore(s => s.docs)
   const activeTool = useEditorStore(s => s.activeTool)
   const renderTick = useEditorStore(s => s.renderTick)
 
@@ -87,8 +86,6 @@ export function CanvasWorkspace() {
     vp?.setCursorCss(cursor)
   }, [activeTool])
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
   // ---- OS clipboard paste (right-click → Paste, or Ctrl+V when the internal
   // clipboard is empty and the keydown handler let the default through) ----
   useEffect(() => {
@@ -148,46 +145,14 @@ export function CanvasWorkspace() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-workspace">
-      {/* doc tabs */}
-      <div className="h-8 flex items-stretch bg-panel border-b overflow-x-auto flex-shrink-0" role="tablist" aria-label="Open documents">
-        {docs.map(d => (
-          <button
-            key={d.id}
-            role="tab"
-            aria-selected={d.id === activeDocId}
-            className={cn(
-              'flex items-center gap-2 px-3 text-[11px] whitespace-nowrap border-r group max-w-48',
-              d.id === activeDocId ? 'bg-workspace text-foreground border-t-2 border-t-primary' : 'text-muted-foreground hover:text-foreground'
-            )}
-            onClick={() => engine.setActiveDocument(d.id)}
-          >
-            <span className="truncate">{d.name}{d.dirty ? ' •' : ''}</span>
-            <span className="text-[9px] text-muted-foreground">{d.width}×{d.height}</span>
-            <span
-              className="opacity-0 group-hover:opacity-100 hover:text-destructive"
-              onClick={e => { e.stopPropagation(); engine.closeDocument(d.id) }}
-              role="button"
-              aria-label={`Close ${d.name}`}
-            >
-              <X size={11} />
-            </span>
-          </button>
-        ))}
-        <button
-          className="px-3 text-muted-foreground hover:text-foreground flex items-center"
-          onClick={() => fileInputRef.current?.click()}
-          aria-label="Open image"
-        >
-          <Plus size={13} />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={`${IMPORT_ACCEPT},.zproj.json`}
-          multiple
-          className="hidden"
-          onChange={e => { if (e.target.files?.length) openFiles(Array.from(e.target.files)); e.target.value = '' }}
-        />
+      {/* Open files is native here by default, but can be floated/docked on desktop. */}
+      <div className="md:hidden">
+        <DocumentTabs />
+      </div>
+      <div className="hidden md:block">
+        <NativeModuleShell id="documents" axis="horizontal">
+          <DocumentTabs embedded />
+        </NativeModuleShell>
       </div>
 
       {/* canvas host — wrapped as the right-click context-menu trigger (Move tool) */}

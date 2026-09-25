@@ -1,5 +1,5 @@
 'use client'
-import { ArrowUp, Check, Ellipsis, Maximize2, PanelLeft, PanelRight } from 'lucide-react'
+import { ArrowUp, Check, Ellipsis, Home, Maximize2, PanelLeft, PanelRight } from 'lucide-react'
 import { useEditorStore, type DockSide } from '../../store'
 import { PANEL_MAP } from './panel-registry'
 import {
@@ -25,7 +25,12 @@ export function PanelActionsMenu({
   const def = PANEL_MAP[id]
   if (!def) return null
 
-  const current: DockSide | 'floating' = isFloating ? 'floating' : (dockSide[id] ?? 'right')
+  const explicitSide: DockSide | undefined = Object.prototype.hasOwnProperty.call(dockSide, id)
+    ? dockSide[id]
+    : undefined
+  const current: DockSide | 'floating' | 'home' = isFloating
+    ? 'floating'
+    : explicitSide ?? (def.home ? 'home' : 'right')
   const move = (side: DockSide) => useEditorStore.getState().dockPanel(id, side)
 
   return (
@@ -43,10 +48,20 @@ export function PanelActionsMenu({
           <Ellipsis size={12} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align="end" className="z-[80] min-w-44">
+      <DropdownMenuContent side="bottom" align="end" className="z-[80] min-w-48">
+        {def.home && (
+          <>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => useEditorStore.getState().homePanel(id)}>
+              <Home size={13} />
+              <span className="flex-1">Return to default position</span>
+              {current === 'home' && <Check size={12} className="text-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {!floating && current !== 'floating' && (
           <>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => useEditorStore.getState().floatPanel(id)}>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}>
               <Maximize2 size={13} />
               <span className="flex-1">Float panel</span>
             </DropdownMenuItem>
@@ -71,7 +86,7 @@ function DockItem({
   id: string
   label: string
   side: DockSide
-  current: DockSide | 'floating'
+  current: DockSide | 'floating' | 'home'
   onClick: () => void
 }) {
   const Icon = side === 'left' ? PanelLeft : side === 'right' ? PanelRight : ArrowUp

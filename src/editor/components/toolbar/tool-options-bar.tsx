@@ -24,7 +24,7 @@ function loadCollapsed(): boolean {
   try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
 }
 
-export function ToolOptionsBar() {
+export function ToolOptionsBar({ embedded = false }: { embedded?: boolean }) {
   const activeTool = useEditorStore(s => s.activeTool)
   const opts = useEditorStore(s => s.toolOptions[s.activeTool])
   const setToolOption = useEditorStore(s => s.setToolOption)
@@ -48,12 +48,13 @@ export function ToolOptionsBar() {
     // Collapsed (chevron): one slim row — extra controls swipe horizontally.
     // Below md the bar is always the single-row swipe strip (mobile overlay
     // scrollbars + no room to wrap anyway).
-    <div className="flex bg-panel border-b flex-shrink-0">
+    <div className={cn('flex bg-panel flex-shrink-0 min-w-0', !embedded && 'border-b', embedded && 'h-full')}>
       <div
         className={cn(
           'flex items-center gap-x-3 gap-y-1.5 px-3 py-1.5 min-w-0 flex-1 min-h-9',
           collapsed ? 'flex-nowrap overflow-x-auto zphoto-scroll' : 'flex-wrap',
-          'max-md:flex-nowrap max-md:overflow-x-auto max-md:zphoto-scroll'
+          'max-md:flex-nowrap max-md:overflow-x-auto max-md:zphoto-scroll',
+          embedded && 'content-start overflow-auto'
         )}
         role="group"
         aria-label="Tool options"

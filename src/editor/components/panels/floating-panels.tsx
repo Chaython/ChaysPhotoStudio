@@ -44,6 +44,8 @@ interface Session {
   origin: PanelRect | null
   /** true when the drag began from a dock tab (Escape re-docks) */
   originDocked: boolean
+  /** native workspace module pulled from its built-in home position */
+  originHome: boolean
   el: HTMLElement | null
   chromeApplied: boolean
   last: { x: number; y: number; w: number; h: number }
@@ -87,13 +89,14 @@ function dockZoneAt(x: number, y: number, _id: string): DockZone | null {
       return { side: 'top', strip: new DOMRect(top.left, top.top, top.width, EDGE_STRIP_W) }
     }
   }
-  // the closed left rail is only 36px wide — extend the target into the
-  // workspace edge strip so "drag all the way left" is easy and obvious
-  if (left && left.width < 60) {
-    const ws = document.querySelector('[data-workspace]')?.getBoundingClientRect()
-    if (ws && x >= ws.left && x <= ws.left + EDGE_STRIP_W && y >= ws.top && y <= ws.bottom) {
-      return { side: 'left', strip: new DOMRect(ws.left, ws.top, EDGE_STRIP_W, ws.height) }
-    }
+  const ws = document.querySelector('[data-workspace]')?.getBoundingClientRect()
+  // Empty side docks auto-hide. Keep both edge strips as persistent drop zones
+  // so a floating panel can recreate either dock without an existing container.
+  if (ws && (!left || left.width < 60) && x >= ws.left && x <= ws.left + EDGE_STRIP_W && y >= ws.top && y <= ws.bottom) {
+    return { side: 'left', strip: new DOMRect(ws.left, ws.top, EDGE_STRIP_W, ws.height) }
+  }
+  if (ws && (!right || right.width < 60) && x >= ws.right - EDGE_STRIP_W && x <= ws.right && y >= ws.top && y <= ws.bottom) {
+    return { side: 'right', strip: new DOMRect(ws.right - EDGE_STRIP_W, ws.top, EDGE_STRIP_W, ws.height) }
   }
   return null
 }
@@ -202,6 +205,10 @@ function commitSession(cancel: boolean) {
   const store = useEditorStore.getState()
 
   if (cancel) {
+    if (s.originHome) {
+      store.homePanel(s.id)
+      return
+    }
     if (s.originDocked || !s.origin) {
       // drag started from a dock tab → Escape puts it back in its dock
       store.dockPanel(s.id)
@@ -236,7 +243,7 @@ function startSession(
   mode: DragMode,
   startPointer: { x: number; y: number },
   startRect: PanelRect,
-  opts: { origin?: PanelRect | null; originDocked?: boolean } = {},
+  opts: { origin?: PanelRect | null; originDocked?: boolean; originHome?: boolean } = {},
 ) {
   if (session) commitSession(false) // one gesture at a time
   session = {
@@ -247,6 +254,7 @@ function startSession(
     startRect,
     origin: opts.origin ?? startRect,
     originDocked: opts.originDocked ?? false,
+    originHome: opts.originHome ?? false,
     el: findWindowEl(id),
     chromeApplied: false,
     last: { x: startRect.x, y: startRect.y, w: startRect.w, h: startRect.h },
@@ -269,6 +277,8 @@ export function beginWindowDrag(id: string, e: { clientX: number; clientY: numbe
   if (!def) return
   const store = useEditorStore.getState()
   const existing = store.panels.floating[id]
+  const hadExplicitDock = !!store.panels.dockSide[id]
+  const wasHome = !existing && !hadExplicitDock && !!def.home
   const vw = window.innerWidth
   const vh = window.innerHeight
   const w = existing?.w ?? def.defaultFloat.w
@@ -283,7 +293,11 @@ export function beginWindowDrag(id: string, e: { clientX: number; clientY: numbe
   }
   const rect = useEditorStore.getState().panels.floating[id]
   if (!rect) return
-  startSession(id, e.pointerId, 'move', { x: e.clientX, y: e.clientY }, rect, { origin: null, originDocked: !existing })
+  startSession(id, e.pointerId, 'move', { x: e.clientX, y: e.clientY }, rect, {
+    origin: null,
+    originDocked: !existing && !wasHome,
+    originHome: wasHome,
+  })
 }
 
 // ---- components ----------------------------------------------------------------
@@ -426,7 +440,7 @@ const DockStripIndicator = memo(function DockStripIndicator() {
   useEffect(() => {
     const onDropEvt = (e: Event) => {
       const d = (e as CustomEvent).detail
-      setZone(d?.active && d?.strip && (d.side === 'left' || d.side === 'top')
+      setZone(d?.active && d?.strip && (d.side === 'left' || d.side === 'right' || d.side === 'top')
         ? { strip: d.strip, side: d.side }
         : null)
     }
@@ -451,7 +465,7 @@ const DockStripIndicator = memo(function DockStripIndicator() {
             : 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap px-2 py-1 rounded bg-primary/20 border border-primary/60 text-primary text-[11px] font-medium shadow-lg'
         }
       >
-        {zone.side === 'top' ? 'Dock top' : 'Dock left'}
+        {zone.side === 'top' ? 'Dock top' : zone.side === 'right' ? 'Dock right' : 'Dock left'}
       </div>
     </div>
   )

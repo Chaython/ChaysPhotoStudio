@@ -81,14 +81,14 @@ function TopPanelBox({ id, hasDoc }: { id: string; hasDoc: boolean }) {
   if (!def) return null
   const Icon = def.icon
   const Content = def.render
-  const w = Math.max(200, Math.min(360, def.defaultFloat.w))
+  const w = def.topWidth ?? Math.max(200, Math.min(360, def.defaultFloat.w))
 
   return (
     <div role="listitem" className="flex flex-col border-r border-border/60 flex-shrink-0 bg-panel" style={{ width: w }}>
       <div
         className="h-7 flex items-center gap-1 px-1.5 border-b bg-panel/80 flex-shrink-0 cursor-grab active:cursor-grabbing"
         title={`${def.label} — drag or double-click to float`}
-        onDoubleClick={() => useEditorStore.getState().floatPanel(id)}
+        onDoubleClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
@@ -99,7 +99,7 @@ function TopPanelBox({ id, hasDoc }: { id: string; hasDoc: boolean }) {
         <PanelActionsMenu id={id} />
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        {hasDoc ? <Content /> : (
+        {hasDoc || def.home ? <Content /> : (
           <div className="p-3 text-[11px] text-muted-foreground text-center leading-relaxed">
             Open an image or create a document to start editing.
           </div>

@@ -3,10 +3,10 @@
 // Every panel follows the same lifecycle: dock left/right/top or float as a window.
 // NOTE: this module imports panel components (which import the store) — keep it
 // free of store imports to avoid a circular dependency.
-import type { ComponentType } from 'react'
+import { createElement, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders,
+  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders, Wrench, Files,
 } from 'lucide-react'
 import { LayersPanel } from './layers-panel'
 import { HistoryPanel, NavigatorPanel, HistogramPanel } from './history-navigator-histogram'
@@ -18,10 +18,14 @@ import { InfoPanel } from './info-panel'
 import { PathsPanel } from './paths-panel'
 import { PatternsPanel } from './patterns-panel'
 import { ToolPresetsPanel } from './tool-presets-panel'
+import { Toolbar } from '../toolbar/toolbar'
+import { ToolOptionsBar } from '../toolbar/tool-options-bar'
+import { DocumentTabs } from '../workspace/document-tabs'
 
 export type PanelId =
   | 'color' | 'layers' | 'channels' | 'history' | 'actions'
   | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns' | 'tool-presets'
+  | 'tools' | 'tool-options' | 'documents'
 
 export interface PanelDef {
   id: PanelId
@@ -33,7 +37,15 @@ export interface PanelDef {
   defaultFloat: { w: number; h: number }
   /** minimum floating window size */
   minFloat: { w: number; h: number }
+  /** built-in shell location; absent = normal panel that defaults right */
+  home?: 'tools' | 'tool-options' | 'documents'
+  /** preferred width when explicitly docked into the top strip */
+  topWidth?: number
 }
+
+const ToolsModule = () => createElement(Toolbar, { embedded: true })
+const ToolOptionsModule = () => createElement(ToolOptionsBar, { embedded: true })
+const DocumentsModule = () => createElement(DocumentTabs, { embedded: true })
 
 export const PANELS: PanelDef[] = [
   {
@@ -95,6 +107,21 @@ export const PANELS: PanelDef[] = [
   {
     id: 'tool-presets', label: 'Presets', icon: Sliders, render: ToolPresetsPanel,
     defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 },
+  },
+  {
+    id: 'tools', label: 'Tools', icon: Wrench, render: ToolsModule,
+    defaultFloat: { w: 300, h: 620 }, minFloat: { w: 180, h: 260 },
+    home: 'tools', topWidth: 420,
+  },
+  {
+    id: 'tool-options', label: 'Tool Options', icon: SlidersHorizontal, render: ToolOptionsModule,
+    defaultFloat: { w: 760, h: 190 }, minFloat: { w: 360, h: 110 },
+    home: 'tool-options', topWidth: 760,
+  },
+  {
+    id: 'documents', label: 'Open Files', icon: Files, render: DocumentsModule,
+    defaultFloat: { w: 720, h: 150 }, minFloat: { w: 320, h: 90 },
+    home: 'documents', topWidth: 720,
   },
 ]
 
