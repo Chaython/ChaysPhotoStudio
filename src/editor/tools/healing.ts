@@ -19,7 +19,7 @@
 // ============================================================
 import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross, toolMaskCanvas, softDab } from './shared'
+import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross, toolMaskCanvas } from './shared'
 import { buildSourceDab, sourcePointFor, frequencyHeal, pressureFlow } from './dab-utils'
 import { createCanvas, ctx2d, getImageData, putImageData, cloneCanvas, clamp } from '../utils/canvas'
 import { dilateMask, gaussianBlurChannel } from '../image-ops/core'
@@ -1036,29 +1036,62 @@ function commitPatch() {
 
   const result = cloneCanvas(targetBefore)
   const rc = ctx2d(result)
+
+  // Photoshop Normal Patch can optionally carry transparency from the sampled
+  // source. Clearing the target footprint first allows the patch alpha to
+  // replace destination alpha; without Transparent we use normal source-over.
+  if (opts.heal === 'texture' && opts.transparent === true) {
+    rc.save()
+    rc.globalCompositeOperation = 'destination-out'
+    rc.drawImage(targetMask, 0, 0)
+    rc.restore()
+  }
   rc.drawImage(tmp, 0, 0)
 
   const targetBBox: Rect = direction === 'source'
     ? { ...lassoBBox }
     : { x: lassoBBox.x + dx, y: lassoBBox.y + dy, w: lassoBBox.w, h: lassoBBox.h }
 
-  if (opts.heal !== 'texture') {
-    // Match low-frequency color/lighting to the destination while retaining
-    // the sampled high-frequency texture.
-    const pad = Math.max(4, Math.round(Math.min(lassoBBox.w, lassoBBox.h) / 6))
+  if (opts.heal === 'content-aware') {
+    // Content-Aware Patch exposes separate Structure (shape/texture fidelity)
+    // and Color (low-frequency adaptation) controls. Diffusion still controls
+    // how quickly the repair transitions across local detail.
+    const structure = clamp(Number(opts.structure) || 5, 1, 7)
+    const colorMix = clamp((Number(opts.color) || 0) / 10, 0, 1)
+    const diffusion = clamp(Number(opts.diffusion) || 5, 1, 7)
+    const pad = Math.max(
+      4,
+      Math.round(Math.min(lassoBBox.w, lassoBBox.h) * (.08 + (8 - structure) * .012)),
+    )
     const region = clampedRect(
       { x: targetBBox.x - pad, y: targetBBox.y - pad, w: targetBBox.w + pad * 2, h: targetBBox.h + pad * 2 },
-      doc.width, doc.height
+      doc.width, doc.height,
     )
-    if (region.w > 0 && region.h > 0) {
+    if (region.w > 0 && region.h > 0 && colorMix > 0) {
       const target = rc.getImageData(region.x, region.y, region.w, region.h)
+      const raw = new Uint8ClampedArray(target.data)
       const base = ctx2d(targetBefore).getImageData(region.x, region.y, region.w, region.h)
       const maskRegion = ctx2d(targetMask).getImageData(region.x, region.y, region.w, region.h)
       const restrict = new Uint8ClampedArray(region.w * region.h)
       for (let i = 0, j = 3; i < restrict.length; i++, j += 4) restrict[i] = maskRegion.data[j]
-      const diffusion = clamp(Number(opts.diffusion) || 5, 1, 7)
-      const lowR = Math.max(2, Math.round(Math.min(lassoBBox.w, lassoBBox.h) * (0.04 + diffusion * 0.012)))
+
+      const structureScale = 1.32 - (structure - 1) * .075
+      const lowR = Math.max(
+        2,
+        Math.round(Math.min(lassoBBox.w, lassoBBox.h) * (0.025 + diffusion * .01) * structureScale),
+      )
       frequencyHeal(target, base, restrict, lowR)
+
+      if (colorMix < 1) {
+        for (let i = 0, j = 0; i < restrict.length; i++, j += 4) {
+          const a = restrict[i] / 255
+          if (a <= 0) continue
+          const mix = colorMix * a
+          target.data[j] = raw[j] * (1 - mix) + target.data[j] * mix
+          target.data[j + 1] = raw[j + 1] * (1 - mix) + target.data[j + 1] * mix
+          target.data[j + 2] = raw[j + 2] * (1 - mix) + target.data[j + 2] * mix
+        }
+      }
       rc.putImageData(target, region.x, region.y)
     }
   }
