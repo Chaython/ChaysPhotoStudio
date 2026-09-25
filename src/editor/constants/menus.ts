@@ -386,7 +386,9 @@ export const MENUS: MenuItem[][] = [
   ],
   // ================= WINDOW =================
   [
-    // reveal = focus the panel wherever the user arranged it (left dock, right dock, or floating window)
+    // Every registered panel is available here, regardless of whether it is
+    // docked left/right/top or floating. revealPanel focuses/activates it.
+    { id: 'win-color', label: 'Color', run: () => store().revealPanel('color') },
     { id: 'win-layers', label: 'Layers', run: () => store().revealPanel('layers') },
     { id: 'win-channels', label: 'Channels', run: () => store().revealPanel('channels') },
     { id: 'win-history', label: 'History', run: () => store().revealPanel('history') },
@@ -395,10 +397,12 @@ export const MENUS: MenuItem[][] = [
     { id: 'win-properties', label: 'Properties', run: () => store().revealPanel('properties') },
     { id: 'win-navigator', label: 'Navigator', run: () => store().revealPanel('navigator') },
     { id: 'win-histogram', label: 'Histogram', run: () => store().revealPanel('histogram') },
+    { id: 'win-timeline', label: 'Timeline', run: () => store().revealPanel('timeline') },
+    { id: 'win-clone-source', label: 'Clone Source', run: () => store().revealPanel('clone-source') },
     { id: 'win-info', label: 'Info', run: () => store().revealPanel('info') },
     { id: 'win-paths', label: 'Paths', run: () => store().revealPanel('paths') },
-    { id: 'win-clone-source', label: 'Clone Source', run: () => store().revealPanel('clone-source') },
-    { id: 'win-timeline', label: 'Timeline', run: () => store().revealPanel('timeline') },
+    { id: 'win-patterns', label: 'Patterns', run: () => store().revealPanel('patterns') },
+    { id: 'win-tool-presets', label: 'Tool Presets', run: () => store().revealPanel('tool-presets') },
     S(),
     { id: 'win-script', label: 'Scripting Console…', run: () => openDlg('script-console') },
     { id: 'win-batch', label: 'Batch / Image Processor…', run: () => openDlg('batch') },
