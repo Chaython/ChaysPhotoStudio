@@ -1,17 +1,12 @@
 'use client'
-// Panel docks — left AND right. Panels can be arranged into either area:
-//   • drag a floating window over a dock (or the left edge zone) and release
-//   • pull a tab out of either dock to float it, then drop it on the other side
-//   • use the "+" menu in either tab bar to move panels between docks
-// Right dock: resizable width (left divider), pull-out-to-float tabs,
-// collapsible Color section, drop target, engine status footer.
-// Left dock: same dock behaviors + a slim rail when closed (click / drop opens).
-// Mobile (`mobile` prop) keeps the original fixed drawer behavior.
+// Fully modular left/right panel docks. Every registered panel can live in
+// either dock, the top strip, or a floating window. No panel has bespoke dock
+// chrome: tabs, actions, dragging, sizing and persistence are shared.
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, GripHorizontal, PanelLeft, PanelLeftClose, PanelRight, Plus, RotateCcw } from 'lucide-react'
+import { PanelLeft, PanelLeftClose, Plus, RotateCcw } from 'lucide-react'
 import { useEditorStore, DOCK_WIDTH_DEFAULT } from '../../store'
-import { TAB_PANELS, PANEL_MAP, PANELS } from './panel-registry'
-import { ColorPanel } from './color-panel'
+import { PANEL_MAP, PANELS } from './panel-registry'
+import { PanelActionsMenu } from './panel-actions-menu'
 import { beginWindowDrag, DOCK_DROP_EVENT } from './floating-panels'
 import { cn } from '@/lib/utils'
 import { engine } from '../../engine/engine'
@@ -19,7 +14,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-const PULL_THRESHOLD = 14 // px of pointer travel before a tab pops out into a window
+const PULL_THRESHOLD = 14
 
 export type DockTabSide = 'left' | 'right' | 'top'
 
@@ -30,7 +25,6 @@ interface PullDrag {
   handedOff: boolean
 }
 
-/** side-matched drop highlight from the floating-window drag session */
 export function useDockDrop(side: DockTabSide, mobile: boolean): boolean {
   const [active, setActive] = useState(false)
   useEffect(() => {
@@ -44,19 +38,12 @@ export function useDockDrop(side: DockTabSide, mobile: boolean): boolean {
   return active && !mobile
 }
 
-// ---- "+" menu: arrange panels between docks ------------------------------------
-
-const COLOR_DEF = PANELS[0] // { id: 'color', ... } — dockable everywhere,
-// but on the right dock it renders as the fixed collapsible section
-
-/** every dock's arrange menu offers the full panel list, with a badge showing
- *  where each panel currently lives (Left / Right / Top / Window) */
+/** Move any panel to this dock. The badge always reflects its actual location. */
 export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: boolean }) {
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
   if (mobile) return null
 
-  const items = [COLOR_DEF, ...TAB_PANELS]
   const sideLabel: Record<string, string> = { left: 'Left', right: 'Right', top: 'Top', Window: 'Window' }
 
   return (
@@ -71,21 +58,20 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
           <Plus size={13} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align={side === 'left' ? 'start' : 'end'} className="z-50 min-w-44">
+      <DropdownMenuContent side="bottom" align={side === 'left' ? 'start' : 'end'} className="z-50 min-w-48 max-h-[70vh] overflow-y-auto">
         <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground select-none">
           Move to {side === 'top' ? 'top strip' : `${side} dock`}
         </div>
-        {items.map(p => {
-          const isFloating = !!floating[p.id]
-          const at = isFloating ? 'Window' : (dockSide[p.id] ?? 'right')
-          const Icon = (p as any).icon
+        {PANELS.map(p => {
+          const at = floating[p.id] ? 'Window' : (dockSide[p.id] ?? 'right')
+          const Icon = p.icon
           return (
             <DropdownMenuItem
               key={p.id}
               onClick={() => useEditorStore.getState().dockPanel(p.id, side)}
               className="gap-2 text-xs"
             >
-              {Icon ? <Icon size={13} /> : <PanelRight size={13} />}
+              <Icon size={13} />
               <span className="flex-1">{p.label}</span>
               <span className={cn(
                 'text-[9px] px-1 py-px rounded border',
@@ -101,54 +87,55 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
   )
 }
 
-// ---- shared tab bar (pull-out gesture + per-side active tab) --------------------
+function dockedPanels(side: 'left' | 'right', floating: Record<string, unknown>, dockSide: Record<string, string>) {
+  return PANELS.filter(p => !floating[p.id] && (dockSide[p.id] ?? 'right') === side)
+}
 
 function DockTabs({ side, mobile, extra }: {
-  side: DockTabSide
+  side: 'left' | 'right'
   mobile: boolean
   extra?: React.ReactNode
 }) {
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
-  const activeTab = useEditorStore(s => (side === 'left' ? s.panels.leftTab : s.panels.rightTab))
+  const activeTab = useEditorStore(s => side === 'left' ? s.panels.leftTab : s.panels.rightTab)
   const setTabLeft = useEditorStore(s => s.setLeftPanelTab)
   const setTabRight = useEditorStore(s => s.setRightPanelTab)
   const setTab = side === 'left' ? setTabLeft : setTabRight
 
-  // the Color panel joins the LEFT tab bar when docked there (on the right it
-  // renders as the fixed collapsible section instead, never as a tab)
-  const pool = side === 'left' ? [...TAB_PANELS, COLOR_DEF] : TAB_PANELS
-  const tabs = pool.filter(p => !floating[p.id] && (dockSide[p.id] ?? 'right') === side)
+  // Mobile uses the right drawer as a universal panel browser so a desktop
+  // layout cannot strand left/top panels on a small screen.
+  const tabs = mobile
+    ? PANELS.filter(p => !floating[p.id])
+    : dockedPanels(side, floating, dockSide)
 
-  // ---- tab pull-out gesture → floating window ----------------------------------
   const pullDrag = useRef<PullDrag | null>(null)
   const suppressClick = useRef(false)
 
   const onPullDown = (id: string) => (e: React.PointerEvent<HTMLElement>) => {
     if (mobile || e.button !== 0) return
-    suppressClick.current = false // clear any stale suppression from a previous gesture
+    suppressClick.current = false
     pullDrag.current = { id, x: e.clientX, y: e.clientY, handedOff: false }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
+
   const onPullMove = (e: React.PointerEvent<HTMLElement>) => {
     const d = pullDrag.current
     if (!d || d.handedOff) return
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > PULL_THRESHOLD) {
       d.handedOff = true
       suppressClick.current = true
-      // float the panel under the pointer; the window drag session takes over
       beginWindowDrag(d.id, e)
     }
   }
-  const onPullUp = () => {
-    pullDrag.current = null
-  }
+
+  const onPullUp = () => { pullDrag.current = null }
 
   return (
     <div className="flex border-b overflow-x-auto flex-shrink-0 zphoto-scroll" role="tablist" aria-label={`${side} dock panel tabs`}>
       {tabs.length === 0 ? (
         <div className="flex-1 h-8 flex items-center justify-center text-[10px] text-muted-foreground select-none">
-          {side === 'left' ? 'No panels — use + or drop a window here' : 'Drag windows back to dock'}
+          No panels — use + or drop a floating panel here
         </div>
       ) : tabs.map(t => {
         const Icon = t.icon
@@ -157,11 +144,11 @@ function DockTabs({ side, mobile, extra }: {
             key={t.id}
             role="tab"
             aria-selected={activeTab === t.id}
-            title={mobile ? t.label : `${t.label} — drag to float, + menu to move`}
+            title={mobile ? t.label : `${t.label} — drag or double-click to float`}
             className={cn(
               'flex-1 min-w-8 h-8 flex items-center justify-center relative',
               activeTab === t.id ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
-              !mobile && 'cursor-grab active:cursor-grabbing'
+              !mobile && 'cursor-grab active:cursor-grabbing',
             )}
             onClick={() => {
               if (suppressClick.current) {
@@ -170,6 +157,7 @@ function DockTabs({ side, mobile, extra }: {
               }
               setTab(t.id)
             }}
+            onDoubleClick={() => !mobile && useEditorStore.getState().floatPanel(t.id)}
             onPointerDown={onPullDown(t.id)}
             onPointerMove={onPullMove}
             onPointerUp={onPullUp}
@@ -188,7 +176,18 @@ function DockTabs({ side, mobile, extra }: {
   )
 }
 
-// ---- vertical width divider (shared) -------------------------------------------
+function DockPanelHeader({ id, mobile }: { id: string; mobile: boolean }) {
+  const def = PANEL_MAP[id]
+  if (!def) return null
+  const Icon = def.icon
+  return (
+    <div className="h-7 px-2 flex items-center gap-1.5 border-b bg-panel/80 flex-shrink-0">
+      <Icon size={11} className="text-primary shrink-0" />
+      <span className="text-[11px] font-medium truncate flex-1">{def.label}</span>
+      {!mobile && <PanelActionsMenu id={id} />}
+    </div>
+  )
+}
 
 function WidthDivider({ side, width, onWidth, onReset }: {
   side: 'left' | 'right'
@@ -205,10 +204,7 @@ function WidthDivider({ side, width, onWidth, onReset }: {
     if (rafId.current) cancelAnimationFrame(rafId.current)
   }, [])
 
-  // left dock: divider on the RIGHT edge (pull right → wider)
-  // right dock: divider on the LEFT edge (pull left → wider)
   const sign = side === 'left' ? 1 : -1
-
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.preventDefault()
@@ -245,7 +241,7 @@ function WidthDivider({ side, width, onWidth, onReset }: {
           ? 'absolute right-0 top-0 bottom-0 -mr-[3px] w-[6px]'
           : 'absolute left-0 top-0 bottom-0 -ml-[3px] w-[6px]',
         'z-20 cursor-col-resize touch-none transition-colors hover:bg-primary/40',
-        active ? 'bg-primary/60' : 'bg-transparent'
+        active ? 'bg-primary/60' : 'bg-transparent',
       )}
       onPointerDown={onDown}
       onPointerMove={onMove}
@@ -255,8 +251,6 @@ function WidthDivider({ side, width, onWidth, onReset }: {
     />
   )
 }
-
-// ---- drop overlay pill ----------------------------------------------------------
 
 function DropOverlay({ side }: { side: 'left' | 'right' }) {
   return (
@@ -268,40 +262,30 @@ function DropOverlay({ side }: { side: 'left' | 'right' }) {
   )
 }
 
-// ---- RIGHT dock ------------------------------------------------------------------
-
 export function PanelDock({ mobile = false }: { mobile?: boolean }) {
   const rightTab = useEditorStore(s => s.panels.rightTab)
   const setTab = useEditorStore(s => s.setRightPanelTab)
-  const colorOpen = useEditorStore(s => s.panels.colorPanelOpen)
-  const toggleColor = useEditorStore(s => s.toggleColorPanel)
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
   const dockWidth = useEditorStore(s => s.panels.dockWidth)
   const setDockWidth = useEditorStore(s => s.setDockWidth)
   const resetLayout = useEditorStore(s => s.resetPanelLayout)
-  const dockPanel = useEditorStore(s => s.dockPanel)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
-
   const dropActive = useDockDrop('right', mobile)
 
-  const colorFloating = !!floating['color']
-  const colorHere = !colorFloating && (dockSide['color'] ?? 'right') === 'right'
   const activePanel = PANEL_MAP[rightTab]
-  // rightTab === 'color' must NEVER validate: the Color panel renders as the
-  // fixed collapsible section, so a 'color' body tab would duplicate it
-  const ActiveContent = activePanel && rightTab !== 'color' && !floating[rightTab] && (dockSide[rightTab] ?? 'right') === 'right'
-    ? activePanel.render : null
+  const activeHere = !!activePanel && !floating[rightTab] && (mobile || (dockSide[rightTab] ?? 'right') === 'right')
+  const ActiveContent = activeHere ? activePanel.render : null
 
-  // keep the active tab valid — panels move between docks / float away, and
-  // the stored tab can go stale; heal it to the first panel on this side
   useEffect(() => {
-    const valid = !!PANEL_MAP[rightTab] && rightTab !== 'color' && !floating[rightTab] && (dockSide[rightTab] ?? 'right') === 'right'
+    const valid = !!PANEL_MAP[rightTab] && !floating[rightTab] && (mobile || (dockSide[rightTab] ?? 'right') === 'right')
     if (valid) return
-    const first = TAB_PANELS.find(p => !floating[p.id] && (dockSide[p.id] ?? 'right') === 'right')
+    const first = mobile
+      ? PANELS.find(p => !floating[p.id])
+      : dockedPanels('right', floating, dockSide)[0]
     const healed = first?.id ?? ''
     if (healed !== rightTab) setTab(healed)
-  }, [rightTab, floating, dockSide, setTab])
+  }, [rightTab, floating, dockSide, mobile, setTab])
 
   return (
     <aside
@@ -309,12 +293,11 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
       data-drop-active={dropActive ? '1' : undefined}
       className={cn(
         'bg-panel border-l flex flex-col flex-shrink-0 min-h-0 relative panel-dock-drop',
-        mobile ? 'w-full' : 'hidden md:flex'
+        mobile ? 'w-full' : 'hidden md:flex',
       )}
       style={mobile ? undefined : { width: dockWidth }}
       aria-label="Panels"
     >
-      {/* width drag divider (left edge, desktop) */}
       {!mobile && (
         <WidthDivider
           side="right"
@@ -324,59 +307,9 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
         />
       )}
 
-      {/* color panel (collapsible section; grip pulls it out) — only when the
-          Color panel actually lives in this dock; it may be a left-dock tab,
-          a top-strip box or a floating window instead */}
-      <div className="border-b">
-        <div className="flex items-center gap-0.5 px-1.5 h-7">
-          {!mobile && (
-            <span
-              className="p-0.5 -ml-0.5 rounded cursor-grab active:cursor-grabbing text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-              title="Drag to float the Color panel"
-              onPointerDown={onColorPullDown}
-              onPointerMove={onColorPullMove}
-              onPointerUp={onColorPullUp}
-              onPointerCancel={onColorPullUp}
-            >
-              <GripHorizontal size={11} />
-            </span>
-          )}
-          <button
-            className="flex-1 flex items-center gap-1 px-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
-            onClick={toggleColor}
-            aria-expanded={colorOpen && colorHere}
-          >
-            <span className={cn('transition-transform', colorOpen && colorHere && 'rotate-90')}>
-              <ChevronDown size={11} />
-            </span>
-            Color
-          </button>
-          {!colorHere && (
-            <button
-              className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-              title="Move the Color panel back into this dock"
-              aria-label="Move the Color panel back into this dock"
-              onClick={() => dockPanel('color', 'right')}
-            >
-              <PanelRight size={11} />
-            </button>
-          )}
-        </div>
-        {colorHere ? (
-          colorOpen && <ColorPanel />
-        ) : (
-          <div className="px-3 pb-2 text-[10px] text-muted-foreground leading-relaxed">
-            {colorFloating
-              ? 'Color panel is floating — drag its window over any dock to put it back.'
-              : `Color lives in the ${dockSide['color'] === 'left' ? 'left dock' : 'top strip'} — use the button above to bring it back.`}
-          </div>
-        )}
-      </div>
-
-      {/* tabs header (dockable panels; floating ones drop out of the bar) */}
       <DockTabs side="right" mobile={mobile} />
+      {activePanel && <DockPanelHeader id={activePanel.id} mobile={mobile} />}
 
-      {/* active panel content */}
       <div className="flex-1 min-h-0 flex flex-col">
         {!hasDoc ? (
           <div className="p-4 text-[11px] text-muted-foreground text-center leading-relaxed">
@@ -384,24 +317,19 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
           </div>
         ) : ActiveContent ? (
           <ActiveContent />
-        ) : activePanel && !floating[rightTab] ? (
-          <div className="flex-1 flex items-center justify-center px-4 text-center text-[10px] text-muted-foreground">
-            {activePanel.label} lives in the left dock — use its tab there, or the + menu to move it back.
-          </div>
         ) : activePanel ? (
           <div className="flex-1 flex items-center justify-center px-4 text-center text-[10px] text-muted-foreground">
-            {activePanel.label} is floating — drag its window over a dock to put it back.
+            {activePanel.label} is arranged elsewhere. Use its panel menu or the + menu to bring it here.
           </div>
         ) : null}
       </div>
 
-      {/* engine status footer + layout reset */}
       <div className="h-6 px-2 flex items-center gap-1 text-[9px] text-muted-foreground border-t flex-shrink-0">
         <span className="truncate flex-1">{engine.docs.length} doc(s) · engine ready</span>
         {!mobile && (
           <button
             className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-            title="Reset panel layout (dock all windows, default widths)"
+            title="Reset panel layout"
             aria-label="Reset panel layout"
             onClick={() => resetLayout()}
           >
@@ -410,37 +338,14 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
         )}
       </div>
 
-      {/* drop-to-dock target overlay */}
       {dropActive && <DropOverlay side="right" />}
     </aside>
   )
 }
 
-// color grip pull-out (kept separate so the dock component stays lean)
-let colorPull: { x: number; y: number; handed: boolean } | null = null
-const onColorPullDown = (e: React.PointerEvent<HTMLElement>) => {
-  if (e.button !== 0) return
-  colorPull = { x: e.clientX, y: e.clientY, handed: false }
-  e.currentTarget.setPointerCapture(e.pointerId)
-}
-const onColorPullMove = (e: React.PointerEvent<HTMLElement>) => {
-  if (!colorPull || colorPull.handed) return
-  if (Math.hypot(e.clientX - colorPull.x, e.clientY - colorPull.y) > PULL_THRESHOLD) {
-    colorPull.handed = true
-    beginWindowDrag('color', e)
-  }
-}
-const onColorPullUp = () => {
-  colorPull = null
-}
-
-// ---- LEFT dock ---------------------------------------------------------------------
-
 export function LeftDock() {
   const leftOpen = useEditorStore(s => s.panels.leftOpen)
-
-  if (!leftOpen) return <LeftRail />
-  return <LeftDockOpen />
+  return leftOpen ? <LeftDockOpen /> : <LeftRail />
 }
 
 function LeftRail() {
@@ -486,18 +391,17 @@ function LeftDockOpen() {
   const hasDoc = useEditorStore(s => !!s.activeDocId)
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
-
   const dropActive = useDockDrop('left', false)
 
   const activePanel = PANEL_MAP[leftTab]
   const ActiveContent = activePanel && !floating[leftTab] && (dockSide[leftTab] ?? 'right') === 'left'
-    ? activePanel.render : null
+    ? activePanel.render
+    : null
 
-  // heal a stale active tab (panel moved away / floated)
   useEffect(() => {
     const valid = !!PANEL_MAP[leftTab] && !floating[leftTab] && (dockSide[leftTab] ?? 'right') === 'left'
     if (valid) return
-    const first = TAB_PANELS.find(p => !floating[p.id] && (dockSide[p.id] ?? 'right') === 'left')
+    const first = dockedPanels('left', floating, dockSide)[0]
     const healed = first?.id ?? ''
     if (healed !== leftTab) setTab(healed)
   }, [leftTab, floating, dockSide, setTab])
@@ -510,7 +414,6 @@ function LeftDockOpen() {
       style={{ width: leftWidth }}
       aria-label="Left panels"
     >
-      {/* width drag divider (right edge — pull right → wider) */}
       <WidthDivider
         side="left"
         width={leftWidth}
@@ -518,7 +421,6 @@ function LeftDockOpen() {
         onReset={() => setLeftDockWidth(DOCK_WIDTH_DEFAULT)}
       />
 
-      {/* header: tabs + close-to-rail */}
       <DockTabs
         side="left"
         mobile={false}
@@ -534,8 +436,8 @@ function LeftDockOpen() {
           </button>
         }
       />
+      {activePanel && <DockPanelHeader id={activePanel.id} mobile={false} />}
 
-      {/* active panel content */}
       <div className="flex-1 min-h-0 flex flex-col">
         {ActiveContent ? (
           hasDoc ? <ActiveContent /> : (
@@ -546,22 +448,11 @@ function LeftDockOpen() {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-2 px-4 text-center text-[10px] text-muted-foreground leading-relaxed">
             <PanelLeft size={18} className="text-muted-foreground/60" aria-hidden />
-            <p>Drop a floating panel window here,<br />or use the <span className="text-primary font-medium">+</span> menu to move<br />panels from the right dock.</p>
-            {activePanel && <p className="text-foreground/70">{activePanel.label} is selected — it lives in the right dock.</p>}
-            {leftTab && activePanel && (
-              <button
-                type="button"
-                className="text-[10px] text-primary hover:underline"
-                onClick={() => setTab('')}
-              >
-                Clear selection
-              </button>
-            )}
+            <p>Drop a floating panel here,<br />or use the <span className="text-primary font-medium">+</span> menu.</p>
           </div>
         )}
       </div>
 
-      {/* drop-to-dock target overlay */}
       {dropActive && <DropOverlay side="left" />}
     </aside>
   )
@@ -570,5 +461,5 @@ function LeftDockOpen() {
 function useLeftDockCount(): number {
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
-  return [...TAB_PANELS, COLOR_DEF].filter(p => !floating[p.id] && (dockSide[p.id] ?? 'right') === 'left').length
+  return dockedPanels('left', floating, dockSide).length
 }
