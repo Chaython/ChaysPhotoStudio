@@ -136,7 +136,12 @@ export function CanvasWorkspace() {
     const hit = docX >= 0 && docY >= 0 && docX < doc.width && docY < doc.height ? pickLayerAt(docX, docY) : null
     const subject = hit ?? doc.activeLayerId
     if (!subject) { setCtxLayerId(null); return }
-    if (doc.activeLayerId !== subject) { doc.activeLayerId = subject; engine.emit() }
+    const selected = doc.selectedLayerIds ?? []
+    if (!selected.includes(subject)) doc.selectedLayerIds = [subject]
+    if (doc.activeLayerId !== subject || !selected.includes(subject)) {
+      doc.activeLayerId = subject
+      engine.emit()
+    }
     setCtxLayerId(subject)
   }, [])
   const ctxMenuEnabled = activeTool === 'move' && !!activeDocId
