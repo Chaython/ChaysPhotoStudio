@@ -17,7 +17,19 @@ import { gaussianBlurChannel } from '../image-ops/core'
 import { frequencyHeal } from './dab-utils'
 import * as imageOps from '../image-ops'
 
-type Phase = 'idle' | 'defining' | 'moving'
+type Phase = 'idle' | 'defining' | 'moving' | 'transforming'
+type TransformHandle = 'move' | 'rotate' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
+interface TransformState { sx: number; sy: number; rotation: number }
+interface TransformDrag {
+  kind: TransformHandle
+  startX: number
+  startY: number
+  startDeltaX: number
+  startDeltaY: number
+  startRotation: number
+  startAngle: number
+}
+
 let phase: Phase = 'idle'
 let points: { x: number; y: number }[] = []
 let samplingMul = 1
@@ -27,6 +39,8 @@ let mask: HTMLCanvasElement | null = null
 let bounds: Rect | null = null
 let moveStart: { x: number; y: number } | null = null
 let delta = { x: 0, y: 0 }
+let transform: TransformState = { sx: 1, sy: 1, rotation: 0 }
+let transformDrag: TransformDrag | null = null
 let committing = false
 let previewSource: HTMLCanvasElement | null = null
 
@@ -39,6 +53,8 @@ function reset() {
   bounds = null
   moveStart = null
   delta = { x: 0, y: 0 }
+  transform = { sx: 1, sy: 1, rotation: 0 }
+  transformDrag = null
   committing = false
   previewSource = null
   engine.pokeOverlay()
@@ -58,6 +74,182 @@ function clampRect(r: Rect, w: number, h: number): Rect {
   const x1 = clamp(Math.ceil(r.x + r.w), 0, w)
   const y1 = clamp(Math.ceil(r.y + r.h), 0, h)
   return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) }
+}
+
+function sourceCenter() {
+  if (!bounds) return { x: 0, y: 0 }
+  return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 }
+}
+
+function destinationCenter(dx = delta.x, dy = delta.y) {
+  const c = sourceCenter()
+  return { x: c.x + dx, y: c.y + dy }
+}
+
+function transformPoint(
+  x: number,
+  y: number,
+  dx = delta.x,
+  dy = delta.y,
+  t: TransformState = transform,
+) {
+  const sc = sourceCenter()
+  const dc = { x: sc.x + dx, y: sc.y + dy }
+  const ux = (x - sc.x) * t.sx
+  const uy = (y - sc.y) * t.sy
+  const cos = Math.cos(t.rotation), sin = Math.sin(t.rotation)
+  return {
+    x: dc.x + ux * cos - uy * sin,
+    y: dc.y + ux * sin + uy * cos,
+  }
+}
+
+function transformedCorners(
+  dx = delta.x,
+  dy = delta.y,
+  t: TransformState = transform,
+) {
+  if (!bounds) return [] as { x: number; y: number; id: 'nw' | 'ne' | 'se' | 'sw' }[]
+  return [
+    { ...transformPoint(bounds.x, bounds.y, dx, dy, t), id: 'nw' as const },
+    { ...transformPoint(bounds.x + bounds.w, bounds.y, dx, dy, t), id: 'ne' as const },
+    { ...transformPoint(bounds.x + bounds.w, bounds.y + bounds.h, dx, dy, t), id: 'se' as const },
+    { ...transformPoint(bounds.x, bounds.y + bounds.h, dx, dy, t), id: 'sw' as const },
+  ]
+}
+
+function transformedEdgeHandles() {
+  if (!bounds) return [] as { x: number; y: number; id: 'n' | 'e' | 's' | 'w' }[]
+  return [
+    { ...transformPoint(bounds.x + bounds.w / 2, bounds.y), id: 'n' as const },
+    { ...transformPoint(bounds.x + bounds.w, bounds.y + bounds.h / 2), id: 'e' as const },
+    { ...transformPoint(bounds.x + bounds.w / 2, bounds.y + bounds.h), id: 's' as const },
+    { ...transformPoint(bounds.x, bounds.y + bounds.h / 2), id: 'w' as const },
+  ]
+}
+
+function transformedBounds(
+  dx = delta.x,
+  dy = delta.y,
+  t: TransformState = transform,
+): Rect {
+  const corners = transformedCorners(dx, dy, t)
+  if (!corners.length) return { x: 0, y: 0, w: 0, h: 0 }
+  const xs = corners.map(p => p.x), ys = corners.map(p => p.y)
+  const x0 = Math.min(...xs), x1 = Math.max(...xs)
+  const y0 = Math.min(...ys), y1 = Math.max(...ys)
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+function inverseTransformPoint(x: number, y: number) {
+  if (!bounds) return { x: 0, y: 0 }
+  const dc = destinationCenter()
+  const dx = x - dc.x, dy = y - dc.y
+  const cos = Math.cos(-transform.rotation), sin = Math.sin(-transform.rotation)
+  const rx = dx * cos - dy * sin
+  const ry = dx * sin + dy * cos
+  return {
+    x: rx / Math.max(.0001, transform.sx),
+    y: ry / Math.max(.0001, transform.sy),
+  }
+}
+
+function rotationHandlePoint(zoom = 1) {
+  if (!bounds) return { x: 0, y: 0 }
+  const top = transformPoint(bounds.x + bounds.w / 2, bounds.y)
+  const center = destinationCenter()
+  let vx = top.x - center.x, vy = top.y - center.y
+  const len = Math.hypot(vx, vy) || 1
+  vx /= len; vy /= len
+  const distance = 26 / Math.max(.02, zoom)
+  return { x: top.x + vx * distance, y: top.y + vy * distance }
+}
+
+function transformHandleAt(p: PointerInfo): TransformHandle | null {
+  if (!bounds) return null
+  const zoom = Math.max(engine.activeDoc?.view.zoom ?? 1, .02)
+  const hit = 9 / zoom
+  const rotate = rotationHandlePoint(zoom)
+  if (Math.hypot(p.docX - rotate.x, p.docY - rotate.y) <= hit) return 'rotate'
+
+  for (const corner of transformedCorners()) {
+    if (Math.hypot(p.docX - corner.x, p.docY - corner.y) <= hit) return corner.id
+  }
+  for (const edge of transformedEdgeHandles()) {
+    if (Math.hypot(p.docX - edge.x, p.docY - edge.y) <= hit) return edge.id
+  }
+
+  const local = inverseTransformPoint(p.docX, p.docY)
+  if (Math.abs(local.x) <= bounds.w / 2 && Math.abs(local.y) <= bounds.h / 2) return 'move'
+  return null
+}
+
+function beginTransformDrag(p: PointerInfo): boolean {
+  const handle = transformHandleAt(p)
+  if (!handle) return false
+  const center = destinationCenter()
+  transformDrag = {
+    kind: handle,
+    startX: p.docX,
+    startY: p.docY,
+    startDeltaX: delta.x,
+    startDeltaY: delta.y,
+    startRotation: transform.rotation,
+    startAngle: Math.atan2(p.docY - center.y, p.docX - center.x),
+  }
+  return true
+}
+
+function updateTransformDrag(p: PointerInfo) {
+  if (!bounds || !transformDrag) return
+  const drag = transformDrag
+  if (drag.kind === 'move') {
+    delta = {
+      x: drag.startDeltaX + p.docX - drag.startX,
+      y: drag.startDeltaY + p.docY - drag.startY,
+    }
+    return
+  }
+
+  const center = destinationCenter()
+  if (drag.kind === 'rotate') {
+    const angle = Math.atan2(p.docY - center.y, p.docX - center.x)
+    let rotation = drag.startRotation + angle - drag.startAngle
+    if (p.shift) {
+      const step = Math.PI / 12
+      rotation = Math.round(rotation / step) * step
+    }
+    transform = { ...transform, rotation }
+    return
+  }
+
+  // Corner handles scale around the destination center. Pointer movement is
+  // measured in the subject's unrotated axes; Shift constrains proportions.
+  const dx = p.docX - center.x, dy = p.docY - center.y
+  const cos = Math.cos(-transform.rotation), sin = Math.sin(-transform.rotation)
+  const rx = dx * cos - dy * sin
+  const ry = dx * sin + dy * cos
+  const scaleX = Math.max(.05, Math.abs(rx) / Math.max(.5, bounds.w / 2))
+  const scaleY = Math.max(.05, Math.abs(ry) / Math.max(.5, bounds.h / 2))
+  let sx = transform.sx
+  let sy = transform.sy
+  const affectsX = drag.kind === 'nw' || drag.kind === 'ne' || drag.kind === 'se' || drag.kind === 'sw' || drag.kind === 'e' || drag.kind === 'w'
+  const affectsY = drag.kind === 'nw' || drag.kind === 'ne' || drag.kind === 'se' || drag.kind === 'sw' || drag.kind === 'n' || drag.kind === 's'
+  if (affectsX) sx = scaleX
+  if (affectsY) sy = scaleY
+  if (p.shift && affectsX && affectsY) {
+    const s = Math.max(sx, sy)
+    sx = s; sy = s
+  }
+  transform = { ...transform, sx: Math.min(20, sx), sy: Math.min(20, sy) }
+}
+
+function enterTransformStage() {
+  phase = 'transforming'
+  transform = { sx: 1, sy: 1, rotation: 0 }
+  transformDrag = null
+  engine.ui?.toast('Transform On Drop: drag inside to move, corners to scale, circle to rotate. Enter applies; Escape cancels.', 'info')
+  engine.pokeOverlay()
 }
 
 function finalizeLasso() {
@@ -98,6 +290,8 @@ function finalizeLasso() {
     : active ? engine.layerCanvasDocSpace(active.id) : null
   moveStart = null
   delta = { x: 0, y: 0 }
+  transform = { sx: 1, sy: 1, rotation: 0 }
+  transformDrag = null
   engine.ui?.toast('Drag the selected subject to its new location', 'info')
   engine.pokeOverlay()
 }
@@ -109,15 +303,24 @@ function maskAlpha(m: HTMLCanvasElement): Uint8ClampedArray {
   return out
 }
 
-function softenedShiftedMaskLocal(
+function transformedSoftMaskLocal(
   source: HTMLCanvasElement,
+  sourceCx: number,
+  sourceCy: number,
   dx: number,
   dy: number,
+  t: TransformState,
   sigma: number,
 ): HTMLCanvasElement {
   const out = createCanvas(source.width, source.height)
   const oc = ctx2d(out)
-  oc.drawImage(source, dx, dy)
+  oc.save()
+  oc.translate(sourceCx + dx, sourceCy + dy)
+  oc.rotate(t.rotation)
+  oc.scale(t.sx, t.sy)
+  oc.translate(-sourceCx, -sourceCy)
+  oc.drawImage(source, 0, 0)
+  oc.restore()
   if (sigma <= .05) return out
 
   const d = oc.getImageData(0, 0, out.width, out.height)
@@ -135,8 +338,9 @@ async function commitMove() {
   const layer = engine.activeLayer
   if (!doc || !layer || !mask || !bounds) { reset(); return }
 
-  const dx = Math.round(delta.x), dy = Math.round(delta.y)
-  if (Math.abs(dx) + Math.abs(dy) < 1) {
+  const dx = delta.x, dy = delta.y
+  const transformChanged = Math.abs(transform.sx - 1) + Math.abs(transform.sy - 1) + Math.abs(transform.rotation) > .001
+  if (Math.abs(dx) + Math.abs(dy) < 1 && !transformChanged) {
     moveStart = null
     delta = { x: 0, y: 0 }
     engine.pokeOverlay()
@@ -153,11 +357,10 @@ async function commitMove() {
     const color = clamp(Number(opts.color) || 5, 0, 10)
     const edgeSigma = Math.max(.25, (8 - structure) * .42)
     const edgePad = Math.max(3, Math.ceil(edgeSigma * 4) + 2)
-    const colorPad = Math.max(3, Math.round(Math.min(bounds.w, bounds.h) * .08))
+    const destRect = transformedBounds(dx, dy, transform)
+    const colorPad = Math.max(3, Math.round(Math.min(destRect.w, destRect.h) * .08))
     const inpaintPad = Math.max(24, Math.ceil(Math.min(bounds.w, bounds.h) * .35))
     const pad = Math.max(edgePad, colorPad, inpaintPad)
-
-    const destRect = { x: bounds.x + dx, y: bounds.y + dy, w: bounds.w, h: bounds.h }
     const workRect = clampRectToSize(
       inflateRect(unionRect(bounds, destRect), pad),
       doc.width,
@@ -189,13 +392,30 @@ async function commitMove() {
       putImageData(base, healed)
     }
 
-    const destinationMask = softenedShiftedMaskLocal(sourceMask, dx, dy, edgeSigma)
+    const sc = sourceCenter()
+    const localSourceCx = sc.x - workRect.x
+    const localSourceCy = sc.y - workRect.y
+    const destinationMask = transformedSoftMaskLocal(
+      sourceMask,
+      localSourceCx,
+      localSourceCy,
+      dx,
+      dy,
+      transform,
+      edgeSigma,
+    )
 
-    // The cropped sampled image and mask share the same local registration, so
-    // the document-space move delta is also the correct local shift.
+    // Move/scale/rotate the sampled subject with the exact same transform as
+    // its destination mask. The mask discards all pixels outside the lasso.
     const patch = createCanvas(workRect.w, workRect.h)
     const pc = ctx2d(patch)
-    pc.drawImage(sampled, dx, dy)
+    pc.save()
+    pc.translate(localSourceCx + dx, localSourceCy + dy)
+    pc.rotate(transform.rotation)
+    pc.scale(transform.sx, transform.sy)
+    pc.translate(-localSourceCx, -localSourceCy)
+    pc.drawImage(sampled, 0, 0)
+    pc.restore()
     pc.globalCompositeOperation = 'destination-in'
     pc.drawImage(destinationMask, 0, 0)
     pc.globalCompositeOperation = 'source-over'
@@ -207,10 +427,10 @@ async function commitMove() {
     if (color > 0) {
       const localDest = clampRect(
         {
-          x: bounds.x + dx - workRect.x - colorPad,
-          y: bounds.y + dy - workRect.y - colorPad,
-          w: bounds.w + colorPad * 2,
-          h: bounds.h + colorPad * 2,
+          x: destRect.x - workRect.x - colorPad,
+          y: destRect.y - workRect.y - colorPad,
+          w: destRect.w + colorPad * 2,
+          h: destRect.h + colorPad * 2,
         },
         workRect.w,
         workRect.h,
@@ -222,7 +442,7 @@ async function commitMove() {
         const md = ctx2d(destinationMask).getImageData(localDest.x, localDest.y, localDest.w, localDest.h).data
         const restrict = new Uint8ClampedArray(localDest.w * localDest.h)
         for (let i = 0, j = 3; i < restrict.length; i++, j += 4) restrict[i] = md[j]
-        const lowR = Math.max(2, Math.round(Math.min(bounds.w, bounds.h) * (.025 + color * .012)))
+        const lowR = Math.max(2, Math.round(Math.min(destRect.w, destRect.h) * (.025 + color * .012)))
         frequencyHeal(target, baseData, restrict, lowR)
         rc.putImageData(target, localDest.x, localDest.y)
       }
@@ -299,6 +519,9 @@ export const contentAwareMoveTool: Tool = {
     } else if (phase === 'moving') {
       moveStart = { x: p.docX, y: p.docY }
       delta = { x: 0, y: 0 }
+      transform = { sx: 1, sy: 1, rotation: 0 }
+    } else if (phase === 'transforming') {
+      beginTransformDrag(p)
     }
   },
 
@@ -325,20 +548,30 @@ export const contentAwareMoveTool: Tool = {
       }
       delta = { x: dx, y: dy }
       engine.pokeOverlay()
+    } else if (phase === 'transforming' && transformDrag) {
+      updateTransformDrag(p)
+      engine.pokeOverlay()
     }
   },
 
   onPointerUp() {
     if (committing) return
-    if (phase === 'defining') finalizeLasso()
-    else if (phase === 'moving' && moveStart) {
+    if (phase === 'defining') {
+      finalizeLasso()
+    } else if (phase === 'moving' && moveStart) {
       moveStart = null
-      void commitMove()
+      const opts = getOptions('content-aware-move')
+      if (opts.transformOnDrop === true && Math.abs(delta.x) + Math.abs(delta.y) >= 1) enterTransformStage()
+      else void commitMove()
+    } else if (phase === 'transforming') {
+      transformDrag = null
+      engine.pokeOverlay()
     }
   },
 
   onDoubleClick() {
     if (phase === 'defining' && !committing) finalizeLasso()
+    else if (phase === 'transforming' && !committing) void commitMove()
   },
 
   onKeyDown(e: KeyboardEvent) {
@@ -347,6 +580,12 @@ export const contentAwareMoveTool: Tool = {
       return true
     }
     if (e.key === 'Enter' && phase === 'moving' && !committing) {
+      if (getOptions('content-aware-move').transformOnDrop === true) enterTransformStage()
+      else void commitMove()
+      return true
+    }
+    if (e.key === 'Enter' && phase === 'transforming' && !committing) {
+      transformDrag = null
       void commitMove()
       return true
     }
@@ -378,39 +617,82 @@ export const contentAwareMoveTool: Tool = {
       return
     }
 
-    if (phase === 'moving' && path && bounds) {
+    if ((phase === 'moving' || phase === 'transforming') && path && bounds) {
       const opts = getOptions('content-aware-move')
       const src = previewSource
+      const sc = sourceCenter()
+      const dc = destinationCenter()
+
       ctx.save()
       ctx.translate(view.panX, view.panY)
       ctx.scale(view.zoom, view.zoom)
 
-      // Original source outline.
+      // Original source outline stays fixed so Move mode clearly shows the
+      // region that will be synthesized after the subject leaves.
       ctx.strokeStyle = 'rgba(255,255,255,.7)'
       ctx.lineWidth = 1 / view.zoom
       ctx.setLineDash([4 / view.zoom, 3 / view.zoom])
       ctx.stroke(path)
 
-      // Moved subject ghost.
+      // Moved/transformed subject ghost.
       ctx.save()
-      ctx.translate(delta.x, delta.y)
+      ctx.translate(dc.x, dc.y)
+      ctx.rotate(transform.rotation)
+      ctx.scale(transform.sx, transform.sy)
+      ctx.translate(-sc.x, -sc.y)
       ctx.clip(path)
       ctx.globalAlpha = .62
       if (src) ctx.drawImage(src, 0, 0)
       ctx.restore()
 
       ctx.save()
-      ctx.translate(delta.x, delta.y)
+      ctx.translate(dc.x, dc.y)
+      ctx.rotate(transform.rotation)
+      ctx.scale(transform.sx, transform.sy)
+      ctx.translate(-sc.x, -sc.y)
       ctx.strokeStyle = '#4ec9b0'
-      ctx.lineWidth = 1.5 / view.zoom
+      ctx.lineWidth = 1.5 / (view.zoom * Math.max(.05, Math.sqrt(transform.sx * transform.sy)))
       ctx.setLineDash([])
       ctx.stroke(path)
       ctx.restore()
+
+      if (phase === 'transforming') {
+        const corners = transformedCorners()
+        const edges = transformedEdgeHandles()
+        const top = transformPoint(bounds.x + bounds.w / 2, bounds.y)
+        const rotate = rotationHandlePoint(view.zoom)
+        const hs = 4 / view.zoom
+
+        ctx.setLineDash([])
+        ctx.lineWidth = 1 / view.zoom
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'
+        ctx.beginPath()
+        ctx.moveTo(top.x, top.y)
+        ctx.lineTo(rotate.x, rotate.y)
+        ctx.stroke()
+
+        for (const point of [...corners, ...edges]) {
+          ctx.fillStyle = '#ffffff'
+          ctx.strokeStyle = '#111111'
+          ctx.fillRect(point.x - hs, point.y - hs, hs * 2, hs * 2)
+          ctx.strokeRect(point.x - hs, point.y - hs, hs * 2, hs * 2)
+        }
+        ctx.beginPath()
+        ctx.arc(rotate.x, rotate.y, 5 / view.zoom, 0, Math.PI * 2)
+        ctx.fillStyle = '#4ec9b0'
+        ctx.fill()
+        ctx.strokeStyle = '#111111'
+        ctx.stroke()
+      }
       ctx.restore()
 
-      const hx = (bounds.x + delta.x + bounds.w / 2) * view.zoom + view.panX
-      const hy = (bounds.y + delta.y + bounds.h / 2) * view.zoom + view.panY
-      const label = opts.mode === 'extend' ? 'Extend · release to blend' : 'Move · release to heal + blend'
+      const hx = dc.x * view.zoom + view.panX
+      const hy = dc.y * view.zoom + view.panY
+      const label = phase === 'transforming'
+        ? 'Transform · drag inside/corners/rotate handle · Enter applies'
+        : opts.transformOnDrop === true
+          ? (opts.mode === 'extend' ? 'Extend · release to transform' : 'Move · release to transform')
+          : (opts.mode === 'extend' ? 'Extend · release to blend' : 'Move · release to heal + blend')
       ctx.save()
       ctx.font = '11px ui-sans-serif, sans-serif'
       ctx.textAlign = 'center'
