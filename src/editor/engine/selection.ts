@@ -121,7 +121,34 @@ export function modifySelection(sel: SelectionState, op: 'grow' | 'contract' | '
 
 function clampLocal(v: number, lo: number, hi: number) { return v < lo ? lo : v > hi ? hi : v }
 
-/** Trace marching-ants contours (Moore-neighbor boundary following) */
+/** Trace marching-ants contours (Moore-neighbor boundary following).
+ *
+ * The old renderer emitted one Path2D line segment per boundary pixel. Large
+ * ellipses, polygon selections and especially wand masks could therefore create
+ * tens or hundreds of thousands of segments and stroke them twice every ants
+ * frame. We now keep only direction changes, then apply a hard display-only
+ * segment budget. The selection mask itself remains pixel-perfect.
+ */
+const MAX_ANTS_SEGMENTS = 4096
+const MAX_CONTOUR_SEGMENTS = 1536
+
+interface ContourPoint { x: number; y: number }
+
+function pathFromContour(points: ContourPoint[], remainingBudget: number): { path: Path2D; segments: number } | null {
+  if (points.length < 3 || remainingBudget < 3) return null
+  const cap = Math.max(3, Math.min(MAX_CONTOUR_SEGMENTS, remainingBudget))
+  const stride = Math.max(1, Math.ceil(points.length / cap))
+  const path = new Path2D()
+  path.moveTo(points[0].x + 0.5, points[0].y + 0.5)
+  let segments = 0
+  for (let i = stride; i < points.length && segments < cap; i += stride) {
+    path.lineTo(points[i].x + 0.5, points[i].y + 0.5)
+    segments++
+  }
+  path.closePath()
+  return { path, segments: segments + 1 }
+}
+
 export function selectionContours(sel: SelectionState): Path2D[] {
   if (sel._paths && sel._pathsV === sel._v) return sel._paths
   const { width: w, height: h } = sel.mask
@@ -129,46 +156,68 @@ export function selectionContours(sel: SelectionState): Path2D[] {
   const at = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] >= 128
   const paths: Path2D[] = []
   const visited = new Uint8Array(w * h)
-  // Moore neighborhood (clockwise from W)
   const dirs = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]]
+  let usedSegments = 0
+
+  outer:
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
+      if (usedSegments >= MAX_ANTS_SEGMENTS) break outer
       if (!at(x, y) || visited[y * w + x]) continue
-      // must be a boundary pixel
+
       let isBoundary = false
-      for (const [dx, dy] of dirs) if (at(x + dx, y + dy) === false) { isBoundary = true; break }
-      if (!isBoundary) { visited[y * w + x] = 1; continue }
-      // trace
-      const path = new Path2D()
+      for (const [dx, dy] of dirs) {
+        if (!at(x + dx, y + dy)) { isBoundary = true; break }
+      }
+      if (!isBoundary) {
+        visited[y * w + x] = 1
+        continue
+      }
+
+      const points: ContourPoint[] = [{ x, y }]
       let cx = x, cy = y
-      let dir = 0 // start looking west
+      let dir = 0
+      let lastDir = -1
       let guard = 0
-      const maxGuard = (w + h) * 8
-      path.moveTo(cx + 0.5, cy + 0.5)
-      const startKey = cy * w + cx
-      visited[startKey] = 1
+      const maxGuard = Math.max((w + h) * 8, 4096)
+      visited[cy * w + cx] = 1
+
       do {
         let found = false
         for (let k = 0; k < 8; k++) {
-          const nd = (dir + 6 + k) % 8 // start backtrack+1 clockwise
-          const nx = cx + dirs[nd][0], ny = cy + dirs[nd][1]
-          if (at(nx, ny)) {
-            cx = nx; cy = ny
-            dir = nd
-            found = true
-            visited[cy * w + cx] = 1
-            path.lineTo(cx + 0.5, cy + 0.5)
-            break
-          }
+          const nd = (dir + 6 + k) % 8
+          const nx = cx + dirs[nd][0]
+          const ny = cy + dirs[nd][1]
+          if (!at(nx, ny)) continue
+
+          // Preserve the endpoint of each straight run instead of every pixel.
+          if (lastDir !== -1 && nd !== lastDir) points.push({ x: cx, y: cy })
+          lastDir = nd
+          cx = nx
+          cy = ny
+          dir = nd
+          found = true
+          visited[cy * w + cx] = 1
+          break
         }
         if (!found) break
         guard++
         if (guard > maxGuard) break
-      } while (!(cx === x && cy === y) && guard <= maxGuard)
-      path.closePath()
-      if (guard > 2) paths.push(path)
+      } while (!(cx === x && cy === y))
+
+      if (points.length > 2) {
+        if (points[points.length - 1].x !== cx || points[points.length - 1].y !== cy) {
+          points.push({ x: cx, y: cy })
+        }
+        const built = pathFromContour(points, MAX_ANTS_SEGMENTS - usedSegments)
+        if (built) {
+          paths.push(built.path)
+          usedSegments += built.segments
+        }
+      }
     }
   }
+
   sel._paths = paths
   sel._pathsV = sel._v
   return paths
