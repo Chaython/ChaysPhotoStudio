@@ -30,6 +30,18 @@ export function sourcePointFor(
   return { x: srcX + dx, y: srcY + dy }
 }
 
+let sourceDabScratch: HTMLCanvasElement | null = null
+
+function getSourceDabScratch(size: number): HTMLCanvasElement {
+  const s = Math.max(4, Math.ceil(size))
+  if (!sourceDabScratch || sourceDabScratch.width !== s || sourceDabScratch.height !== s) {
+    sourceDabScratch = createCanvas(s, s)
+  } else {
+    ctx2d(sourceDabScratch).clearRect(0, 0, s, s)
+  }
+  return sourceDabScratch
+}
+
 /**
  * Build a soft-edged dab canvas sampling `source` around (sx, sy) with the
  * brush hardness applied as a radial alpha mask (destination-in), so hardness
@@ -44,7 +56,7 @@ export function buildSourceDab(
   const r = Math.max(1, radius)
   if (r < 0.5) return null
   const size = Math.ceil(r * 2) + 2
-  const dab = createCanvas(size, size)
+  const dab = getSourceDabScratch(size)
   const ctx = ctx2d(dab)
   const c = size / 2
   ctx.save()
