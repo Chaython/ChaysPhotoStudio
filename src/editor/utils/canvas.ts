@@ -4,6 +4,70 @@ export function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
 }
 
+export interface CanvasPixelCapabilities {
+  workingPixelFormat: 'rgba-unorm8'
+  workingBitDepth: 8
+  workingColorSpace: 'srgb'
+  float16Context: boolean
+  float16ImageData: boolean
+  displayP3: boolean
+}
+
+let pixelCaps: CanvasPixelCapabilities | null = null
+
+/** The current editor intentionally keeps raster layer storage on the
+ * universally-compatible 8-bit Canvas 2D path. This feature probe reports
+ * whether the runtime ALSO exposes the newer float16 / Display-P3 APIs so the
+ * UI can distinguish "working precision" from hardware/browser capability.
+ *
+ * Do not silently flip createCanvas()/ctx2d() to float16: most existing pixel
+ * processors operate in 0..255 ImageData space and would need a coordinated
+ * migration to normalized float pixels first. */
+export function canvasPixelCapabilities(): CanvasPixelCapabilities {
+  if (pixelCaps) return pixelCaps
+  let float16Context = false
+  let float16ImageData = false
+  let displayP3 = false
+
+  if (typeof document !== 'undefined') {
+    try {
+      const probe = document.createElement('canvas')
+      probe.width = probe.height = 1
+      const ctx = probe.getContext('2d', {
+        colorType: 'float16',
+        colorSpace: 'display-p3',
+        willReadFrequently: true,
+      } as any) as (CanvasRenderingContext2D & {
+        getContextAttributes?: () => { colorType?: string; colorSpace?: string }
+      }) | null
+      const attrs = ctx?.getContextAttributes?.()
+      float16Context = attrs?.colorType === 'float16'
+      displayP3 = attrs?.colorSpace === 'display-p3'
+      if (ctx) {
+        try {
+          const img = (ctx as any).getImageData(0, 0, 1, 1, {
+            pixelFormat: 'rgba-float16',
+            colorSpace: 'display-p3',
+          })
+          float16ImageData = img?.pixelFormat === 'rgba-float16' || img?.data?.constructor?.name === 'Float16Array'
+          displayP3 = displayP3 || img?.colorSpace === 'display-p3'
+        } catch { /* runtime exposes only the legacy ImageData path */ }
+      }
+    } catch { /* unsupported context attributes */ }
+  }
+
+  pixelCaps = {
+    workingPixelFormat: 'rgba-unorm8',
+    workingBitDepth: 8,
+    workingColorSpace: 'srgb',
+    float16Context,
+    float16ImageData,
+    displayP3,
+  }
+  return pixelCaps
+}
+
+
 export function createCanvas(w: number, h: number): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = Math.max(1, Math.round(w))
