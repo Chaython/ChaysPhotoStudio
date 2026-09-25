@@ -35,7 +35,8 @@
     "dist:all": "node scripts/gen-icons.mjs && next build && node scripts/post-build.mjs && node scripts/prepare-electron-app.mjs && node scripts/build-extension.mjs",
     "app:dist:mac:x64": "node scripts/prepare-electron-app.mjs && electron-builder --mac --x64 --config electron-builder.yml --publish never",
     "app:dist:mac:arm64": "node scripts/prepare-electron-app.mjs && electron-builder --mac --arm64 --config electron-builder.yml --publish never",
-    "dist:validate": "node scripts/validate-distribution.mjs"
+    "dist:validate": "node scripts/validate-distribution.mjs",
+    "tools:validate": "bun scripts/validate-tools.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
