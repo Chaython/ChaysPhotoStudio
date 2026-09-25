@@ -1848,7 +1848,10 @@ export class Engine {
       let refined = temp
       if ((opts.smooth ?? 0) > 0) refined = modifySelection(refined, 'smooth', opts.smooth ?? 0) ?? refined
       if ((opts.feather ?? 0) > 0) refined = modifySelection(refined, 'feather', opts.feather ?? 0) ?? refined
-      mask = getMaskAlpha(refined.mask)
+      // Refinement already produced a document-space mask. Avoid extracting a
+      // second full-document alpha buffer only to recreate the same mask.
+      this.setSelectionMask(refined.mask, opts.mode, 'Magic Wand')
+      return
     }
     this.setSelectionAlpha(mask, opts.mode, 'Magic Wand')
   }

@@ -1,6 +1,6 @@
 // Selection state management — masks, combine modes, marching-ants contours
 import type { Rect, SelectionCombine, SelectionState, PsDocument } from '../types'
-import { createCanvas, ctx2d, cloneCanvas, getImageData, putImageData, combineMaskAlpha, getMaskAlpha, setMaskAlpha, uid } from '../utils/canvas'
+import { createCanvas, ctx2d, cloneCanvas, getImageData, putImageData, setMaskAlpha, uid, clampRectToSize, unionRect } from '../utils/canvas'
 import { gaussianBlurChannel } from '../image-ops/core'
 
 export function maskCanvasFromAlpha(alpha: Uint8ClampedArray, w: number, h: number): HTMLCanvasElement {
@@ -16,15 +16,23 @@ export function selectionFromMask(mask: HTMLCanvasElement, v = 1): SelectionStat
 
 export function computeBounds(mask: HTMLCanvasElement): Rect {
   const { width: w, height: h } = mask
-  const d = getImageData(mask).data
+  const mc = ctx2d(mask)
   let minX = w, minY = h, maxX = -1, maxY = -1
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (d[(y * w + x) * 4 + 3] > 0) {
+
+  // Scan in strips to cap peak ImageData allocation on very large documents.
+  const rowsPerStrip = Math.max(1, Math.min(256, Math.floor(4_000_000 / Math.max(1, w))))
+  for (let y0 = 0; y0 < h; y0 += rowsPerStrip) {
+    const rows = Math.min(rowsPerStrip, h - y0)
+    const d = mc.getImageData(0, y0, w, rows).data
+    for (let y = 0; y < rows; y++) {
+      const gy = y0 + y
+      const row = y * w
+      for (let x = 0; x < w; x++) {
+        if (d[(row + x) * 4 + 3] <= 0) continue
         if (x < minX) minX = x
         if (x > maxX) maxX = x
-        if (y < minY) minY = y
-        if (y > maxY) maxY = y
+        if (gy < minY) minY = gy
+        if (gy > maxY) maxY = gy
       }
     }
   }
@@ -40,83 +48,192 @@ export function combineSelection(
     if (mode === 'new') return selectionFromMask(cloneCanvas(mask))
     return selectionFromMask(mask)
   }
-  const a = getMaskAlpha(existing.mask)
-  const b = getMaskAlpha(mask)
-  if (a.length !== b.length) return selectionFromMask(cloneCanvas(mask))
-  const combined = mode === 'add' ? combineMaskAlpha(a, b, 'add')
-    : mode === 'subtract' ? combineMaskAlpha(a, b, 'subtract')
-    : combineMaskAlpha(a, b, 'intersect')
-  const has = combined.some(v => v > 0)
-  if (!has) return null
-  return selectionFromMask(maskCanvasFromAlpha(combined, w, h))
+  if (existing.mask.width !== w || existing.mask.height !== h) return selectionFromMask(cloneCanvas(mask))
+
+  const incomingBounds = computeBounds(mask)
+  if (incomingBounds.w <= 0 || incomingBounds.h <= 0) {
+    return mode === 'intersect' ? null : existing
+  }
+
+  const region = clampRectToSize(
+    unionRect(existing.bounds, incomingBounds),
+    w,
+    h,
+  )
+  if (region.w <= 0 || region.h <= 0) return null
+
+  const aData = ctx2d(existing.mask).getImageData(region.x, region.y, region.w, region.h).data
+  const bData = ctx2d(mask).getImageData(region.x, region.y, region.w, region.h).data
+  const combined = new Uint8ClampedArray(region.w * region.h)
+
+  for (let i = 0, j = 3; i < combined.length; i++, j += 4) {
+    const a = aData[j]
+    const b = bData[j]
+    combined[i] = mode === 'add'
+      ? Math.max(a, b)
+      : mode === 'subtract'
+        ? Math.max(0, a - b)
+        : Math.min(a, b)
+  }
+
+  return selectionFromLocalAlpha(combined, region, w, h, Math.max(existing._v + 1, 1))
 }
 
-/** modify selection: grow/contract/feather/border/smooth/invert */
+/** Build a document-space selection from a local alpha buffer without ever
+ * allocating document-sized ImageData/Float32 work buffers. */
+function selectionFromLocalAlpha(
+  alpha: Uint8ClampedArray,
+  region: Rect,
+  docW: number,
+  docH: number,
+  v: number,
+): SelectionState | null {
+  let minX = region.w, minY = region.h, maxX = -1, maxY = -1
+  const local = new ImageData(region.w, region.h)
+  for (let y = 0; y < region.h; y++) {
+    for (let x = 0; x < region.w; x++) {
+      const i = y * region.w + x
+      const a = alpha[i]
+      if (!a) continue
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+      const j = i * 4
+      local.data[j] = 255
+      local.data[j + 1] = 255
+      local.data[j + 2] = 255
+      local.data[j + 3] = a
+    }
+  }
+  if (maxX < minX || maxY < minY) return null
+
+  const mask = createCanvas(docW, docH)
+  ctx2d(mask).putImageData(local, region.x, region.y)
+  return {
+    mask,
+    bounds: {
+      x: region.x + minX,
+      y: region.y + minY,
+      w: maxX - minX + 1,
+      h: maxY - minY + 1,
+    },
+    _v: v,
+    _pathsV: -1,
+    _paths: null,
+  }
+}
+
+function localSelectionAlpha(sel: SelectionState, region: Rect): Uint8ClampedArray {
+  const d = ctx2d(sel.mask).getImageData(region.x, region.y, region.w, region.h).data
+  const out = new Uint8ClampedArray(region.w * region.h)
+  for (let i = 0, j = 3; i < out.length; i++, j += 4) out[i] = d[j]
+  return out
+}
+
+function morphLocal(
+  arr: Uint8ClampedArray,
+  w: number,
+  h: number,
+  radius: number,
+  useMax: boolean,
+): Uint8ClampedArray {
+  const tmp = new Uint8ClampedArray(arr.length)
+  const out = new Uint8ClampedArray(arr.length)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let v = useMax ? 0 : 255
+      for (let dx = -radius; dx <= radius; dx++) {
+        const xx = Math.min(w - 1, Math.max(0, x + dx))
+        v = useMax ? Math.max(v, arr[y * w + xx]) : Math.min(v, arr[y * w + xx])
+      }
+      tmp[y * w + x] = v
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let v = useMax ? 0 : 255
+      for (let dy = -radius; dy <= radius; dy++) {
+        const yy = Math.min(h - 1, Math.max(0, y + dy))
+        v = useMax ? Math.max(v, tmp[yy * w + x]) : Math.min(v, tmp[yy * w + x])
+      }
+      out[y * w + x] = v
+    }
+  }
+  return out
+}
+
+/** modify selection: grow/contract/feather/border/smooth/invert
+ *
+ * All neighborhood-based operations work only on a padded selection rectangle.
+ * The mask canvas remains document-space for compatibility, but expensive
+ * Float32/temporary arrays scale with the selected area rather than the photo.
+ */
 export function modifySelection(sel: SelectionState, op: 'grow' | 'contract' | 'feather' | 'border' | 'smooth' | 'invert', px: number): SelectionState | null {
   const w = sel.mask.width, h = sel.mask.height
-  let alpha = getMaskAlpha(sel.mask)
+
+  // Invert genuinely affects the entire document and therefore cannot be
+  // region-limited without changing semantics.
   if (op === 'invert') {
-    const out = new Uint8ClampedArray(alpha.length)
-    for (let i = 0; i < alpha.length; i++) out[i] = 255 - alpha[i]
-    alpha = out
-  } else if (op === 'feather') {
+    const d = ctx2d(sel.mask).getImageData(0, 0, w, h)
+    for (let i = 3; i < d.data.length; i += 4) d.data[i] = 255 - d.data[i]
+    const out = createCanvas(w, h)
+    putImageData(out, d)
+    return selectionFromMask(out, sel._v + 1)
+  }
+
+  if (sel.bounds.w <= 0 || sel.bounds.h <= 0) return null
+  const amount = Math.max(0, Number(px) || 0)
+  const radius = Math.max(1, Math.round(amount))
+  const sigma = op === 'smooth' ? Math.max(1, amount)
+    : op === 'feather' ? Math.max(.5, amount)
+    : Math.max(.5, radius / 2)
+  const support = op === 'grow' || op === 'contract' || op === 'border'
+    ? radius + Math.ceil(sigma * 4) + 2
+    : Math.ceil(sigma * 4) + 2
+
+  const region = clampRectToSize({
+    x: sel.bounds.x - support,
+    y: sel.bounds.y - support,
+    w: sel.bounds.w + support * 2,
+    h: sel.bounds.h + support * 2,
+  }, w, h)
+  if (region.w <= 0 || region.h <= 0) return null
+
+  const alpha = localSelectionAlpha(sel, region)
+  let result: Uint8ClampedArray
+
+  if (op === 'feather' || op === 'smooth') {
     const f = new Float32Array(alpha.length)
     for (let i = 0; i < alpha.length; i++) f[i] = alpha[i]
-    const b = gaussianBlurChannel(f, w, h, Math.max(0.5, px))
-    alpha = new Uint8ClampedArray(b)
-  } else if (op === 'grow' || op === 'contract') {
-    // threshold then morph then restore soft edges roughly
+    const b = gaussianBlurChannel(f, region.w, region.h, sigma)
+    result = new Uint8ClampedArray(alpha.length)
+    if (op === 'feather') {
+      for (let i = 0; i < result.length; i++) result[i] = b[i]
+    } else {
+      for (let i = 0; i < result.length; i++) result[i] = clampLocal((b[i] - 96) * 255 / 63, 0, 255)
+    }
+  } else {
     const bin = new Uint8ClampedArray(alpha.length)
     for (let i = 0; i < alpha.length; i++) bin[i] = alpha[i] >= 128 ? 255 : 0
-    const r = Math.max(1, Math.round(px))
-    // separable max/min filter
-    const morph = (arr: Uint8ClampedArray, max: boolean) => {
-      const tmp = new Uint8ClampedArray(arr.length)
-      const outA = new Uint8ClampedArray(arr.length)
-      const cmp = max ? Math.max : Math.min
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        let v = max ? 0 : 255
-        for (let dx = -r; dx <= r; dx++) {
-          const xx = Math.min(w - 1, Math.max(0, x + dx))
-          v = cmp(v, arr[y * w + xx])
-        }
-        tmp[y * w + x] = v
-      }
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        let v = max ? 0 : 255
-        for (let dy = -r; dy <= r; dy++) {
-          const yy = Math.min(h - 1, Math.max(0, y + dy))
-          v = cmp(v, tmp[yy * w + x])
-        }
-        outA[y * w + x] = v
-      }
-      return outA
+    const contracted = morphLocal(bin, region.w, region.h, radius, false)
+
+    if (op === 'border') {
+      result = new Uint8ClampedArray(alpha.length)
+      for (let i = 0; i < result.length; i++) result[i] = Math.max(0, alpha[i] - contracted[i])
+    } else {
+      const shifted = op === 'grow'
+        ? morphLocal(bin, region.w, region.h, radius, true)
+        : contracted
+      const f = new Float32Array(shifted.length)
+      for (let i = 0; i < shifted.length; i++) f[i] = shifted[i]
+      const soft = gaussianBlurChannel(f, region.w, region.h, sigma)
+      result = new Uint8ClampedArray(alpha.length)
+      for (let i = 0; i < result.length; i++) result[i] = clampLocal((soft[i] - 100) * 255 / 55, 0, 255)
     }
-    const shifted = morph(bin, op === 'grow')
-    const f = new Float32Array(shifted.length)
-    for (let i = 0; i < shifted.length; i++) f[i] = shifted[i]
-    const soft = gaussianBlurChannel(f, w, h, Math.max(0.5, r / 2))
-    const out = new Uint8ClampedArray(alpha.length)
-    for (let i = 0; i < out.length; i++) out[i] = clampLocal((soft[i] - 100) * 255 / 55, 0, 255)
-    alpha = out
-  } else if (op === 'border') {
-    const inner = modifySelection(sel, 'contract', px)
-    if (!inner) return null
-    const innerA = getMaskAlpha(inner.mask)
-    const out = new Uint8ClampedArray(alpha.length)
-    for (let i = 0; i < alpha.length; i++) out[i] = Math.max(0, alpha[i] - innerA[i])
-    alpha = out
-  } else if (op === 'smooth') {
-    const f = new Float32Array(alpha.length)
-    for (let i = 0; i < alpha.length; i++) f[i] = alpha[i]
-    const b = gaussianBlurChannel(f, w, h, Math.max(1, px))
-    const out = new Uint8ClampedArray(alpha.length)
-    for (let i = 0; i < out.length; i++) out[i] = clampLocal((b[i] - 96) * 255 / 63, 0, 255)
-    alpha = out
   }
-  const has = alpha.some(v => v > 0)
-  if (!has) return null
-  return selectionFromMask(maskCanvasFromAlpha(alpha, w, h))
+
+  return selectionFromLocalAlpha(result, region, w, h, sel._v + 1)
 }
 
 function clampLocal(v: number, lo: number, hi: number) { return v < lo ? lo : v > hi ? hi : v }

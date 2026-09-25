@@ -63,6 +63,77 @@ export function inflateRect(r: { x: number; y: number; w: number; h: number }, p
   return { x: r.x - px, y: r.y - px, w: r.w + px * 2, h: r.h + px * 2 }
 }
 
+export function clampRectToSize(
+  r: { x: number; y: number; w: number; h: number },
+  w: number,
+  h: number,
+) {
+  const x0 = clamp(Math.floor(r.x), 0, w)
+  const y0 = clamp(Math.floor(r.y), 0, h)
+  const x1 = clamp(Math.ceil(r.x + r.w), 0, w)
+  const y1 = clamp(Math.ceil(r.y + r.h), 0, h)
+  return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) }
+}
+
+export function unionRect(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+) {
+  const x0 = Math.min(a.x, b.x)
+  const y0 = Math.min(a.y, b.y)
+  const x1 = Math.max(a.x + a.w, b.x + b.w)
+  const y1 = Math.max(a.y + a.h, b.y + b.h)
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+export function alphaBounds(
+  alpha: Uint8ClampedArray | Uint8Array,
+  w: number,
+  h: number,
+  pad = 0,
+): { x: number; y: number; w: number; h: number } | null {
+  let minX = w, minY = h, maxX = -1, maxY = -1
+  for (let i = 0; i < alpha.length; i++) {
+    if (!alpha[i]) continue
+    const x = i % w
+    const y = (i / w) | 0
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+  }
+  if (maxX < minX || maxY < minY) return null
+  return clampRectToSize({
+    x: minX - pad,
+    y: minY - pad,
+    w: maxX - minX + 1 + pad * 2,
+    h: maxY - minY + 1 + pad * 2,
+  }, w, h)
+}
+
+export function cropCanvasRegion(
+  src: HTMLCanvasElement,
+  r: { x: number; y: number; w: number; h: number },
+): HTMLCanvasElement {
+  const out = createCanvas(r.w, r.h)
+  ctx2d(out).drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h)
+  return out
+}
+
+export function cropAlphaRegion(
+  alpha: Uint8ClampedArray | Uint8Array,
+  sourceWidth: number,
+  r: { x: number; y: number; w: number; h: number },
+): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(r.w * r.h)
+  for (let y = 0; y < r.h; y++) {
+    const srcRow = (r.y + y) * sourceWidth + r.x
+    const dstRow = y * r.w
+    for (let x = 0; x < r.w; x++) out[dstRow + x] = alpha[srcRow + x]
+  }
+  return out
+}
+
 // ---------- masks ----------
 /** Masks are canvases whose ALPHA channel carries the mask value (255 = visible/selected). */
 export function makeMaskCanvas(w: number, h: number, value = 0): HTMLCanvasElement {

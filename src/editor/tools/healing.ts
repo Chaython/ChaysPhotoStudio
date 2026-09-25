@@ -21,11 +21,11 @@ import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawBrushCursor, drawCross, toolMaskCanvas, softDab } from './shared'
 import { buildSourceDab, sourcePointFor, frequencyHeal, pressureFlow } from './dab-utils'
-import { createCanvas, ctx2d, getImageData, putImageData, cloneCanvas, clamp, getMaskAlpha } from '../utils/canvas'
+import { createCanvas, ctx2d, getImageData, putImageData, cloneCanvas, clamp } from '../utils/canvas'
 import { dilateMask, gaussianBlurChannel } from '../image-ops/core'
 import { useEditorStore } from '../store'
 import * as imageOps from '../image-ops'
-import { getFlatComposite } from '../engine/document'
+import { getFlatComposite, invalidateFlat, newLayer } from '../engine/document'
 import { paintBuiltinPattern } from './patterns'
 
 /** rect clamped to doc bounds */
@@ -283,7 +283,8 @@ function commitHeal() {
       const diffusion = clamp(Number(opts.diffusion) || 5, 1, 7)
       const lowR = Math.max(2, Math.round(settings.size * (0.10 + diffusion * 0.045)))
 
-      // stroke bbox padded by brush radius + blur radius
+      // Stroke bbox padded by brush radius + blur radius. Frequency separation
+      // only needs this local neighborhood, not a clone of the whole layer.
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
       for (const d of hst.dabs) {
         if (d.x < minX) minX = d.x
@@ -294,32 +295,36 @@ function commitHeal() {
       const pad = r + lowR + 2
       const region = clampedRect(
         { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 },
-        doc.width, doc.height
+        doc.width, doc.height,
       )
-      if (region.w > 0 && region.h > 0) {
-        // composited result = original + stroke over it
-        const result = cloneCanvas(hst.orig)
-        const rc = ctx2d(result)
-        rc.drawImage(doc._stroke, 0, 0)
 
-        const target = rc.getImageData(region.x, region.y, region.w, region.h)
+      if (region.w > 0 && region.h > 0) {
         const base = ctx2d(hst.orig).getImageData(region.x, region.y, region.w, region.h)
         const strokeRegion = ctx2d(doc._stroke).getImageData(region.x, region.y, region.w, region.h)
+
+        // Composite the raw sampled stroke over the original only inside the
+        // working rectangle.
+        const local = createCanvas(region.w, region.h)
+        putImageData(local, base)
+        ctx2d(local).drawImage(doc._stroke, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h)
+        const target = getImageData(local)
+
         const restrict = new Uint8ClampedArray(region.w * region.h)
         for (let i = 0, j = 3; i < restrict.length; i++, j += 4) restrict[i] = strokeRegion.data[j]
 
         frequencyHeal(target, base, restrict, lowR)
-        rc.putImageData(target, region.x, region.y)
 
-        // commit the healed stroke through the engine (selection + opacity +
-        // COW history handled by endStroke)
-        doc._stroke = result
+        // endStroke expects a transparent document-space stroke buffer. Keep
+        // only healed pixels under the original stroke alpha instead of
+        // replacing the buffer with a full clone of the source layer.
+        for (let i = 0, j = 3; i < restrict.length; i++, j += 4) target.data[j] = restrict[i]
+        const sc = ctx2d(doc._stroke)
+        sc.clearRect(0, 0, doc._stroke.width, doc._stroke.height)
+        sc.putImageData(target, region.x, region.y)
       }
     }
     engine.endStroke('Healing Brush')
   } finally {
-    // keep the source snapshot for the next stroke (aligned workflow), drop
-    // the per-stroke state
     if (!engine.cloneSource) hst.source = null
     hst.orig = null
     hst.dabs = []
@@ -332,6 +337,7 @@ function commitHeal() {
 let spotMask: HTMLCanvasElement | null = null
 let spotActive = false
 let spotLast: { x: number; y: number } | null = null
+let spotBounds: Rect | null = null
 
 export const spotHealingTool: Tool = {
   id: 'spot-healing',
@@ -344,6 +350,7 @@ export const spotHealingTool: Tool = {
     const layer = engine.activeLayer
     if (!doc || !layer) return
     spotMask = toolMaskCanvas()
+    spotBounds = null
     spotActive = true
     spotLast = { x: p.docX, y: p.docY }
     spotMark(p.docX, p.docY)
@@ -365,89 +372,117 @@ export const spotHealingTool: Tool = {
     if (!spotActive || !spotMask) { spotActive = false; return }
     spotActive = false
     spotLast = null
+
     const layer = engine.activeLayer
     const doc = engine.activeDoc
-    if (!layer || !doc) { spotMask = null; return }
+    const rawBounds = spotBounds
+    spotBounds = null
+    if (!layer || !doc || !rawBounds) { spotMask = null; return }
+
     const opts = getOptions('spot-healing')
     const mask = spotMask
     spotMask = null
-
-    const outputNew = opts.output === 'new'
     const sourceLayer = engine.layerCanvasDocSpace(layer.id)
     if (!sourceLayer) return
-    // Heal in DOC space. Sample All Layers controls only the source pixels;
-    // the final healed patch is masked before it reaches the destination, so
-    // sampling the composite never flattens unrelated layers into this one.
-    const work = opts.sampleAllLayers === true
-      ? cloneCanvas(getFlatComposite(doc))
-      : cloneCanvas(sourceLayer)
-    const img = getImageData(work)
-    const original = new ImageData(img.width, img.height)
+
+    const structure = clamp(Number(opts.structure) || 5, 1, 7)
+    const dilation = Math.max(1, Math.round((8 - structure) / 2))
+    const brushSize = Math.max(1, Number(opts.size) || 40)
+    const colorAdapt = clamp(Number(opts.color) || 0, 0, 10)
+    // Inpaint/frequency matching require some unmasked source around the
+    // stroke. Keep that neighborhood local and proportional to brush size.
+    const contextPad = Math.max(
+      24,
+      Math.ceil(brushSize * 1.5),
+      dilation * 4 + 8,
+      Math.ceil(brushSize * (.5 + colorAdapt * .06)),
+    )
+    const workRect = clampedRect({
+      x: rawBounds.x - contextPad,
+      y: rawBounds.y - contextPad,
+      w: rawBounds.w + contextPad * 2,
+      h: rawBounds.h + contextPad * 2,
+    }, doc.width, doc.height)
+    if (workRect.w <= 0 || workRect.h <= 0) return
+
+    // Read mask/source pixels only from the affected neighborhood.
+    const maskPixels = ctx2d(mask).getImageData(workRect.x, workRect.y, workRect.w, workRect.h).data
+    const rawMask = new Uint8ClampedArray(workRect.w * workRect.h)
+    for (let i = 0, j = 3; i < rawMask.length; i++, j += 4) rawMask[i] = maskPixels[j]
+    const m = dilateMask(rawMask, workRect.w, workRect.h, dilation)
+    if (!m.some(v => v > 0)) return
+
+    const source = opts.sampleAllLayers === true ? getFlatComposite(doc) : sourceLayer
+    const img = ctx2d(source).getImageData(workRect.x, workRect.y, workRect.w, workRect.h)
+    const original = new ImageData(workRect.w, workRect.h)
     original.data.set(img.data)
 
-    // Structure controls how tightly we preserve the painted footprint.
-    // Lower structure values synthesize a slightly wider neighborhood.
-    const structure = clamp(Number(opts.structure) || 5, 1, 7)
-    let m = getMaskAlpha(mask)
-    const dilation = Math.max(1, Math.round((8 - structure) / 2))
-    m = dilateMask(m, doc.width, doc.height, dilation)
-    const hasMask = m.some(v => v > 0)
-    if (!hasMask) return
-
     const store = useEditorStore.getState()
-    if (opts.type === 'proximity') {
-      // cheap proximity match: fill each blob with a blur of the surrounding ring
-      store.setProgress({ active: true, label: 'Spot Healing (Proximity)', value: 0.5 })
-      const blurred = new ImageData(doc.width, doc.height)
-      blurred.data.set(img.data)
-      frequencyHealProximity(blurred, m, Math.max(6, (opts.size ?? 40) / 2))
-      // copy masked pixels back
-      for (let i = 0; i < m.length; i++) {
-        const a = m[i] / 255
-        if (a <= 0) continue
-        const j = i * 4
-        for (let c = 0; c < 3; c++) img.data[j + c] = img.data[j + c] * (1 - a) + blurred.data[j + c] * a
+    try {
+      if (opts.type === 'proximity') {
+        store.setProgress({ active: true, label: 'Spot Healing (Proximity)', value: 0.5 })
+        const blurred = new ImageData(workRect.w, workRect.h)
+        blurred.data.set(img.data)
+        frequencyHealProximity(blurred, m, Math.max(6, brushSize / 2))
+        for (let i = 0; i < m.length; i++) {
+          const a = m[i] / 255
+          if (a <= 0) continue
+          const j = i * 4
+          for (let ch = 0; ch < 3; ch++) img.data[j + ch] = img.data[j + ch] * (1 - a) + blurred.data[j + ch] * a
+        }
+      } else {
+        store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: 0 })
+        await imageOps.inpaint(img, m, v => {
+          store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: v })
+        })
       }
-      store.setProgress(null)
-    } else {
-      store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: 0 })
-      await imageOps.inpaint(img, m, v => store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: v }))
+
+      if (colorAdapt > 0) {
+        const localTone = new ImageData(workRect.w, workRect.h)
+        localTone.data.set(original.data)
+        frequencyHealProximity(localTone, m, Math.max(6, brushSize * (.35 + colorAdapt * .04)))
+        const lowR = Math.max(2, Math.round(brushSize * (.04 + colorAdapt * .018)))
+        frequencyHeal(img, localTone, m, lowR)
+      }
+    } finally {
       store.setProgress(null)
     }
 
-    // Photoshop-style Color adaptation: match the healed low-frequency tone
-    // to a local proximity reconstruction while retaining synthesized detail.
-    const colorAdapt = clamp(Number(opts.color) || 0, 0, 10)
-    if (colorAdapt > 0) {
-      const localTone = new ImageData(original.width, original.height)
-      localTone.data.set(original.data)
-      frequencyHealProximity(localTone, m, Math.max(6, (opts.size ?? 40) * (.35 + colorAdapt * .04)))
-      const lowR = Math.max(2, Math.round((opts.size ?? 40) * (.04 + colorAdapt * .018)))
-      frequencyHeal(img, localTone, m, lowR)
-    }
-
-    // Isolate ONLY the healed footprint. This is critical when Sample All
-    // Layers is enabled: the composite is a sampling source, never a flatten.
-    const patch = createCanvas(doc.width, doc.height)
+    // Build a local transparent patch containing only the healed footprint.
+    const patch = createCanvas(workRect.w, workRect.h)
     putImageData(patch, img)
-    const alphaMask = createCanvas(doc.width, doc.height)
-    const amd = new ImageData(doc.width, doc.height)
-    for (let i = 0, j = 3; i < m.length; i++, j += 4) {
-      amd.data[j] = m[i]
-    }
+    const alphaMask = createCanvas(workRect.w, workRect.h)
+    const amd = new ImageData(workRect.w, workRect.h)
+    for (let i = 0, j = 3; i < m.length; i++, j += 4) amd.data[j] = m[i]
     putImageData(alphaMask, amd)
+
     const pc = ctx2d(patch)
     pc.globalCompositeOperation = 'destination-in'
     pc.drawImage(alphaMask, 0, 0)
-    if (doc.selection) pc.drawImage(doc.selection.mask, 0, 0)
+    if (doc.selection) pc.drawImage(doc.selection.mask, -workRect.x, -workRect.y)
     pc.globalCompositeOperation = 'source-over'
 
-    if (outputNew) {
-      engine.addRasterLayer('Spot Healing', { canvas: patch })
+    if (opts.output === 'new') {
+      const out = newLayer('raster', 'Spot Healing', patch.width, patch.height)
+      out.canvas = patch
+      out.offsetX = workRect.x
+      out.offsetY = workRect.y
+      doc.layers.push(out)
+      doc.activeLayerId = out.id
+      doc.selectedLayerIds = [out.id]
+      invalidateFlat(doc)
+      engine.pushHistory('Spot Healing to New Layer')
+      engine.emit()
     } else {
       const l = engine.mutateLayerPixels(layer.id)
       if (!l?.canvas) return
-      ctx2d(l.canvas).drawImage(patch, -(l.offsetX ?? 0), -(l.offsetY ?? 0))
+      ctx2d(l.canvas).drawImage(
+        patch,
+        workRect.x - (l.offsetX ?? 0),
+        workRect.y - (l.offsetY ?? 0),
+      )
+      l._v++
+      invalidateFlat(doc)
       engine.pushHistory('Spot Healing')
       engine.emit()
     }
@@ -552,7 +587,17 @@ function frequencyHealProximity(img: ImageData, mask: Uint8ClampedArray, radius:
 function spotMark(x: number, y: number) {
   if (!spotMask) return
   const opts = getOptions('spot-healing')
-  softDab(ctx2d(spotMask), x, y, (opts.size ?? 40) / 2, opts.hardness ?? 60, '#ffffff')
+  const radius = (opts.size ?? 40) / 2
+  softDab(ctx2d(spotMask), x, y, radius, opts.hardness ?? 60, '#ffffff')
+  const box = { x: x - radius - 2, y: y - radius - 2, w: radius * 2 + 4, h: radius * 2 + 4 }
+  if (!spotBounds) spotBounds = box
+  else {
+    const x0 = Math.min(spotBounds.x, box.x)
+    const y0 = Math.min(spotBounds.y, box.y)
+    const x1 = Math.max(spotBounds.x + spotBounds.w, box.x + box.w)
+    const y1 = Math.max(spotBounds.y + spotBounds.h, box.y + box.h)
+    spotBounds = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+  }
 }
 
 // ============================================================
