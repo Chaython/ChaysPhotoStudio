@@ -30,17 +30,28 @@ export function brushSettingsFrom(opts: Record<string, any>, color?: string): Br
   }
 }
 
-/** walk dab positions between two points honoring spacing; returns array of positions to dab */
+const MAX_DABS_PER_POINTER_EVENT = 512
+
+/** Walk dab positions between two points honoring spacing.
+ *
+ * Pointer streams can occasionally coalesce into a very large jump. Never
+ * create thousands of dabs in one JS turn: once the safety budget is reached,
+ * distribute the capped dabs across the whole segment so the stroke still
+ * reaches the current pointer without an apparent gap.
+ */
 export function walkDabs(x0: number, y0: number, x1: number, y1: number, spacingPx: number): { x: number; y: number }[] {
   const dx = x1 - x0, dy = y1 - y0
   const dist = Math.hypot(dx, dy)
   const step = Math.max(0.5, spacingPx)
   if (dist < 0.01) return []
-  const n = Math.floor(dist / step)
-  const out: { x: number; y: number }[] = []
+  const ideal = Math.floor(dist / step)
+  if (ideal <= 0) return []
+  const n = Math.min(MAX_DABS_PER_POINTER_EVENT, ideal)
+  const capped = ideal > n
+  const out: { x: number; y: number }[] = new Array(n)
   for (let i = 1; i <= n; i++) {
-    const t = (i * step) / dist
-    out.push({ x: x0 + dx * t, y: y0 + dy * t })
+    const t = capped ? i / n : (i * step) / dist
+    out[i - 1] = { x: x0 + dx * t, y: y0 + dy * t }
   }
   return out
 }
