@@ -2312,30 +2312,52 @@ export class Engine {
   ): string | null {
     const doc = this.activeDoc
     if (!doc) return null
-    // Layer sampling must be in DOCUMENT space; sampling layer.canvas directly
-    // was wrong as soon as a raster layer had a non-zero move offset.
-    const src = scope === 'layer' && this.activeLayer
-      ? this.layerCanvasDocSpace(this.activeLayer.id)
-      : getFlatComposite(doc)
-    if (!src) return null
     const px = clamp(Math.round(x), 0, doc.width - 1)
     const py = clamp(Math.round(y), 0, doc.height - 1)
     const r = clamp(Math.floor(radius), 0, 32)
-    const x0 = clamp(px - r, 0, doc.width - 1)
-    const y0 = clamp(py - r, 0, doc.height - 1)
-    const x1 = clamp(px + r, 0, doc.width - 1)
-    const y1 = clamp(py + r, 0, doc.height - 1)
-    const data = ctx2d(src).getImageData(x0, y0, x1 - x0 + 1, y1 - y0 + 1).data
-    let rr = 0, gg = 0, bb = 0, aa = 0, weight = 0
+    const docX0 = clamp(px - r, 0, doc.width - 1)
+    const docY0 = clamp(py - r, 0, doc.height - 1)
+    const docX1 = clamp(px + r, 0, doc.width - 1)
+    const docY1 = clamp(py + r, 0, doc.height - 1)
+
+    let src: HTMLCanvasElement | null
+    let srcX0 = docX0, srcY0 = docY0
+    let srcX1 = docX1, srcY1 = docY1
+
+    if (scope === 'layer' && this.activeLayer) {
+      const layer = this.activeLayer
+      src = this.layerCanvas(layer.id)
+      if (!src) return null
+      // Raster layers can retain pixels outside the document after Move. Sample
+      // their backing canvas directly and translate the requested doc rectangle
+      // instead of allocating a full document-sized registration copy per dab.
+      if (layer.kind === 'raster') {
+        const ox = layer.offsetX ?? 0
+        const oy = layer.offsetY ?? 0
+        srcX0 = Math.max(0, docX0 - ox)
+        srcY0 = Math.max(0, docY0 - oy)
+        srcX1 = Math.min(src.width - 1, docX1 - ox)
+        srcY1 = Math.min(src.height - 1, docY1 - oy)
+        if (srcX1 < srcX0 || srcY1 < srcY0) return null
+      }
+    } else {
+      src = getFlatComposite(doc)
+      if (!src) return null
+    }
+
+    const data = ctx2d(src).getImageData(
+      Math.floor(srcX0), Math.floor(srcY0),
+      Math.floor(srcX1 - srcX0 + 1), Math.floor(srcY1 - srcY0 + 1),
+    ).data
+    let rr = 0, gg = 0, bb = 0, weight = 0
     // Alpha-weighted average avoids transparent RGB garbage contaminating
-    // large eyedropper samples around cut-out subjects.
+    // large eyedropper / Mixer Brush samples around cut-out subjects.
     for (let i = 0; i < data.length; i += 4) {
       const a = data[i + 3] / 255
       if (a <= 0) continue
       rr += data[i] * a; gg += data[i + 1] * a; bb += data[i + 2] * a
-      aa += data[i + 3]; weight += a
+      weight += a
     }
-    void aa
     if (weight <= 0) return null
     return rgbToHex(rr / weight, gg / weight, bb / weight)
   }
