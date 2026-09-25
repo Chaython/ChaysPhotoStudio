@@ -18,7 +18,7 @@ import { frequencyHeal } from './dab-utils'
 import * as imageOps from '../image-ops'
 
 type Phase = 'idle' | 'defining' | 'moving' | 'transforming'
-type TransformHandle = 'move' | 'rotate' | 'nw' | 'ne' | 'se' | 'sw'
+type TransformHandle = 'move' | 'rotate' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 interface TransformState { sx: number; sy: number; rotation: number }
 interface TransformDrag {
   kind: TransformHandle
@@ -118,6 +118,16 @@ function transformedCorners(
   ]
 }
 
+function transformedEdgeHandles() {
+  if (!bounds) return [] as { x: number; y: number; id: 'n' | 'e' | 's' | 'w' }[]
+  return [
+    { ...transformPoint(bounds.x + bounds.w / 2, bounds.y), id: 'n' as const },
+    { ...transformPoint(bounds.x + bounds.w, bounds.y + bounds.h / 2), id: 'e' as const },
+    { ...transformPoint(bounds.x + bounds.w / 2, bounds.y + bounds.h), id: 's' as const },
+    { ...transformPoint(bounds.x, bounds.y + bounds.h / 2), id: 'w' as const },
+  ]
+}
+
 function transformedBounds(
   dx = delta.x,
   dy = delta.y,
@@ -164,6 +174,9 @@ function transformHandleAt(p: PointerInfo): TransformHandle | null {
 
   for (const corner of transformedCorners()) {
     if (Math.hypot(p.docX - corner.x, p.docY - corner.y) <= hit) return corner.id
+  }
+  for (const edge of transformedEdgeHandles()) {
+    if (Math.hypot(p.docX - edge.x, p.docY - edge.y) <= hit) return edge.id
   }
 
   const local = inverseTransformPoint(p.docX, p.docY)
@@ -216,9 +229,15 @@ function updateTransformDrag(p: PointerInfo) {
   const cos = Math.cos(-transform.rotation), sin = Math.sin(-transform.rotation)
   const rx = dx * cos - dy * sin
   const ry = dx * sin + dy * cos
-  let sx = Math.max(.05, Math.abs(rx) / Math.max(.5, bounds.w / 2))
-  let sy = Math.max(.05, Math.abs(ry) / Math.max(.5, bounds.h / 2))
-  if (p.shift) {
+  const scaleX = Math.max(.05, Math.abs(rx) / Math.max(.5, bounds.w / 2))
+  const scaleY = Math.max(.05, Math.abs(ry) / Math.max(.5, bounds.h / 2))
+  let sx = transform.sx
+  let sy = transform.sy
+  const affectsX = drag.kind === 'nw' || drag.kind === 'ne' || drag.kind === 'se' || drag.kind === 'sw' || drag.kind === 'e' || drag.kind === 'w'
+  const affectsY = drag.kind === 'nw' || drag.kind === 'ne' || drag.kind === 'se' || drag.kind === 'sw' || drag.kind === 'n' || drag.kind === 's'
+  if (affectsX) sx = scaleX
+  if (affectsY) sy = scaleY
+  if (p.shift && affectsX && affectsY) {
     const s = Math.max(sx, sy)
     sx = s; sy = s
   }
@@ -639,6 +658,7 @@ export const contentAwareMoveTool: Tool = {
 
       if (phase === 'transforming') {
         const corners = transformedCorners()
+        const edges = transformedEdgeHandles()
         const top = transformPoint(bounds.x + bounds.w / 2, bounds.y)
         const rotate = rotationHandlePoint(view.zoom)
         const hs = 4 / view.zoom
@@ -651,7 +671,7 @@ export const contentAwareMoveTool: Tool = {
         ctx.lineTo(rotate.x, rotate.y)
         ctx.stroke()
 
-        for (const point of corners) {
+        for (const point of [...corners, ...edges]) {
           ctx.fillStyle = '#ffffff'
           ctx.strokeStyle = '#111111'
           ctx.fillRect(point.x - hs, point.y - hs, hs * 2, hs * 2)
