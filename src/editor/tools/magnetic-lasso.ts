@@ -116,22 +116,164 @@ function gradAt(x: number, y: number): number {
   return grad[iy * gradW + ix]
 }
 
+const MAX_LIVEWIRE_CELLS = 60_000
+
+/** Bounded live-wire route between two magnetic anchors. The search runs on
+ * the downsampled Sobel work map inside a narrow corridor, so it follows the
+ * actual edge between anchors instead of merely snapping each anchor and then
+ * drawing a straight segment. Large/degenerate corridors fall back cleanly. */
+function liveWireRoute(a: Vec, b: Vec): Vec[] | null {
+  if (!grad || gradW < 2 || gradH < 2) return null
+  const sx = clamp(Math.round(a.x / gradScale), 0, gradW - 1)
+  const sy = clamp(Math.round(a.y / gradScale), 0, gradH - 1)
+  const tx = clamp(Math.round(b.x / gradScale), 0, gradW - 1)
+  const ty = clamp(Math.round(b.y / gradScale), 0, gradH - 1)
+  if (sx === tx && sy === ty) return [a, b]
+
+  const corridor = Math.max(4, Math.ceil((optWidth() / Math.max(.001, gradScale)) * 1.5))
+  const x0 = Math.max(0, Math.min(sx, tx) - corridor)
+  const y0 = Math.max(0, Math.min(sy, ty) - corridor)
+  const x1 = Math.min(gradW - 1, Math.max(sx, tx) + corridor)
+  const y1 = Math.min(gradH - 1, Math.max(sy, ty) + corridor)
+  const rw = x1 - x0 + 1, rh = y1 - y0 + 1
+  const cells = rw * rh
+  if (cells <= 0 || cells > MAX_LIVEWIRE_CELLS) return null
+
+  let localMax = 1
+  for (let yy = y0; yy <= y1; yy++) {
+    const row = yy * gradW
+    for (let xx = x0; xx <= x1; xx++) localMax = Math.max(localMax, grad[row + xx])
+  }
+
+  const local = (x: number, y: number) => (y - y0) * rw + (x - x0)
+  const start = local(sx, sy), goal = local(tx, ty)
+  const dist = new Float32Array(cells)
+  dist.fill(Number.POSITIVE_INFINITY)
+  const prev = new Int32Array(cells)
+  prev.fill(-1)
+  const done = new Uint8Array(cells)
+
+  const heapI: number[] = []
+  const heapD: number[] = []
+  const heapPush = (idx: number, d: number) => {
+    let i = heapI.length
+    heapI.push(idx); heapD.push(d)
+    while (i > 0) {
+      const p = (i - 1) >> 1
+      if (heapD[p] <= d) break
+      heapI[i] = heapI[p]; heapD[i] = heapD[p]
+      i = p
+    }
+    heapI[i] = idx; heapD[i] = d
+  }
+  const heapPop = (): [number, number] | null => {
+    if (!heapI.length) return null
+    const ri = heapI[0], rd = heapD[0]
+    const li = heapI.pop()!, ld = heapD.pop()!
+    if (heapI.length) {
+      let i = 0
+      while (true) {
+        let child = i * 2 + 1
+        if (child >= heapI.length) break
+        if (child + 1 < heapI.length && heapD[child + 1] < heapD[child]) child++
+        if (heapD[child] >= ld) break
+        heapI[i] = heapI[child]; heapD[i] = heapD[child]
+        i = child
+      }
+      heapI[i] = li; heapD[i] = ld
+    }
+    return [ri, rd]
+  }
+
+  const segDx = tx - sx, segDy = ty - sy
+  const segLen2 = Math.max(1, segDx * segDx + segDy * segDy)
+  const lineDistance = (x: number, y: number) => {
+    const t = clamp(((x - sx) * segDx + (y - sy) * segDy) / segLen2, 0, 1)
+    return Math.hypot(x - (sx + segDx * t), y - (sy + segDy * t))
+  }
+
+  dist[start] = 0
+  heapPush(start, 0)
+  const dirs = [
+    [-1, -1, Math.SQRT2], [0, -1, 1], [1, -1, Math.SQRT2],
+    [-1, 0, 1],                         [1, 0, 1],
+    [-1, 1, Math.SQRT2],  [0, 1, 1],  [1, 1, Math.SQRT2],
+  ] as const
+
+  while (heapI.length) {
+    const item = heapPop()!
+    const [cur, curD] = item
+    if (done[cur] || curD !== dist[cur]) continue
+    done[cur] = 1
+    if (cur === goal) break
+    const cx = x0 + (cur % rw)
+    const cy = y0 + Math.floor(cur / rw)
+
+    for (const [ox, oy, step] of dirs) {
+      const nx = cx + ox, ny = cy + oy
+      if (nx < x0 || nx > x1 || ny < y0 || ny > y1) continue
+      const ni = local(nx, ny)
+      if (done[ni]) continue
+      const mag = grad[ny * gradW + nx]
+      const edge = 1 - clamp(mag / localMax, 0, 1)
+      // Strong edges are cheap; a small corridor/line term prevents a very
+      // strong unrelated edge from taking a huge detour.
+      const linePenalty = lineDistance(nx, ny) / Math.max(2, corridor)
+      const nd = curD + step * (.12 + edge * 3.25 + linePenalty * .28)
+      if (nd >= dist[ni]) continue
+      dist[ni] = nd
+      prev[ni] = cur
+      heapPush(ni, nd)
+    }
+  }
+
+  if (prev[goal] < 0) return null
+  const rev: Vec[] = []
+  let cur = goal
+  let guard = 0
+  while (cur >= 0 && guard++ <= cells) {
+    const x = x0 + (cur % rw)
+    const y = y0 + Math.floor(cur / rw)
+    rev.push({ x: x * gradScale, y: y * gradScale })
+    if (cur === start) break
+    cur = prev[cur]
+  }
+  if (!rev.length || cur !== start) return null
+  rev.reverse()
+  rev[0] = { ...a }
+  rev[rev.length - 1] = { ...b }
+  return rev
+}
+
 // ---------- path following ----------
+
+function appendSegmentToPath(a: Vec, b: Vec, routeEdge: boolean): void {
+  const route = routeEdge ? liveWireRoute(a, b) : null
+  if (!route || route.length < 2) {
+    pushSegment(points[points.length - 1], b)
+    return
+  }
+  for (let i = 1; i < route.length && points.length < MAX_POINTS; i++) {
+    pushSegment(points[points.length - 1], route[i])
+  }
+}
 
 function rebuildDensePath(): void {
   if (!anchors.length) { points = []; return }
   points = [{ ...anchors[0] }]
-  for (let i = 1; i < anchors.length; i++) pushSegment(points[points.length - 1], anchors[i])
+  for (let i = 1; i < anchors.length; i++) {
+    appendSegmentToPath(anchors[i - 1], anchors[i], true)
+  }
 }
 
-function appendAnchor(p: Vec): void {
+function appendAnchor(p: Vec, routeEdge = true): void {
   if (!anchors.length) {
     anchors = [{ ...p }]
     points = [{ ...p }]
     return
   }
-  const last = points[points.length - 1]
-  pushSegment(last, p)
+  const lastAnchor = anchors[anchors.length - 1]
+  appendSegmentToPath(lastAnchor, p, routeEdge)
   anchors.push({ ...p })
 }
 
@@ -216,7 +358,7 @@ function follow(target: Vec, freehand: boolean): void {
       : snapPoint(last, proj, lastDir ?? { x: ux, y: uy })
     const stepLen = Math.hypot(next.x - last.x, next.y - last.y)
     if (stepLen < 0.5) break // snap re-selected the same point — wait for travel
-    appendAnchor(next)
+    appendAnchor(next, !freehand && !!grad)
     lastDir = { x: (next.x - last.x) / stepLen, y: (next.y - last.y) / stepLen }
   }
 }
@@ -281,7 +423,7 @@ export const magneticLassoTool: Tool = {
         return
       }
       // …otherwise seed a manual anchor at the click and keep tracing
-      appendAnchor({ x: p.docX, y: p.docY })
+      appendAnchor({ x: p.docX, y: p.docY }, !p.alt && !!grad)
     } else {
       // new stroke → snapshot the composite + build the gradient map
       anchors = [{ x: p.docX, y: p.docY }]
