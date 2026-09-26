@@ -17,8 +17,8 @@ import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import {
   aiGenerate, composePrompt, dataUrlToCanvas, dataUrlToFile,
-  AI_GEN_SIZES, AI_STYLE_PRESETS, AI_GEN_MAX_PROMPT,
-  loadCustomGenConfig, saveCustomGenConfig, type AiGenProvider, type AiGenMeta, type CustomGenConfig,
+  AI_GEN_SIZES, AI_STYLE_PRESETS, AI_GEN_MAX_PROMPT, AI_FREE_MODELS,
+  loadCustomGenConfig, saveCustomGenConfig, type AiGenProvider, type AiGenMeta, type CustomGenConfig, type PollinationsModel,
 } from '../../image-ops'
 import { downloadBlob } from '../../utils/canvas'
 import type { DialogProps } from './generic-dialogs'
@@ -51,6 +51,7 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
   const [sel, setSel] = useState(0)
   const [placing, setPlacing] = useState(false)
   const [engineId, setEngineId] = useState<AiGenProvider>('pollinations')
+  const [freeModel, setFreeModel] = useState<PollinationsModel>('flux')
   const [customCfg, setCustomCfg] = useState<CustomGenConfig>({ baseUrl: '', apiKey: '', model: '' })
   const [meta, setMeta] = useState<AiGenMeta | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -87,6 +88,7 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
       const collected: string[] = []
       await aiGenerate({
         prompt: full, size, count, signal: ac.signal, provider: engineId,
+        freeModel: engineId === 'pollinations' ? freeModel : undefined,
         custom: engineId === 'custom' ? customCfg : undefined,
         onImage: (url, i, _total, m) => {
           collected.push(url)
@@ -188,6 +190,32 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
             ))}
           </div>
         </div>
+
+        {/* free model selector */}
+        {engineId === 'pollinations' && (
+          <div className="space-y-1">
+            <Label className="text-[11px]">Model</Label>
+            <div className="grid grid-cols-3 gap-1">
+              {AI_FREE_MODELS.map(model => (
+                <button
+                  key={model.id}
+                  onClick={() => setFreeModel(model.id)}
+                  disabled={busy}
+                  aria-pressed={freeModel === model.id}
+                  className={cn(
+                    'rounded border px-2 py-1.5 text-left transition-colors',
+                    freeModel === model.id
+                      ? 'border-primary bg-primary/10 text-foreground'
+                      : 'border-border text-muted-foreground hover:bg-accent',
+                  )}
+                >
+                  <span className="block text-[10px] font-medium leading-tight">{model.label}</span>
+                  <span className="block text-[9px] text-muted-foreground leading-tight mt-0.5">{model.sub}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* custom endpoint fields */}
         {engineId === 'custom' && (
@@ -334,7 +362,7 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
             </div>
             <div className="text-[9px] text-muted-foreground">
               {engineId === 'pollinations'
-                ? 'The free community engine — usually fast, sometimes queued. Output resolution is chosen by the engine.'
+                ? `${AI_FREE_MODELS.find(m => m.id === freeModel)?.label ?? freeModel} — free community model, sometimes queued.`
                 : 'Your endpoint — usually seconds. Requests retry once on transient errors.'}
             </div>
           </div>
