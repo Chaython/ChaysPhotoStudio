@@ -27,6 +27,8 @@ export interface GLInfo {
   maxTextureSize: number
   /** software rasterizer (SwiftShader/llvmpipe) — GPU compositing defaults OFF */
   software: boolean
+  /** RGBA16F color-attachment support for higher-precision compositing. */
+  float16Framebuffer: boolean
 }
 
 let glCtx: WebGL2RenderingContext | null = null
@@ -35,6 +37,35 @@ let glInfoCache: GLInfo | null = null
 /** global kill-switch: user toggle (persisted) + runtime failure latch */
 let glEnabled = true
 let glFailed = false
+
+function probeFloat16Framebuffer(gl: WebGL2RenderingContext): boolean {
+  if (!gl.getExtension('EXT_color_buffer_float')) return false
+  const tex = gl.createTexture()
+  const fb = gl.createFramebuffer()
+  if (!tex || !fb) {
+    if (tex) gl.deleteTexture(tex)
+    if (fb) gl.deleteFramebuffer(fb)
+    return false
+  }
+  let ok = false
+  try {
+    gl.bindTexture(gl.TEXTURE_2D, tex)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 1, 1, 0, gl.RGBA, gl.HALF_FLOAT, null)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
+    ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE
+  } catch {
+    ok = false
+  } finally {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.bindTexture(gl.TEXTURE_2D, null)
+    gl.deleteFramebuffer(fb)
+    gl.deleteTexture(tex)
+  }
+  return ok
+}
 
 /** read the persisted user preference once (undefined = auto) */
 function storedPref(): boolean | undefined {
@@ -104,7 +135,7 @@ export function glInfo(): GLInfo {
   if (glInfoCache) return glInfoCache
   const gl = getGL()
   if (!gl) {
-    glInfoCache = { supported: false, vendor: '', renderer: '', maxTextureSize: 0, software: false }
+    glInfoCache = { supported: false, vendor: '', renderer: '', maxTextureSize: 0, software: false, float16Framebuffer: false }
     applyInitialToggle()
     return glInfoCache
   }
@@ -119,6 +150,7 @@ export function glInfo(): GLInfo {
     supported: true,
     vendor, renderer, software,
     maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
+    float16Framebuffer: probeFloat16Framebuffer(gl),
   }
   applyInitialToggle()
   return glInfoCache
@@ -253,25 +285,40 @@ const LUT_HOLDER = { name: 'lut' }
 
 // ---------------- FBO pool ----------------
 
-export interface FBO { fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number }
+export type FBOPrecision = 'u8' | 'f16'
+export interface FBO { fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number; precision: FBOPrecision }
 
 const fboPool: FBO[] = []
 
-export function acquireFBO(gl: WebGL2RenderingContext, w: number, h: number): FBO | null {
+export function acquireFBO(
+  gl: WebGL2RenderingContext,
+  w: number,
+  h: number,
+  precision: FBOPrecision = 'u8',
+): FBO | null {
   for (let i = 0; i < fboPool.length; i++) {
     const f = fboPool[i]
-    if (f.w === w && f.h === h) {
+    if (f.w === w && f.h === h && f.precision === precision) {
       fboPool.splice(i, 1)
       return f
     }
   }
+  if (precision === 'f16' && !glInfo().float16Framebuffer) return null
   const tex = gl.createTexture()
   const fb = gl.createFramebuffer()
   if (!tex || !fb) return null
   gl.bindTexture(gl.TEXTURE_2D, tex)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  if (precision === 'f16') {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null)
+    // Compositing passes are same-resolution; nearest sampling avoids
+    // requiring a float-linear extension and keeps texel registration exact.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+  } else {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  }
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
@@ -283,7 +330,7 @@ export function acquireFBO(gl: WebGL2RenderingContext, w: number, h: number): FB
     gl.deleteTexture(tex)
     return null
   }
-  return { fb, tex, w, h }
+  return { fb, tex, w, h, precision }
 }
 
 export function releaseFBO(gl: WebGL2RenderingContext, f: FBO | null): void {
