@@ -18,7 +18,12 @@ let rngState = 0x6d2b79f5
 
 function reseed(seed: number) {
   let s = Math.floor(seed) >>> 0
-  if (!s) s = ((rand() * 0xffffffff) >>> 0) || 0x6d2b79f5
+  if (!s) {
+    const entropy = typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function'
+      ? crypto.getRandomValues(new Uint32Array(1))[0]
+      : ((Date.now() ^ Math.floor(performance.now() * 1000)) >>> 0)
+    s = entropy || 0x6d2b79f5
+  }
   rngState = s
 }
 
