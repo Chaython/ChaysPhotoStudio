@@ -2139,7 +2139,13 @@ export class Engine {
     l._v++
     invalidateFlat(doc)
     this.pushHistory(label)
-    this.recordStep({ op: 'contentAwareFill', args: {}, label })
+    // The existing action opcode means "fill the current selection". A direct
+    // Bucket-generated mask is transient, so recording it as that opcode would
+    // replay a different region later. Record only the selection workflow until
+    // the action format has an explicit serializable region-mask operation.
+    if (label === 'Content-Aware Fill') {
+      this.recordStep({ op: 'contentAwareFill', args: {}, label })
+    }
     this.emit()
   }
 
