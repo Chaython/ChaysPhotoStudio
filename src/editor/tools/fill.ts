@@ -50,6 +50,9 @@ interface GradientStopRGBA {
   labL: number
   labA: number
   labB: number
+  okL: number
+  okA: number
+  okB: number
 }
 
 function rgbToHslLocal(r: number, g: number, b: number): [number, number, number] {
@@ -82,6 +85,42 @@ function hslToRgbLocal(h: number, s: number, l: number): [number, number, number
   return [(rr + m) * 255, (gg + m) * 255, (bb + m) * 255]
 }
 
+function srgb01ToLinear(v: number) {
+  return v <= .04045 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4)
+}
+
+function linearToSrgb01(v: number) {
+  return v <= .0031308 ? 12.92 * v : 1.055 * Math.pow(Math.max(0, v), 1 / 2.4) - .055
+}
+
+function rgbToOklabLocal(r: number, g: number, b: number): [number, number, number] {
+  const rr = srgb01ToLinear(r / 255), gg = srgb01ToLinear(g / 255), bb = srgb01ToLinear(b / 255)
+  const l = .4122214708 * rr + .5363325363 * gg + .0514459929 * bb
+  const m = .2119034982 * rr + .6806995451 * gg + .1073969566 * bb
+  const s = .0883024619 * rr + .2817188376 * gg + .6299787005 * bb
+  const l_ = Math.cbrt(l), m_ = Math.cbrt(m), s_ = Math.cbrt(s)
+  return [
+    .2104542553 * l_ + .793617785 * m_ - .0040720468 * s_,
+    1.9779984951 * l_ - 2.428592205 * m_ + .4505937099 * s_,
+    .0259040371 * l_ + .7827717662 * m_ - .808675766 * s_,
+  ]
+}
+
+function oklabToRgbLocal(L: number, A: number, B: number): [number, number, number] {
+  const l_ = L + .3963377774 * A + .2158037573 * B
+  const m_ = L - .1055613458 * A - .0638541728 * B
+  const s_ = L - .0894841775 * A - 1.291485548 * B
+  const l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_
+  const rr = 4.0767416621 * l - 3.3077115913 * m + .2309699292 * s
+  const gg = -1.2684380046 * l + 2.6097574011 * m - .3413193965 * s
+  const bb = -.0041960863 * l - .7034186147 * m + 1.707614701 * s
+  return [
+    clamp(linearToSrgb01(rr) * 255, 0, 255),
+    clamp(linearToSrgb01(gg) * 255, 0, 255),
+    clamp(linearToSrgb01(bb) * 255, 0, 255),
+  ]
+}
+
 function parsedStops(stops: [number, string][]): GradientStopRGBA[] {
   return stops.map(([p, color]) => {
     const mm = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(color)
@@ -93,14 +132,19 @@ function parsedStops(stops: [number, string][]): GradientStopRGBA[] {
     const [h, s, l] = rgbToHslLocal(r, g, b)
     const lab = [0, 0, 0]
     rgbToLab(r, g, b, lab)
-    return { p, r, g, b, a: parseInt(ah, 16), h, s, l, labL: lab[0], labA: lab[1], labB: lab[2] }
+    const [okL, okA, okB] = rgbToOklabLocal(r, g, b)
+    return {
+      p, r, g, b, a: parseInt(ah, 16), h, s, l,
+      labL: lab[0], labA: lab[1], labB: lab[2],
+      okL, okA, okB,
+    }
   }).sort((a, b) => a.p - b.p)
 }
 
 function interpolateGradientStop(
   stops: GradientStopRGBA[],
   t: number,
-  space: 'rgb' | 'hsl' | 'lab',
+  space: 'rgb' | 'hsl' | 'lab' | 'oklab',
   smoothness = 100,
 ): [number, number, number, number] {
   t = clamp(t, 0, 1)
@@ -136,6 +180,15 @@ function interpolateGradientStop(
     return [rgb[0], rgb[1], rgb[2], alpha]
   }
 
+  if (space === 'oklab') {
+    const [r, g, bl] = oklabToRgbLocal(
+      a.okL + (b.okL - a.okL) * q,
+      a.okA + (b.okA - a.okA) * q,
+      a.okB + (b.okB - a.okB) * q,
+    )
+    return [r, g, bl, alpha]
+  }
+
   return [
     a.r + (b.r - a.r) * q,
     a.g + (b.g - a.g) * q,
@@ -150,7 +203,7 @@ function paintManualGradient(
   x0: number, y0: number, x1: number, y1: number,
   mode: string,
   stops: [number, string][],
-  space: 'rgb' | 'hsl' | 'lab',
+  space: 'rgb' | 'hsl' | 'lab' | 'oklab',
   smoothness = 100,
   noiseAmount = 0,
   noiseSeed = 0,
@@ -251,11 +304,13 @@ function paintGradient(c: CanvasRenderingContext2D, w: number, h: number, x0: nu
   const mode = opts.mode ?? 'linear'
   const stops = buildStops(opts.type ?? 'fg-bg', opts.reverse === true, opts.transparency !== false, opts)
   const angle = Math.atan2(y1 - y0, x1 - x0)
-  const interpolation = opts.interpolation === 'lab'
-    ? 'lab'
-    : opts.interpolation === 'hsl'
-      ? 'hsl'
-      : 'rgb'
+  const interpolation = opts.interpolation === 'oklab'
+    ? 'oklab'
+    : opts.interpolation === 'lab'
+      ? 'lab'
+      : opts.interpolation === 'hsl'
+        ? 'hsl'
+        : 'rgb'
   const smoothness = clamp(Number(opts.smoothness ?? 100), 0, 100)
   const noiseAmount = clamp(Number(opts.noise ?? 0), 0, 100)
   const noiseSeed = Math.round(Number(opts.noiseSeed ?? 0)) || 0
