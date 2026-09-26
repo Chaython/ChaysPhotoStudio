@@ -21,8 +21,12 @@ export function newLayer(kind: LayerKind, name: string, w: number, h: number): L
   }
 }
 
-function measuredTextWidth(ctx: CanvasRenderingContext2D, text: string, tracking: number): number {
-  return ctx.measureText(text).width + Math.max(0, text.length - 1) * tracking
+function measuredTextWidth(ctx: CanvasRenderingContext2D, text: string, tracking: number, wordSpacing = 0): number {
+  let spaces = 0
+  for (const ch of text) if (/\s/.test(ch)) spaces++
+  return ctx.measureText(text).width
+    + Math.max(0, text.length - 1) * tracking
+    + spaces * wordSpacing
 }
 
 function wrapTextRows(ctx: CanvasRenderingContext2D, spec: TextSpec): string[] {
@@ -31,12 +35,13 @@ function wrapTextRows(ctx: CanvasRenderingContext2D, spec: TextSpec): string[] {
   if (!width || width <= 1) return raw
 
   const tracking = Number(spec.tracking) || 0
+  const wordSpacing = Number(spec.wordSpacing) || 0
   const out: string[] = []
   const pushLongWord = (word: string) => {
     let part = ''
     for (const ch of word) {
       const next = part + ch
-      if (part && measuredTextWidth(ctx, next, tracking) > width) {
+      if (part && measuredTextWidth(ctx, next, tracking, wordSpacing) > width) {
         out.push(part)
         part = ch
       } else part = next
@@ -50,12 +55,12 @@ function wrapTextRows(ctx: CanvasRenderingContext2D, spec: TextSpec): string[] {
     let line = ''
     for (const word of words) {
       const candidate = line ? line + ' ' + word : word
-      if (measuredTextWidth(ctx, candidate, tracking) <= width) {
+      if (measuredTextWidth(ctx, candidate, tracking, wordSpacing) <= width) {
         line = candidate
         continue
       }
       if (line) out.push(line)
-      if (measuredTextWidth(ctx, word, tracking) > width) {
+      if (measuredTextWidth(ctx, word, tracking, wordSpacing) > width) {
         pushLongWord(word)
         line = ''
       } else line = word
@@ -148,7 +153,7 @@ function warpTextCanvas(doc: PsDocument, base: HTMLCanvasElement, spec: TextSpec
 export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasElement {
   const c = createCanvas(doc.width, doc.height)
   const ctx = ctx2d(c)
-  const weight = spec.bold ? '700' : '400'
+  const weight = clamp(Math.round(Number(spec.fontWeight) || (spec.bold ? 700 : 400)), 100, 900)
   const style = spec.italic ? 'italic ' : ''
   ctx.font = `${style}${weight} ${spec.fontSize}px ${spec.fontFamily}`
   const fontCtx = ctx as any
@@ -167,6 +172,8 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
   }
 
   const tracking = Number(spec.tracking) || 0
+  const wordSpacing = Number(spec.wordSpacing) || 0
+  const baselineShift = Number(spec.baselineShift) || 0
   const lh = spec.fontSize * (spec.lineHeight || 1.2)
 
   if (spec.direction === 'vertical') {
@@ -186,7 +193,7 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
 
       for (let i = 0; i < column.length; i++) {
         const ch = column[i]
-        const baseline = y + spec.fontSize * .85 + i * charAdvance
+        const baseline = y + spec.fontSize * .85 + i * charAdvance - baselineShift
         ctx.fillText(ch, x, baseline)
       }
 
@@ -206,7 +213,7 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
     })
   } else {
     const lines = wrapTextRows(ctx, spec)
-    const widths = lines.map(l => measuredTextWidth(ctx, l, tracking))
+    const widths = lines.map(l => measuredTextWidth(ctx, l, tracking, wordSpacing))
     const maxW = Math.max(...widths, 1)
     const areaW = Math.max(1, spec.boxWidth ?? maxW)
     const applyAlign = (x: number, lineW: number) => {
@@ -218,16 +225,18 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
     if (tracking) {
       lines.forEach((line, li) => {
         let x = applyAlign(spec.x, widths[li])
-        const y = spec.y + spec.fontSize * 0.85 + li * lh
+        const y = spec.y + spec.fontSize * 0.85 + li * lh - baselineShift - baselineShift
         for (let ci = 0; ci < line.length; ci++) {
           const ch = line[ci]
           ctx.fillText(ch, x, y)
-          x += ctx.measureText(ch).width + (ci < line.length - 1 ? tracking : 0)
+          x += ctx.measureText(ch).width
+            + (ci < line.length - 1 ? tracking : 0)
+            + (/\s/.test(ch) ? wordSpacing : 0)
         }
       })
     } else {
       lines.forEach((line, li) => {
-        ctx.fillText(line, applyAlign(spec.x, widths[li]), spec.y + spec.fontSize * 0.85 + li * lh)
+        ctx.fillText(line, applyAlign(spec.x, widths[li]), spec.y + spec.fontSize * 0.85 + li * lh - baselineShift)
       })
     }
 
@@ -237,7 +246,7 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
       for (let li = 0; li < lines.length; li++) {
         if (!lines[li]) continue
         const x = applyAlign(spec.x, widths[li])
-        const y = spec.y + spec.fontSize * 0.85 + li * lh
+        const y = spec.y + spec.fontSize * 0.85 + li * lh - baselineShift
         if (spec.underline) {
           const uy = y + Math.max(1, spec.fontSize * 0.08)
           ctx.beginPath(); ctx.moveTo(x, uy); ctx.lineTo(x + widths[li], uy); ctx.stroke()
