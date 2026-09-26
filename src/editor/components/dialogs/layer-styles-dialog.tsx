@@ -292,6 +292,7 @@ export function LayerStylesDialog({ inst, onClose }: DialogProps) {
   }
 
   const selectedDef = EFFECTS.find(e => e.key === selected)
+  const current = fx[selected] as Record<string, any> | undefined
   const reset = () => setFx(cloneFX(null))
   const makeDefault = () => {
     if (!current) return
@@ -304,7 +305,6 @@ export function LayerStylesDialog({ inst, onClose }: DialogProps) {
     if (built) setFx(prev => ({ ...prev, [selected]: { ...built, enabled: current?.enabled !== false } }) as LayerFX)
     useEditorStore.getState().pushToast(`${selectedDef?.label ?? 'Effect'} defaults reset`, 'info')
   }
-  const current = fx[selected] as Record<string, any> | undefined
   const controls = controlsFor(selected, current)
   return (
     <>
