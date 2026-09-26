@@ -41,6 +41,7 @@ const retouchTipCtls: ControlDef[] = [
   { key: 'tip', label: 'Tip', type: 'select', options: tipSelectOptions },
   { key: 'angle', label: 'Angle', type: 'angle', min: 0, max: 360, step: 1, unit: '°' },
   { key: 'roundness', label: 'Roundness', type: 'slider', min: 10, max: 100, step: 1, unit: '%' },
+  { key: 'pressureSize', label: 'Pen Pressure → Size', type: 'toggle' },
   { key: 'tiltAngle', label: 'Pen Tilt → Angle', type: 'toggle' },
   { key: 'tiltRoundness', label: 'Pen Tilt → Roundness', type: 'toggle' },
   { key: 'twistAngle', label: 'Pen Rotation → Angle', type: 'toggle' },
