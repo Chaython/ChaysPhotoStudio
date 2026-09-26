@@ -312,6 +312,13 @@ function localEdgeStrength(data: Uint8ClampedArray, w: number, h: number, x: num
   return Math.min(255, Math.hypot(gx, gy) * .5)
 }
 
+function blurEdgeFactor(edge: number, opts: Record<string, any>): number {
+  if (opts.protectEdges !== true) return 1
+  const threshold = clamp(Number(opts.edgeThreshold ?? 35), 1, 100) * 2.55
+  const protectedAmount = smoothstep(threshold * .45, threshold * 1.35, edge)
+  return 1 - protectedAmount * .92
+}
+
 function sharpenCorrection(
   detail: number,
   edge: number,
@@ -378,14 +385,16 @@ function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: Poi
       let falloff = shape.alpha(dx, dy)
       const oi = py * rw + px
       if (sel) falloff *= sel[oi * 4 + 3] / 255
-      const f = falloff * strength
+      let f = falloff * strength
       if (f <= .005) continue
 
       const sx = x0 + px - sx0, sy = y0 + py - sy0
       const si = sy * sw + sx, sj = si * 4, oj = oi * 4
       const sa = srcImg.data[sj + 3] / 255
       if (sa <= 0) continue
-      const edge = kind === 'sharpen' ? localEdgeStrength(srcImg.data, sw, sh, sx, sy) : 0
+      const edge = localEdgeStrength(srcImg.data, sw, sh, sx, sy)
+      if (kind === 'blur') f *= blurEdgeFactor(edge, opts)
+      if (f <= .005) continue
       for (let ch = 0; ch < 3; ch++) {
         const base = srcImg.data[sj + ch]
         const blur = ch === 0 ? br[si] : ch === 1 ? bg[si] : bb[si]
@@ -427,8 +436,13 @@ function blurOp(x: number, y: number, p: PointerInfo) {
     const d = region.data
     const [br, bg, bb] = boxBlurRegion(src, rw, rh, rad)
     for (let i = 0; i < rw * rh; i++) {
-      const f = falloff[i] * strength
+      let f = falloff[i] * strength
       if (f <= 0.01) continue
+      if (opts.protectEdges === true) {
+        const px = i % rw, py = Math.floor(i / rw)
+        f *= blurEdgeFactor(localEdgeStrength(src, rw, rh, px, py), opts)
+      }
+      if (f <= .002) continue
       const j = i * 4
       d[j] = src[j] * (1 - f) + br[i] * f
       d[j + 1] = src[j + 1] * (1 - f) + bg[i] * f
