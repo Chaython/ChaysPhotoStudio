@@ -6,6 +6,7 @@ import { newLayer } from './document'
 import type { Layer, PsDocument } from '../types'
 import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId } from '../formats'
+import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
