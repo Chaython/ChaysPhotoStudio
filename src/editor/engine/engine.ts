@@ -3366,8 +3366,21 @@ export class Engine {
       case 'applyFilter': if (layerId) this.applyFilterToLayer(layerId, a.type, a.params); break
       case 'applyAdjustment': if (layerId) this.applyAdjustmentToLayer(layerId, a.type, a.params); break
       case 'fill': this.fillSelection(a.color); break
-      case 'crop': this.cropTo({ x: a.x, y: a.y, w: a.w, h: a.h }); break
-      case 'resizeImage': this.resizeImage({ w: a.w, h: a.h }); break
+      case 'crop': this.cropTo(
+        { x: a.x, y: a.y, w: a.w, h: a.h },
+        {
+          deletePixels: a.deletePixels,
+          targetW: a.targetW,
+          targetH: a.targetH,
+          resolutionPpi: a.resolutionPpi,
+        },
+      ); break
+      case 'resizeImage': this.resizeImage({
+        w: a.w,
+        h: a.h,
+        resolutionPpi: a.resolutionPpi,
+        resample: a.resample,
+      }); break
       case 'aiUpscale': void this.aiUpscale({ scale: a.scale, detail: a.detail, denoise: a.denoise }); break
       case 'addAdjustmentLayer': this.addAdjustmentLayer(a.type, a.params); break
       case 'setAdjustmentParams': if (this.layerById(a.id)) this.setLayerAdjustment(a.id, a.type, a.params); break
