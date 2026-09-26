@@ -851,7 +851,7 @@ function adjustPass(gl: WebGL2RenderingContext, prog: WebGLProgram, from: FBORef
   return adjustPassOn(gl, prog, from, to, layer, doc)
 }
 
-type FBORef = { fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number; precision?: 'rgba8' | 'rgba16f' }
+type FBORef = { fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number; precision: 'rgba8' | 'rgba16f' }
 
 /** adjustment pass: adjust(from) masked by layer.mask, blended into to */
 function adjustPassOn(gl: WebGL2RenderingContext, prog: WebGLProgram, from: FBORef, to: FBORef, layer: Layer, doc: PsDocument): boolean {
