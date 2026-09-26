@@ -272,8 +272,12 @@ function StatusBar() {
         <span className="text-primary font-medium animate-pulse">{progress.label}… {Math.round(progress.value * 100)}%</span>
       ) : (
         <>
-          <button className="hover:text-foreground" onClick={() => setRightPanelTab('navigator')}>
-            {doc ? `${doc.width} × ${doc.height} px` : '—'}
+          <button
+            className="hover:text-foreground"
+            onClick={() => setRightPanelTab('navigator')}
+            title={doc ? `${doc.width} × ${doc.height} px at ${Math.round(engineDoc?.resolutionPpi ?? 72)} PPI · ${(doc.width / Math.max(1, engineDoc?.resolutionPpi ?? 72)).toFixed(2)} × ${(doc.height / Math.max(1, engineDoc?.resolutionPpi ?? 72)).toFixed(2)} in` : undefined}
+          >
+            {doc ? `${doc.width} × ${doc.height} px · ${Math.round(engineDoc?.resolutionPpi ?? 72)} PPI` : '—'}
           </button>
           <span className="hidden sm:inline">Fit: Ctrl+0 · Content: Ctrl+Shift+0 · Grid: Ctrl+'</span>
           <span className="font-mono">
