@@ -14,6 +14,21 @@ let active = false
 let last: { x: number; y: number } | null = null
 let sourceImage: ImageData | null = null
 let targetImage: ImageData | null = null
+let rngState = 0x6d2b79f5
+
+function reseed(seed: number) {
+  let s = Math.floor(seed) >>> 0
+  if (!s) s = ((rand() * 0xffffffff) >>> 0) || 0x6d2b79f5
+  rngState = s
+}
+
+function rand(): number {
+  // Mulberry32: tiny deterministic PRNG, enough for painterly mark placement.
+  let t = rngState += 0x6d2b79f5
+  t = Math.imul(t ^ (t >>> 15), t | 1)
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
 
 function historySource(layerId: string): HTMLCanvasElement | null {
   const doc = engine.activeDoc
@@ -52,11 +67,15 @@ function differsEnough(x: number, y: number, tolerance: number): boolean {
 }
 
 function styleParams(style: string) {
-  if (style === 'tight-short') return { marks: 6, spread: .24, length: .32, width: .12, curl: false }
-  if (style === 'loose-medium') return { marks: 11, spread: .60, length: .70, width: .11, curl: false }
-  if (style === 'loose-long') return { marks: 13, spread: .78, length: 1.10, width: .09, curl: false }
-  if (style === 'curl') return { marks: 10, spread: .58, length: .72, width: .10, curl: true }
-  return { marks: 8, spread: .38, length: .55, width: .11, curl: false }
+  if (style === 'tight-short') return { marks: 6, spread: .24, length: .32, width: .12, curl: false, dab: false, spatter: false }
+  if (style === 'tight-long') return { marks: 7, spread: .30, length: .92, width: .09, curl: false, dab: false, spatter: false }
+  if (style === 'loose-short') return { marks: 10, spread: .66, length: .34, width: .13, curl: false, dab: false, spatter: false }
+  if (style === 'loose-medium') return { marks: 11, spread: .60, length: .70, width: .11, curl: false, dab: false, spatter: false }
+  if (style === 'loose-long') return { marks: 13, spread: .78, length: 1.10, width: .09, curl: false, dab: false, spatter: false }
+  if (style === 'dab') return { marks: 16, spread: .54, length: .12, width: .20, curl: false, dab: true, spatter: false }
+  if (style === 'spatter') return { marks: 24, spread: .90, length: .10, width: .12, curl: false, dab: true, spatter: true }
+  if (style === 'curl') return { marks: 10, spread: .58, length: .72, width: .10, curl: true, dab: false, spatter: false }
+  return { marks: 8, spread: .38, length: .55, width: .11, curl: false, dab: false, spatter: false }
 }
 
 function artDab(x: number, y: number, p: PointerInfo) {
@@ -82,31 +101,39 @@ function artDab(x: number, y: number, p: PointerInfo) {
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     for (let i = 0; i < marks; i++) {
-      const a = Math.random() * Math.PI * 2
-      const rr = Math.sqrt(Math.random()) * spreadR
+      const a = rand() * Math.PI * 2
+      const rr = Math.sqrt(rand()) * spreadR
       const ox = Math.cos(a) * rr
       const oy = Math.sin(a) * rr
       const sx = x + ox, sy = y + oy
       if (!differsEnough(sx, sy, tolerance)) continue
       const col = sample(sourceImage!, sx, sy)
       if (!col || col[3] <= 0) continue
-      const theta = a + (Math.random() - .5) * Math.PI
-      const len = strokeLen * (.55 + Math.random() * .75)
+      const theta = a + (rand() - .5) * Math.PI
+      const len = strokeLen * (.55 + rand() * .75)
       const x0 = dx + ox - Math.cos(theta) * len * .5
       const y0 = dy + oy - Math.sin(theta) * len * .5
       const x1 = dx + ox + Math.cos(theta) * len * .5
       const y1 = dy + oy + Math.sin(theta) * len * .5
       ctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${col[3] / 255})`
-      ctx.lineWidth = lineW * (.65 + Math.random() * .7)
-      ctx.beginPath()
-      ctx.moveTo(x0, y0)
-      if (style.curl) {
-        const bend = len * (.25 + Math.random() * .25) * (Math.random() < .5 ? -1 : 1)
-        const mx = (x0 + x1) / 2 - Math.sin(theta) * bend
-        const my = (y0 + y1) / 2 + Math.cos(theta) * bend
-        ctx.quadraticCurveTo(mx, my, x1, y1)
-      } else ctx.lineTo(x1, y1)
-      ctx.stroke()
+      ctx.fillStyle = ctx.strokeStyle
+      ctx.lineWidth = lineW * (.65 + rand() * .7)
+      if (style.dab) {
+        const rr = Math.max(.7, ctx.lineWidth * (style.spatter ? (.25 + rand() * .7) : (.55 + rand() * .65)))
+        ctx.beginPath()
+        ctx.arc(dx + ox, dy + oy, rr, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        ctx.beginPath()
+        ctx.moveTo(x0, y0)
+        if (style.curl) {
+          const bend = len * (.25 + rand() * .25) * (rand() < .5 ? -1 : 1)
+          const mx = (x0 + x1) / 2 - Math.sin(theta) * bend
+          const my = (y0 + y1) / 2 + Math.cos(theta) * bend
+          ctx.quadraticCurveTo(mx, my, x1, y1)
+        } else ctx.lineTo(x1, y1)
+        ctx.stroke()
+      }
     }
     ctx.restore()
   }, flow, spreadR + strokeLen + lineW + 4)
@@ -143,6 +170,7 @@ export const artHistoryBrushTool: Tool = {
     sourceImage = getImageData(src)
     targetImage = getImageData(current)
     const opts = getOptions('art-history-brush')
+    reseed(Number(opts.seed) || 0)
     engine.beginStroke(layer.id, { opacity: opts.opacity ?? 100 })
     active = true
     last = { x: p.docX, y: p.docY }
