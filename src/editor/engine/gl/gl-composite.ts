@@ -23,7 +23,7 @@ import { ADJUSTMENTS } from '../../image-ops/adjustments'
 import { buildCurveLUT } from '../../image-ops/interp'
 import { hexToRgbTriple } from '../../image-ops/color'
 import {
-  getGL, glAvailable, compileProgram, drawQuad, bindTarget, acquireFBO, releaseFBO,
+  getGL, glAvailable, glInfo, compileProgram, drawQuad, bindTarget, acquireFBO, releaseFBO,
   bindUniformTex, uploadCanvas, uploadLUT, QUAD_VS,
 } from './gl-core'
 
@@ -672,10 +672,15 @@ export function glCompositeDocument(doc: PsDocument, target: HTMLCanvasElement):
   if (!progBlend || !progCopy || !progChannel || !progAdjust) return false
 
   const W = doc.width, H = doc.height
-  const fboA = acquireFBO(gl, W, H)
-  const fboB = acquireFBO(gl, W, H)
-  const fboS = acquireFBO(gl, W, H)
-  const fboT = acquireFBO(gl, W, H)
+  // Keep compositing/adjustment math in half-float render targets where the
+  // driver can render RGBA16F. Source layers are still today's 8-bit canvases,
+  // but repeated blends/adjustments no longer quantize every intermediate
+  // compositor pass back to 8-bit.
+  const precision = glInfo().float16Fbo ? 'rgba16f' as const : 'rgba8' as const
+  const fboA = acquireFBO(gl, W, H, precision)
+  const fboB = acquireFBO(gl, W, H, precision)
+  const fboS = acquireFBO(gl, W, H, precision)
+  const fboT = acquireFBO(gl, W, H, precision)
   if (!fboA || !fboB || !fboS || !fboT) {
     releaseFBO(gl, fboA); releaseFBO(gl, fboB); releaseFBO(gl, fboS); releaseFBO(gl, fboT)
     return false
@@ -806,12 +811,30 @@ export function glCompositeDocument(doc: PsDocument, target: HTMLCanvasElement):
     }
 
     // ---- read back into the target 2D canvas ----
-    bindTarget(gl, acc)
+    // readPixels(UNSIGNED_BYTE) is not portable from an RGBA16F attachment.
+    // Resolve once into an 8-bit target at the very end; this is the single
+    // quantization boundary for the GPU compositing chain.
+    let readTarget = acc
+    let resolve8: ReturnType<typeof acquireFBO> = null
+    if (acc.precision === 'rgba16f') {
+      resolve8 = acquireFBO(gl, W, H, 'rgba8')
+      if (!resolve8) throw new Error('8-bit resolve FBO unavailable')
+      bindTarget(gl, resolve8)
+      gl.clearColor(0, 0, 0, 0)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      gl.useProgram(progCopy)
+      bindUniformTex(gl, progCopy, 'uSrc', acc.tex, 0)
+      drawQuad(gl, progCopy)
+      readTarget = resolve8
+    }
+
+    bindTarget(gl, readTarget)
     const buf = new Uint8Array(W * H * 4)
     gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf)
     const outCtx = target.getContext('2d')!
     const imgData = new ImageData(new Uint8ClampedArray(buf.buffer, 0, W * H * 4), W, H)
     outCtx.putImageData(imgData, 0, 0)
+    releaseFBO(gl, resolve8)
 
     lastGpuActive = performance.now()
     releaseFBO(gl, fboA); releaseFBO(gl, fboB); releaseFBO(gl, fboS); releaseFBO(gl, fboT)
@@ -828,7 +851,7 @@ function adjustPass(gl: WebGL2RenderingContext, prog: WebGLProgram, from: FBORef
   return adjustPassOn(gl, prog, from, to, layer, doc)
 }
 
-type FBORef = { fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number }
+type FBORef = { fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number; precision?: 'rgba8' | 'rgba16f' }
 
 /** adjustment pass: adjust(from) masked by layer.mask, blended into to */
 function adjustPassOn(gl: WebGL2RenderingContext, prog: WebGLProgram, from: FBORef, to: FBORef, layer: Layer, doc: PsDocument): boolean {
