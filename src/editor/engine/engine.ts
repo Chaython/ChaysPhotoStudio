@@ -1757,7 +1757,11 @@ export class Engine {
     const doc = this.activeDoc
     if (!doc) return
     if (!mask) { doc.selection = null; this.emitOverlay(); return }
-    doc.selection = combineSelection(doc.selection, mask, mode)
+    const next = combineSelection(doc.selection, mask, mode)
+    // Treat a fully erased/empty mask as a real deselection. This matters for
+    // Selection Brush subtract strokes and also avoids carrying a 0×0-bounds
+    // selection object through other selection commands.
+    doc.selection = next && next.bounds.w > 0 && next.bounds.h > 0 ? next : null
     this.pushHistory(label)
     // selection renders on the overlay only (marching ants) — the composite
     // is untouched, so skip the recomposite (huge win on large documents)
@@ -1995,15 +1999,26 @@ export class Engine {
     this.setSelectionAlpha(mask, 'new', 'Focus Area')
   }
 
-  refineSelectionToMask(params: Record<string, any>, output: 'selection' | 'mask' | 'new-layer') {
+  refineSelectionToMask(
+    params: Record<string, any>,
+    output: 'selection' | 'mask' | 'new-layer',
+    sourceAlpha?: Uint8ClampedArray,
+  ) {
     const doc = this.activeDoc
-    if (!doc?.selection) return
-    const alpha = (() => {
+    if (!doc) return
+    let alpha: Uint8ClampedArray
+    if (sourceAlpha) {
+      if (sourceAlpha.length !== doc.width * doc.height) {
+        this.ui?.toast('Select and Mask preview no longer matches the document size', 'error')
+        return
+      }
+      alpha = new Uint8ClampedArray(sourceAlpha)
+    } else {
+      if (!doc.selection) return
       const d = getImageData(doc.selection.mask)
-      const out = new Uint8ClampedArray(doc.width * doc.height)
-      for (let i = 0, j = 3; i < out.length; i++, j += 4) out[i] = d.data[j]
-      return out
-    })()
+      alpha = new Uint8ClampedArray(doc.width * doc.height)
+      for (let i = 0, j = 3; i < alpha.length; i++, j += 4) alpha[i] = d.data[j]
+    }
     const refined = imageOps.refineMask(alpha, doc.width, doc.height, params)
     const mask = maskCanvasFromAlpha(refined, doc.width, doc.height)
     if (output === 'selection') {
