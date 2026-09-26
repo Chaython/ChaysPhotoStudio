@@ -244,17 +244,25 @@ function StatusBar() {
   const workingBits = engineDoc?.workingBitDepth ?? 8
   const sourceBits = engineDoc?.sourceBitDepth ?? workingBits
   const workingSpace = engineDoc?.workingColorSpace === 'display-p3' ? 'Display-P3' : 'sRGB'
-  const precisionLabel = `${workingBits}-bit ${workingSpace} working`
+  const precisionLabel = `${workingBits}-bit ${workingSpace} storage`
   const sourcePrecisionLabel = sourceBits > workingBits ? ` · source ${sourceBits}-bit` : ''
-  const float16CapabilityLabel = (pixelCaps.float16Context || pixelCaps.float16ImageData)
-    ? ' · 16F API available (not active)'
-    : ''
+  const gpu16 = gpuActive && gpuInfo.float16Fbo
+  const float16CapabilityLabel = gpu16
+    ? ' · 16F GPU composite'
+    : (pixelCaps.float16Context || pixelCaps.float16ImageData || gpuInfo.float16Fbo)
+      ? ' · 16F runtime available'
+      : ''
   const precisionTitle = [
-    `Editable document storage: ${workingBits}-bit/channel ${workingSpace}.`,
+    `Editable raster/layer storage: ${workingBits}-bit/channel ${workingSpace}.`,
     sourceBits > workingBits ? `Imported source precision: ${sourceBits}-bit/channel. It is currently normalized to ${workingBits}-bit/channel for pixel editing.` : '',
+    gpu16
+      ? 'GPU compositing and supported adjustment-layer passes use RGBA16F intermediate framebuffers, then quantize once when resolving to the current 8-bit document/display canvas.'
+      : gpuInfo.float16Fbo
+        ? 'RGBA16F GPU intermediates are supported but GPU compositing is not currently active.'
+        : '',
     pixelCaps.float16Context || pixelCaps.float16ImageData
-      ? 'The browser/runtime exposes float16 Canvas/ImageData capability. It is NOT active document precision: layers, masks, compositing, history and exports still use the 8-bit working raster until the end-to-end precision migration is complete.'
-      : 'This runtime did not expose a usable float16 Canvas/ImageData path.',
+      ? 'The runtime also exposes float16 Canvas/ImageData capability. Full 16-bit editable documents are not claimed yet because layer storage, masks, history, CPU filters, transforms and export still require coordinated high-precision storage support.'
+      : '',
     pixelCaps.displayP3 ? 'Display-P3 canvas capability detected.' : '',
   ].filter(Boolean).join(' ')
   const measurement = (window as any).__zphotoMeasure as { length: number; angleDeg: number } | undefined
