@@ -404,6 +404,18 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
           </div>
         )
       }
+      if (control.customId === 'select-and-mask') {
+        return (
+          <button
+            type="button"
+            className="h-6 shrink-0 rounded border border-primary/40 bg-primary/10 px-2.5 text-[10px] font-medium text-primary hover:bg-primary/20 transition-colors"
+            onClick={() => useEditorStore.getState().openDialog('select-mask')}
+            title={control.hint || 'Open Select & Mask'}
+          >
+            Select & Mask…
+          </button>
+        )
+      }
       return null
     case 'color':
       return (
