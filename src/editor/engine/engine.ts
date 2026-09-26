@@ -28,6 +28,7 @@ import {
 import { getScriptApi } from './scripting-api'
 import * as imageOps from '../image-ops'
 import { homography, projectPoint, quadOutputSize, warpCanvasPerspective, type Point2 } from '../image-ops/perspective'
+import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 
 export const MAX_HISTORY = 50
 
@@ -1342,18 +1343,15 @@ export class Engine {
       layer._mv++
     }
 
-    // Vector masks stay vector/editable; transform anchors and their Bezier
-    // handles through the identical affine map.
-    if (layer.vectorMask?.anchors?.length) {
-      layer.vectorMask = {
-        ...layer.vectorMask,
-        anchors: layer.vectorMask.anchors.map(a => {
-          const [x, y] = map(a.x, a.y)
-          const [ix, iy] = map(a.x + a.inX, a.y + a.inY)
-          const [ox, oy] = map(a.x + a.outX, a.y + a.outY)
-          return { ...a, x, y, inX: ix - x, inY: iy - y, outX: ox - x, outY: oy - y }
-        }),
-      }
+    // Vector masks stay vector/editable; every compound component follows
+    // the identical affine map.
+    if (layer.vectorMask) {
+      layer.vectorMask = mapVectorMask(layer.vectorMask, a => {
+        const [x, y] = map(a.x, a.y)
+        const [ix, iy] = map(a.x + a.inX, a.y + a.inY)
+        const [ox, oy] = map(a.x + a.outX, a.y + a.outY)
+        return { ...a, x, y, inX: ix - x, inY: iy - y, outX: ox - x, outY: oy - y }
+      })
       layer._mv++
     }
 
@@ -1674,19 +1672,53 @@ export class Engine {
     return layer
   }
 
-  addVectorMaskFromPath(layerId: string, pathId: string) {
+  addVectorMaskFromPath(
+    layerId: string,
+    pathId: string,
+    operation: 'replace' | VectorMaskOp = 'replace',
+  ) {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     const path = doc?.savedPaths?.find(p => p.id === pathId)
     if (!doc || !layer || !path || layer.kind === 'adjustment') return
-    layer.vectorMask = {
+
+    const component = {
       anchors: path.anchors.map(a => ({ ...a })),
       closed: path.closed,
-      enabled: true,
+      op: (operation === 'replace' ? 'add' : operation) as VectorMaskOp,
+    }
+
+    if (operation === 'replace' || !layer.vectorMask) {
+      layer.vectorMask = {
+        anchors: component.anchors.map(a => ({ ...a })),
+        closed: component.closed,
+        enabled: true,
+        paths: [component],
+      }
+    } else {
+      const existing = layer.vectorMask.paths?.length
+        ? layer.vectorMask.paths.map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) }))
+        : [{
+            anchors: layer.vectorMask.anchors.map(a => ({ ...a })),
+            closed: layer.vectorMask.closed,
+            op: 'add' as const,
+          }]
+      layer.vectorMask = {
+        ...layer.vectorMask,
+        enabled: true,
+        paths: [...existing, component],
+      }
     }
     layer._mv++
     invalidateFlat(doc)
-    this.pushHistory('Add Vector Mask')
+    const labels: Record<'replace' | VectorMaskOp, string> = {
+      replace: 'Replace Vector Mask',
+      add: 'Add to Vector Mask',
+      subtract: 'Subtract from Vector Mask',
+      intersect: 'Intersect Vector Mask',
+      exclude: 'Exclude Vector Mask',
+    }
+    this.pushHistory(labels[operation])
     this.emit()
   }
 
@@ -2522,8 +2554,8 @@ export class Engine {
         if (l.shape.dashLength) l.shape.dashLength *= smin
         if (l.shape.gapLength) l.shape.gapLength *= smin
       }
-      if (l.vectorMask?.anchors?.length) {
-        l.vectorMask.anchors = l.vectorMask.anchors.map(a => ({
+      if (l.vectorMask) {
+        l.vectorMask = mapVectorMask(l.vectorMask, a => ({
           ...a,
           x: a.x * sx,
           y: a.y * sy,
@@ -2610,9 +2642,7 @@ export class Engine {
     for (const l of doc.layers) {
       if (l.kind === 'adjustment') {
         if (l.mask) l.mask = warpCanvasPerspective(l.mask, quad, outW, outH, true)
-        if (l.vectorMask?.anchors?.length) {
-          l.vectorMask = { ...l.vectorMask, anchors: l.vectorMask.anchors.map(mapAnchor) }
-        }
+        if (l.vectorMask) l.vectorMask = mapVectorMask(l.vectorMask, mapAnchor)
         l._v++; l._mv++
         continue
       }
@@ -2642,9 +2672,7 @@ export class Engine {
         l.blendIf = null
       } else {
         if (l.mask) l.mask = warpCanvasPerspective(l.mask, quad, outW, outH, true)
-        if (l.vectorMask?.anchors?.length) {
-          l.vectorMask = { ...l.vectorMask, anchors: l.vectorMask.anchors.map(mapAnchor) }
-        }
+        if (l.vectorMask) l.vectorMask = mapVectorMask(l.vectorMask, mapAnchor)
       }
       l._v++; l._mv++
     }
@@ -2721,8 +2749,8 @@ export class Engine {
       if (l.transform) { l.transform.x -= x; l.transform.y -= y }
       if (l.text) { l.text.x -= x; l.text.y -= y }
       if (l.shape) { l.shape.x -= x; l.shape.y -= y }
-      if (l.vectorMask?.anchors?.length) {
-        l.vectorMask.anchors = l.vectorMask.anchors.map(a => ({ ...a, x: a.x - x, y: a.y - y }))
+      if (l.vectorMask) {
+        l.vectorMask = mapVectorMask(l.vectorMask, a => ({ ...a, x: a.x - x, y: a.y - y }))
       }
       l._v++; l._mv++
     }
