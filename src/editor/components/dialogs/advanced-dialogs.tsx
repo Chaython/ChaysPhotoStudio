@@ -433,6 +433,46 @@ export function ColorRangeDialog({ onClose }: DialogProps) {
 // ============================================================
 
 type SmView = 'onion' | 'black' | 'white' | 'mask' | 'overlay'
+type SmBrushMode = 'refine' | 'add' | 'subtract'
+
+function smPaintDab(
+  alpha: Uint8ClampedArray,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  size: number,
+  hardness: number,
+  opacity: number,
+  mode: SmBrushMode,
+  refineTarget?: Uint8ClampedArray | null,
+) {
+  const r = Math.max(.5, size / 2)
+  const inner = clamp(hardness / 100, 0, .999)
+  const strength = clamp(opacity / 100, .01, 1)
+  const x0 = Math.max(0, Math.floor(cx - r - 1))
+  const y0 = Math.max(0, Math.floor(cy - r - 1))
+  const x1 = Math.min(w - 1, Math.ceil(cx + r + 1))
+  const y1 = Math.min(h - 1, Math.ceil(cy + r + 1))
+
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const d = Math.hypot(x + .5 - cx, y + .5 - cy) / r
+      if (d > 1) continue
+      const edge = d <= inner ? 1 : 1 - (d - inner) / Math.max(.001, 1 - inner)
+      const a = clamp(edge * strength, 0, 1)
+      const i = y * w + x
+      const old = alpha[i]
+      if (mode === 'add') {
+        alpha[i] = Math.round(old + (255 - old) * a)
+      } else if (mode === 'subtract') {
+        alpha[i] = Math.round(old * (1 - a))
+      } else if (refineTarget) {
+        alpha[i] = Math.round(old + (refineTarget[i] - old) * a)
+      }
+    }
+  }
+}
 
 export function SelectMaskDialog({ onClose }: DialogProps) {
   const store = useEditorStore.getState()
@@ -446,76 +486,201 @@ export function SelectMaskDialog({ onClose }: DialogProps) {
   const [output, setOutput] = useState<'selection' | 'mask' | 'new-layer'>('selection')
   const [view, setView] = useState<SmView>('onion')
   const [onionOpacity, setOnionOpacity] = useState(65)
+  const [brushMode, setBrushMode] = useState<SmBrushMode>('refine')
+  const [brushSize, setBrushSize] = useState(42)
+  const [brushHardness, setBrushHardness] = useState(35)
+  const [brushOpacity, setBrushOpacity] = useState(100)
+  const [realTime, setRealTime] = useState(true)
+  const [paintVersion, setPaintVersion] = useState(0)
   const previewRef = useRef<HTMLCanvasElement>(null)
+  const manualAlphaRef = useRef<Uint8ClampedArray | null>(null)
+  const initialAlphaRef = useRef<Uint8ClampedArray | null>(null)
+  const flatPreviewRef = useRef<ImageData | null>(null)
+  const paintRef = useRef<null | {
+    pointerId: number
+    lastX: number
+    lastY: number
+    mode: SmBrushMode
+    refineTarget: Uint8ClampedArray | null
+  }>(null)
 
-  // size the preview canvas once
+  // Initialize a private working selection. The document selection is never
+  // mutated while the workspace is open, so Cancel is a true cancel.
   useEffect(() => {
     const d = engine.activeDoc
-    const c = previewRef.current
-    if (!d || !c) return
+    const canvas = previewRef.current
+    if (!d || !canvas || !d.selection) return
     const { w, h } = previewSize(d.width, d.height, 560, 330)
-    c.width = w
-    c.height = h
+    canvas.width = w
+    canvas.height = h
+
+    const alpha = selectionAlphaOf(d)
+    if (!alpha) return
+    manualAlphaRef.current = new Uint8ClampedArray(alpha)
+    initialAlphaRef.current = new Uint8ClampedArray(alpha)
+
+    // Cache a preview-sized composite once. Slider/brush updates then only
+    // refine a small preview mask instead of repeatedly reading/compositing
+    // the full document.
+    const flat = getFlatComposite(d)
+    const mini = createCanvas(w, h)
+    const mc = ctx2d(mini)
+    mc.imageSmoothingEnabled = true
+    mc.imageSmoothingQuality = 'high'
+    mc.drawImage(flat, 0, 0, w, h)
+    flatPreviewRef.current = getImageData(mini)
+    setPaintVersion(v => v + 1)
   }, [])
 
-  // debounced (~120ms) live preview: imageOps.refineMask on the current selection alpha
+  // Live preview uses a downsampled copy of the working alpha. Final Apply is
+  // still full-resolution through engine.refineSelectionToMask().
   useEffect(() => {
     const t = setTimeout(() => {
       const d = engine.activeDoc
-      const c = previewRef.current
-      if (!d || !c || !d.selection) return
-      const alpha = selectionAlphaOf(d)
-      if (!alpha) return
-      const refined = imageOps.refineMask(alpha, d.width, d.height, { radius, contrast, feather, shiftEdge, smooth })
-      const flat = getImageData(getFlatComposite(d))
-      const ctx = c.getContext('2d')!
-      const out = ctx.createImageData(c.width, c.height)
-      const sx = c.width / d.width, sy = c.height / d.height
-      const op = onionOpacity / 100
-      const dd = flat.data
-      for (let py = 0; py < c.height; py++) {
-        const dyy = Math.min(d.height - 1, Math.round(py / sy))
-        for (let px = 0; px < c.width; px++) {
-          const dxx = Math.min(d.width - 1, Math.round(px / sx))
-          const si = dyy * d.width + dxx
-          const m = refined[si] / 255
-          const o = (py * c.width + px) * 4
-          const r = dd[si * 4], g = dd[si * 4 + 1], b = dd[si * 4 + 2]
-          if (view === 'onion') {
-            // subject over dimmed original, at the onion opacity
-            const a = m * op
-            const k = (1 - a) * 0.35 + a
-            out.data[o] = r * k; out.data[o + 1] = g * k; out.data[o + 2] = b * k
-          } else if (view === 'black') {
-            out.data[o] = r * m; out.data[o + 1] = g * m; out.data[o + 2] = b * m
-          } else if (view === 'white') {
-            out.data[o] = r * m + 255 * (1 - m)
-            out.data[o + 1] = g * m + 255 * (1 - m)
-            out.data[o + 2] = b * m + 255 * (1 - m)
-          } else if (view === 'mask') {
-            const v = m * 255
-            out.data[o] = v; out.data[o + 1] = v; out.data[o + 2] = v
-          } else {
-            // overlay: red tint on the unselected area
-            const a = 0.55 * (1 - m)
-            out.data[o] = r * (1 - a) + 214 * a
-            out.data[o + 1] = g * (1 - a) + 72 * a
-            out.data[o + 2] = b * (1 - a) + 56 * a
-          }
-          out.data[o + 3] = 255
+      const canvas = previewRef.current
+      const base = manualAlphaRef.current
+      const flat = flatPreviewRef.current
+      if (!d || !canvas || !base || !flat) return
+
+      const pw = canvas.width, ph = canvas.height
+      const small = new Uint8ClampedArray(pw * ph)
+      for (let py = 0; py < ph; py++) {
+        const sy = Math.min(d.height - 1, Math.floor((py + .5) * d.height / ph))
+        for (let px = 0; px < pw; px++) {
+          const sx = Math.min(d.width - 1, Math.floor((px + .5) * d.width / pw))
+          small[py * pw + px] = base[sy * d.width + sx]
         }
       }
+
+      const scale = Math.min(pw / d.width, ph / d.height)
+      const refined = imageOps.refineMask(small, pw, ph, {
+        radius: radius * scale,
+        contrast,
+        feather: feather * scale,
+        shiftEdge,
+        smooth: smooth * scale,
+      })
+      const ctx = canvas.getContext('2d')!
+      const out = ctx.createImageData(pw, ph)
+      const op = onionOpacity / 100
+      const dd = flat.data
+
+      for (let i = 0; i < refined.length; i++) {
+        const m = refined[i] / 255
+        const o = i * 4
+        const r = dd[o], g = dd[o + 1], b = dd[o + 2]
+        if (view === 'onion') {
+          const a = m * op
+          const k = (1 - a) * .35 + a
+          out.data[o] = r * k; out.data[o + 1] = g * k; out.data[o + 2] = b * k
+        } else if (view === 'black') {
+          out.data[o] = r * m; out.data[o + 1] = g * m; out.data[o + 2] = b * m
+        } else if (view === 'white') {
+          out.data[o] = r * m + 255 * (1 - m)
+          out.data[o + 1] = g * m + 255 * (1 - m)
+          out.data[o + 2] = b * m + 255 * (1 - m)
+        } else if (view === 'mask') {
+          const v = m * 255
+          out.data[o] = v; out.data[o + 1] = v; out.data[o + 2] = v
+        } else {
+          const a = .55 * (1 - m)
+          out.data[o] = r * (1 - a) + 214 * a
+          out.data[o + 1] = g * (1 - a) + 72 * a
+          out.data[o + 2] = b * (1 - a) + 56 * a
+        }
+        out.data[o + 3] = 255
+      }
       ctx.putImageData(out, 0, 0)
-    }, 120)
+    }, realTime ? 24 : 90)
     return () => clearTimeout(t)
-  }, [hasSelection, radius, contrast, feather, shiftEdge, smooth, view, onionOpacity])
+  }, [paintVersion, radius, contrast, feather, shiftEdge, smooth, view, onionOpacity, realTime])
+
+  const pointerDoc = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const d = engine.activeDoc!
+    const canvas = previewRef.current!
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: clamp(((e.clientX - rect.left) / rect.width) * d.width, 0, Math.max(0, d.width - .001)),
+      y: clamp(((e.clientY - rect.top) / rect.height) * d.height, 0, Math.max(0, d.height - .001)),
+    }
+  }
+
+  const applyBrushPoint = (
+    x: number,
+    y: number,
+    mode: SmBrushMode,
+    target: Uint8ClampedArray | null,
+  ) => {
+    const d = engine.activeDoc
+    const alpha = manualAlphaRef.current
+    if (!d || !alpha) return
+    smPaintDab(alpha, d.width, d.height, x, y, brushSize, brushHardness, brushOpacity, mode, target)
+  }
+
+  const onPaintDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const d = engine.activeDoc
+    const alpha = manualAlphaRef.current
+    if (!d || !alpha || e.button !== 0) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const p = pointerDoc(e)
+    const mode: SmBrushMode = e.altKey ? 'subtract' : e.shiftKey ? 'add' : brushMode
+    // Refine Edge computes one high-quality target at stroke start, then the
+    // brush locally blends toward it. This avoids recomputing refinement for
+    // every pointermove while preserving the familiar paint-to-refine workflow.
+    const refineTarget = mode === 'refine'
+      ? imageOps.refineMask(new Uint8ClampedArray(alpha), d.width, d.height, {
+          radius: Math.max(1, radius),
+          contrast,
+          feather,
+          shiftEdge,
+          smooth: Math.max(1, smooth),
+        })
+      : null
+    paintRef.current = { pointerId: e.pointerId, lastX: p.x, lastY: p.y, mode, refineTarget }
+    applyBrushPoint(p.x, p.y, mode, refineTarget)
+    if (realTime) setPaintVersion(v => v + 1)
+  }
+
+  const onPaintMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const st = paintRef.current
+    if (!st || st.pointerId !== e.pointerId) return
+    const p = pointerDoc(e)
+    const dx = p.x - st.lastX, dy = p.y - st.lastY
+    const dist = Math.hypot(dx, dy)
+    const spacing = Math.max(1, brushSize * .14)
+    const ideal = Math.max(1, Math.ceil(dist / spacing))
+    const steps = Math.min(96, ideal)
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps
+      applyBrushPoint(st.lastX + dx * t, st.lastY + dy * t, st.mode, st.refineTarget)
+    }
+    st.lastX = p.x
+    st.lastY = p.y
+    if (realTime) setPaintVersion(v => v + 1)
+  }
+
+  const finishPaint = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const st = paintRef.current
+    if (!st || st.pointerId !== e.pointerId) return
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* capture already lost */ }
+    paintRef.current = null
+    setPaintVersion(v => v + 1)
+  }
+
+  const resetBrushEdits = () => {
+    const initial = initialAlphaRef.current
+    if (!initial) return
+    manualAlphaRef.current = new Uint8ClampedArray(initial)
+    paintRef.current = null
+    setPaintVersion(v => v + 1)
+  }
 
   if (!hasSelection) {
     return (
       <>
         <DialogHeader><DialogTitle>Select and Mask</DialogTitle></DialogHeader>
         <div className="py-6 text-xs text-muted-foreground text-center">
-          Make a selection first (marquee, lasso, wand, Select Subject…), then reopen Select and Mask.
+          Make a selection first (marquee, lasso, Selection Brush, wand, Select Subject…), then open Select and Mask.
         </div>
         <DialogFooter><Button variant="secondary" size="sm" onClick={onClose}>Close</Button></DialogFooter>
       </>
@@ -547,16 +712,52 @@ export function SelectMaskDialog({ onClose }: DialogProps) {
               </div>
             )}
           </div>
-          <canvas ref={previewRef} className="w-full rounded-md border bg-black" aria-label="Select and Mask preview" />
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Segmented<SmBrushMode>
+              value={brushMode}
+              onChange={setBrushMode}
+              options={[
+                { value: 'refine', label: 'Refine Edge' },
+                { value: 'add', label: 'Add' },
+                { value: 'subtract', label: 'Subtract' },
+              ]}
+            />
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] ml-auto" onClick={resetBrushEdits}>
+              <RotateCcw size={11} className="mr-1" /> Reset Brush
+            </Button>
+          </div>
+
+          <canvas
+            ref={previewRef}
+            className="w-full rounded-md border bg-black cursor-crosshair touch-none"
+            aria-label="Interactive Select and Mask preview"
+            onPointerDown={onPaintDown}
+            onPointerMove={onPaintMove}
+            onPointerUp={finishPaint}
+            onPointerCancel={finishPaint}
+          />
+
+          <div className="grid grid-cols-3 gap-2">
+            <SliderRow label="Brush Size" value={brushSize} min={2} max={500} step={1} unit=" px" onChange={setBrushSize} />
+            <SliderRow label="Hardness" value={brushHardness} min={0} max={100} unit="%" onChange={setBrushHardness} />
+            <SliderRow label="Opacity" value={brushOpacity} min={1} max={100} unit="%" onChange={setBrushOpacity} />
+          </div>
+          <CheckRow
+            label="Real-time refinement"
+            checked={realTime}
+            onChange={setRealTime}
+            hint="Update the preview while painting; turn off for very large documents and it refreshes on stroke release."
+          />
           <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground leading-snug">
             <Brush size={12} className="text-primary shrink-0 mt-0.5" />
             <span>
-              Refine Edge brush tip — for hair and fur, first paint the edge zone with a soft low-opacity Brush
-              (B), then come back here: Radius 3–6 + Smooth 2 cleans residue, Shift Edge −10 pulls in the fringes.
-              Preview updates live as you move the sliders.
+              Paint directly on the preview. Refine Edge blends the shared edge-refinement result only through the brushed zone;
+              Add/Subtract edits selection alpha. Hold Shift to add or Alt/Option to subtract temporarily. Cancel leaves the document selection untouched.
             </span>
           </div>
         </div>
+
         <div className="space-y-2.5">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-primary">Edge Detection</div>
           <SliderRow label="Radius" value={radius} min={0} max={50} step={0.5} onChange={setRadius} />
@@ -589,7 +790,13 @@ export function SelectMaskDialog({ onClose }: DialogProps) {
       <DialogFooter>
         <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
         <Button size="sm" onClick={() => {
-          engine.refineSelectionToMask({ radius, contrast, feather, shiftEdge, smooth, decontaminate }, output)
+          const source = manualAlphaRef.current
+          if (!source) return
+          engine.refineSelectionToMask(
+            { radius, contrast, feather, shiftEdge, smooth, decontaminate },
+            output,
+            source,
+          )
           store.pushToast(
             output === 'selection' ? 'Selection refined'
               : output === 'mask' ? 'Refined layer mask applied'
