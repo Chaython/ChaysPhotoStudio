@@ -1,12 +1,13 @@
 // Tool registry — aggregates every tool module
 import type { Tool, ToolId } from '../types'
 import { moveTool } from './move'
-import { marqueeRectTool, marqueeEllipseTool } from './marquee'
+import { marqueeRectTool, marqueeEllipseTool, marqueeRowTool, marqueeColumnTool } from './marquee'
 import { lassoTool } from './lasso'
 import { polygonLassoTool } from './polygon-lasso'
 import { magneticLassoTool } from './magnetic-lasso'
 import { measureTool } from './measure'
 import { objectSelectTool, quickSelectTool } from './select-tools'
+import { selectionBrushTool } from './selection-brush'
 import { magicWandTool } from './wand'
 import { brushTool, pencilTool } from './brush'
 import { mixerBrushTool } from './mixer-brush'
@@ -35,9 +36,12 @@ export const TOOLS: Record<ToolId, Tool> = {
   'move': moveTool,
   'marquee-rect': marqueeRectTool,
   'marquee-ellipse': marqueeEllipseTool,
+  'marquee-row': marqueeRowTool,
+  'marquee-column': marqueeColumnTool,
   'lasso': lassoTool,
   'polygon-lasso': polygonLassoTool,
   'magnetic-lasso': magneticLassoTool,
+  'selection-brush': selectionBrushTool,
   'measure': measureTool,
   'object-select': objectSelectTool,
   'quick-select': quickSelectTool,
