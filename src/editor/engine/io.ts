@@ -170,7 +170,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       blendMode: l.blendMode, locked: l.locked, clipped: l.clipped, maskEnabled: l.maskEnabled,
       transform: l.transform, smartFilters: l.smartFilters,
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
-      vectorMask: l.vectorMask ? { ...l.vectorMask, anchors: l.vectorMask.anchors.map(a => ({ ...a })) } : null,
+      vectorMask: cloneVectorMask(l.vectorMask),
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
     },
     canvas: l.canvas ? toDataURL(l.canvas) : undefined,
@@ -335,18 +335,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
       text: sl.props.text ?? null, shape: sl.props.shape ? { sides: 5, starInset: 45, ...sl.props.shape } : null,
       blendIf: sl.props.blendIf ?? null,
       fx: sl.props.fx ?? null,
-      vectorMask: sl.props.vectorMask && Array.isArray(sl.props.vectorMask.anchors)
-        ? {
-            enabled: sl.props.vectorMask.enabled !== false,
-            closed: !!sl.props.vectorMask.closed,
-            anchors: sl.props.vectorMask.anchors.map((a: any) => ({
-              x: Number(a.x) || 0, y: Number(a.y) || 0,
-              inX: Number(a.inX) || 0, inY: Number(a.inY) || 0,
-              outX: Number(a.outX) || 0, outY: Number(a.outY) || 0,
-              pair: a.pair !== false,
-            })),
-          }
-        : null,
+      vectorMask: normalizeVectorMask(sl.props.vectorMask),
       offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
       origin: sl.props.origin ?? null,
     })
