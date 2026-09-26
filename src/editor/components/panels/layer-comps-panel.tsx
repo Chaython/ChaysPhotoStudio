@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Check, ChevronLeft, ChevronRight, Copy, Layers, Pencil, Plus, RefreshCw,
   RotateCcw, Trash2, TriangleAlert,
@@ -19,10 +19,6 @@ export function LayerCompsPanel() {
   const [visibility, setVisibility] = useState(true)
   const [position, setPosition] = useState(true)
   const [appearance, setAppearance] = useState(true)
-
-  useEffect(() => {
-    setName('')
-  }, [doc?.id])
 
   const create = () => {
     if (!doc) return
