@@ -419,6 +419,7 @@ function blurOp(x: number, y: number, p: PointerInfo) {
   const shape = retouchBrushShape(opts, p)
   const r = shape.radius
   const strength = ((opts.strength ?? 60) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
+  const protectEdges = clamp(Number(opts.protectEdges ?? 0), 0, 100) / 100
   // kernel radius scaled to brush; big brushes sample coarser windows via the
   // sliding window (equivalent to stride sampling but exact)
   const rad = clamp(Math.round(r / 4), 1, 60)
@@ -427,7 +428,13 @@ function blurOp(x: number, y: number, p: PointerInfo) {
     const d = region.data
     const [br, bg, bb] = boxBlurRegion(src, rw, rh, rad)
     for (let i = 0; i < rw * rh; i++) {
-      const f = falloff[i] * strength
+      const px = i % rw, py = Math.floor(i / rw)
+      const edge = protectEdges > 0 ? localEdgeStrength(src, rw, rh, px, py) / 255 : 0
+      // Strong edges keep progressively more of the source. Squaring the
+      // normalized edge response preserves gentle texture while protecting
+      // high-contrast boundaries.
+      const edgeProtect = 1 - protectEdges * edge * edge
+      const f = falloff[i] * strength * edgeProtect
       if (f <= 0.01) continue
       const j = i * 4
       d[j] = src[j] * (1 - f) + br[i] * f
