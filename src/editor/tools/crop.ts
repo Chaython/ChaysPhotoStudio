@@ -407,7 +407,11 @@ async function commitCrop() {
     }
 
     cropRect = null
-    engine.cropTo(r, { deletePixels: opts.deletePixels !== false, ...target })
+    engine.cropTo(r, {
+    deletePixels: opts.deletePixels !== false,
+    ...target,
+    resolutionPpi: Number(opts.resolutionPpi) > 0 ? Number(opts.resolutionPpi) : undefined,
+  })
   } catch (err) {
     engine.ui?.toast(err instanceof Error ? err.message : 'Content-Aware Crop failed', 'error')
   } finally {
