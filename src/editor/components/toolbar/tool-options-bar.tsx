@@ -12,6 +12,7 @@ import type { ControlDef, ToolId } from '../../types'
 import { BrushTipPicker } from './brush-tip-picker'
 import { cn } from '@/lib/utils'
 import * as gradientPresets from '../../plugins/gradient-presets'
+import { cleanMixerBrush, loadMixerBrushFromForeground } from '../../tools/mixer-brush'
 
 /** fixed-height vertical divider — shadcn Separator stretches h-full which
  *  breaks in a wrapping flex row, so the options bar uses plain divs */
@@ -377,6 +378,29 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
           <div className="flex items-center gap-2 shrink-0 h-7">
             {label}
             <GradientToolStopsControl value={value} onChange={onChange} />
+          </div>
+        )
+      }
+      if (control.customId === 'mixer-brush-actions') {
+        return (
+          <div className="flex items-center gap-1 shrink-0 h-7">
+            {label}
+            <button
+              type="button"
+              className="h-6 rounded border border-border px-2 text-[10px] hover:bg-accent"
+              onClick={() => loadMixerBrushFromForeground()}
+              title="Load the Mixer Brush reservoir with the foreground color"
+            >
+              Load
+            </button>
+            <button
+              type="button"
+              className="h-6 rounded border border-border px-2 text-[10px] hover:bg-accent"
+              onClick={() => cleanMixerBrush()}
+              title="Clean the Mixer Brush reservoir; the next stroke starts by picking up canvas color"
+            >
+              Clean
+            </button>
           </div>
         )
       }

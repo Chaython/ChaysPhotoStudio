@@ -6,8 +6,9 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, walkDabs, drawBrushCursor, softDab } from './shared'
+import { getOptions, getFgColor, walkDabs } from './shared'
 import { clamp, hexToRgb, rgbToHex } from '../utils/canvas'
+import { getTip, drawTipCursor, tipExtentMul } from './brush-tips'
 
 type RGB = [number, number, number]
 
@@ -31,8 +32,21 @@ function sampleAt(x: number, y: number, radius: number): RGB | null {
   return hex ? hexToRgb(hex) : null
 }
 
-function resetReservoir() {
+function loadForegroundReservoir() {
   reservoir = hexToRgb(getFgColor())
+}
+
+export function loadMixerBrushFromForeground(showToast = true) {
+  loadForegroundReservoir()
+  if (showToast) engine.ui?.toast('Mixer Brush loaded with foreground color', 'info')
+  engine.requestRender()
+}
+
+export function cleanMixerBrush(showToast = true) {
+  reservoir = null
+  bristlePrev = null
+  if (showToast) engine.ui?.toast('Mixer Brush cleaned', 'info')
+  engine.requestRender()
 }
 
 function mixerDab(x: number, y: number, p: PointerInfo) {
@@ -51,8 +65,10 @@ function mixerDab(x: number, y: number, p: PointerInfo) {
     flow *= .2 + .8 * pressure
   }
 
-  if (!reservoir) resetReservoir()
   const picked = sampleAt(x, y, Math.max(0, Math.round(size * .06)))
+  // A cleaned brush starts by picking up the image instead of silently
+  // reloading foreground paint. Explicit Load Brush fills it with FG.
+  if (!reservoir) reservoir = picked ? [...picked] as RGB : hexToRgb(getFgColor())
   if (picked) {
     // Wet controls how quickly the brush drinks the underlying image.
     reservoir = lerpRGB(reservoir!, picked, wet * (.35 + .65 * (1 - load)))
@@ -72,7 +88,9 @@ function mixerDab(x: number, y: number, p: PointerInfo) {
     const stiffness = clamp((Number(opts.bristleStiffness) || 65) / 100, 0, 1)
 
     let angle = 0
-    if (p.pointerType === 'pen' && opts.tiltBristles !== false && Math.hypot(p.tiltX, p.tiltY) > 1) {
+    if (p.pointerType === 'pen' && opts.twistBristles === true && Math.abs(p.twist) > .01) {
+      angle = p.twist * Math.PI / 180
+    } else if (p.pointerType === 'pen' && opts.tiltBristles !== false && Math.hypot(p.tiltX, p.tiltY) > 1) {
       angle = Math.atan2(p.tiltY, p.tiltX)
     } else if (bristlePrev) {
       const dx = x - bristlePrev.x, dy = y - bristlePrev.y
@@ -115,12 +133,37 @@ function mixerDab(x: number, y: number, p: PointerInfo) {
       Math.max(4, radius + length),
     )
   } else {
+    const tipId = typeof opts.tip === 'string' && getTip(opts.tip) ? opts.tip : 'round-soft'
+    const tip = getTip(tipId) ?? getTip('round-soft')!
+    let angleDeg = Number(opts.angle) || 0
+    if (p.pointerType === 'pen' && opts.twistAngle === true && Math.abs(p.twist) > .01) {
+      angleDeg += p.twist
+    } else if (p.pointerType === 'pen' && opts.tiltAngle === true && Math.hypot(p.tiltX, p.tiltY) > 1) {
+      angleDeg += Math.atan2(p.tiltY, p.tiltX) * 180 / Math.PI
+    } else if (opts.angleFollow === true && bristlePrev) {
+      const dx = x - bristlePrev.x, dy = y - bristlePrev.y
+      if (Math.hypot(dx, dy) > .1) angleDeg += Math.atan2(dy, dx) * 180 / Math.PI
+    }
+
+    let roundness = clamp(Number(opts.roundness ?? 100), 10, 100)
+    if (p.pointerType === 'pen' && opts.tiltRoundness === true) {
+      const tilt = clamp(Math.hypot(p.tiltX, p.tiltY) / 90, 0, 1)
+      roundness = clamp(roundness * (1 - tilt * .72), 10, 100)
+    }
     bristlePrev = { x, y }
+    const extent = tipExtentMul(tipId)
     engine.dab(
       x, y,
-      (ctx, dx, dy) => softDab(ctx, dx, dy, radius, hardness, color),
+      (ctx, dx, dy) => tip.drawDab(ctx, dx, dy, {
+        size,
+        hardness,
+        angle: angleDeg,
+        roundness,
+        color,
+        rand: Math.random,
+      }),
       flow,
-      Math.max(4, radius),
+      Math.max(4, radius * extent),
     )
   }
 }
@@ -131,7 +174,7 @@ function finish() {
   last = null
   bristlePrev = null
   engine.endStroke('Mixer Brush Stroke')
-  if (getOptions('mixer-brush').autoClean === true) resetReservoir()
+  if (getOptions('mixer-brush').autoClean === true) cleanMixerBrush(false)
 }
 
 export const mixerBrushTool: Tool = {
@@ -155,7 +198,6 @@ export const mixerBrushTool: Tool = {
       return
     }
 
-    if (!reservoir || opts.autoClean === true) resetReservoir()
     engine.beginStroke(layer.id, { opacity: 100 })
     active = true
     last = { x: p.docX, y: p.docY }
@@ -177,6 +219,20 @@ export const mixerBrushTool: Tool = {
 
   renderCursor(ctx, view, w, h, mouse) {
     void w; void h
-    drawBrushCursor(ctx, mouse, Number(getOptions('mixer-brush').size) || 55, view.zoom)
+    const opts = getOptions('mixer-brush')
+    if (opts.bristle === true) {
+      drawTipCursor(ctx, mouse, Number(opts.size) || 55, view.zoom, 'flat', 0, 65)
+      return
+    }
+    const tipId = typeof opts.tip === 'string' && getTip(opts.tip) ? opts.tip : 'round-soft'
+    drawTipCursor(
+      ctx,
+      mouse,
+      Number(opts.size) || 55,
+      view.zoom,
+      tipId,
+      Number(opts.angle) || 0,
+      clamp(Number(opts.roundness ?? 100), 10, 100),
+    )
   },
 }
