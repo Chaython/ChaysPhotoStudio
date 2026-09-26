@@ -89,7 +89,10 @@ function commit() {
         targetH: Math.max(1, Math.round(Number(opts.targetHeight) || 1)),
       }
     : {}
-  engine.perspectiveCropTo(quad.map(p => ({ ...p })), target)
+  engine.perspectiveCropTo(quad.map(p => ({ ...p })), {
+    ...target,
+    resolutionPpi: Number(opts.resolutionPpi) > 0 ? Number(opts.resolutionPpi) : undefined,
+  })
   quad = null
   drag = null
   engine.pokeOverlay()
