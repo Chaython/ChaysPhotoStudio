@@ -18,7 +18,7 @@ import { engine } from '../../engine/engine'
 import { openFiles, placeImageAsSmartLayer } from '../../engine/io'
 import { startAutoSave } from '../../engine/autosave'
 import { dataUrlToCanvas } from '../../image-ops'
-import { getViewport, setCursorCallbacks } from '../../engine/render'
+import { dispatchEditorKey, getViewport, setCursorCallbacks, setVirtualInputState } from '../../engine/render'
 import { TOOL_DEFS } from '../../constants/tools'
 import { setActiveTool } from '../../tools/registry'
 import type { ToolId } from '../../types'
@@ -32,6 +32,13 @@ export function EditorApp() {
     const saved = window.localStorage.getItem('chays-photo-studio-theme')
     return saved === 'light' || saved === 'oled' || saved === 'dark' ? saved : 'dark'
   })
+  const [mobileMode, setMobileMode] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const saved = window.localStorage.getItem('zphoto-mobile-mode')
+    if (saved === '1') return true
+    if (saved === '0') return false
+    return window.matchMedia?.('(pointer: coarse)').matches === true || window.innerWidth < 768
+  })
   const [mobilePanels, setMobilePanels] = useState(false)
   const [mobileTools, setMobileTools] = useState(false)
   const [dropping, setDropping] = useState(false)
@@ -44,6 +51,17 @@ export function EditorApp() {
     document.documentElement.classList.toggle('zphoto', true)
     window.localStorage.setItem('chays-photo-studio-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    window.localStorage.setItem('zphoto-mobile-mode', mobileMode ? '1' : '0')
+    document.documentElement.classList.toggle('zphoto-mobile', mobileMode)
+    if (!mobileMode) {
+      setMobilePanels(false)
+      setMobileTools(false)
+      setVirtualInputState({ shift: false, alt: false, ctrl: false, pan: false })
+    }
+    return () => document.documentElement.classList.remove('zphoto-mobile')
+  }, [mobileMode])
 
   // engine → store bridge + ui bridge
   useEffect(() => {
