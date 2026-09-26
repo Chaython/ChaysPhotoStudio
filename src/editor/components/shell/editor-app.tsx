@@ -263,62 +263,80 @@ export function EditorApp() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none" style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
-      <MenuBar theme={theme} setTheme={setTheme} />
-      <div className="flex-1 min-h-0 flex flex-col-reverse md:flex-row">
-        {/* mobile: panels drawer above canvas; desktop: toolbar + left dock + canvas + right dock */}
+      <MenuBar theme={theme} setTheme={setTheme} mobileMode={mobileMode} setMobileMode={setMobileMode} />
+      <div className={cn('flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
+        {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
         <div className="flex flex-1 min-h-0 min-w-0">
-          <div className="hidden md:flex flex-col">
-            <NativeModuleShell id="tools" axis="vertical">
-              <Toolbar />
-            </NativeModuleShell>
-          </div>
-          <LeftDock />
-          <div data-workspace className="flex flex-1 min-w-0 flex-col">
-            <div className="md:hidden">
-              <Toolbar compact />
-              <ToolOptionsBar />
-            </div>
-            <div className="hidden md:block">
-              <NativeModuleShell id="tool-options" axis="horizontal">
-                <ToolOptionsBar embedded />
+          {!mobileMode && (
+            <div className="hidden md:flex flex-col">
+              <NativeModuleShell id="tools" axis="vertical">
+                <Toolbar />
               </NativeModuleShell>
             </div>
-            {/* top dock strip — panels dropped at the top of the canvas dock here */}
-            <TopDock />
+          )}
+          {!mobileMode && <LeftDock />}
+          <div data-workspace className="flex flex-1 min-w-0 flex-col">
+            {mobileMode ? (
+              <div>
+                <Toolbar compact />
+                <ToolOptionsBar mobile />
+              </div>
+            ) : (
+              <>
+                <div className="md:hidden">
+                  <Toolbar compact />
+                  <ToolOptionsBar />
+                </div>
+                <div className="hidden md:block">
+                  <NativeModuleShell id="tool-options" axis="horizontal">
+                    <ToolOptionsBar embedded />
+                  </NativeModuleShell>
+                </div>
+              </>
+            )}
+            {!mobileMode && <TopDock />}
             {hasDoc ? <CanvasWorkspace /> : (
               <div className="flex-1 flex flex-col min-h-0">
                 <WelcomeScreen />
-                <MobileStatusBar />
+                {mobileMode && <MobileStatusBar />}
               </div>
             )}
           </div>
         </div>
-        {/* desktop right dock (self-hides below md) */}
-        <PanelDock />
-        {/* mobile drawer */}
-        {mobilePanels && (
-          <div className="md:hidden fixed inset-0 z-40 flex">
+
+        {!mobileMode && <PanelDock />}
+
+        {mobileMode && mobilePanels && (
+          <div className="fixed inset-0 z-40 flex">
             <div className="flex-1 bg-black/50" onClick={() => setMobilePanels(false)} />
-            <div className="w-[85vw] max-w-xs h-full shadow-2xl animate-in slide-in-from-right-4">
+            <div className="w-[88vw] max-w-sm h-full shadow-2xl animate-in slide-in-from-right-4">
               <PanelDock mobile />
             </div>
           </div>
         )}
       </div>
 
-      {/* floating panel windows (fixed click-through layer, above workspace) */}
-      <FloatingPanels />
+      {mobileMode && hasDoc && <MobileInputBar />}
 
-      {/* toasts */}
-      <Toasts />
+      {/* Desktop can float panels; touch mode keeps all panels in the drawer. */}
+      {!mobileMode && <FloatingPanels />}
+
+      <Toasts mobileMode={mobileMode && hasDoc} />
       <DialogManager />
-      <MobileToolsToggle
-        onOpenPanels={() => setMobilePanels(v => !v)}
-        panelsOpen={mobilePanels}
-        onOpenTools={() => setMobileTools(v => !v)}
-        toolsOpen={mobileTools}
-      />
-      {mobileTools && <MobileToolsSheet onClose={() => setMobileTools(false)} />}
+
+      {mobileMode && (
+        <>
+          <MobileToolsToggle
+            onOpenPanels={() => setMobilePanels(v => !v)}
+            panelsOpen={mobilePanels}
+            onOpenTools={() => setMobileTools(v => !v)}
+            toolsOpen={mobileTools}
+            raised={hasDoc}
+          />
+          {mobileTools && <MobileToolsSheet onClose={() => setMobileTools(false)} />}
+        </>
+      )}
+
       {/* drop overlay (drag images onto the app) */}
       {dropping && (
         <div className="fixed inset-0 z-[90] pointer-events-none flex items-center justify-center p-4">
@@ -338,10 +356,10 @@ export function EditorApp() {
   )
 }
 
-function Toasts() {
+function Toasts({ mobileMode = false }: { mobileMode?: boolean }) {
   const toasts = useEditorStore(s => s.toasts)
   return (
-    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 items-center pointer-events-none">
+    <div className={cn('fixed left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 items-center pointer-events-none', mobileMode ? 'bottom-20' : 'bottom-10')}>
       {toasts.map(t => (
         <div
           key={t.id}
