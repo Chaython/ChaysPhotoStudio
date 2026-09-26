@@ -8,7 +8,7 @@ export const magicWandTool: Tool = {
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
     const opts = getOptions('magic-wand')
-    engine.magicWand(p.docX, p.docY, {
+    void engine.magicWand(p.docX, p.docY, {
       tolerance: opts.tolerance ?? 32,
       contiguous: opts.contiguous !== false,
       diagonal: opts.diagonal === true,
