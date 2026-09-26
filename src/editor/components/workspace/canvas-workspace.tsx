@@ -16,7 +16,7 @@ import { TOOL_MAP } from '../../constants/tools'
 import { DocumentTabs } from './document-tabs'
 import { NativeModuleShell } from '../panels/native-module-shell'
 
-export function CanvasWorkspace() {
+export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mainRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
@@ -145,15 +145,21 @@ export function CanvasWorkspace() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-workspace">
-      {/* Open files is native here by default, but can be floated/docked on desktop. */}
-      <div className="md:hidden">
+      {/* Touch mode always keeps document tabs in the simple swipeable strip, even on landscape tablets. */}
+      {mobile ? (
         <DocumentTabs />
-      </div>
-      <div className="hidden md:block">
-        <NativeModuleShell id="documents" axis="horizontal">
-          <DocumentTabs embedded />
-        </NativeModuleShell>
-      </div>
+      ) : (
+        <>
+          <div className="md:hidden">
+            <DocumentTabs />
+          </div>
+          <div className="hidden md:block">
+            <NativeModuleShell id="documents" axis="horizontal">
+              <DocumentTabs embedded />
+            </NativeModuleShell>
+          </div>
+        </>
+      )}
 
       {/* canvas host — wrapped as the right-click context-menu trigger (Move tool) */}
       <div className="relative flex-1 min-h-0 overflow-hidden" style={{ ['--workspace-bg' as any]: 'var(--ws-bg)' }}>
@@ -173,7 +179,7 @@ export function CanvasWorkspace() {
           </div>
         )}
         {activeDocId && <TextLayerEditor />}
-        <ViewControls />
+        <ViewControls mobile={mobile} />
       </div>
       <StatusBar />
     </div>
@@ -182,13 +188,19 @@ export function CanvasWorkspace() {
 
 /** on-canvas view controls: zoom out/in, fit-to-page, fit-content (blank
  *  space), 100% — mirrored in View menu + shortcuts (Ctrl+0 / Ctrl+Shift+0) */
-function ViewControls() {
+function ViewControls({ mobile = false }: { mobile?: boolean }) {
   const zoom = useEditorStore(s => s.zoom)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
-  const btn = 'h-7 w-7 flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 rounded transition-colors disabled:opacity-40 disabled:pointer-events-none'
+  const btn = cn(
+    'flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 rounded transition-colors disabled:opacity-40 disabled:pointer-events-none touch-manipulation',
+    mobile ? 'h-10 w-10' : 'h-7 w-7',
+  )
   return (
     <div
-      className="absolute bottom-2 right-2 flex items-center gap-0.5 bg-black/65 backdrop-blur-sm border border-white/10 rounded-lg px-1 py-0.5 pointer-events-auto shadow-lg"
+      className={cn(
+        'absolute bottom-2 right-2 flex items-center gap-0.5 bg-black/65 backdrop-blur-sm border border-white/10 rounded-lg px-1 pointer-events-auto shadow-lg',
+        mobile ? 'py-1' : 'py-0.5',
+      )}
       role="group"
       aria-label="View zoom controls"
     >
@@ -196,7 +208,7 @@ function ViewControls() {
         <ZoomOut size={13} />
       </button>
       <button
-        className="h-7 min-w-11 px-1 text-[10px] font-mono text-white/85 hover:text-white hover:bg-white/10 rounded transition-colors"
+        className={cn('px-1 text-[10px] font-mono text-white/85 hover:text-white hover:bg-white/10 rounded transition-colors touch-manipulation', mobile ? 'h-10 min-w-14' : 'h-7 min-w-11')}
         aria-label="Actual pixels (100%)"
         title="Actual pixels (Ctrl+1)"
         onClick={() => engine.setZoom(1)}

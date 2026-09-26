@@ -1,6 +1,6 @@
 'use client'
 // Chay's Photo Studio — main application shell
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import * as Icons from 'lucide-react'
 import { MenuBar } from './menu-bar'
 import { Toolbar } from '../toolbar/toolbar'
@@ -18,7 +18,7 @@ import { engine } from '../../engine/engine'
 import { openFiles, placeImageAsSmartLayer } from '../../engine/io'
 import { startAutoSave } from '../../engine/autosave'
 import { dataUrlToCanvas } from '../../image-ops'
-import { getViewport, setCursorCallbacks } from '../../engine/render'
+import { dispatchEditorKey, getViewport, setCursorCallbacks, setVirtualInputState } from '../../engine/render'
 import { TOOL_DEFS } from '../../constants/tools'
 import { setActiveTool } from '../../tools/registry'
 import type { ToolId } from '../../types'
@@ -32,6 +32,13 @@ export function EditorApp() {
     const saved = window.localStorage.getItem('chays-photo-studio-theme')
     return saved === 'light' || saved === 'oled' || saved === 'dark' ? saved : 'dark'
   })
+  const [mobileMode, setMobileMode] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const saved = window.localStorage.getItem('zphoto-mobile-mode')
+    if (saved === '1') return true
+    if (saved === '0') return false
+    return window.matchMedia?.('(pointer: coarse)').matches === true || window.innerWidth < 768
+  })
   const [mobilePanels, setMobilePanels] = useState(false)
   const [mobileTools, setMobileTools] = useState(false)
   const [dropping, setDropping] = useState(false)
@@ -44,6 +51,17 @@ export function EditorApp() {
     document.documentElement.classList.toggle('zphoto', true)
     window.localStorage.setItem('chays-photo-studio-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    window.localStorage.setItem('zphoto-mobile-mode', mobileMode ? '1' : '0')
+    document.documentElement.classList.toggle('zphoto-mobile', mobileMode)
+    if (!mobileMode) {
+      setMobilePanels(false)
+      setMobileTools(false)
+      setVirtualInputState({ shift: false, alt: false, ctrl: false, pan: false })
+    }
+    return () => document.documentElement.classList.remove('zphoto-mobile')
+  }, [mobileMode])
 
   // engine → store bridge + ui bridge
   useEffect(() => {
@@ -245,62 +263,80 @@ export function EditorApp() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none" style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
-      <MenuBar theme={theme} setTheme={setTheme} />
-      <div className="flex-1 min-h-0 flex flex-col-reverse md:flex-row">
-        {/* mobile: panels drawer above canvas; desktop: toolbar + left dock + canvas + right dock */}
+      <MenuBar theme={theme} setTheme={setTheme} mobileMode={mobileMode} setMobileMode={setMobileMode} />
+      <div className={cn('flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
+        {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
         <div className="flex flex-1 min-h-0 min-w-0">
-          <div className="hidden md:flex flex-col">
-            <NativeModuleShell id="tools" axis="vertical">
-              <Toolbar />
-            </NativeModuleShell>
-          </div>
-          <LeftDock />
-          <div data-workspace className="flex flex-1 min-w-0 flex-col">
-            <div className="md:hidden">
-              <Toolbar compact />
-              <ToolOptionsBar />
-            </div>
-            <div className="hidden md:block">
-              <NativeModuleShell id="tool-options" axis="horizontal">
-                <ToolOptionsBar embedded />
+          {!mobileMode && (
+            <div className="hidden md:flex flex-col">
+              <NativeModuleShell id="tools" axis="vertical">
+                <Toolbar />
               </NativeModuleShell>
             </div>
-            {/* top dock strip — panels dropped at the top of the canvas dock here */}
-            <TopDock />
-            {hasDoc ? <CanvasWorkspace /> : (
+          )}
+          {!mobileMode && <LeftDock />}
+          <div data-workspace className="flex flex-1 min-w-0 flex-col">
+            {mobileMode ? (
+              <div>
+                <Toolbar compact />
+                <ToolOptionsBar mobile />
+              </div>
+            ) : (
+              <>
+                <div className="md:hidden">
+                  <Toolbar compact />
+                  <ToolOptionsBar />
+                </div>
+                <div className="hidden md:block">
+                  <NativeModuleShell id="tool-options" axis="horizontal">
+                    <ToolOptionsBar embedded />
+                  </NativeModuleShell>
+                </div>
+              </>
+            )}
+            {!mobileMode && <TopDock />}
+            {hasDoc ? <CanvasWorkspace mobile={mobileMode} /> : (
               <div className="flex-1 flex flex-col min-h-0">
                 <WelcomeScreen />
-                <MobileStatusBar />
+                {mobileMode && <MobileStatusBar />}
               </div>
             )}
           </div>
         </div>
-        {/* desktop right dock (self-hides below md) */}
-        <PanelDock />
-        {/* mobile drawer */}
-        {mobilePanels && (
-          <div className="md:hidden fixed inset-0 z-40 flex">
+
+        {!mobileMode && <PanelDock />}
+
+        {mobileMode && mobilePanels && (
+          <div className="fixed inset-0 z-40 flex">
             <div className="flex-1 bg-black/50" onClick={() => setMobilePanels(false)} />
-            <div className="w-[85vw] max-w-xs h-full shadow-2xl animate-in slide-in-from-right-4">
+            <div className="w-[88vw] max-w-sm h-full shadow-2xl animate-in slide-in-from-right-4">
               <PanelDock mobile />
             </div>
           </div>
         )}
       </div>
 
-      {/* floating panel windows (fixed click-through layer, above workspace) */}
-      <FloatingPanels />
+      {mobileMode && hasDoc && <MobileInputBar />}
 
-      {/* toasts */}
-      <Toasts />
+      {/* Desktop can float panels; touch mode keeps all panels in the drawer. */}
+      {!mobileMode && <FloatingPanels />}
+
+      <Toasts mobileMode={mobileMode && hasDoc} />
       <DialogManager />
-      <MobileToolsToggle
-        onOpenPanels={() => setMobilePanels(v => !v)}
-        panelsOpen={mobilePanels}
-        onOpenTools={() => setMobileTools(v => !v)}
-        toolsOpen={mobileTools}
-      />
-      {mobileTools && <MobileToolsSheet onClose={() => setMobileTools(false)} />}
+
+      {mobileMode && (
+        <>
+          <MobileToolsToggle
+            onOpenPanels={() => setMobilePanels(v => !v)}
+            panelsOpen={mobilePanels}
+            onOpenTools={() => setMobileTools(v => !v)}
+            toolsOpen={mobileTools}
+            raised={hasDoc}
+          />
+          {mobileTools && <MobileToolsSheet onClose={() => setMobileTools(false)} />}
+        </>
+      )}
+
       {/* drop overlay (drag images onto the app) */}
       {dropping && (
         <div className="fixed inset-0 z-[90] pointer-events-none flex items-center justify-center p-4">
@@ -320,10 +356,10 @@ export function EditorApp() {
   )
 }
 
-function Toasts() {
+function Toasts({ mobileMode = false }: { mobileMode?: boolean }) {
   const toasts = useEditorStore(s => s.toasts)
   return (
-    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 items-center pointer-events-none">
+    <div className={cn('fixed left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 items-center pointer-events-none', mobileMode ? 'bottom-20' : 'bottom-10')}>
       {toasts.map(t => (
         <div
           key={t.id}
@@ -342,6 +378,115 @@ function Toasts() {
   )
 }
 
+
+function MobileInputBar() {
+  const activeTool = useEditorStore(s => s.activeTool)
+  const toolOptions = useEditorStore(s => s.toolOptions[s.activeTool])
+  const setToolOption = useEditorStore(s => s.setToolOption)
+  const [mods, setMods] = useState({ shift: false, alt: false, ctrl: false, pan: false })
+  const def = TOOL_DEFS.find(t => t.id === activeTool)
+  const sizeCtl = def?.options.find(o => o.key === 'size')
+  const size = Number(toolOptions?.size ?? def?.defaults.size)
+
+  useEffect(() => {
+    setVirtualInputState(mods)
+    return () => setVirtualInputState({ shift: false, alt: false, ctrl: false, pan: false })
+  }, [mods])
+
+  const toggle = (key: keyof typeof mods) => {
+    setMods(m => ({ ...m, [key]: !m[key] }))
+  }
+
+  const send = (key: string) => dispatchEditorKey(key, { shift: mods.shift })
+
+  const nudgeSize = (dir: -1 | 1) => {
+    if (!def || !sizeCtl || !Number.isFinite(size)) return
+    const step = size >= 200 ? 25 : size >= 100 ? 10 : size >= 50 ? 5 : size >= 10 ? 2 : 1
+    const next = Math.max(sizeCtl.min ?? 1, Math.min(sizeCtl.max ?? 500, size + dir * step))
+    setToolOption(activeTool, 'size', next)
+  }
+
+  const modifier = (key: keyof typeof mods, label: string, hint: string) => (
+    <button
+      type="button"
+      className={cn(
+        'h-10 min-w-12 px-2 rounded-md border text-[10px] font-semibold touch-manipulation transition-colors',
+        mods[key]
+          ? 'border-primary bg-primary/20 text-primary'
+          : 'border-border bg-background/60 text-muted-foreground active:bg-accent',
+      )}
+      onClick={() => toggle(key)}
+      aria-pressed={mods[key]}
+      title={hint}
+    >
+      {label}
+    </button>
+  )
+
+  const action = (label: string, key: string, Icon: ComponentType<{ size?: number }>, hint: string) => (
+    <button
+      type="button"
+      className="h-10 min-w-11 px-2 rounded-md border border-border bg-background/60 text-muted-foreground active:bg-accent active:text-foreground flex items-center justify-center gap-1 touch-manipulation"
+      onClick={() => send(key)}
+      title={hint}
+      aria-label={hint}
+    >
+      <Icon size={14} />
+      <span className="text-[9px]">{label}</span>
+    </button>
+  )
+
+  return (
+    <div className="h-[58px] flex-shrink-0 border-t bg-panel/95 backdrop-blur supports-[backdrop-filter]:bg-panel/90">
+      <div className="h-full flex items-center gap-1.5 overflow-x-auto zphoto-scroll px-2 py-1.5" role="toolbar" aria-label="Touch modifiers and tool actions">
+        {modifier('shift', 'Shift', 'Virtual Shift — add selections, constrain movement, or use the tool’s Shift behavior')}
+        {modifier('alt', 'Alt', 'Virtual Alt / Option — subtract selections, sample clone/heal sources, or use the tool’s Alt behavior')}
+        {modifier('ctrl', 'Ctrl', 'Virtual Ctrl / Cmd — edit paths, multi-select, or use the tool’s Ctrl/Cmd behavior')}
+        {modifier('pan', 'Pan', 'Pan the canvas with one finger without changing tools')}
+
+        <div className="h-8 w-px bg-border shrink-0 mx-0.5" />
+
+        {action('Cancel', 'Escape', Icons.X, 'Cancel the current tool operation (Escape)')}
+        {action('Done', 'Enter', Icons.Check, 'Commit/finish the current tool operation (Enter)')}
+        {action('Back', 'Backspace', Icons.Undo2, 'Remove the last point or perform the active tool’s Backspace action')}
+        {action('Delete', 'Delete', Icons.Trash2, 'Delete the selected point/content or perform the active tool’s Delete action')}
+
+        {sizeCtl && Number.isFinite(size) && (
+          <>
+            <div className="h-8 w-px bg-border shrink-0 mx-0.5" />
+            <button type="button" className="h-10 min-w-10 rounded-md border bg-background/60 active:bg-accent" onClick={() => nudgeSize(-1)} title="Decrease brush/tool size" aria-label="Decrease tool size">
+              <Icons.Minus size={15} className="mx-auto" />
+            </button>
+            <div className="min-w-10 text-center text-[9px] text-muted-foreground tabular-nums">
+              <div className="font-medium text-foreground">{Math.round(size)}</div>
+              <div>Size</div>
+            </div>
+            <button type="button" className="h-10 min-w-10 rounded-md border bg-background/60 active:bg-accent" onClick={() => nudgeSize(1)} title="Increase brush/tool size" aria-label="Increase tool size">
+              <Icons.Plus size={15} className="mx-auto" />
+            </button>
+          </>
+        )}
+
+        <div className="h-8 w-px bg-border shrink-0 mx-0.5" />
+
+        <button type="button" className="h-10 w-10 shrink-0 rounded-md border bg-background/60 active:bg-accent" onClick={() => send('ArrowLeft')} aria-label="Nudge left"><Icons.ArrowLeft size={14} className="mx-auto" /></button>
+        <button type="button" className="h-10 w-10 shrink-0 rounded-md border bg-background/60 active:bg-accent" onClick={() => send('ArrowUp')} aria-label="Nudge up"><Icons.ArrowUp size={14} className="mx-auto" /></button>
+        <button type="button" className="h-10 w-10 shrink-0 rounded-md border bg-background/60 active:bg-accent" onClick={() => send('ArrowDown')} aria-label="Nudge down"><Icons.ArrowDown size={14} className="mx-auto" /></button>
+        <button type="button" className="h-10 w-10 shrink-0 rounded-md border bg-background/60 active:bg-accent" onClick={() => send('ArrowRight')} aria-label="Nudge right"><Icons.ArrowRight size={14} className="mx-auto" /></button>
+
+        <button
+          type="button"
+          className="h-10 min-w-12 px-2 rounded-md border border-border bg-background/60 text-[9px] text-muted-foreground active:bg-accent"
+          onClick={() => setMods({ shift: false, alt: false, ctrl: false, pan: false })}
+          title="Release all virtual modifiers"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function MobileStatusBar() {
   return (
     <div className="h-7 flex items-center px-3 bg-panel border-t text-[10px] text-muted-foreground flex-shrink-0">
@@ -350,14 +495,15 @@ function MobileStatusBar() {
   )
 }
 
-function MobileToolsToggle({ onOpenPanels, panelsOpen, onOpenTools, toolsOpen }: {
+function MobileToolsToggle({ onOpenPanels, panelsOpen, onOpenTools, toolsOpen, raised }: {
   onOpenPanels(): void
   panelsOpen: boolean
   onOpenTools(): void
   toolsOpen: boolean
+  raised: boolean
 }) {
   return (
-    <div className="md:hidden fixed right-3 bottom-11 z-40 flex flex-col gap-2">
+    <div className={cn('fixed right-3 z-40 flex flex-col gap-2', raised ? 'bottom-[72px]' : 'bottom-11')}>
       <button
         className="w-11 h-11 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform"
         onClick={onOpenPanels}
@@ -401,7 +547,7 @@ function MobileToolsSheet({ onClose }: { onClose(): void }) {
   }
 
   return (
-    <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-label="Quick tools">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-label="Quick tools">
       <div className="flex-1 bg-black/50" onClick={onClose} />
       <div className="bg-panel border-t rounded-t-xl max-h-[65vh] flex flex-col animate-in slide-in-from-bottom-4 duration-200 shadow-2xl">
         <div className="flex items-center px-4 h-10 border-b flex-shrink-0">

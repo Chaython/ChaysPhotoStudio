@@ -3,7 +3,7 @@ import { MenubarMenu, MenubarTrigger, MenubarContent, MenubarItem, MenubarSepara
 import type { MenuItem } from '../../constants/menus'
 import { MENUS, PLUGINS_MENU_INDEX, getPluginsMenuItems } from '../../constants/menus'
 import { useEditorStore } from '../../store'
-import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, RotateCcw, LayoutGrid, Check } from 'lucide-react'
+import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, RotateCcw, LayoutGrid, Check, Smartphone } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -53,7 +53,12 @@ function renderItems(items: MenuItem[], depth = 0): React.ReactNode[] {
 
 type AppTheme = 'dark' | 'light' | 'oled'
 
-export function MenuBar({ theme, setTheme }: { theme: AppTheme; setTheme: (theme: AppTheme) => void }) {
+export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
+  theme: AppTheme
+  setTheme: (theme: AppTheme) => void
+  mobileMode: boolean
+  setMobileMode: (mobile: boolean) => void
+}) {
   const menus = useEditorStore(s => s.renderTick) // re-render on engine changes for enabled states
   const scTick = useEditorStore(s => s.shortcutOverrides) // TASK 17 — live shortcut labels
   const openDialog = useEditorStore(s => s.openDialog)
@@ -66,7 +71,7 @@ export function MenuBar({ theme, setTheme }: { theme: AppTheme; setTheme: (theme
   const themeLabel = theme === 'light' ? 'Light' : theme === 'oled' ? 'OLED black' : 'Dark'
 
   return (
-    <Menubar className="h-8 rounded-none border-0 border-b bg-panel text-xs flex-shrink-0 gap-0">
+    <Menubar className={`h-8 rounded-none border-0 border-b bg-panel text-xs flex-shrink-0 gap-0 ${mobileMode ? 'overflow-x-auto zphoto-scroll' : ''}`}>
       {MENUS.map((items, i) => (
         <MenubarMenu key={i}>
           <MenubarTrigger className="h-8 px-3 text-xs font-medium data-[highlighted]:bg-accent">
@@ -125,6 +130,9 @@ export function MenuBar({ theme, setTheme }: { theme: AppTheme; setTheme: (theme
             </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('customize-toolbar')}>
               <LayoutGrid size={13} /><span className="flex-1">Customize toolbar</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => setMobileMode(!mobileMode)}>
+              <Smartphone size={13} /><span className="flex-1">Touch / mobile mode</span>{mobileMode && <Check size={13} />}
             </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('plugin-manager')}>
               <Puzzle size={13} /><span className="flex-1">Plugin manager</span>

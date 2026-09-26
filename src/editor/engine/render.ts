@@ -15,6 +15,39 @@ import { engine } from './engine'
 import { RULER_W, drawRulers, drawGuides, drawGrid, drawPixelGrid, hitGuide } from './guides'
 import { useEditorStore } from '../store'
 
+export interface VirtualInputState {
+  shift: boolean
+  alt: boolean
+  ctrl: boolean
+  pan: boolean
+}
+
+const virtualInput: VirtualInputState = { shift: false, alt: false, ctrl: false, pan: false }
+
+/** Touch/mobile controls can supply desktop-style modifier state to pointer tools. */
+export function setVirtualInputState(next: Partial<VirtualInputState>) {
+  Object.assign(virtualInput, next)
+}
+
+/** Dispatch one editor key through the same active-tool/global shortcut pipeline as hardware input. */
+export function dispatchEditorKey(key: string, options?: { shift?: boolean }) {
+  if (typeof window === 'undefined') return
+  const code = key === 'Escape' ? 'Escape'
+    : key === 'Enter' ? 'Enter'
+      : key === 'Backspace' ? 'Backspace'
+        : key === 'Delete' ? 'Delete'
+          : key.startsWith('Arrow') ? key
+            : key
+  window.dispatchEvent(new KeyboardEvent('keydown', {
+    key,
+    code,
+    shiftKey: options?.shift === true,
+    bubbles: true,
+    cancelable: true,
+  }))
+}
+
+
 function drawSavedPathOverlay(
   ctx: CanvasRenderingContext2D,
   path: SavedPath,
@@ -461,7 +494,10 @@ export class Viewport {
     return {
       docX: p.x, docY: p.y,
       rawX: sx, rawY: sy,
-      shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey,
+      shift: e.shiftKey || virtualInput.shift,
+      alt: e.altKey || virtualInput.alt,
+      ctrl: e.ctrlKey || virtualInput.ctrl,
+      meta: e.metaKey || virtualInput.ctrl,
       pressure: (e as PointerEvent).pressure && (e as PointerEvent).pressure > 0 ? (e as PointerEvent).pressure : 0.5,
       tiltX: Number.isFinite((e as PointerEvent).tiltX) ? (e as PointerEvent).tiltX : 0,
       tiltY: Number.isFinite((e as PointerEvent).tiltY) ? (e as PointerEvent).tiltY : 0,
@@ -491,7 +527,7 @@ export class Viewport {
       this.pinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
       return
     }
-    if (this.spaceDown || e.button === 1) {
+    if (this.spaceDown || virtualInput.pan || e.button === 1) {
       const doc = engine.activeDoc
       if (doc) {
         this.panning = true

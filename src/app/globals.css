@@ -288,3 +288,52 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
 .select-none input, .select-none textarea { user-select: text; }
 
 
+
+
+/* ============================================================
+   Touch / mobile mode
+   ============================================================ */
+.zphoto-mobile {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Keep dialogs inside the visual viewport when the on-screen keyboard opens. */
+.zphoto-mobile [data-slot="dialog-content"] {
+  width: calc(100vw - 0.75rem) !important;
+  max-width: calc(100vw - 0.75rem) !important;
+  max-height: calc(100dvh - 0.75rem) !important;
+}
+
+/* Menus, tabs and close affordances need finger-sized hit targets. */
+.zphoto-mobile [role="menuitem"],
+.zphoto-mobile [role="option"],
+.zphoto-mobile [role="tab"] {
+  min-height: 40px;
+}
+.zphoto-mobile [data-slot="dialog-close"] {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+/* iOS zooms focused form controls below 16px; keep editing stable in touch mode. */
+.zphoto-mobile input:not([type="range"]):not([type="color"]),
+.zphoto-mobile textarea,
+.zphoto-mobile select {
+  font-size: 16px;
+}
+
+/* Larger range/slider handles are much easier to acquire with a finger. */
+.zphoto-mobile input[type="range"] { height: 1.5rem; }
+.zphoto-mobile input[type="range"]::-webkit-slider-runnable-track { height: 4px; }
+.zphoto-mobile input[type="range"]::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
+}
+.zphoto-mobile input[type="range"]::-moz-range-track { height: 4px; }
+.zphoto-mobile input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; }
+.zphoto-mobile [role="slider"] {
+  min-width: 20px;
+  min-height: 20px;
+}
