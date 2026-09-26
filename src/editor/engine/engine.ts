@@ -2092,32 +2092,72 @@ export class Engine {
     this.emit()
   }
 
-  async contentAwareFill(onProgress?: (p: number) => void): Promise<void> {
+  /** Content-Aware Fill using a document-space grayscale mask. The mask is
+   * mapped into the active raster layer's own backing-canvas coordinates so
+   * offset/off-canvas layers work correctly instead of assuming a doc-sized
+   * raster backing store. */
+  async contentAwareFillMask(
+    docMask: Uint8ClampedArray | Uint8Array,
+    onProgress?: (p: number) => void,
+    label = 'Content-Aware Fill',
+  ): Promise<void> {
     const doc = this.activeDoc
     const layer = this.activeLayer
     if (!doc || !layer) return
-    if (!doc.selection) { this.ui?.toast('Make a selection first', 'error'); return }
+    if (docMask.length !== doc.width * doc.height) {
+      this.ui?.toast('Content-Aware Fill mask does not match the document', 'error')
+      return
+    }
+
     const l = this.mutateLayerPixels(layer.id)
     if (!l?.canvas) return
-    // compute overlap of selection alpha
-    const selAlpha = (() => {
-      const d = getImageData(doc.selection.mask)
-      const out = new Uint8ClampedArray(doc.width * doc.height)
-      for (let i = 0, j = 3; i < out.length; i++, j += 4) out[i] = d.data[j]
-      return out
-    })()
     const img = getImageData(l.canvas)
-    // mask = selection AND layer alpha
-    const combined = new Uint8ClampedArray(selAlpha.length)
-    for (let i = 0; i < selAlpha.length; i++) {
-      combined[i] = Math.min(selAlpha[i], img.data[i * 4 + 3])
+    const ox = Math.round(l.offsetX ?? 0)
+    const oy = Math.round(l.offsetY ?? 0)
+    const localMask = new Uint8ClampedArray(img.width * img.height)
+    let any = false
+
+    for (let ly = 0; ly < img.height; ly++) {
+      const gy = ly + oy
+      if (gy < 0 || gy >= doc.height) continue
+      for (let lx = 0; lx < img.width; lx++) {
+        const gx = lx + ox
+        if (gx < 0 || gx >= doc.width) continue
+        const li = ly * img.width + lx
+        const a = Math.min(docMask[gy * doc.width + gx] ?? 0, img.data[li * 4 + 3])
+        localMask[li] = a
+        if (a) any = true
+      }
     }
-    await imageOps.inpaint(img, combined, onProgress)
+    if (!any) {
+      this.ui?.toast('Nothing opaque is available to fill in that region', 'info')
+      return
+    }
+
+    await imageOps.inpaint(img, localMask, onProgress)
     putImageData(l.canvas, img)
+    l._v++
     invalidateFlat(doc)
-    this.pushHistory('Content-Aware Fill')
-    this.recordStep({ op: 'contentAwareFill', args: {}, label: 'Content-Aware Fill' })
+    this.pushHistory(label)
+    // The existing action opcode means "fill the current selection". A direct
+    // Bucket-generated mask is transient, so recording it as that opcode would
+    // replay a different region later. Record only the selection workflow until
+    // the action format has an explicit serializable region-mask operation.
+    if (label === 'Content-Aware Fill') {
+      this.recordStep({ op: 'contentAwareFill', args: {}, label })
+    }
     this.emit()
+  }
+
+  async contentAwareFill(onProgress?: (p: number) => void): Promise<void> {
+    const doc = this.activeDoc
+    if (!doc) return
+    if (!doc.selection) { this.ui?.toast('Make a selection first', 'error'); return }
+
+    const d = getImageData(doc.selection.mask)
+    const selAlpha = new Uint8ClampedArray(doc.width * doc.height)
+    for (let i = 0, j = 3; i < selAlpha.length; i++, j += 4) selAlpha[i] = d.data[j]
+    await this.contentAwareFillMask(selAlpha, onProgress)
   }
 
   /** generic region CPU op with history (dodge/burn/blur tools etc.) */

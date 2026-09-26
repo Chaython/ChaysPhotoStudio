@@ -19,6 +19,7 @@ import { getFlatComposite } from '../engine/document'
 import { BLEND_GCO } from '../constants/tools'
 import { paintBuiltinPattern } from './patterns'
 import { rgbToLab, labToRgb } from '../image-ops/color'
+import { useEditorStore } from '../store'
 
 // ============================================================
 // Gradient
@@ -545,6 +546,32 @@ export const paintBucketTool: Tool = {
         for (let x = 0; x < sw; x++) fillMask[dstRow + x] = soft[srcRow + x]
       }
       bounds = { x: sx, y: sy, w: sw, h: sh }
+    }
+
+    if (opts.fill === 'content-aware') {
+      // Respect an existing document selection without creating/changing a
+      // temporary selection just to invoke Content-Aware Fill.
+      if (doc.selection) {
+        const sd = ctx2d(doc.selection.mask).getImageData(bounds.x, bounds.y, bounds.w, bounds.h).data
+        for (let y = 0; y < bounds.h; y++) {
+          const row = (bounds.y + y) * doc.width + bounds.x
+          for (let x = 0; x < bounds.w; x++) {
+            const ai = (y * bounds.w + x) * 4 + 3
+            fillMask[row + x] = Math.min(fillMask[row + x], sd[ai])
+          }
+        }
+      }
+
+      const store = useEditorStore.getState()
+      store.setProgress({ active: true, label: 'Content-Aware Bucket Fill', value: 0 })
+      void engine.contentAwareFillMask(
+        fillMask,
+        v => store.setProgress({ active: true, label: 'Content-Aware Bucket Fill', value: v }),
+        'Content-Aware Bucket Fill',
+      ).catch(err => {
+        engine.ui?.toast(err instanceof Error ? err.message : 'Content-Aware Bucket Fill failed', 'error')
+      }).finally(() => store.setProgress(null))
+      return
     }
 
     const l = engine.mutateLayerPixels(layer.id)
