@@ -45,6 +45,7 @@ function runNextBuild(basePath) {
   const env = {
     ...process.env,
     NEXT_OUTPUT: 'export',
+    NEXT_PUBLIC_STATIC_EXPORT: '1',
     NEXT_TELEMETRY_DISABLED: '1',
     ...(basePath ? { NEXT_BASE_PATH: basePath } : {}),
   }
