@@ -16,6 +16,7 @@ import { getOptions, getFgColor, regionProcess, drawBrushCursor, walkDabs } from
 import { smoothstep } from './dab-utils'
 import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb, cloneCanvas, getImageData, putImageData } from '../utils/canvas'
 import { getFlatComposite, newLayer, invalidateFlat } from '../engine/document'
+import { getTip, tipExtentMul, drawTipCursor } from './brush-tips'
 
 type RetouchId = 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
 type RetouchOp = (x: number, y: number, p: PointerInfo) => void
@@ -27,6 +28,112 @@ interface RetouchContext {
   outputNew: boolean
 }
 let retouchContext: RetouchContext | null = null
+
+interface RetouchTipMask {
+  canvas: HTMLCanvasElement
+  data: Uint8ClampedArray
+  side: number
+  center: number
+  extent: number
+}
+
+const retouchTipMasks = new Map<string, RetouchTipMask>()
+const MAX_RETOUCH_TIP_MASKS = 48
+const RETOUCH_RAD = Math.PI / 180
+
+function retouchTipAngle(opts: Record<string, any>, p?: PointerInfo | null): number {
+  const base = Number(opts.angle) || 0
+  if (p?.pointerType === 'pen') {
+    if (opts.twistAngle === true && Math.abs(p.twist) > .01) return base + p.twist
+    if (opts.tiltAngle === true && Math.hypot(p.tiltX, p.tiltY) > 1) {
+      return base + Math.atan2(p.tiltY, p.tiltX) / RETOUCH_RAD
+    }
+  }
+  return base
+}
+
+function retouchTipRoundness(opts: Record<string, any>, p?: PointerInfo | null): number {
+  let roundness = clamp(Number(opts.roundness ?? 100), 10, 100)
+  if (p?.pointerType === 'pen' && opts.tiltRoundness === true) {
+    const tilt = clamp(Math.hypot(p.tiltX, p.tiltY) / 90, 0, 1)
+    roundness = clamp(roundness * (1 - tilt * .72), 10, 100)
+  }
+  return roundness
+}
+
+function retouchTipSize(opts: Record<string, any>, p?: PointerInfo | null): number {
+  let size = Math.max(2, Number(opts.size) || 60)
+  if (p?.pointerType === 'pen' && opts.pressureSize === true) {
+    size *= .25 + .75 * clamp(p.pressure, 0, 1)
+  }
+  return size
+}
+
+function retouchTipMask(opts: Record<string, any>, p?: PointerInfo | null): RetouchTipMask {
+  const tipId = typeof opts.tip === 'string' && getTip(opts.tip) ? opts.tip : 'round-soft'
+  const size = retouchTipSize(opts, p)
+  const hardness = clamp(Number(opts.hardness ?? 60), 0, 100)
+  const angle = retouchTipAngle(opts, p)
+  const roundness = retouchTipRoundness(opts, p)
+  const extent = tipExtentMul(tipId)
+  const key = [
+    tipId,
+    Math.round(size * 2) / 2,
+    Math.round(hardness),
+    Math.round(angle * 2) / 2,
+    Math.round(roundness),
+  ].join(':')
+  const hit = retouchTipMasks.get(key)
+  if (hit) return hit
+
+  const side = Math.max(8, Math.ceil(size * extent + 8))
+  const canvas = createCanvas(side, side)
+  const cc = ctx2d(canvas)
+  const center = side / 2
+  const tip = getTip(tipId) ?? getTip('round-soft')!
+  // Fixed pseudo-random stream keeps textured retouch tips stable instead of
+  // changing their footprint every time the same dab is recomputed.
+  let seed = 0x9e3779b9
+  const rand = () => {
+    seed = Math.imul(seed ^ (seed >>> 16), 0x45d9f3b)
+    seed = Math.imul(seed ^ (seed >>> 16), 0x45d9f3b)
+    seed ^= seed >>> 16
+    return (seed >>> 0) / 4294967296
+  }
+  tip.drawDab(cc, center, center, {
+    size,
+    hardness,
+    angle,
+    roundness,
+    color: '#ffffff',
+    rand,
+  })
+  const rgba = cc.getImageData(0, 0, side, side).data
+  const data = new Uint8ClampedArray(side * side)
+  for (let i = 0, j = 3; i < data.length; i++, j += 4) data[i] = rgba[j]
+  const item = { canvas, data, side, center, extent }
+  if (retouchTipMasks.size >= MAX_RETOUCH_TIP_MASKS) {
+    const oldest = retouchTipMasks.keys().next().value
+    if (oldest !== undefined) retouchTipMasks.delete(oldest)
+  }
+  retouchTipMasks.set(key, item)
+  return item
+}
+
+function retouchBrushShape(opts: Record<string, any>, p?: PointerInfo | null) {
+  const mask = retouchTipMask(opts, p)
+  return {
+    radius: retouchTipSize(opts, p) / 2,
+    extent: mask.extent,
+    alpha(dx: number, dy: number) {
+      const x = Math.round(mask.center + dx)
+      const y = Math.round(mask.center + dy)
+      if (x < 0 || y < 0 || x >= mask.side || y >= mask.side) return 0
+      return mask.data[y * mask.side + x] / 255
+    },
+    mask,
+  }
+}
 
 function supportsNewLayerOutput(id: RetouchId): boolean {
   return id === 'blur' || id === 'sharpen' || id === 'smudge'
@@ -146,7 +253,16 @@ function makeRetouch(
     renderCursor(ctx, view, w, h, mouse) {
       void w; void h
       const opts = getOptions(id)
-      drawBrushCursor(ctx, mouse, opts.size ?? 60, view.zoom)
+      const tipId = typeof opts.tip === 'string' && getTip(opts.tip) ? opts.tip : 'round-soft'
+      drawTipCursor(
+        ctx,
+        mouse,
+        retouchTipSize(opts),
+        view.zoom,
+        tipId,
+        retouchTipAngle(opts),
+        retouchTipRoundness(opts),
+      )
     },
   }
   return tool
@@ -229,15 +345,16 @@ function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: Poi
   const target = engine.layerById(state.targetId)
   if (!target?.canvas) return false
   const opts = getOptions(kind)
-  const r = (opts.size ?? 60) / 2
+  const shape = retouchBrushShape(opts, p)
+  const r = shape.radius
+  const processR = r * shape.extent
   const strength = ((opts.strength ?? (kind === 'blur' ? 60 : 50)) / 100)
     * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
-  const hardness = clamp((opts.hardness ?? 60) / 100, 0, .98)
   const rad = kind === 'blur' ? clamp(Math.round(r / 4), 1, 60) : clamp(Math.round(r / 10), 1, 4)
-  const x0 = clamp(Math.floor(x - r), 0, doc.width)
-  const y0 = clamp(Math.floor(y - r), 0, doc.height)
-  const x1 = clamp(Math.ceil(x + r), 0, doc.width)
-  const y1 = clamp(Math.ceil(y + r), 0, doc.height)
+  const x0 = clamp(Math.floor(x - processR), 0, doc.width)
+  const y0 = clamp(Math.floor(y - processR), 0, doc.height)
+  const x1 = clamp(Math.ceil(x + processR), 0, doc.width)
+  const y1 = clamp(Math.ceil(y + processR), 0, doc.height)
   const rw = x1 - x0, rh = y1 - y0
   if (rw <= 0 || rh <= 0) return true
 
@@ -258,8 +375,7 @@ function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: Poi
   for (let py = 0; py < rh; py++) {
     for (let px = 0; px < rw; px++) {
       const dx = x0 + px - x, dy = y0 + py - y
-      const nd = Math.hypot(dx, dy) / Math.max(1, r)
-      let falloff = nd <= hardness ? 1 : clamp(1 - (nd - hardness) / Math.max(.02, 1 - hardness), 0, 1)
+      let falloff = shape.alpha(dx, dy)
       const oi = py * rw + px
       if (sel) falloff *= sel[oi * 4 + 3] / 255
       const f = falloff * strength
@@ -300,7 +416,8 @@ function blurOp(x: number, y: number, p: PointerInfo) {
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions('blur')
-  const r = (opts.size ?? 60) / 2
+  const shape = retouchBrushShape(opts, p)
+  const r = shape.radius
   const strength = ((opts.strength ?? 60) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
   // kernel radius scaled to brush; big brushes sample coarser windows via the
   // sliding window (equivalent to stride sampling but exact)
@@ -317,7 +434,7 @@ function blurOp(x: number, y: number, p: PointerInfo) {
       d[j + 1] = src[j + 1] * (1 - f) + bg[i] * f
       d[j + 2] = src[j + 2] * (1 - f) + bb[i] * f
     }
-  }, opts.hardness ?? 60)
+  }, opts.hardness ?? 60, shape)
 }
 
 // ---------- sharpen (unsharp mask) ----------
@@ -326,7 +443,8 @@ function sharpenOp(x: number, y: number, p: PointerInfo) {
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions('sharpen')
-  const r = (opts.size ?? 60) / 2
+  const shape = retouchBrushShape(opts, p)
+  const r = shape.radius
   const strength = ((opts.strength ?? 50) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
   const threshold = Math.max(0, Number(opts.threshold) || 0)
   const protectDetail = opts.protectDetail !== false
@@ -353,7 +471,7 @@ function sharpenOp(x: number, y: number, p: PointerInfo) {
         d[j + c] = v * (1 - f) + clamp(sharp, 0, 255) * f
       }
     }
-  }, opts.hardness ?? 60)
+  }, opts.hardness ?? 60, shape)
 }
 
 // ---------- smudge (multi-tap smear along the drag vector) ----------
@@ -417,8 +535,8 @@ function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: num
   if (!prev) { setPrev({ x, y }); return }
   const opts = getOptions('smudge')
   const pressure = p.pointerType === 'pen' ? clamp(p.pressure, 0, 1) : 1
-  let r = (opts.size ?? 50) / 2
-  if (p.pointerType === 'pen' && opts.pressureSize === true) r *= .25 + .75 * pressure
+  const shape = retouchBrushShape(opts, p)
+  const r = shape.radius
   let strength = clamp((opts.strength ?? 60) / 100, 0.05, 0.95)
   if (p.pointerType === 'pen' && opts.pressureStrength !== false) strength *= .2 + .8 * pressure
   const hardness = clamp((opts.hardness ?? 70) / 100, 0, 0.96)
@@ -448,15 +566,14 @@ function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: num
     tctx.fillRect(0, 0, size, size)
     tctx.restore()
   }
-  // radial alpha mask (hardness) + selection restriction at the destination
+  // Use the same procedural brush-tip alpha as the cursor and other
+  // retouch tools, instead of forcing Smudge to a circular falloff.
   tctx.globalCompositeOperation = 'destination-in'
-  const grad = tctx.createRadialGradient(c, c, r * hardness, c, c, r)
-  grad.addColorStop(0, 'rgba(255,255,255,1)')
-  grad.addColorStop(1, 'rgba(255,255,255,0)')
-  tctx.fillStyle = grad
-  tctx.beginPath()
-  tctx.arc(c, c, r, 0, Math.PI * 2)
-  tctx.fill()
+  tctx.drawImage(
+    shape.mask.canvas,
+    c - shape.mask.center,
+    c - shape.mask.center,
+  )
   if (doc.selection) {
     // mask is doc-space — align to canvas space at the deposit position
     tctx.drawImage(doc.selection.mask, -(px - c), -(py - c))
@@ -481,7 +598,8 @@ function toneOp(kind: 'dodge' | 'burn', x: number, y: number, p: PointerInfo) {
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions(kind)
-  const r = (opts.size ?? 60) / 2
+  const shape = retouchBrushShape(opts, p)
+  const r = shape.radius
   const exposure = ((opts.exposure ?? 30) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
   const range = opts.range ?? 'midtones'
   // Photoshop muscle memory: Alt/Option temporarily swaps Dodge ↔ Burn
@@ -509,7 +627,7 @@ function toneOp(kind: 'dodge' | 'burn', x: number, y: number, p: PointerInfo) {
         }
       }
     }
-  }, opts.hardness ?? 60)
+  }, opts.hardness ?? 60, shape)
 }
 
 // ---------- sponge (HSV saturation scaling with flow falloff) ----------
@@ -539,7 +657,7 @@ function spongeOp(x: number, y: number, p: PointerInfo) {
       d[j + 1] = d[j + 1] * (1 - f) + g2 * f
       d[j + 2] = d[j + 2] * (1 - f) + b2 * f
     }
-  }, opts.hardness ?? 60)
+  }, opts.hardness ?? 60, shape)
 }
 
 export const blurTool: Tool = makeRetouch('blur', blurOp)
