@@ -311,6 +311,67 @@ async function dataURLToCanvas(url: string): Promise<HTMLCanvasElement> {
   return c
 }
 
+async function deserializeHistoryLayer(sl: SerializedLayer, width: number, height: number): Promise<Layer> {
+  const layer = newLayer(sl.props.kind ?? 'raster', sl.props.name ?? 'Layer', width, height)
+  layer.id = typeof sl.props.id === 'string' && sl.props.id ? sl.props.id : uid()
+  Object.assign(layer, {
+    name: sl.props.name, kind: sl.props.kind, visible: sl.props.visible ?? true,
+    opacity: sl.props.opacity ?? 100, blendMode: sl.props.blendMode ?? 'normal',
+    locked: !!sl.props.locked, clipped: !!sl.props.clipped,
+    maskEnabled: sl.props.maskEnabled ?? true,
+    transform: sl.props.transform ?? null,
+    smartFilters: sl.props.smartFilters ?? [],
+    adjustment: sl.props.adjustment ?? null,
+    text: sl.props.text ?? null, shape: sl.props.shape ? { sides: 5, starInset: 45, ...sl.props.shape } : null,
+    blendIf: sl.props.blendIf ?? null,
+    fx: sl.props.fx ?? null,
+    vectorMask: normalizeVectorMask(sl.props.vectorMask),
+    offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
+    origin: sl.props.origin ?? null,
+  })
+  if (sl.canvas) layer.canvas = await dataURLToCanvas(sl.canvas)
+  if (sl.mask) layer.mask = await dataURLToCanvas(sl.mask)
+  if (sl.source) layer.source = await dataURLToCanvas(sl.source)
+  if (layer.kind === 'raster' && !layer.canvas) layer.canvas = createCanvas(width, height)
+  layer._v = 1
+  layer._mv = 1
+  return layer
+}
+
+async function deserializeHistoryState(st: SerializedHistoryState): Promise<HistoryState> {
+  const width = Math.max(1, Math.round(Number(st.width) || 1))
+  const height = Math.max(1, Math.round(Number(st.height) || 1))
+  const selection = st.selection?.mask
+    ? {
+        bounds: st.selection.bounds,
+        mask: await dataURLToCanvas(st.selection.mask),
+        _v: 1, _pathsV: -1, _paths: null,
+      }
+    : null
+  const savedChannels = []
+  for (const ch of st.savedChannels ?? []) {
+    if (!ch?.mask) continue
+    savedChannels.push({ id: ch.id || uid(), name: ch.name || 'Channel', mask: await dataURLToCanvas(ch.mask), _v: 1 })
+  }
+  const layers: Layer[] = []
+  for (const sl of st.layers ?? []) layers.push(await deserializeHistoryLayer(sl, width, height))
+  return {
+    label: st.label || 'Snapshot',
+    time: Number.isFinite(st.time) ? st.time : Date.now(),
+    layers,
+    activeLayerId: st.activeLayerId ?? null,
+    selection,
+    width,
+    height,
+    resolutionPpi: Number.isFinite(st.resolutionPpi) ? Math.max(1, Number(st.resolutionPpi)) : 72,
+    channelView: (st.channelView ?? 'rgb') as HistoryState['channelView'],
+    savedChannels,
+    savedPaths: Array.isArray(st.savedPaths)
+      ? st.savedPaths.map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) }))
+      : [],
+  }
+}
+
 export async function openSerializedProject(project: SerializedProject, label = 'Open Project'): Promise<PsDocument> {
   if (project.format !== 'z-photo-project') throw new Error('Unsupported project format')
   const { name, width, height, channelView } = project.doc
@@ -334,6 +395,14 @@ export async function openSerializedProject(project: SerializedProject, label = 
       : { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
     historyBrushSourceIndex: Number.isFinite(project.doc.historyBrushSourceIndex) ? Math.max(0, Math.round(project.doc.historyBrushSourceIndex!)) : 0,
+    historySnapshots: [],
+    historyBrushSnapshotId: typeof project.doc.historyBrushSnapshotId === 'string' ? project.doc.historyBrushSnapshotId : null,
+    layerComps: Array.isArray(project.doc.layerComps)
+      ? project.doc.layerComps
+          .filter(c => c && typeof c.id === 'string' && typeof c.name === 'string' && c.layers && typeof c.layers === 'object')
+          .map(c => structuredClone(c))
+      : [],
+    activeLayerCompId: typeof project.doc.activeLayerCompId === 'string' ? project.doc.activeLayerCompId : null,
     colorSamplers: Array.isArray(project.doc.colorSamplers)
       ? project.doc.colorSamplers
           .filter(s => s && Number.isFinite(s.x) && Number.isFinite(s.y))
@@ -428,6 +497,25 @@ export async function openSerializedProject(project: SerializedProject, label = 
       if (!ch?.mask) continue
       doc.savedChannels.push({ id: ch.id || uid(), name: ch.name || 'Channel', mask: await dataURLToCanvas(ch.mask), _v: 1 })
     }
+  }
+
+  if (Array.isArray(project.historySnapshots)) {
+    for (const raw of project.historySnapshots.slice(0, 20)) {
+      if (!raw?.state || typeof raw.id !== 'string') continue
+      try {
+        doc.historySnapshots!.push({
+          id: raw.id || uid(),
+          name: typeof raw.name === 'string' && raw.name ? raw.name : 'Snapshot',
+          time: Number.isFinite(raw.time) ? raw.time : Date.now(),
+          state: await deserializeHistoryState(raw.state),
+        })
+      } catch {
+        // A corrupt snapshot should not prevent the rest of the project from opening.
+      }
+    }
+  }
+  if (doc.historyBrushSnapshotId && !doc.historySnapshots?.some(s => s.id === doc.historyBrushSnapshotId)) {
+    doc.historyBrushSnapshotId = null
   }
 
   doc.activeLayerId = project.doc.activeLayerId && doc.layers.some(l => l.id === project.doc.activeLayerId)
