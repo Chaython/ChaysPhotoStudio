@@ -439,6 +439,8 @@ export interface PsDocument {
   layerComps?: LayerComp[]
   /** Most recently applied Layer Comp, used by the panel highlight. */
   activeLayerCompId?: string | null
+  /** Ephemeral state captured immediately before a Layer Comp is applied. */
+  lastLayerCompState?: HistoryState | null
   dirty: boolean
   // live preview (dialog driven)
   previewFilter: { layerId: string; type: FilterType; params: Record<string, any> } | null
