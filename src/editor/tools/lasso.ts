@@ -7,6 +7,9 @@ let pts: Pt[] = []
 let active = false
 let startMods = { shift: false, alt: false }
 let samplingMul = 1
+let straightPreview: Pt | null = null
+let straightMode = false
+let allowStraightHandoff = true
 const MAX_LASSO_POINTS = 8192
 const MAX_LASSO_PREVIEW_SEGMENTS = 2048
 
@@ -51,6 +54,9 @@ function cancel() {
   active = false
   pts = []
   samplingMul = 1
+  straightPreview = null
+  straightMode = false
+  allowStraightHandoff = true
   engine.pokeOverlay()
 }
 
@@ -63,12 +69,40 @@ export const lassoTool: Tool = {
     pts = [{ x: p.docX, y: p.docY }]
     samplingMul = 1
     startMods = { shift: p.shift, alt: p.alt }
+    // Alt/Option at gesture start still means Subtract Selection. Pressing
+    // Alt after the stroke has begun temporarily switches the freehand lasso
+    // to a straight polygonal segment, matching Photoshop muscle memory.
+    allowStraightHandoff = !p.alt
+    straightPreview = null
+    straightMode = false
     active = true
     engine.pokeOverlay()
   },
 
   onPointerMove(p: PointerInfo) {
     if (!active) return
+
+    if (allowStraightHandoff && p.alt) {
+      straightMode = true
+      straightPreview = { x: p.docX, y: p.docY }
+      engine.pokeOverlay()
+      return
+    }
+
+    // Releasing Alt commits the temporary straight segment and immediately
+    // resumes freehand sampling from its endpoint.
+    if (straightMode) {
+      if (straightPreview) {
+        const last = pts[pts.length - 1]
+        if (!last || Math.hypot(straightPreview.x - last.x, straightPreview.y - last.y) > .01) {
+          pts.push({ ...straightPreview })
+          compactLivePath()
+        }
+      }
+      straightMode = false
+      straightPreview = null
+    }
+
     const last = pts[pts.length - 1]
     const step = (1.5 * samplingMul) / Math.max(engine.activeDoc?.view.zoom ?? 1, .25)
     if (Math.hypot(p.docX - last.x, p.docY - last.y) <= step) return
@@ -79,6 +113,12 @@ export const lassoTool: Tool = {
 
   onPointerUp() {
     if (!active) return
+    if (straightMode && straightPreview) {
+      const last = pts[pts.length - 1]
+      if (!last || Math.hypot(straightPreview.x - last.x, straightPreview.y - last.y) > .01) pts.push({ ...straightPreview })
+    }
+    straightMode = false
+    straightPreview = null
     active = false
     const opts = getOptions('lasso')
     if (pts.length > 3) {
@@ -111,6 +151,7 @@ export const lassoTool: Tool = {
       for (let i = stride; i < pts.length; i += stride) ctx.lineTo(pts[i].x, pts[i].y)
       const tail = pts[pts.length - 1]
       if ((pts.length - 1) % stride !== 0) ctx.lineTo(tail.x, tail.y)
+      if (straightMode && straightPreview) ctx.lineTo(straightPreview.x, straightPreview.y)
       ctx.strokeStyle = 'rgba(0,0,0,.75)'
       ctx.lineWidth = 3 / view.zoom
       ctx.stroke()
