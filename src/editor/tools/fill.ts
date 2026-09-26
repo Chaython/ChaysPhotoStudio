@@ -100,13 +100,19 @@ function interpolateGradientStop(
   stops: GradientStopRGBA[],
   t: number,
   space: 'rgb' | 'hsl' | 'lab',
+  smoothness = 100,
 ): [number, number, number, number] {
   t = clamp(t, 0, 1)
   let a = stops[0], b = stops[stops.length - 1]
   for (let k = 1; k < stops.length; k++) {
     if (t <= stops[k].p) { a = stops[k - 1]; b = stops[k]; break }
   }
-  const q = b.p === a.p ? 0 : clamp((t - a.p) / (b.p - a.p), 0, 1)
+  let q = b.p === a.p ? 0 : clamp((t - a.p) / (b.p - a.p), 0, 1)
+  // Photoshop's Smoothness control softens stop transitions. Blend between
+  // the exact linear ramp and smoothstep so 100 remains the legacy output.
+  const sm = clamp(Number(smoothness) || 0, 0, 100) / 100
+  const eased = q * q * (3 - 2 * q)
+  q = q * sm + eased * (1 - sm)
   const alpha = a.a + (b.a - a.a) * q
 
   if (space === 'hsl') {
@@ -144,6 +150,9 @@ function paintManualGradient(
   mode: string,
   stops: [number, string][],
   space: 'rgb' | 'hsl' | 'lab',
+  smoothness = 100,
+  noiseAmount = 0,
+  noiseSeed = 0,
 ) {
   const parsed = parsedStops(stops)
   const dx = x1 - x0, dy = y1 - y0
@@ -169,11 +178,21 @@ function paintManualGradient(
       } else {
         t = (rx * dx + ry * dy) / dist2
       }
-      const [r, g, b, a] = interpolateGradientStop(parsed, t, space)
+      const [r0, g0, b0, a] = interpolateGradientStop(parsed, t, space, smoothness)
       const j = (yy * w + xx) * 4
-      img.data[j] = r
-      img.data[j + 1] = g
-      img.data[j + 2] = b
+      const noise = clamp(noiseAmount, 0, 100) / 100
+      let r = r0, g = g0, b = b0
+      if (noise > 0) {
+        // Stable coordinate hash: previews and final commits match exactly.
+        let n = Math.imul((xx + 1) ^ (noiseSeed | 0), 374761393) ^ Math.imul(yy + 1, 668265263)
+        n = Math.imul(n ^ (n >>> 13), 1274126177)
+        const v = (((n ^ (n >>> 16)) >>> 0) / 4294967295 - .5) * 2
+        const amp = noise * 42
+        r += v * amp; g += v * amp; b += v * amp
+      }
+      img.data[j] = clamp(r, 0, 255)
+      img.data[j + 1] = clamp(g, 0, 255)
+      img.data[j + 2] = clamp(b, 0, 255)
       img.data[j + 3] = a
     }
   }
@@ -236,8 +255,11 @@ function paintGradient(c: CanvasRenderingContext2D, w: number, h: number, x0: nu
     : opts.interpolation === 'hsl'
       ? 'hsl'
       : 'rgb'
-  if (interpolation !== 'rgb') {
-    paintManualGradient(c, w, h, x0, y0, x1, y1, mode, stops, interpolation)
+  const smoothness = clamp(Number(opts.smoothness ?? 100), 0, 100)
+  const noiseAmount = clamp(Number(opts.noise ?? 0), 0, 100)
+  const noiseSeed = Math.round(Number(opts.noiseSeed ?? 0)) || 0
+  if (interpolation !== 'rgb' || smoothness < 100 || noiseAmount > 0) {
+    paintManualGradient(c, w, h, x0, y0, x1, y1, mode, stops, interpolation, smoothness, noiseAmount, noiseSeed)
     return
   }
   let grad: CanvasGradient
