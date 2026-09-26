@@ -235,6 +235,7 @@ function StatusBar() {
   const hasSelection = useEditorStore(s => s.hasSelection)
   const progress = useEditorStore(s => s.progress)
   const setRightPanelTab = useEditorStore(s => s.setRightPanelTab)
+  const pushToast = useEditorStore(s => s.pushToast)
   const renderTick = useEditorStore(s => s.renderTick)
   void renderTick // re-renders the GPU badge when the toggle changes state
   const gpuActive = engine.isGpuActive()
@@ -283,9 +284,14 @@ function StatusBar() {
               aria-hidden
             />
             {gpuActive ? 'GPU' : 'CPU'}
-            <span className="text-muted-foreground/60" title={precisionTitle}>
+            <button
+              type="button"
+              className="text-muted-foreground/60 hover:text-foreground"
+              title={precisionTitle}
+              onClick={() => pushToast(precisionTitle, 'info')}
+            >
               · {precisionLabel}{sourcePrecisionLabel}{float16CapabilityLabel} · non-destructive
-            </span>
+            </button>
           </span>
         </>
       )}
