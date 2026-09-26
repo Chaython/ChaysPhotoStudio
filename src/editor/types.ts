@@ -107,6 +107,8 @@ export interface TextSpec {
   fontSize: number
   color: string
   bold: boolean
+  /** Numeric OpenType/variable-font weight axis when supported (100..900). */
+  fontWeight?: number
   italic: boolean
   underline?: boolean
   strikethrough?: boolean
@@ -121,6 +123,10 @@ export interface TextSpec {
   fontStretch?: 'ultra-condensed' | 'extra-condensed' | 'condensed' | 'semi-condensed' | 'normal' | 'semi-expanded' | 'expanded' | 'extra-expanded' | 'ultra-expanded'
   lineHeight: number
   tracking: number
+  /** Extra advance added after whitespace characters, in document pixels. */
+  wordSpacing?: number
+  /** Baseline offset in document pixels (positive moves glyphs up). */
+  baselineShift?: number
   /** Paragraph text uses an editable bounding box; point text leaves these unset. */
   boxWidth?: number
   boxHeight?: number
