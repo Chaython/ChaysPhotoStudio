@@ -1,9 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { RotateCcw, Stamp, Trash2 } from 'lucide-react'
+import { Download, RotateCcw, Stamp, Trash2, Upload } from 'lucide-react'
 import { useEditorStore } from '../../store'
-import { clearCloneSourceSlot, getCloneSourceSlots, type CloneSourceSlotInfo } from '../../tools/clone-stamp'
+import { engine } from '../../engine/engine'
+import {
+  clearCloneSourceSlot, exportCloneSourcePreset, getCloneSourceSlots, importCloneSourcePreset,
+  type CloneSourceSlotInfo,
+} from '../../tools/clone-stamp'
 
 function sourceThumb(slot: CloneSourceSlotInfo): string | null {
   if (!slot.source || !slot.point || typeof document === 'undefined') return null
@@ -45,6 +49,34 @@ export function CloneSourcePanel() {
 
   const set = (key: string, value: unknown) => setOpt('clone-stamp', key, value)
 
+  const exportPreset = () => {
+    try {
+      const preset = exportCloneSourcePreset(engine.activeDoc?.name ? `${engine.activeDoc.name} Clone Sources` : 'Clone Sources')
+      const blob = new Blob([JSON.stringify(preset)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const base = (engine.activeDoc?.name || 'clone-source').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]+/gi, '-')
+      a.href = url
+      a.download = `${base}.clone-source.json`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+      useEditorStore.getState().pushToast('Clone Source preset exported', 'success')
+    } catch (err) {
+      useEditorStore.getState().pushToast(err instanceof Error ? err.message : 'Clone Source export failed', 'error')
+    }
+  }
+
+  const importPreset = async (file: File) => {
+    try {
+      const raw = JSON.parse(await file.text())
+      const count = await importCloneSourcePreset(raw)
+      setRefresh(v => v + 1)
+      useEditorStore.getState().pushToast(`Loaded ${count} Clone Source slot${count === 1 ? '' : 's'}`, 'success')
+    } catch (err) {
+      useEditorStore.getState().pushToast(err instanceof Error ? err.message : 'Clone Source import failed', 'error')
+    }
+  }
+
   return (
     <div className="p-2 flex flex-col gap-2 text-xs" aria-label="Clone Source panel">
       <div className="flex items-center justify-between">
@@ -56,6 +88,32 @@ export function CloneSourcePanel() {
         >
           Use Tool
         </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1.5">
+        <button
+          className="flex items-center justify-center gap-1.5 rounded border border-border px-2 py-1.5 hover:bg-accent"
+          onClick={exportPreset}
+          title="Export all five Clone Source slots, embedded source snapshots and per-slot transforms"
+        >
+          <Download size={12} /> Export Sources
+        </button>
+        <label
+          className="flex items-center justify-center gap-1.5 rounded border border-border px-2 py-1.5 hover:bg-accent cursor-pointer"
+          title="Load a .clone-source.json preset"
+        >
+          <Upload size={12} /> Import Sources
+          <input
+            type="file"
+            accept=".json,.clone-source.json,application/json"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0]
+              e.currentTarget.value = ''
+              if (file) void importPreset(file)
+            }}
+          />
+        </label>
       </div>
 
       <div className="grid grid-cols-5 gap-1">
@@ -169,7 +227,7 @@ export function CloneSourcePanel() {
       </button>
 
       <div className="text-[10px] leading-relaxed text-muted-foreground">
-        Scale, rotation, flip and overlay settings are remembered independently for each source slot. Aligned keeps the source offset between strokes.
+        Scale, rotation, flip and overlay settings are remembered independently for each source slot. Export Sources embeds the source snapshots and transforms in a portable preset. Imported sources reset the destination alignment anchor for safety.
       </div>
     </div>
   )
