@@ -56,6 +56,7 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 |---|---|---|
 | Layer Comps | Dedicated dockable/floating Layer Comps panel; create comps from Visibility/Position/Appearance, apply/cycle/update/duplicate/rename/delete comps, restore Last Document State, tolerate deleted recorded layers, project persistence without duplicating layer pixels | Smart Object internal comp selection and comp-to-file export automation |
 | History Snapshots | Durable named snapshots separate from the rolling undo queue; create/rename/apply/delete, survive Clear History, can be marked as the source for History Brush, Art History Brush and Erase to History, project persistence with snapshot pixels/masks/channels/paths | Snapshot thumbnails and optional document-open/new-document auto-snapshot preferences |
+| Layer Styles | Non-destructive live-preview stack with Bevel & Emboss (Inner/Outer/Emboss, Smooth/Chisel, Depth/Direction/Size/Soften/Angle/Altitude and highlight/shadow controls), Stroke with Outside/Center/Inside placement plus Color/Gradient/Pattern fills, Inner Shadow, Inner Glow (Edge/Center + Choke), Satin, Color Overlay, Linear/Radial Gradient Overlay, built-in/imported Pattern Overlay, Outer Glow and Drop Shadow; per-effect Make Default / Reset Default preferences; project persistence and Layer Comp Appearance capture | Custom contour editor, per-effect blend modes/noise/spread refinements, multiple instances of the same effect, and PSD layer-style import/export |
 
 ## Document resolution / print metadata
 
