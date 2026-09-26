@@ -302,6 +302,7 @@ export class Engine {
     if (typeof doc.historyBrushSourceIndex === 'number') {
       doc.historyBrushSourceIndex = clamp(doc.historyBrushSourceIndex, 0, Math.max(0, h.states.length - 1))
     }
+    if (!label.startsWith('Layer Comp:')) doc.activeLayerCompId = null
     doc.dirty = true
   }
 
@@ -532,6 +533,9 @@ export class Engine {
     const doc = this.activeDoc
     const comp = doc?.layerComps?.find(c => c.id === id)
     if (!doc || !comp) return
+    // Preserve the non-comp state once, then let users cycle through comps
+    // without losing Photoshop's "Last Document State" return point.
+    if (!doc.activeLayerCompId) doc.lastLayerCompState = this.captureState(doc, 'Last Document State')
     for (const layer of doc.layers) {
       const state = comp.layers[layer.id]
       if (!state) continue
@@ -566,6 +570,16 @@ export class Engine {
       ? (dir > 0 ? 0 : comps.length - 1)
       : (current + dir + comps.length) % comps.length
     this.applyLayerComp(comps[next].id)
+  }
+
+  restoreLastLayerCompState() {
+    const doc = this.activeDoc
+    const state = doc?.lastLayerCompState
+    if (!doc || !state) return
+    this.restoreState(doc, state)
+    doc.activeLayerCompId = null
+    this.pushHistory('Restore Last Document State')
+    this.emit()
   }
 
   // ================================================== COW mutation helpers
