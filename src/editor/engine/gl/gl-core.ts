@@ -56,6 +56,14 @@ function probeFloat16Framebuffer(gl: WebGL2RenderingContext): boolean {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
     ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE
+    if (ok) {
+      while (gl.getError() !== gl.NO_ERROR) { /* clear probe errors */ }
+      gl.clearColor(.25, .5, .75, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      const pixel = new Float32Array(4)
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, pixel)
+      ok = gl.getError() === gl.NO_ERROR && Number.isFinite(pixel[0])
+    }
   } catch {
     ok = false
   } finally {
