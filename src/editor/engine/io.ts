@@ -348,7 +348,7 @@ async function deserializeHistoryState(st: SerializedHistoryState): Promise<Hist
         _v: 1, _pathsV: -1, _paths: null,
       }
     : null
-  const savedChannels = []
+  const savedChannels: HistoryState['savedChannels'] = []
   for (const ch of st.savedChannels ?? []) {
     if (!ch?.mask) continue
     savedChannels.push({ id: ch.id || uid(), name: ch.name || 'Channel', mask: await dataURLToCanvas(ch.mask), _v: 1 })
