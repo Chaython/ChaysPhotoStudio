@@ -11,7 +11,7 @@ import { engine } from '../../engine/engine'
 import { openFiles } from '../../engine/io'
 import { IMPORT_ACCEPT } from '../../formats'
 import { setActiveTool } from '../../tools/registry'
-import { aiGenerate, dataUrlToFile, AI_GEN_SIZES, loadCustomGenConfig, saveCustomGenConfig, type AiGenProvider, type CustomGenConfig } from '../../image-ops'
+import { aiGenerate, dataUrlToFile, AI_GEN_SIZES, AI_FREE_MODELS, loadCustomGenConfig, saveCustomGenConfig, type AiGenProvider, type CustomGenConfig, type PollinationsModel } from '../../image-ops'
 import { downloadBlob } from '../../utils/canvas'
 import type { ToolId } from '../../types'
 import {
@@ -293,6 +293,7 @@ function AiGeneratorCard() {
   const [error, setError] = useState<string | null>(null)
   const [image, setImage] = useState<string | null>(null)
   const [engineId, setEngineId] = useState<AiGenProvider>('pollinations')
+  const [freeModel, setFreeModel] = useState<PollinationsModel>('flux')
   const [customCfg, setCustomCfg] = useState<CustomGenConfig>({ baseUrl: '', apiKey: '', model: '' })
   const abortRef = useRef<AbortController | null>(null)
 
@@ -323,6 +324,7 @@ function AiGeneratorCard() {
     try {
       const [url] = await aiGenerate({
         prompt: prompt.trim(), size, signal: ac.signal, provider: engineId,
+        freeModel: engineId === 'pollinations' ? freeModel : undefined,
         custom: engineId === 'custom' ? customCfg : undefined,
       })
       setImage(url)
@@ -407,6 +409,29 @@ function AiGeneratorCard() {
         ))}
       </div>
 
+      {engineId === 'pollinations' && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-muted-foreground">Model</span>
+          {AI_FREE_MODELS.map(model => (
+            <button
+              key={model.id}
+              onClick={() => setFreeModel(model.id)}
+              disabled={busy}
+              aria-pressed={freeModel === model.id}
+              className={cn(
+                'rounded-full border px-2.5 py-0.5 text-[10px] transition-colors',
+                freeModel === model.id
+                  ? 'border-primary bg-primary/15 text-primary'
+                  : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
+              )}
+              title={model.sub}
+            >
+              {model.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* custom endpoint fields (compact) */}
       {engineId === 'custom' && (
         <div className="space-y-1.5 rounded-lg border border-border bg-background/40 p-2">
@@ -489,7 +514,7 @@ function AiGeneratorCard() {
           </div>
           <div className="text-[9px] text-muted-foreground">
             {engineId === 'pollinations'
-              ? 'The free engine is usually fast, sometimes queued.'
+              ? `${AI_FREE_MODELS.find(m => m.id === freeModel)?.label ?? freeModel} is free and may be queued.`
               : 'Your endpoint should answer in seconds.'}
           </div>
         </div>
