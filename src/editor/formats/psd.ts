@@ -70,6 +70,8 @@ export interface PsdDecoded {
   depth: 8 | 16
   hasAlpha: boolean
   layers: PsdLayer[]             // bottom-first (PSD storage order)
+  /** ResolutionInfo image-resource metadata, pixels per inch. */
+  resolutionPpi: number
 }
 
 async function inflateZlib(data: Uint8Array): Promise<Uint8Array> {
@@ -257,7 +259,36 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   pos += cmdLen
   // ---- image resources ----
   const resLen = view.getUint32(pos)
-  pos += 4 + resLen
+  pos += 4
+  const resStart = pos
+  const resEnd = Math.min(bytes.length, resStart + resLen)
+  let resolutionPpi = 72
+  // Parse Photoshop Image Resource Blocks enough to recover ResolutionInfo
+  // (0x0400). The Pascal name is padded to an even byte boundary and resource
+  // data is also even-padded.
+  while (pos + 12 <= resEnd) {
+    const signature = str4(pos)
+    if (signature !== '8BIM' && signature !== 'MeSa') break
+    const id = view.getUint16(pos + 4)
+    pos += 6
+    const nameLen = bytes[pos] ?? 0
+    pos += 1 + nameLen
+    if ((1 + nameLen) & 1) pos++
+    if (pos + 4 > resEnd) break
+    const dataLen = view.getUint32(pos)
+    pos += 4
+    const dataStart = pos
+    if (id === 0x0400 && dataLen >= 16 && dataStart + 16 <= resEnd) {
+      const hFixed = view.getUint32(dataStart)
+      const vFixed = view.getUint32(dataStart + 8)
+      const h = hFixed / 65536
+      const v = vFixed / 65536
+      const ppi = Number.isFinite(h) && Number.isFinite(v) ? (h + v) / 2 : h
+      if (Number.isFinite(ppi) && ppi > 0) resolutionPpi = Math.max(1, Math.min(12000, ppi))
+    }
+    pos = dataStart + dataLen + (dataLen & 1)
+  }
+  pos = resEnd
   // ---- layer & mask info ----
   const lmLen = readLength(pos)
   pos += lenSize
@@ -484,7 +515,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
   }
 
-  return { canvas: composite, width, height, depth: depth as 8 | 16, hasAlpha, layers }
+  return { canvas: composite, width, height, depth: depth as 8 | 16, hasAlpha, layers, resolutionPpi }
 }
 
 // ============================================================
@@ -600,6 +631,7 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
+  options: { resolutionPpi?: number } = {},
 ): Blob {
   // normalize: composite must be doc-size
   let flat = composite
@@ -703,15 +735,17 @@ export function buildPsd(
   const lmPad = (4 - (lmContent.length & 3)) & 3
   const lmSection = concatUint8([u32(pad4(lmContent.length)), lmContent, new Uint8Array(lmPad)])
 
-  // ---- image resources: minimal ResolutionInfo (0x0400, 72 dpi) ----
+  // ---- image resources: ResolutionInfo (0x0400) ----
+  const resolutionPpi = Math.max(1, Math.min(12000, Number(options.resolutionPpi) || 72))
+  const fixedPpi = Math.max(1, Math.min(0xffffffff, Math.round(resolutionPpi * 65536)))
   const resData = new Uint8Array(16)
   const resView = new DataView(resData.buffer)
-  resView.setUint32(0, 72 << 16)   // hRes, fixed 16.16
-  resView.setUint16(4, 1)          // hResUnit: pixels per inch
-  resView.setUint16(6, 1)          // widthUnit
-  resView.setUint32(8, 72 << 16)   // vRes
-  resView.setUint16(12, 1)         // vResUnit
-  resView.setUint16(14, 1)         // heightUnit
+  resView.setUint32(0, fixedPpi)    // hRes, fixed 16.16
+  resView.setUint16(4, 1)           // hResUnit: pixels per inch
+  resView.setUint16(6, 1)           // widthUnit
+  resView.setUint32(8, fixedPpi)    // vRes
+  resView.setUint16(12, 1)          // vResUnit
+  resView.setUint16(14, 1)          // heightUnit
   const resources = concatUint8([asciiBytes('8BIM'), u16(0x0400), new Uint8Array([0, 0]), u32(resData.length), resData])
 
   // ---- merged composite: RLE with a shared channels × height row table ----
