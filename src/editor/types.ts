@@ -315,6 +315,48 @@ export interface HistoryState {
   savedPaths?: SavedPath[]
 }
 
+/** Named, durable copy of a history state. Unlike the rolling History list,
+ * snapshots are not discarded when old undo states are trimmed. */
+export interface HistorySnapshot {
+  id: string
+  name: string
+  time: number
+  state: HistoryState
+}
+
+/** Which layer properties a Photoshop-style Layer Comp records. */
+export interface LayerCompOptions {
+  visibility: boolean
+  position: boolean
+  appearance: boolean
+}
+
+/** Sparse per-layer state stored by a Layer Comp. */
+export interface LayerCompLayerState {
+  visible?: boolean
+  offsetX?: number
+  offsetY?: number
+  transform?: TransformSpec | null
+  opacity?: number
+  blendMode?: BlendMode
+  clipped?: boolean
+  maskEnabled?: boolean
+  blendIf?: BlendIfSettings | null
+  fx?: LayerFX | null
+}
+
+/** Photoshop-style document composition snapshot: visibility, position and/or
+ * appearance without duplicating layer pixels. */
+export interface LayerComp {
+  id: string
+  name: string
+  comment?: string
+  createdAt: number
+  updatedAt: number
+  options: LayerCompOptions
+  layers: Record<string, LayerCompLayerState>
+}
+
 export type ChannelView = 'rgb' | 'r' | 'g' | 'b'
 
 export interface SavedChannel {
@@ -389,6 +431,14 @@ export interface PsDocument {
   history: { states: HistoryState[]; index: number }
   /** History/Art History Brush source marker; view/tool state, not itself undoable. */
   historyBrushSourceIndex?: number
+  /** Named durable History snapshots. */
+  historySnapshots?: HistorySnapshot[]
+  /** When set, History/Art History Brush marked-source mode reads this snapshot instead of the rolling history index. */
+  historyBrushSnapshotId?: string | null
+  /** Photoshop-style Layer Comps stored with the document. */
+  layerComps?: LayerComp[]
+  /** Most recently applied Layer Comp, used by the panel highlight. */
+  activeLayerCompId?: string | null
   dirty: boolean
   // live preview (dialog driven)
   previewFilter: { layerId: string; type: FilterType; params: Record<string, any> } | null
