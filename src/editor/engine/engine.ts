@@ -18,7 +18,7 @@ import {
 } from './document'
 import { gaussianBlurChannel } from '../image-ops/core'
 import { autoTone, autoContrast, autoColor } from '../image-ops/auto'
-import { runPixelOpFromCanvas, type PixelOpSpec } from './pixel-worker'
+import { runPixelOpAsync, runPixelOpFromCanvas, type PixelOpSpec } from './pixel-worker'
 import { isGlEnabled, setGlEnabled, glInfo, glAvailable } from './gl/gl-core'
 import { resampleCanvas } from '../utils/canvas'
 import {
@@ -1858,7 +1858,7 @@ export class Engine {
     this.setSelectionMask(mask, mode, 'Lasso Selection')
   }
 
-  magicWand(x: number, y: number, opts: {
+  async magicWand(x: number, y: number, opts: {
     tolerance: number
     contiguous: boolean
     sample: 'composite' | 'layer'
@@ -1872,7 +1872,7 @@ export class Engine {
     exactPixels?: boolean
     feather?: number
     smooth?: number
-  }) {
+  }): Promise<void> {
     const doc = this.activeDoc
     if (!doc) return
     const src = opts.sample === 'layer' && this.activeLayer ? this.layerCanvasDocSpace(this.activeLayer.id) : getFlatComposite(doc)
@@ -1880,24 +1880,43 @@ export class Engine {
     const img = getImageData(src)
     const cx = clamp(Math.round(x), 0, doc.width - 1)
     const cy = clamp(Math.round(y), 0, doc.height - 1)
-    let mask = imageOps.perceptualWandMask(img, cx, cy, {
-      tolerance: opts.tolerance,
-      contiguous: opts.contiguous,
-      antiAlias: opts.antiAlias,
-      diagonal: opts.diagonal,
-      sampleRadius: opts.sampleRadius,
-      edgeAware: opts.edgeAware,
-      adaptive: opts.adaptive,
-      matchAlpha: opts.matchAlpha,
-      exactPixels: opts.exactPixels,
-    })
+
+    let mask: Uint8ClampedArray
+    try {
+      const masked = await runPixelOpAsync(img, {
+        kind: 'wand-mask',
+        params: {
+          x: cx,
+          y: cy,
+          tolerance: opts.tolerance,
+          contiguous: opts.contiguous,
+          antiAlias: opts.antiAlias,
+          diagonal: opts.diagonal,
+          sampleRadius: opts.sampleRadius,
+          edgeAware: opts.edgeAware,
+          adaptive: opts.adaptive,
+          matchAlpha: opts.matchAlpha,
+          exactPixels: opts.exactPixels,
+        },
+      })
+      mask = new Uint8ClampedArray(doc.width * doc.height)
+      for (let i = 0, j = 3; i < mask.length; i++, j += 4) mask[i] = masked.data[j]
+    } catch (err) {
+      this.ui?.toast(
+        err instanceof Error ? `Magic Wand could not finish: ${err.message}` : 'Magic Wand could not finish',
+        'error',
+      )
+      return
+    }
+
+    // A large worker job may finish after the user switched documents.
+    if (this.activeDoc?.id !== doc.id || doc.width * doc.height !== mask.length) return
+
     if ((opts.smooth ?? 0) > 0 || (opts.feather ?? 0) > 0) {
       const temp = selectionFromMask(maskCanvasFromAlpha(mask, doc.width, doc.height))
       let refined = temp
       if ((opts.smooth ?? 0) > 0) refined = modifySelection(refined, 'smooth', opts.smooth ?? 0) ?? refined
       if ((opts.feather ?? 0) > 0) refined = modifySelection(refined, 'feather', opts.feather ?? 0) ?? refined
-      // Refinement already produced a document-space mask. Avoid extracting a
-      // second full-document alpha buffer only to recreate the same mask.
       this.setSelectionMask(refined.mask, opts.mode, 'Magic Wand')
       return
     }
