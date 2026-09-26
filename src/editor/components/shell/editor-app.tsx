@@ -1,6 +1,6 @@
 'use client'
 // Chay's Photo Studio — main application shell
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import * as Icons from 'lucide-react'
 import { MenuBar } from './menu-bar'
 import { Toolbar } from '../toolbar/toolbar'
@@ -295,7 +295,7 @@ export function EditorApp() {
               </>
             )}
             {!mobileMode && <TopDock />}
-            {hasDoc ? <CanvasWorkspace /> : (
+            {hasDoc ? <CanvasWorkspace mobile={mobileMode} /> : (
               <div className="flex-1 flex flex-col min-h-0">
                 <WelcomeScreen />
                 {mobileMode && <MobileStatusBar />}
@@ -423,7 +423,7 @@ function MobileInputBar() {
     </button>
   )
 
-  const action = (label: string, key: string, Icon: React.ComponentType<{ size?: number }>, hint: string) => (
+  const action = (label: string, key: string, Icon: ComponentType<{ size?: number }>, hint: string) => (
     <button
       type="button"
       className="h-10 min-w-11 px-2 rounded-md border border-border bg-background/60 text-muted-foreground active:bg-accent active:text-foreground flex items-center justify-center gap-1 touch-manipulation"
