@@ -35,6 +35,7 @@
 // ============================================================
 import { applyFilter, applyAdjustment } from '../image-ops'
 import { autoTone, autoContrast, autoColor, matchColor } from '../image-ops/auto'
+import { perceptualWandMask } from '../image-ops/wand'
 import { getImageData } from '../utils/canvas'
 import type { AdjustmentType, FilterType } from '../types'
 
@@ -42,6 +43,7 @@ export type PixelOpKind =
   | 'filter' | 'adjustment'
   | 'auto-tone' | 'auto-contrast' | 'auto-color'
   | 'match-color'
+  | 'wand-mask'
 
 /** Structured-cloneable op descriptor — closures cannot cross the worker boundary. */
 export interface PixelOpSpec {
@@ -81,9 +83,9 @@ const MAIN_THREAD_HEAVY_LIMIT_PX = 2_000_000
 const NEVER_SYNC_FILTERS = new Set(['gaussian-blur', 'motion-blur', 'radial-blur'])
 
 function avoidMainThreadFallback(width: number, height: number, op: PixelOpSpec): boolean {
-  return op.kind === 'filter' &&
-    width * height >= MAIN_THREAD_HEAVY_LIMIT_PX &&
-    NEVER_SYNC_FILTERS.has(String(op.type ?? ''))
+  if (width * height < MAIN_THREAD_HEAVY_LIMIT_PX) return false
+  if (op.kind === 'wand-mask') return true
+  return op.kind === 'filter' && NEVER_SYNC_FILTERS.has(String(op.type ?? ''))
 }
 
 function workerRequiredError(op: PixelOpSpec): PixelOpUnrecoverableError {
@@ -93,6 +95,7 @@ function workerRequiredError(op: PixelOpSpec): PixelOpUnrecoverableError {
 }
 
 function timeoutForJob(job: InternalJob): number {
+  if (job.op.kind === 'wand-mask') return 60_000
   if (job.op.kind !== 'filter') return OP_TIMEOUT_MS
   const type = job.op.type
   if (type === 'gaussian-blur' || type === 'box-blur' || type === 'motion-blur' || type === 'radial-blur') {
@@ -153,6 +156,19 @@ export function runPixelOpSync(img: ImageData, op: PixelOpSpec): ImageData {
     case 'match-color': {
       if (!op.source) throw new Error('match-color requires a source ImageData')
       matchColor(img, op.source, (op.params ?? {}) as never)
+      break
+    }
+    case 'wand-mask': {
+      const p = op.params ?? {}
+      const x = Math.max(0, Math.min(img.width - 1, Math.round(Number(p.x) || 0)))
+      const y = Math.max(0, Math.min(img.height - 1, Math.round(Number(p.y) || 0)))
+      const mask = perceptualWandMask(img, x, y, p as never)
+      for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
+        img.data[j] = 255
+        img.data[j + 1] = 255
+        img.data[j + 2] = 255
+        img.data[j + 3] = mask[i]
+      }
       break
     }
     default: throw new Error(`runPixelOpSync: unknown op "${String((op as PixelOpSpec).kind)}"`)
