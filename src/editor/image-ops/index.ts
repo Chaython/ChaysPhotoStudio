@@ -105,9 +105,9 @@ export { detectObjects, type DetectedObject } from './detect'
 // ---- AI image generation (text-to-image) ----
 export {
   aiGenerate, dataUrlToFile, dataUrlToCanvas, composePrompt,
-  AI_GEN_SIZES, AI_STYLE_PRESETS, AI_GEN_MAX_PROMPT,
+  AI_GEN_SIZES, AI_STYLE_PRESETS, AI_GEN_MAX_PROMPT, AI_FREE_MODELS,
   loadCustomGenConfig, saveCustomGenConfig,
-  type AiGenerateOptions, type AiGenProvider, type AiGenMeta, type CustomGenConfig,
+  type AiGenerateOptions, type AiGenProvider, type AiGenMeta, type CustomGenConfig, type PollinationsModel,
 } from './generate'
 
 // ---- auto corrections & match color (PS Image menu) ----
