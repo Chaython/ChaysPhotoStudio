@@ -551,36 +551,74 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   }
 
   // vector mask — rasterized at composition time, so the underlying layer
-  // remains fully editable and the path can be changed without touching pixels.
+  // remains fully editable. Compound components use Photoshop-style Add /
+  // Subtract / Intersect / Exclude operations without flattening the paths.
   const vectorMask = layer.vectorMask
-  if (vectorMask && vectorMask.enabled !== false && vectorMask.anchors.length >= 2) {
-    const vm = createCanvas(doc.width, doc.height)
-    const vc = ctx2d(vm)
-    const a = vectorMask.anchors
-    vc.fillStyle = '#fff'
-    vc.beginPath()
-    vc.moveTo(a[0].x, a[0].y)
-    for (let i = 1; i < a.length; i++) {
-      const p0 = a[i - 1], p1 = a[i]
-      vc.bezierCurveTo(
-        p0.x + p0.outX, p0.y + p0.outY,
-        p1.x + p1.inX, p1.y + p1.inY,
-        p1.x, p1.y,
-      )
+  if (vectorMask && vectorMask.enabled !== false) {
+    const legacy = vectorMask.anchors.length >= 2
+      ? [{ anchors: vectorMask.anchors, closed: vectorMask.closed, op: 'add' as const }]
+      : []
+    const components = vectorMask.paths?.length ? vectorMask.paths : legacy
+    if (components.length) {
+      const vm = createCanvas(doc.width, doc.height)
+      const vc = ctx2d(vm)
+
+      const drawComponent = (
+        target: CanvasRenderingContext2D,
+        component: { anchors: import('../types').PathAnchor[]; closed: boolean },
+      ) => {
+        const a = component.anchors
+        if (a.length < 2) return
+        target.beginPath()
+        target.moveTo(a[0].x, a[0].y)
+        for (let i = 1; i < a.length; i++) {
+          const p0 = a[i - 1], p1 = a[i]
+          target.bezierCurveTo(
+            p0.x + p0.outX, p0.y + p0.outY,
+            p1.x + p1.inX, p1.y + p1.inY,
+            p1.x, p1.y,
+          )
+        }
+        if (component.closed && a.length >= 2) {
+          const p0 = a[a.length - 1], p1 = a[0]
+          target.bezierCurveTo(
+            p0.x + p0.outX, p0.y + p0.outY,
+            p1.x + p1.inX, p1.y + p1.inY,
+            p1.x, p1.y,
+          )
+          target.closePath()
+        }
+      }
+
+      for (let i = 0; i < components.length; i++) {
+        const component = components[i]
+        if (component.anchors.length < 2) continue
+        const op = i === 0 ? 'add' : component.op
+        if (op === 'intersect') {
+          const part = createCanvas(doc.width, doc.height)
+          const pc = ctx2d(part)
+          pc.fillStyle = '#fff'
+          drawComponent(pc, component)
+          pc.fill()
+          vc.globalCompositeOperation = 'destination-in'
+          vc.drawImage(part, 0, 0)
+          vc.globalCompositeOperation = 'source-over'
+        } else {
+          vc.globalCompositeOperation =
+            op === 'subtract' ? 'destination-out' :
+            op === 'exclude' ? 'xor' :
+            'source-over'
+          vc.fillStyle = '#fff'
+          drawComponent(vc, component)
+          vc.fill()
+          vc.globalCompositeOperation = 'source-over'
+        }
+      }
+
+      ctx.globalCompositeOperation = 'destination-in'
+      ctx.drawImage(vm, 0, 0)
+      ctx.globalCompositeOperation = 'source-over'
     }
-    if (vectorMask.closed && a.length >= 2) {
-      const p0 = a[a.length - 1], p1 = a[0]
-      vc.bezierCurveTo(
-        p0.x + p0.outX, p0.y + p0.outY,
-        p1.x + p1.inX, p1.y + p1.inY,
-        p1.x, p1.y,
-      )
-      vc.closePath()
-    }
-    vc.fill()
-    ctx.globalCompositeOperation = 'destination-in'
-    ctx.drawImage(vm, 0, 0)
-    ctx.globalCompositeOperation = 'source-over'
   }
 
   // layer styles (fx) — computed from the POST-MASK silhouette (Photoshop
