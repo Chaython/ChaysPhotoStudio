@@ -20,16 +20,41 @@ let editingVertex: number | null = null
 const MAX_POLYGON_PREVIEW_SEGMENTS = 2048
 const MAX_POLYGON_VERTEX_MARKERS = 512
 
-function nearestVertex(p: PointerInfo): number | null {
+function nearestVertexAt(x: number, y: number): number | null {
   const doc = engine.activeDoc
   if (!doc || !pts.length) return null
   const tol = 9 / Math.max(.02, doc.view.zoom)
   let best = -1, bestD = tol
   for (let i = 0; i < pts.length; i++) {
-    const d = Math.hypot(p.docX - pts[i].x, p.docY - pts[i].y)
+    const d = Math.hypot(x - pts[i].x, y - pts[i].y)
     if (d <= bestD) { best = i; bestD = d }
   }
   return best >= 0 ? best : null
+}
+
+function nearestVertex(p: PointerInfo): number | null {
+  return nearestVertexAt(p.docX, p.docY)
+}
+
+function nearestSegment(p: PointerInfo): { index: number; point: { x: number; y: number } } | null {
+  const doc = engine.activeDoc
+  if (!doc || pts.length < 2) return null
+  const tol = 8 / Math.max(.02, doc.view.zoom)
+  let bestIndex = -1
+  let bestD = tol
+  let bestPoint = { x: p.docX, y: p.docY }
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1]
+    const dx = b.x - a.x, dy = b.y - a.y
+    const denom = dx * dx + dy * dy
+    const t = denom > 1e-9
+      ? Math.max(0, Math.min(1, ((p.docX - a.x) * dx + (p.docY - a.y) * dy) / denom))
+      : 0
+    const q = { x: a.x + dx * t, y: a.y + dy * t }
+    const d = Math.hypot(p.docX - q.x, p.docY - q.y)
+    if (d <= bestD) { bestD = d; bestIndex = i; bestPoint = q }
+  }
+  return bestIndex >= 0 ? { index: bestIndex, point: bestPoint } : null
 }
 
 function constrainedPoint(p: PointerInfo): { x: number; y: number } {
@@ -81,6 +106,18 @@ export const polygonLassoTool: Tool = {
       const hit = nearestVertex(p)
       if (hit !== null) {
         editingVertex = hit
+        hover = null
+        engine.pokeOverlay()
+        return
+      }
+      // Ctrl/Cmd-drag a segment to insert a new editable vertex before
+      // committing the selection. This closes the old "can't correct a
+      // middle segment" gap without forcing the user to undo the whole path.
+      const seg = nearestSegment(p)
+      if (seg) {
+        const insertAt = seg.index + 1
+        pts.splice(insertAt, 0, seg.point)
+        editingVertex = insertAt
         hover = null
         engine.pokeOverlay()
         return
@@ -161,6 +198,14 @@ export const polygonLassoTool: Tool = {
         engine.pokeOverlay()
         return true
       }
+    }
+    if (e.key === 'Delete' && pts.length) {
+      e.preventDefault()
+      const hit = hover ? nearestVertexAt(hover.x, hover.y) : null
+      if (hit !== null && pts.length > 1) pts.splice(hit, 1)
+      else pts.pop()
+      engine.pokeOverlay()
+      return true
     }
     return false
   },
