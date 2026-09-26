@@ -42,6 +42,15 @@ export const AI_GEN_MAX_PROMPT = 600
 
 export type AiGenProvider = 'pollinations' | 'custom'
 
+export type PollinationsModel = 'flux' | 'zimage' | 'klein'
+
+/** Free/no-key Pollinations models supported by the legacy browser endpoint. */
+export const AI_FREE_MODELS: { id: PollinationsModel; label: string; sub: string }[] = [
+  { id: 'flux', label: 'Flux Schnell', sub: 'Versatile · photorealistic' },
+  { id: 'zimage', label: 'Z-Image Turbo', sub: 'Stylized · detailed' },
+  { id: 'klein', label: 'Klein', sub: 'Fast · creative' },
+]
+
 /** User's own OpenAI-compatible endpoint config (persisted locally). */
 export interface CustomGenConfig {
   baseUrl: string
@@ -85,6 +94,8 @@ export interface AiGenerateOptions {
   signal?: AbortSignal
   /** generation engine (default: free engine) */
   provider?: AiGenProvider
+  /** free Pollinations model (default: flux) */
+  freeModel?: PollinationsModel
   /** custom endpoint config — required when provider === 'custom' */
   custom?: { baseUrl?: string; apiKey?: string; model?: string }
   /** fires as each image arrives (progressive UI) */
@@ -93,7 +104,7 @@ export interface AiGenerateOptions {
 
 /** Generate `count` images for one prompt. Throws Error with .message on failure. */
 export async function aiGenerate(opts: AiGenerateOptions): Promise<string[]> {
-  const { prompt, size = '1024x1024', count = 1, signal, provider, custom, onImage } = opts
+  const { prompt, size = '1024x1024', count = 1, signal, provider, freeModel = 'flux', custom, onImage } = opts
   const clean = prompt.trim()
   if (!clean) throw new Error('Enter a prompt first')
   if (clean.length > AI_GEN_MAX_PROMPT) throw new Error(`Prompt too long (max ${AI_GEN_MAX_PROMPT} chars)`)
@@ -113,7 +124,7 @@ export async function aiGenerate(opts: AiGenerateOptions): Promise<string[]> {
         res = await fetch('/api/ai-generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: clean, size, provider, custom }),
+          body: JSON.stringify({ prompt: clean, size, provider, freeModel, custom }),
           signal,
         })
       } catch (e: any) {
@@ -146,7 +157,7 @@ export async function aiGenerate(opts: AiGenerateOptions): Promise<string[]> {
     }
 
     // ---- direct engine fallback (no server) ----
-    const dataUrl = await generateDirect(clean, size, signal)
+    const dataUrl = await generateDirect(clean, size, freeModel, signal)
     out.push(dataUrl)
     onImage?.(dataUrl, i, count, { provider: 'pollinations', fallback: true })
   }
@@ -158,7 +169,7 @@ export async function aiGenerate(opts: AiGenerateOptions): Promise<string[]> {
  *  unavailable (static hosting, browser plugin, or fully offline
  *  editor). Retries like the server route: the shared engine is often
  *  busy. Returns the image as a PNG data-URL. */
-async function generateDirect(prompt: string, size: string, signal?: AbortSignal): Promise<string> {
+async function generateDirect(prompt: string, size: string, model: PollinationsModel = 'flux', signal?: AbortSignal): Promise<string> {
   const m = size.match(/^(\d+)x(\d+)$/)
   const w = m ? Math.min(2880, Math.max(64, Number(m[1]))) : 1024
   const h = m ? Math.min(2880, Math.max(64, Number(m[2]))) : 1024
@@ -169,7 +180,7 @@ async function generateDirect(prompt: string, size: string, signal?: AbortSignal
     const seed = Math.floor(Math.random() * 1e9)
     const url =
       `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-      `?width=${w}&height=${h}&nologo=true&seed=${seed}`
+      `?model=${encodeURIComponent(model)}&width=${w}&height=${h}&nologo=true&seed=${seed}`
     try {
       const res = await fetch(url, { signal, mode: 'cors' })
       if (!res.ok) { lastErr = `engine busy (HTTP ${res.status})`; await sleep(4000); continue }
