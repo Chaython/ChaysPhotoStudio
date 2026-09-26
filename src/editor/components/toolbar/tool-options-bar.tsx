@@ -27,7 +27,7 @@ function loadCollapsed(): boolean {
   try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
 }
 
-export function ToolOptionsBar({ embedded = false }: { embedded?: boolean }) {
+export function ToolOptionsBar({ embedded = false, mobile = false }: { embedded?: boolean; mobile?: boolean }) {
   const activeTool = useEditorStore(s => s.activeTool)
   const opts = useEditorStore(s => s.toolOptions[s.activeTool])
   const setToolOption = useEditorStore(s => s.setToolOption)
@@ -55,8 +55,10 @@ export function ToolOptionsBar({ embedded = false }: { embedded?: boolean }) {
       <div
         className={cn(
           'flex items-center gap-x-3 gap-y-1.5 px-3 py-1.5 min-w-0 flex-1 min-h-9',
-          collapsed ? 'flex-nowrap overflow-x-auto zphoto-scroll' : 'flex-wrap',
-          'max-md:flex-nowrap max-md:overflow-x-auto max-md:zphoto-scroll',
+          mobile
+            ? 'flex-nowrap overflow-x-auto zphoto-scroll min-h-12 py-2 [&_button]:min-h-9 [&_input]:min-h-9 [&_[role=combobox]]:min-h-9 [&_[role=slider]]:min-h-7'
+            : (collapsed ? 'flex-nowrap overflow-x-auto zphoto-scroll' : 'flex-wrap'),
+          !mobile && 'max-md:flex-nowrap max-md:overflow-x-auto max-md:zphoto-scroll',
           embedded && 'content-start overflow-auto'
         )}
         role="group"
@@ -87,7 +89,7 @@ export function ToolOptionsBar({ embedded = false }: { embedded?: boolean }) {
       </div>
       {/* minimize / expand — the whole point of the collapsed mode is reclaiming
           canvas space; hidden below md where the bar is already a single row */}
-      <div className="hidden md:flex items-center px-1 flex-shrink-0 border-l border-border/60">
+      {!mobile && <div className="hidden md:flex items-center px-1 flex-shrink-0 border-l border-border/60">
         <button
           type="button"
           className="h-7 w-7 flex items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
@@ -98,7 +100,7 @@ export function ToolOptionsBar({ embedded = false }: { embedded?: boolean }) {
         >
           {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
         </button>
-      </div>
+      </div>}
     </div>
   )
 }
