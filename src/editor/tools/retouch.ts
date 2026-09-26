@@ -539,9 +539,8 @@ function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: num
   const r = shape.radius
   let strength = clamp((opts.strength ?? 60) / 100, 0.05, 0.95)
   if (p.pointerType === 'pen' && opts.pressureStrength !== false) strength *= .2 + .8 * pressure
-  const hardness = clamp((opts.hardness ?? 70) / 100, 0, 0.96)
   const ctx = ctx2d(l.canvas)
-  const size = Math.ceil(r * 2) + 2
+  const size = shape.mask.side
   const tmp = getSmudgeScratch(size)
   const tctx = ctx2d(tmp)
   const c = size / 2
@@ -635,7 +634,8 @@ function spongeOp(x: number, y: number, p: PointerInfo) {
   const layer = engine.activeLayer
   if (!layer) return
   const opts = getOptions('sponge')
-  const r = (opts.size ?? 60) / 2
+  const shape = retouchBrushShape(opts, p)
+  const r = shape.radius
   const flow = ((opts.flow ?? 30) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
   // Alt/Option temporarily reverses Saturate/Desaturate, mirroring the
   // modifier-driven workflow of the other tonal retouch tools.
