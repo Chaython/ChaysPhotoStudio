@@ -255,8 +255,13 @@ export async function openSerializedProject(project: SerializedProject, label = 
   if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) throw new Error('Invalid project dimensions')
   const doc: PsDocument = {
     id: uid(), name, width, height,
-    workingBitDepth: project.doc.workingBitDepth === 16 ? 16 : 8,
-    sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth) ? Number(project.doc.sourceBitDepth) : (project.doc.workingBitDepth === 16 ? 16 : 8),
+    // Current editable raster storage is always rgba-unorm8. Preserve a
+    // historical/project-reported 16-bit value only as source provenance;
+    // never resurrect the old misleading "16-bit working pipeline" claim.
+    workingBitDepth: 8,
+    sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth)
+      ? Number(project.doc.sourceBitDepth)
+      : (project.doc.workingBitDepth === 16 ? 16 : 8),
     workingColorSpace: project.doc.workingColorSpace === 'display-p3' ? 'display-p3' : 'srgb',
     layers: [], activeLayerId: null, selection: null,
     channelView: (channelView ?? 'rgb') as PsDocument['channelView'], savedChannels: [],
