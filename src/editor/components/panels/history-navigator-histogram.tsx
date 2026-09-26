@@ -37,20 +37,24 @@ export function HistoryPanel() {
   void renderTick
   const [confirmClear, setConfirmClear] = useState(false)
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const doc = engine.activeDoc
+  const snapshots = doc?.historySnapshots ?? []
+  const markedSnapshotId = doc?.historyBrushSnapshotId ?? null
 
   useEffect(() => () => { if (clearTimer.current) clearTimeout(clearTimer.current) }, [])
 
-  const snapshot = () => {
-    const doc = engine.activeDoc
-    const h = doc?.history
-    if (!doc || !h) return
-    const cur = h.states[h.index]
-    if (!cur) return
-    const n = h.states.filter(s => s.label.startsWith('Snapshot')).length + 1
-    const snap = { ...cur, label: `Snapshot ${n}`, time: Date.now() }
-    h.states = h.states.slice(0, h.index + 1).concat([snap])
-    h.index = h.states.length - 1
-    engine.emit()
+  const createSnapshot = () => {
+    const next = (engine.activeDoc?.historySnapshots?.length ?? 0) + 1
+    const name = window.prompt('Snapshot name:', `Snapshot ${next}`)
+    if (name === null) return
+    const snap = engine.createHistorySnapshot(name)
+    if (snap) useEditorStore.getState().pushToast(`Created “${snap.name}”`, 'success')
+  }
+
+  const renameSnapshot = (id: string, current: string) => {
+    const name = window.prompt('Rename snapshot:', current)
+    if (name === null) return
+    engine.renameHistorySnapshot(id, name)
   }
 
   const clearHistory = () => {
@@ -62,53 +66,119 @@ export function HistoryPanel() {
     }
     if (clearTimer.current) clearTimeout(clearTimer.current)
     setConfirmClear(false)
-    const doc = engine.activeDoc
-    const h = doc?.history
-    if (!doc || !h || !h.states.length) return
+    const d = engine.activeDoc
+    const h = d?.history
+    if (!d || !h || !h.states.length) return
     h.states = [h.states[h.index]]
     h.index = 0
     engine.setHistoryBrushSource(0)
-    useEditorStore.getState().pushToast('History cleared', 'info')
+    // Named snapshots are intentionally preserved, matching Photoshop's
+    // distinction between rolling History states and durable snapshots.
+    useEditorStore.getState().pushToast('History cleared; named snapshots kept', 'info')
   }
 
   const setBrushSource = (i: number) => {
-    const doc = engine.activeDoc
-    if (!doc?.history.states[i]) return
-    const label = doc.history.states[i].label
+    const d = engine.activeDoc
+    if (!d?.history.states[i]) return
+    const label = d.history.states[i].label
+    engine.setHistoryBrushSnapshot(null)
     engine.setHistoryBrushSource(i)
     useEditorStore.getState().pushToast(`History Brush source: ${label}`, 'info')
   }
 
+  const setSnapshotBrushSource = (id: string, name: string) => {
+    engine.setHistoryBrushSnapshot(id)
+    useEditorStore.getState().pushToast(`History Brush source: ${name}`, 'info')
+  }
+
   const brushSource = (() => {
-    const doc = engine.activeDoc
-    if (!doc?.history.states.length) return 0
-    return Math.max(0, Math.min(doc.history.states.length - 1, doc.historyBrushSourceIndex ?? 0))
+    const d = engine.activeDoc
+    if (!d?.history.states.length) return 0
+    return Math.max(0, Math.min(d.history.states.length - 1, d.historyBrushSourceIndex ?? 0))
   })()
 
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center gap-0.5 p-1 border-b bg-panel/50">
-        <PanelBtn title="Create snapshot of current state" icon="Camera" onClick={snapshot} />
+        <PanelBtn title="Create named snapshot of current state" icon="Camera" onClick={createSnapshot} />
         <span className="flex-1" />
-        <span className="text-[9px] text-muted-foreground pr-1">{labels.length} state(s)</span>
+        <span className="text-[9px] text-muted-foreground pr-1">{snapshots.length} snapshot(s) · {labels.length} state(s)</span>
         <button
           className={cn(
             'h-7 px-2 rounded-sm flex items-center gap-1 text-[10px] transition-colors',
             confirmClear ? 'bg-destructive/15 text-destructive' : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
           )}
-          title={confirmClear ? 'Click again to confirm' : 'Clear history (keeps current state)'}
+          title={confirmClear ? 'Click again to confirm' : 'Clear rolling history; named snapshots are preserved'}
           onClick={clearHistory}
         >
           <Icons.Trash2 size={12} />
           {confirmClear ? 'Sure?' : 'Clear'}
         </button>
       </div>
+
+      {snapshots.length > 0 && (
+        <div className="border-b border-border/60 bg-background/20">
+          <div className="h-6 px-2 flex items-center gap-1 text-[9px] uppercase tracking-wide text-muted-foreground">
+            <Icons.Camera size={10} className="text-primary" />
+            Named Snapshots
+          </div>
+          <div className="max-h-32 overflow-y-auto zphoto-scroll">
+            {snapshots.map(snap => {
+              const isBrush = markedSnapshotId === snap.id
+              return (
+                <div key={snap.id} className="flex items-stretch border-t border-border/30 group">
+                  <button
+                    className={cn(
+                      'w-7 shrink-0 grid place-items-center border-r border-border/30',
+                      isBrush ? 'text-primary bg-primary/10' : 'text-muted-foreground/35 hover:text-foreground'
+                    )}
+                    onClick={() => setSnapshotBrushSource(snap.id, snap.name)}
+                    title={isBrush ? 'Current History Brush snapshot source' : 'Use this snapshot for History/Art History Brush and Erase to History'}
+                    aria-label={isBrush ? 'Current History Brush snapshot source' : `Use ${snap.name} as History Brush source`}
+                  >
+                    <Icons.Brush size={11} fill={isBrush ? 'currentColor' : 'none'} />
+                  </button>
+                  <button
+                    className="min-w-0 flex-1 px-2 py-1.5 text-left text-[11px] hover:bg-accent/30"
+                    onClick={() => engine.applyHistorySnapshot(snap.id)}
+                    onDoubleClick={() => renameSnapshot(snap.id, snap.name)}
+                    title="Click to restore snapshot · double-click to rename"
+                  >
+                    <span className="block truncate">{snap.name}</span>
+                    <span className="block text-[9px] text-muted-foreground/60">{new Date(snap.time).toLocaleTimeString()}</span>
+                  </button>
+                  <button
+                    className="w-7 grid place-items-center text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-foreground transition-opacity"
+                    onClick={() => renameSnapshot(snap.id, snap.name)}
+                    title="Rename snapshot"
+                    aria-label={`Rename ${snap.name}`}
+                  >
+                    <Icons.Pencil size={10} />
+                  </button>
+                  <button
+                    className="w-7 grid place-items-center text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
+                    onClick={() => engine.deleteHistorySnapshot(snap.id)}
+                    title="Delete snapshot"
+                    aria-label={`Delete ${snap.name}`}
+                  >
+                    <Icons.X size={10} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="h-6 px-2 flex items-center text-[9px] uppercase tracking-wide text-muted-foreground border-b border-border/40">
+        History States
+      </div>
       <FancyScroll className="flex-1 min-h-0" role="list" aria-label="History states">
         {labels.map((label, i) => {
-          const { icon, title } = stateIcon(label)
+          const { icon } = stateIcon(label)
           const Icon = (Icons as any)[icon] ?? Icons.CircleDot
           const isCurrent = i === index
-          const isBrushSource = i === brushSource
+          const isBrushSource = !markedSnapshotId && i === brushSource
           return (
             <div
               key={`${i}-${label}`}

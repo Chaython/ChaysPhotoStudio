@@ -6,7 +6,7 @@
 import { createElement, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders, Wrench, Files,
+  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders, Wrench, Files, LayoutList,
 } from 'lucide-react'
 import { LayersPanel } from './layers-panel'
 import { HistoryPanel, NavigatorPanel, HistogramPanel } from './history-navigator-histogram'
@@ -18,13 +18,14 @@ import { InfoPanel } from './info-panel'
 import { PathsPanel } from './paths-panel'
 import { PatternsPanel } from './patterns-panel'
 import { ToolPresetsPanel } from './tool-presets-panel'
+import { LayerCompsPanel } from './layer-comps-panel'
 import { Toolbar } from '../toolbar/toolbar'
 import { ToolOptionsBar } from '../toolbar/tool-options-bar'
 import { DocumentTabs } from '../workspace/document-tabs'
 
 export type PanelId =
   | 'color' | 'layers' | 'channels' | 'history' | 'actions'
-  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns' | 'tool-presets'
+  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns' | 'tool-presets' | 'layer-comps'
   | 'tools' | 'tool-options' | 'documents'
 
 export interface PanelDef {
@@ -107,6 +108,10 @@ export const PANELS: PanelDef[] = [
   {
     id: 'tool-presets', label: 'Presets', icon: Sliders, render: ToolPresetsPanel,
     defaultFloat: { w: 300, h: 430 }, minFloat: { w: 240, h: 280 },
+  },
+  {
+    id: 'layer-comps', label: 'Layer Comps', icon: LayoutList, render: LayerCompsPanel,
+    defaultFloat: { w: 316, h: 440 }, minFloat: { w: 250, h: 280 },
   },
   {
     id: 'tools', label: 'Tools', icon: Wrench, render: ToolsModule,

@@ -409,6 +409,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'win-paths', label: 'Paths', run: () => store().revealPanel('paths') },
     { id: 'win-patterns', label: 'Patterns', run: () => store().revealPanel('patterns') },
     { id: 'win-tool-presets', label: 'Tool Presets', run: () => store().revealPanel('tool-presets') },
+    { id: 'win-layer-comps', label: 'Layer Comps', run: () => store().revealPanel('layer-comps') },
     S(),
     { id: 'win-script', label: 'Scripting Console…', run: () => openDlg('script-console') },
     { id: 'win-batch', label: 'Batch / Image Processor…', run: () => openDlg('batch') },
