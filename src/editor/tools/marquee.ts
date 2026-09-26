@@ -1,7 +1,7 @@
 import type { Tool, PointerInfo, Rect, SelectionState } from '../types'
 import { engine } from '../engine/engine'
 import { newDrag, getOptions, combineMode, drawDashedRect, drawCross } from './shared'
-import { rectFromPoints, cloneCanvas, createCanvas, ctx2d } from '../utils/canvas'
+import { rectFromPoints, cloneCanvas, createCanvas, ctx2d, clamp } from '../utils/canvas'
 import { selectionFromMask } from '../engine/selection'
 import { snapToGuides } from '../engine/guides'
 import { useEditorStore } from '../store'
@@ -454,3 +454,109 @@ function make(kind: 'rect' | 'ellipse'): Tool {
 
 export const marqueeRectTool: Tool = make('rect')
 export const marqueeEllipseTool: Tool = make('ellipse')
+
+function makeSingle(axis: 'row' | 'column'): Tool {
+  const id = axis === 'row' ? 'marquee-row' : 'marquee-column'
+  let active = false
+  let position = 0
+  let gestureMods = { shift: false, alt: false }
+
+  const updatePosition = (p: PointerInfo) => {
+    const doc = engine.activeDoc
+    if (!doc) return
+    const snapped = snapPoint(p.docX, p.docY)
+    position = axis === 'row'
+      ? clamp(Math.floor(snapped.y), 0, Math.max(0, doc.height - 1))
+      : clamp(Math.floor(snapped.x), 0, Math.max(0, doc.width - 1))
+  }
+
+  return {
+    id,
+    cursor: 'crosshair',
+
+    onPointerDown(p: PointerInfo) {
+      if (p.button !== 0 || !engine.activeDoc) return
+      active = true
+      gestureMods = { shift: p.shift, alt: p.alt }
+      updatePosition(p)
+      engine.pokeOverlay()
+    },
+
+    onPointerMove(p: PointerInfo) {
+      if (!active) return
+      updatePosition(p)
+      engine.pokeOverlay()
+    },
+
+    onPointerUp(p: PointerInfo) {
+      const doc = engine.activeDoc
+      if (!active || !doc) return
+      updatePosition(p)
+      active = false
+      const opts = getOptions(id)
+      const mode = combineMode(gestureMods, opts.mode ?? 'new')
+      const feather = Math.max(0, Number(opts.feather) || 0)
+      const rect = axis === 'row'
+        ? { x: 0, y: position, w: doc.width, h: 1 }
+        : { x: position, y: 0, w: 1, h: doc.height }
+      engine.selectShape(rect, 'rect', feather, mode, false)
+      engine.pokeOverlay()
+    },
+
+    onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && active) {
+        active = false
+        engine.pokeOverlay()
+        return true
+      }
+      return false
+    },
+
+    onDeactivate() {
+      active = false
+    },
+
+    renderOverlay(ctx, view, w, h, mouse) {
+      void w; void h
+      const doc = engine.activeDoc
+      if (!doc || !active) {
+        drawCross(ctx, mouse)
+        return
+      }
+      const x0 = view.panX
+      const y0 = view.panY
+      const x1 = view.panX + doc.width * view.zoom
+      const y1 = view.panY + doc.height * view.zoom
+      ctx.save()
+      ctx.lineWidth = 1
+      ctx.setLineDash([5, 4])
+      ctx.strokeStyle = '#ffffff'
+      ctx.beginPath()
+      if (axis === 'row') {
+        const y = y0 + (position + .5) * view.zoom
+        ctx.moveTo(x0, y); ctx.lineTo(x1, y)
+      } else {
+        const x = x0 + (position + .5) * view.zoom
+        ctx.moveTo(x, y0); ctx.lineTo(x, y1)
+      }
+      ctx.stroke()
+      ctx.strokeStyle = '#000000'
+      ctx.lineDashOffset = 5
+      ctx.stroke()
+      ctx.setLineDash([])
+      const label = axis === 'row' ? `1 px row · y ${position}` : `1 px column · x ${position}`
+      ctx.font = '11px ui-monospace, monospace'
+      const tw = ctx.measureText(label).width + 10
+      const lx = axis === 'row' ? x0 + 8 : Math.min(x1 - tw - 4, x0 + position * view.zoom + 8)
+      const ly = axis === 'row' ? Math.min(y1 - 18, y0 + position * view.zoom + 6) : y0 + 8
+      ctx.fillStyle = 'rgba(0,0,0,.72)'
+      ctx.fillRect(lx, ly, tw, 16)
+      ctx.fillStyle = '#fff'
+      ctx.fillText(label, lx + 5, ly + 12)
+      ctx.restore()
+    },
+  }
+}
+
+export const marqueeRowTool: Tool = makeSingle('row')
+export const marqueeColumnTool: Tool = makeSingle('column')
