@@ -5,7 +5,7 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec,
-  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor,
+  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
@@ -369,6 +369,203 @@ export class Engine {
     if (!doc?.history.states.length) return
     doc.historyBrushSourceIndex = clamp(Math.round(i), 0, doc.history.states.length - 1)
     this.emit()
+  }
+
+  createHistorySnapshot(name?: string): HistorySnapshot | null {
+    const doc = this.activeDoc
+    if (!doc) return null
+    const snapshots = doc.historySnapshots ?? (doc.historySnapshots = [])
+    const fallback = `Snapshot ${snapshots.length + 1}`
+    const label = (name ?? fallback).trim().slice(0, 80) || fallback
+    const snap: HistorySnapshot = {
+      id: uid(),
+      name: label,
+      time: Date.now(),
+      state: this.captureState(doc, label),
+    }
+    snapshots.push(snap)
+    // Photoshop snapshots are durable within the document but should not grow
+    // without bound in a browser session/project file.
+    while (snapshots.length > 20) snapshots.shift()
+    doc.dirty = true
+    this.emit()
+    return snap
+  }
+
+  renameHistorySnapshot(id: string, name: string) {
+    const doc = this.activeDoc
+    const snap = doc?.historySnapshots?.find(s => s.id === id)
+    if (!doc || !snap) return
+    const next = name.trim().slice(0, 80)
+    if (!next || next === snap.name) return
+    snap.name = next
+    doc.dirty = true
+    this.emit()
+  }
+
+  deleteHistorySnapshot(id: string) {
+    const doc = this.activeDoc
+    if (!doc?.historySnapshots) return
+    const before = doc.historySnapshots.length
+    doc.historySnapshots = doc.historySnapshots.filter(s => s.id !== id)
+    if (doc.historySnapshots.length === before) return
+    if (doc.historyBrushSnapshotId === id) doc.historyBrushSnapshotId = null
+    doc.dirty = true
+    this.emit()
+  }
+
+  applyHistorySnapshot(id: string) {
+    const doc = this.activeDoc
+    const snap = doc?.historySnapshots?.find(s => s.id === id)
+    if (!doc || !snap) return
+    this.restoreState(doc, snap.state)
+    this.pushHistory(`Snapshot: ${snap.name}`, doc)
+    this.emit()
+  }
+
+  setHistoryBrushSnapshot(id: string | null) {
+    const doc = this.activeDoc
+    if (!doc) return
+    if (id && !doc.historySnapshots?.some(s => s.id === id)) return
+    doc.historyBrushSnapshotId = id
+    this.emit()
+  }
+
+  private captureLayerCompState(layer: Layer, options: LayerCompOptions): LayerCompLayerState {
+    const state: LayerCompLayerState = {}
+    if (options.visibility) state.visible = layer.visible
+    if (options.position) {
+      state.offsetX = layer.offsetX ?? 0
+      state.offsetY = layer.offsetY ?? 0
+      state.transform = layer.transform ? structuredClone(layer.transform) : null
+    }
+    if (options.appearance) {
+      state.opacity = layer.opacity
+      state.blendMode = layer.blendMode
+      state.clipped = layer.clipped
+      state.maskEnabled = layer.maskEnabled
+      state.blendIf = layer.blendIf ? structuredClone(layer.blendIf) : null
+      state.fx = layer.fx ? structuredClone(layer.fx) : null
+    }
+    return state
+  }
+
+  createLayerComp(
+    name?: string,
+    options: LayerCompOptions = { visibility: true, position: true, appearance: true },
+    comment = '',
+  ): LayerComp | null {
+    const doc = this.activeDoc
+    if (!doc) return null
+    const comps = doc.layerComps ?? (doc.layerComps = [])
+    const fallback = `Layer Comp ${comps.length + 1}`
+    const now = Date.now()
+    const comp: LayerComp = {
+      id: uid(),
+      name: (name ?? fallback).trim().slice(0, 80) || fallback,
+      comment: comment.trim().slice(0, 240),
+      createdAt: now,
+      updatedAt: now,
+      options: { ...options },
+      layers: {},
+    }
+    for (const layer of doc.layers) comp.layers[layer.id] = this.captureLayerCompState(layer, comp.options)
+    comps.push(comp)
+    doc.activeLayerCompId = comp.id
+    doc.dirty = true
+    this.emit()
+    return comp
+  }
+
+  updateLayerComp(id: string, options?: LayerCompOptions) {
+    const doc = this.activeDoc
+    const comp = doc?.layerComps?.find(c => c.id === id)
+    if (!doc || !comp) return
+    if (options) comp.options = { ...options }
+    comp.layers = {}
+    for (const layer of doc.layers) comp.layers[layer.id] = this.captureLayerCompState(layer, comp.options)
+    comp.updatedAt = Date.now()
+    doc.activeLayerCompId = comp.id
+    doc.dirty = true
+    this.emit()
+  }
+
+  renameLayerComp(id: string, name: string) {
+    const doc = this.activeDoc
+    const comp = doc?.layerComps?.find(c => c.id === id)
+    if (!doc || !comp) return
+    const next = name.trim().slice(0, 80)
+    if (!next || next === comp.name) return
+    comp.name = next
+    comp.updatedAt = Date.now()
+    doc.dirty = true
+    this.emit()
+  }
+
+  duplicateLayerComp(id: string): LayerComp | null {
+    const doc = this.activeDoc
+    const comp = doc?.layerComps?.find(c => c.id === id)
+    if (!doc || !comp) return null
+    const copy: LayerComp = structuredClone(comp)
+    copy.id = uid()
+    copy.name = `${comp.name} copy`.slice(0, 80)
+    copy.createdAt = copy.updatedAt = Date.now()
+    ;(doc.layerComps ?? (doc.layerComps = [])).push(copy)
+    doc.activeLayerCompId = copy.id
+    doc.dirty = true
+    this.emit()
+    return copy
+  }
+
+  deleteLayerComp(id: string) {
+    const doc = this.activeDoc
+    if (!doc?.layerComps) return
+    const before = doc.layerComps.length
+    doc.layerComps = doc.layerComps.filter(c => c.id !== id)
+    if (doc.layerComps.length === before) return
+    if (doc.activeLayerCompId === id) doc.activeLayerCompId = null
+    doc.dirty = true
+    this.emit()
+  }
+
+  applyLayerComp(id: string) {
+    const doc = this.activeDoc
+    const comp = doc?.layerComps?.find(c => c.id === id)
+    if (!doc || !comp) return
+    for (const layer of doc.layers) {
+      const state = comp.layers[layer.id]
+      if (!state) continue
+      if (comp.options.visibility && typeof state.visible === 'boolean') layer.visible = state.visible
+      if (comp.options.position) {
+        if (Number.isFinite(state.offsetX)) layer.offsetX = Number(state.offsetX)
+        if (Number.isFinite(state.offsetY)) layer.offsetY = Number(state.offsetY)
+        layer.transform = state.transform ? structuredClone(state.transform) : null
+      }
+      if (comp.options.appearance) {
+        if (Number.isFinite(state.opacity)) layer.opacity = clamp(Number(state.opacity), 0, 100)
+        if (state.blendMode) layer.blendMode = state.blendMode
+        if (typeof state.clipped === 'boolean') layer.clipped = state.clipped
+        if (typeof state.maskEnabled === 'boolean') layer.maskEnabled = state.maskEnabled
+        layer.blendIf = state.blendIf ? structuredClone(state.blendIf) : null
+        layer.fx = state.fx ? structuredClone(state.fx) : null
+      }
+      layer._v++
+    }
+    doc.activeLayerCompId = comp.id
+    invalidateFlat(doc)
+    this.pushHistory(`Layer Comp: ${comp.name}`)
+    this.emit()
+  }
+
+  cycleLayerComp(dir: -1 | 1) {
+    const doc = this.activeDoc
+    const comps = doc?.layerComps ?? []
+    if (!doc || !comps.length) return
+    const current = comps.findIndex(c => c.id === doc.activeLayerCompId)
+    const next = current < 0
+      ? (dir > 0 ? 0 : comps.length - 1)
+      : (current + dir + comps.length) % comps.length
+    this.applyLayerComp(comps[next].id)
   }
 
   // ================================================== COW mutation helpers
