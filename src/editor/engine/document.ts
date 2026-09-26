@@ -222,10 +222,10 @@ export function renderTextCanvas(doc: PsDocument, spec: TextSpec): HTMLCanvasEle
       return x
     }
 
-    if (tracking) {
+    if (tracking || wordSpacing) {
       lines.forEach((line, li) => {
         let x = applyAlign(spec.x, widths[li])
-        const y = spec.y + spec.fontSize * 0.85 + li * lh - baselineShift - baselineShift
+        const y = spec.y + spec.fontSize * 0.85 + li * lh - baselineShift
         for (let ci = 0; ci < line.length; ci++) {
           const ch = line[ci]
           ctx.fillText(ch, x, y)
