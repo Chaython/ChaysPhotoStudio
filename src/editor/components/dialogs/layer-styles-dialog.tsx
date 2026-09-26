@@ -9,6 +9,7 @@ import { DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ControlRenderer } from '../toolbar/tool-options-bar'
 import { engine } from '../../engine/engine'
+import { useEditorStore } from '../../store'
 import { defaultFX } from '../../engine/layer-fx'
 import { listUserPatterns } from '../../tools/patterns'
 import type { ControlDef, LayerFX } from '../../types'
@@ -16,6 +17,38 @@ import type { DialogProps } from './generic-dialogs'
 import { cn } from '@/lib/utils'
 
 type EffectKey = keyof LayerFX
+
+const STYLE_DEFAULTS_KEY = 'chays-photo-layer-style-defaults-v1'
+
+function readSavedDefaults(): Partial<LayerFX> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(STYLE_DEFAULTS_KEY) || '{}')
+    return parsed && typeof parsed === 'object' ? parsed as Partial<LayerFX> : {}
+  } catch {
+    return {}
+  }
+}
+
+function defaultFor(key: EffectKey): Record<string, unknown> | undefined {
+  const saved = readSavedDefaults()[key]
+  const builtin = defaultFX()[key]
+  return (saved ?? builtin) as Record<string, unknown> | undefined
+}
+
+function saveEffectDefault(key: EffectKey, value: Record<string, unknown>) {
+  if (typeof window === 'undefined') return
+  const saved = readSavedDefaults()
+  saved[key] = { ...value, enabled: true } as never
+  window.localStorage.setItem(STYLE_DEFAULTS_KEY, JSON.stringify(saved))
+}
+
+function clearEffectDefault(key: EffectKey) {
+  if (typeof window === 'undefined') return
+  const saved = readSavedDefaults()
+  delete saved[key]
+  window.localStorage.setItem(STYLE_DEFAULTS_KEY, JSON.stringify(saved))
+}
 
 const EFFECTS: { key: EffectKey; label: string; hint: string }[] = [
   { key: 'bevelEmboss', label: 'Bevel & Emboss', hint: 'Highlights and shadows that simulate raised or recessed depth' },
@@ -238,7 +271,7 @@ export function LayerStylesDialog({ inst, onClose }: DialogProps) {
 
   const toggle = (key: EffectKey, on: boolean) => {
     setFx(prev => {
-      const base = prev[key] ?? defaultFX()[key]
+      const base = prev[key] ?? defaultFor(key)
       return { ...prev, [key]: { ...(base as Record<string, unknown>), enabled: on } } as LayerFX
     })
   }
@@ -258,11 +291,21 @@ export function LayerStylesDialog({ inst, onClose }: DialogProps) {
     onClose()
   }
 
+  const selectedDef = EFFECTS.find(e => e.key === selected)
   const reset = () => setFx(cloneFX(null))
+  const makeDefault = () => {
+    if (!current) return
+    saveEffectDefault(selected, current)
+    useEditorStore.getState().pushToast(`${selectedDef?.label ?? 'Effect'} defaults saved`, 'success')
+  }
+  const resetDefault = () => {
+    clearEffectDefault(selected)
+    const built = defaultFX()[selected] as Record<string, unknown> | undefined
+    if (built) setFx(prev => ({ ...prev, [selected]: { ...built, enabled: current?.enabled !== false } }) as LayerFX)
+    useEditorStore.getState().pushToast(`${selectedDef?.label ?? 'Effect'} defaults reset`, 'info')
+  }
   const current = fx[selected] as Record<string, any> | undefined
   const controls = controlsFor(selected, current)
-  const selectedDef = EFFECTS.find(e => e.key === selected)
-
   return (
     <>
       <DialogHeader>
@@ -342,6 +385,8 @@ export function LayerStylesDialog({ inst, onClose }: DialogProps) {
             ? `${enabledCount} effect${enabledCount > 1 ? 's' : ''} active · live preview`
             : 'No effects enabled'}
         </span>
+        <Button variant="ghost" size="sm" onClick={makeDefault} disabled={!current?.enabled}>Make Default</Button>
+        <Button variant="ghost" size="sm" onClick={resetDefault}>Reset Default</Button>
         <Button variant="secondary" size="sm" onClick={reset}>Clear All</Button>
         <Button variant="secondary" size="sm" onClick={cancel}>Cancel</Button>
         <Button size="sm" onClick={commit}>OK</Button>
