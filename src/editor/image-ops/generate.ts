@@ -102,30 +102,35 @@ export async function aiGenerate(opts: AiGenerateOptions): Promise<string[]> {
   }
 
   const out: string[] = []
+  const staticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === '1'
   for (let i = 0; i < count; i++) {
     if (signal?.aborted) break
     let res: Response | null = null
-    let serverApi = true
-    try {
-      res = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: clean, size, provider, custom }),
-        signal,
-      })
-    } catch (e: any) {
-      if (e?.name === 'AbortError') throw e
-      if (provider !== 'pollinations') {
-        throw new Error('Could not reach the generation service — check your connection and try again')
+    let serverApi = !staticExport
+
+    if (serverApi) {
+      try {
+        res = await fetch('/api/ai-generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: clean, size, provider, custom }),
+          signal,
+        })
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw e
+        if (provider !== 'pollinations') {
+          throw new Error('Could not reach the generation service — check your connection and try again')
+        }
+        // No server reachable (offline / static deployment / extension
+        // context) — the free engine can be called directly from the
+        // browser (it allows any origin).
+        serverApi = false
       }
-      // No server reachable (offline / static deployment / extension
-      // context) — the free engine can be called directly from the
-      // browser (it allows any origin).
-      serverApi = false
     }
-    if (serverApi && res && (res.status === 404 || res.status === 501)) {
-      // The server app isn't there (static export / plugin build) —
-      // fall back to the direct engine call below.
+    if (serverApi && res && (res.status === 404 || res.status === 405 || res.status === 501)) {
+      // The server app isn't there (static export / plugin build). Some
+      // static hosts (including GitHub Pages) answer POST with 405 rather
+      // than 404, so treat it as "no API route" and use the free engine.
       serverApi = false
     }
 
