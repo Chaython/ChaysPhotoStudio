@@ -261,7 +261,7 @@ export const TOOL_DEFS: ToolDef[] = [
     { key: 'mode', label: 'Type', type: 'select', options: [{ label: 'Linear', value: 'linear' }, { label: 'Radial', value: 'radial' }, { label: 'Angle', value: 'angle' }, { label: 'Reflected', value: 'reflected' }, { label: 'Diamond', value: 'diamond' }] },
     { key: 'type', label: 'Preset', type: 'select', options: [{ label: 'Foreground → Background', value: 'fg-bg' }, { label: 'Foreground → Transparent', value: 'fg-transparent' }, { label: 'Black → White', value: 'bw' }, { label: 'Spectrum', value: 'spectrum' }, { label: 'Custom', value: 'custom' }] },
     { key: 'stops', label: 'Gradient Editor', type: 'custom', customId: 'gradient-tool-stops', hint: 'Add, remove, recolor, reposition and change opacity of gradient stops' },
-    { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'RGB', value: 'rgb' }, { label: 'HSL (shortest hue)', value: 'hsl' }, { label: 'Lab (perceptual)', value: 'lab' }] },
+    { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'RGB', value: 'rgb' }, { label: 'HSL (shortest hue)', value: 'hsl' }, { label: 'Lab (perceptual)', value: 'lab' }, { label: 'OKLab (perceptual)', value: 'oklab' }] },
     { key: 'smoothness', label: 'Smoothness', type: 'slider', min: 0, max: 100, step: 1, unit: '%', hint: 'Lower values ease transitions around color stops; 100% preserves the exact linear ramp' },
     { key: 'noise', label: 'Noise', type: 'slider', min: 0, max: 100, step: 1, unit: '%', hint: 'Adds deterministic fine grain to reduce banding and create textured gradients' },
     { key: 'noiseSeed', label: 'Noise Seed', type: 'number', min: 0, max: 2147483647, step: 1, hint: 'Use a fixed seed for repeatable noise' },
