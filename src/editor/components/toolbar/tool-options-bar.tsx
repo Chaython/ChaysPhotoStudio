@@ -13,6 +13,7 @@ import { BrushTipPicker } from './brush-tip-picker'
 import { cn } from '@/lib/utils'
 import * as gradientPresets from '../../plugins/gradient-presets'
 import { cleanMixerBrush, loadMixerBrushFromForeground } from '../../tools/mixer-brush'
+import { listUserPatterns } from '../../tools/patterns'
 
 /** fixed-height vertical divider — shadcn Separator stretches h-full which
  *  breaks in a wrapping flex row, so the options bar uses plain divs */
@@ -291,6 +292,16 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
   onChange: (v: any) => void
   compact?: boolean
 }) {
+  const [, setPatternRevision] = useState(0)
+  useEffect(() => {
+    if (control.key !== 'pattern') return
+    const changed = () => setPatternRevision(v => v + 1)
+    window.addEventListener('zphoto:patterns', changed)
+    return () => window.removeEventListener('zphoto:patterns', changed)
+  }, [control.key])
+  const userPatternOptions = control.key === 'pattern'
+    ? listUserPatterns().map(p => ({ label: p.name, value: p.id }))
+    : []
   const label = (
     <span className="text-[11px] text-muted-foreground whitespace-nowrap" title={control.hint}>
       {control.label}
@@ -353,10 +364,7 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="z-50 max-h-72">
-              {!control.options?.some(o => String(o.value) === String(value)) && String(value).startsWith('user:') && (
-                <SelectItem value={String(value)} className="text-[11px]">Imported Pattern</SelectItem>
-              )}
-              {control.options?.map(o => (
+              {[...(control.options ?? []), ...userPatternOptions].map(o => (
                 <SelectItem key={String(o.value)} value={String(o.value)} className="text-[11px]">
                   {o.label}
                 </SelectItem>
