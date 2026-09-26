@@ -3,7 +3,7 @@ import { engine } from './engine'
 import { useEditorStore } from '../store'
 import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid } from '../utils/canvas'
 import { newLayer } from './document'
-import type { Layer, PsDocument } from '../types'
+import type { HistoryState, Layer, PsDocument } from '../types'
 import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId } from '../formats'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
@@ -141,6 +141,27 @@ export interface SerializedLayer {
   source?: string
 }
 
+interface SerializedHistoryState {
+  label: string
+  time: number
+  width: number
+  height: number
+  resolutionPpi?: number
+  activeLayerId: string | null
+  channelView: string
+  layers: SerializedLayer[]
+  selection?: { bounds: any; mask: string } | null
+  savedChannels?: { id: string; name: string; mask: string }[]
+  savedPaths?: import('../types').SavedPath[]
+}
+
+interface SerializedHistorySnapshot {
+  id: string
+  name: string
+  time: number
+  state: SerializedHistoryState
+}
+
 export interface SerializedProject {
   format: 'z-photo-project'
   version: 1 | 2
@@ -161,17 +182,20 @@ export interface SerializedProject {
     colorSamplers?: { id: string; x: number; y: number }[]
     measurements?: import('../types').SavedMeasurement[]
     savedPaths?: import('../types').SavedPath[]
+    layerComps?: import('../types').LayerComp[]
+    activeLayerCompId?: string | null
+    historyBrushSnapshotId?: string | null
   }
   layers: SerializedLayer[]
   selection?: { bounds: any; mask: string } | null
   savedChannels?: { id: string; name: string; mask: string }[]
+  historySnapshots?: SerializedHistorySnapshot[]
 }
 
 const projectHandles = new Map<string, any>()
 
-export function serializeProject(doc: PsDocument): SerializedProject {
-  const toDataURL = (c: HTMLCanvasElement) => c.toDataURL('image/png')
-  const layers: SerializedLayer[] = doc.layers.map(l => ({
+function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): SerializedLayer {
+  return {
     props: {
       id: l.id, name: l.name, kind: l.kind, visible: l.visible, opacity: l.opacity,
       blendMode: l.blendMode, locked: l.locked, clipped: l.clipped, maskEnabled: l.maskEnabled,
@@ -183,7 +207,28 @@ export function serializeProject(doc: PsDocument): SerializedProject {
     canvas: l.canvas ? toDataURL(l.canvas) : undefined,
     mask: l.mask ? toDataURL(l.mask) : undefined,
     source: l.source ? toDataURL(l.source) : undefined,
-  }))
+  }
+}
+
+function serializeHistoryState(st: HistoryState, toDataURL: (c: HTMLCanvasElement) => string): SerializedHistoryState {
+  return {
+    label: st.label,
+    time: st.time,
+    width: st.width,
+    height: st.height,
+    resolutionPpi: st.resolutionPpi,
+    activeLayerId: st.activeLayerId,
+    channelView: st.channelView,
+    layers: st.layers.map(l => serializeLayer(l, toDataURL)),
+    selection: st.selection ? { bounds: { ...st.selection.bounds }, mask: toDataURL(st.selection.mask) } : null,
+    savedChannels: st.savedChannels.map(ch => ({ id: ch.id, name: ch.name, mask: toDataURL(ch.mask) })),
+    savedPaths: (st.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
+  }
+}
+
+export function serializeProject(doc: PsDocument): SerializedProject {
+  const toDataURL = (c: HTMLCanvasElement) => c.toDataURL('image/png')
+  const layers: SerializedLayer[] = doc.layers.map(l => serializeLayer(l, toDataURL))
   return {
     format: 'z-photo-project', version: 2,
     doc: {
@@ -201,10 +246,19 @@ export function serializeProject(doc: PsDocument): SerializedProject {
         segments: m.segments.map(s => ({ a: { ...s.a }, b: { ...s.b } })),
       })),
       savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
+      layerComps: (doc.layerComps ?? []).map(comp => structuredClone(comp)),
+      activeLayerCompId: doc.activeLayerCompId ?? null,
+      historyBrushSnapshotId: doc.historyBrushSnapshotId ?? null,
     },
     layers,
     selection: doc.selection ? { bounds: { ...doc.selection.bounds }, mask: toDataURL(doc.selection.mask) } : null,
     savedChannels: doc.savedChannels.map(ch => ({ id: ch.id, name: ch.name, mask: toDataURL(ch.mask) })),
+    historySnapshots: (doc.historySnapshots ?? []).map(s => ({
+      id: s.id,
+      name: s.name,
+      time: s.time,
+      state: serializeHistoryState(s.state, toDataURL),
+    })),
   }
 }
 
