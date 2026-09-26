@@ -234,11 +234,20 @@ export interface Layer {
   /** layer mask — white keeps, black hides; mask value stored in alpha channel */
   mask: HTMLCanvasElement | null
   maskEnabled: boolean
-  /** Non-destructive vector mask. Stored independently from the pixel mask. */
+  /** One editable component inside a compound vector mask. */
   vectorMask?: {
+    /** Legacy/primary component retained for project/backward compatibility. */
     anchors: PathAnchor[]
     closed: boolean
     enabled: boolean
+    /** Photoshop-style compound path operations. When present, the first
+     * component is normally Add and later components can add/subtract/
+     * intersect/exclude without rasterizing the vector mask. */
+    paths?: Array<{
+      anchors: PathAnchor[]
+      closed: boolean
+      op: 'add' | 'subtract' | 'intersect' | 'exclude'
+    }>
   } | null
   adjustment: { type: AdjustmentType; params: Record<string, any> } | null
   text: TextSpec | null
