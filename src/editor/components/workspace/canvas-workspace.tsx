@@ -247,13 +247,13 @@ function StatusBar() {
   const precisionLabel = `${workingBits}-bit ${workingSpace} working`
   const sourcePrecisionLabel = sourceBits > workingBits ? ` · source ${sourceBits}-bit` : ''
   const float16CapabilityLabel = (pixelCaps.float16Context || pixelCaps.float16ImageData)
-    ? ' · 16F runtime available'
+    ? ' · 16F API available (not active)'
     : ''
   const precisionTitle = [
     `Editable document storage: ${workingBits}-bit/channel ${workingSpace}.`,
     sourceBits > workingBits ? `Imported source precision: ${sourceBits}-bit/channel. It is currently normalized to ${workingBits}-bit/channel for pixel editing.` : '',
     pixelCaps.float16Context || pixelCaps.float16ImageData
-      ? 'The browser/runtime exposes float16 Canvas/ImageData capability. This is hardware/API capability only; it is not the document working precision until every editing, compositing, history, mask and export path is float16-safe.'
+      ? 'The browser/runtime exposes float16 Canvas/ImageData capability. It is NOT active document precision: layers, masks, compositing, history and exports still use the 8-bit working raster until the end-to-end precision migration is complete.'
       : 'This runtime did not expose a usable float16 Canvas/ImageData path.',
     pixelCaps.displayP3 ? 'Display-P3 canvas capability detected.' : '',
   ].filter(Boolean).join(' ')
