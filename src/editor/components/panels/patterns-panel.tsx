@@ -56,9 +56,10 @@ export function PatternsPanel() {
     return [...builtins(), ...custom]
   }, [refresh])
 
-  const apply = (target: 'pattern-stamp' | 'healing-brush' | 'paint-bucket') => {
+  const apply = (target: 'pattern-stamp' | 'healing-brush' | 'patch' | 'paint-bucket') => {
     setOpt(target, 'pattern', selected)
-    if (target === 'healing-brush') setOpt(target, 'sample', 'pattern')
+    if (target === 'healing-brush') setOpt(target, 'source', 'pattern')
+    if (target === 'patch') setOpt(target, 'heal', 'pattern')
     if (target === 'paint-bucket') setOpt(target, 'fill', 'pattern')
     setTool(target)
   }
@@ -143,7 +144,7 @@ export function PatternsPanel() {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5 border-t border-border pt-2">
+      <div className="grid grid-cols-4 gap-1.5 border-t border-border pt-2">
         <button
           className="rounded border border-border px-1.5 py-1.5 hover:bg-accent flex items-center justify-center gap-1"
           onClick={() => apply('pattern-stamp')}
@@ -155,6 +156,13 @@ export function PatternsPanel() {
           onClick={() => apply('healing-brush')}
         >
           <span className="text-[11px]">✚</span> Heal
+        </button>
+        <button
+          className="rounded border border-border px-1.5 py-1.5 hover:bg-accent flex items-center justify-center gap-1"
+          onClick={() => apply('patch')}
+          title="Use the selected tile with the Patch tool"
+        >
+          <span className="text-[11px]">◩</span> Patch
         </button>
         <button
           className="rounded border border-border px-1.5 py-1.5 hover:bg-accent flex items-center justify-center gap-1"
