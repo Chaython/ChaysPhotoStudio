@@ -100,7 +100,7 @@ export function PathsPanel() {
           className="flex items-center justify-center gap-1 rounded border border-border px-1 py-1.5 hover:bg-accent disabled:opacity-40"
           disabled={!selected}
           onClick={() => selected && engine.savedPathToSelection(selected.id, 'new')}
-          title="Load path as a selection"
+          title="Replace the active selection with this path"
         >
           <MousePointer2 size={11} /> Select
         </button>
@@ -130,6 +130,25 @@ export function PathsPanel() {
         >
           <Copy size={11} /> Copy
         </button>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1">
+        {([
+          ['new', 'Replace', 'Replace the active pixel selection with this path'],
+          ['add', 'Add', 'Add this path to the active pixel selection'],
+          ['subtract', 'Subtract', 'Subtract this path from the active pixel selection'],
+          ['intersect', 'Intersect', 'Keep only the overlap of this path and the active pixel selection'],
+        ] as const).map(([mode, label, title]) => (
+          <button
+            key={mode}
+            className="rounded border border-border px-1 py-1 text-[9px] hover:bg-accent disabled:opacity-40"
+            disabled={!selected}
+            onClick={() => selected && engine.savedPathToSelection(selected.id, mode)}
+            title={title}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="grid grid-cols-5 gap-1">
