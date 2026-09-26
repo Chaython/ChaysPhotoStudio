@@ -27,6 +27,7 @@ import { useEditorStore } from '../store'
 import * as imageOps from '../image-ops'
 import { getFlatComposite, getSamplingComposite, invalidateFlat, newLayer } from '../engine/document'
 import { paintBuiltinPattern } from './patterns'
+import { loadComfyConfig, runComfyWorkflow } from '../ai/providers'
 
 /** rect clamped to doc bounds */
 function clampedRect(r: Rect, w: number, h: number): Rect {
@@ -484,10 +485,64 @@ export const spotHealingTool: Tool = {
         store.setProgress({ active: true, label: 'Spot Healing (Create Texture)', value: 0.5 })
         textureHeal(img, m, Math.max(8, brushSize * .75))
       } else {
-        store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: 0 })
-        await imageOps.inpaint(img, m, v => {
-          store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: v })
-        })
+        let usedExternal = false
+        if (opts.provider === 'comfyui') {
+          try {
+            store.setProgress({ active: true, label: 'Spot Healing (ComfyUI)', value: 0.15 })
+            const input = createCanvas(workRect.w, workRect.h)
+            putImageData(input, img)
+            const aiMask = createCanvas(workRect.w, workRect.h)
+            const md = new ImageData(workRect.w, workRect.h)
+            for (let i = 0, j = 0; i < m.length; i++, j += 4) {
+              const a = m[i]
+              md.data[j] = 255
+              md.data[j + 1] = 255
+              md.data[j + 2] = 255
+              md.data[j + 3] = a
+            }
+            putImageData(aiMask, md)
+            const result = await runComfyWorkflow(loadComfyConfig(), {
+              capability: 'inpaint',
+              prompt: 'Remove the marked defect and reconstruct natural surrounding texture, lighting, and structure. Preserve everything outside the mask.',
+              imageDataUrl: input.toDataURL('image/png'),
+              maskDataUrl: aiMask.toDataURL('image/png'),
+            })
+            const aiCanvas = await imageOps.dataUrlToCanvas(result.image)
+            const normalized = aiCanvas.width === workRect.w && aiCanvas.height === workRect.h
+              ? aiCanvas
+              : (() => {
+                  const out = createCanvas(workRect.w, workRect.h)
+                  const oc = ctx2d(out)
+                  oc.imageSmoothingEnabled = true
+                  oc.imageSmoothingQuality = 'high'
+                  oc.drawImage(aiCanvas, 0, 0, workRect.w, workRect.h)
+                  return out
+                })()
+            const healed = getImageData(normalized)
+            for (let i = 0; i < m.length; i++) {
+              if (!m[i]) continue
+              const j = i * 4
+              img.data[j] = healed.data[j]
+              img.data[j + 1] = healed.data[j + 1]
+              img.data[j + 2] = healed.data[j + 2]
+              img.data[j + 3] = healed.data[j + 3]
+            }
+            usedExternal = true
+            store.setProgress({ active: true, label: 'Spot Healing (ComfyUI)', value: 0.9 })
+          } catch (err) {
+            engine.ui?.toast(
+              `ComfyUI Spot Healing unavailable — using built-in healer${err instanceof Error && err.message ? `: ${err.message}` : ''}`,
+              'info',
+            )
+          }
+        }
+
+        if (!usedExternal) {
+          store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: 0 })
+          await imageOps.inpaint(img, m, v => {
+            store.setProgress({ active: true, label: 'Content-Aware Spot Healing', value: v })
+          })
+        }
       }
 
       if (colorAdapt > 0) {
