@@ -6,6 +6,7 @@ import * as imageOps from '../image-ops'
 import { applyLayerFX, hasEnabledFX } from './layer-fx'
 import { glCompositeDocument } from './gl/gl-composite'
 import { traceShapePath } from './shape-path'
+import { vectorMaskComponents } from './vector-mask'
 
 // ---------- factories ----------
 export function newLayer(kind: LayerKind, name: string, w: number, h: number): Layer {
@@ -555,10 +556,7 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   // Subtract / Intersect / Exclude operations without flattening the paths.
   const vectorMask = layer.vectorMask
   if (vectorMask && vectorMask.enabled !== false) {
-    const legacy = vectorMask.anchors.length >= 2
-      ? [{ anchors: vectorMask.anchors, closed: vectorMask.closed, op: 'add' as const }]
-      : []
-    const components = vectorMask.paths?.length ? vectorMask.paths : legacy
+    const components = vectorMaskComponents(vectorMask)
     if (components.length) {
       const vm = createCanvas(doc.width, doc.height)
       const vc = ctx2d(vm)
