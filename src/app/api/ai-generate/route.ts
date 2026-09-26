@@ -15,6 +15,8 @@ import { NextResponse } from 'next/server'
 const MAX_PROMPT = 600
 
 type Provider = 'pollinations' | 'custom'
+type PollinationsModel = 'flux' | 'zimage' | 'klein'
+const FREE_POLLINATIONS_MODELS = new Set<PollinationsModel>(['flux', 'zimage', 'klein'])
 
 interface CustomConfig {
   baseUrl?: string
@@ -71,14 +73,14 @@ async function downloadAsDataUrl(url: string, timeoutMs: number): Promise<string
 
 // ---------- provider: Pollinations (free, no key) ----------
 
-async function generateWithPollinations(prompt: string, w: number, h: number): Promise<GenImage> {
+async function generateWithPollinations(prompt: string, w: number, h: number, model: PollinationsModel): Promise<GenImage> {
   let lastErr: Error | null = null
   for (let attempt = 1; attempt <= POLL_ATTEMPTS; attempt++) {
     try {
       const seed = Math.floor(Math.random() * 1e9)
       const url =
         `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-        `?width=${w}&height=${h}&nologo=true&seed=${seed}`
+        `?model=${encodeURIComponent(model)}&width=${w}&height=${h}&nologo=true&seed=${seed}`
       const res = await withTimeout(fetch(url, { redirect: 'follow' }), POLL_TIMEOUT_MS, 'free engine')
       if (!res.ok) {
         const text = await res.text().catch(() => '')
@@ -180,6 +182,7 @@ export async function POST(req: Request) {
       prompt?: string
       size?: string
       provider?: string
+      freeModel?: string
       custom?: CustomConfig
     }
 
@@ -192,17 +195,20 @@ export async function POST(req: Request) {
     }
 
     const provider: Provider = body.provider === 'custom' ? 'custom' : 'pollinations'
+    const requestedModel = String(body.freeModel ?? 'flux') as PollinationsModel
+    const freeModel: PollinationsModel = FREE_POLLINATIONS_MODELS.has(requestedModel) ? requestedModel : 'flux'
     const { w, h } = parseSize(body.size)
 
     const result: GenImage =
       provider === 'pollinations'
-        ? await generateWithPollinations(prompt, w, h)
+        ? await generateWithPollinations(prompt, w, h, freeModel)
         : await generateWithCustom(body.custom ?? {}, prompt, w, h)
 
     return NextResponse.json({
       image: result.image,
       provider: result.provider,
       fallback: false,
+      model: provider === 'pollinations' ? freeModel : body.custom?.model?.trim() || 'dall-e-3',
       size: body.size ?? '1024x1024',
     })
   } catch (err: unknown) {
