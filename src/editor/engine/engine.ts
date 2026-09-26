@@ -302,7 +302,10 @@ export class Engine {
     if (typeof doc.historyBrushSourceIndex === 'number') {
       doc.historyBrushSourceIndex = clamp(doc.historyBrushSourceIndex, 0, Math.max(0, h.states.length - 1))
     }
-    if (!label.startsWith('Layer Comp:')) doc.activeLayerCompId = null
+    if (!label.startsWith('Layer Comp:')) {
+      doc.activeLayerCompId = null
+      doc.lastLayerCompState = null
+    }
     doc.dirty = true
   }
 
@@ -535,7 +538,7 @@ export class Engine {
     if (!doc || !comp) return
     // Preserve the non-comp state once, then let users cycle through comps
     // without losing Photoshop's "Last Document State" return point.
-    if (!doc.activeLayerCompId) doc.lastLayerCompState = this.captureState(doc, 'Last Document State')
+    if (!doc.lastLayerCompState) doc.lastLayerCompState = this.captureState(doc, 'Last Document State')
     for (const layer of doc.layers) {
       const state = comp.layers[layer.id]
       if (!state) continue
