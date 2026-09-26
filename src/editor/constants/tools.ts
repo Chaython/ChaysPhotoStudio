@@ -248,12 +248,15 @@ export const TOOL_DEFS: ToolDef[] = [
     // Legacy three-stop fields remain as migration fallback for old local presets.
     customStart: '#000000', customMid: '#808080', customEnd: '#ffffff', customMidpoint: 50,
     customStartOpacity: 100, customMidOpacity: 100, customEndOpacity: 100,
-    interpolation: 'rgb', transparency: true, blendMode: 'normal',
+    interpolation: 'rgb', smoothness: 100, noise: 0, noiseSeed: 0, transparency: true, blendMode: 'normal',
   }, options: [
     { key: 'mode', label: 'Type', type: 'select', options: [{ label: 'Linear', value: 'linear' }, { label: 'Radial', value: 'radial' }, { label: 'Angle', value: 'angle' }, { label: 'Reflected', value: 'reflected' }, { label: 'Diamond', value: 'diamond' }] },
     { key: 'type', label: 'Preset', type: 'select', options: [{ label: 'Foreground → Background', value: 'fg-bg' }, { label: 'Foreground → Transparent', value: 'fg-transparent' }, { label: 'Black → White', value: 'bw' }, { label: 'Spectrum', value: 'spectrum' }, { label: 'Custom', value: 'custom' }] },
     { key: 'stops', label: 'Gradient Editor', type: 'custom', customId: 'gradient-tool-stops', hint: 'Add, remove, recolor, reposition and change opacity of gradient stops' },
     { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'RGB', value: 'rgb' }, { label: 'HSL (shortest hue)', value: 'hsl' }, { label: 'Lab (perceptual)', value: 'lab' }] },
+    { key: 'smoothness', label: 'Smoothness', type: 'slider', min: 0, max: 100, step: 1, unit: '%', hint: 'Lower values ease transitions around color stops; 100% preserves the exact linear ramp' },
+    { key: 'noise', label: 'Noise', type: 'slider', min: 0, max: 100, step: 1, unit: '%', hint: 'Adds deterministic fine grain to reduce banding and create textured gradients' },
+    { key: 'noiseSeed', label: 'Noise Seed', type: 'number', min: 0, max: 2147483647, step: 1, hint: 'Use a fixed seed for repeatable noise' },
     { key: 'reverse', label: 'Reverse', type: 'toggle' },
     { key: 'opacity', label: 'Opacity', type: 'slider', min: 1, max: 100, step: 1, unit: '%' },
     { key: 'blendMode', label: 'Blend', type: 'select', options: paintBlendOptions },
