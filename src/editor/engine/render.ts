@@ -347,8 +347,11 @@ export class Viewport {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
     const v = doc.view
-    // ants
-    if (doc.selection) {
+    const activeToolId = ((engine as any)._activeToolId ?? currentToolId()) as ToolId
+    // Selection Brush mirrors current Photoshop behavior: while it is active,
+    // the selection is represented by its colored paint overlay; marching ants
+    // return immediately when another tool is selected.
+    if (doc.selection && activeToolId !== 'selection-brush') {
       ctx.save()
       ctx.translate(v.panX, v.panY)
       ctx.scale(v.zoom, v.zoom)
@@ -358,7 +361,7 @@ export class Viewport {
     // persistent named paths remain visible independently of the active tool.
     for (const path of doc.savedPaths ?? []) drawSavedPathOverlay(ctx, path, v)
     // tool overlay (brush rings live on the cursor layer, not here)
-    const tool = getTool(((engine as any)._activeToolId ?? currentToolId()) as ToolId)
+    const tool = getTool(activeToolId)
     if (tool?.renderOverlay) tool.renderOverlay(ctx, v, w, h, this.lastMouse)
     // measurement grid beneath guides/rulers (labels + cursor badge)
     const prefs = useEditorStore.getState().view
