@@ -232,11 +232,14 @@ export function regionProcess(
   layerId: string, cx: number, cy: number, radius: number,
   fn: (region: ImageData, falloff: Float32Array, rw: number, rh: number) => void,
   hardness = 55,
+  brushShape?: { extent?: number; alpha: (dx: number, dy: number) => number },
 ) {
   const layer = engine.layerById(layerId)
   const doc = engine.activeDoc
   if (!layer?.canvas || !doc) return
-  const r = Math.max(1, Math.round(radius))
+  const baseR = Math.max(1, radius)
+  const extent = Math.max(1, Number(brushShape?.extent) || 1)
+  const r = Math.max(1, Math.ceil(baseR * extent))
   const ox = layer.kind === 'raster' ? (layer.offsetX ?? 0) : 0
   const oy = layer.kind === 'raster' ? (layer.offsetY ?? 0) : 0
   const ccx = cx - ox, ccy = cy - oy
@@ -255,8 +258,12 @@ export function regionProcess(
   for (let y = 0; y < rh; y++) {
     for (let x = 0; x < rw; x++) {
       const dx = x0 + x - ccx, dy = y0 + y - ccy
-      const d = Math.hypot(dx, dy) / r
-      falloff[y * rw + x] = d <= inner ? 1 : clamp(1 - (d - inner) * invSoft, 0, 1)
+      if (brushShape) {
+        falloff[y * rw + x] = clamp(brushShape.alpha(dx, dy), 0, 1)
+      } else {
+        const d = Math.hypot(dx, dy) / baseR
+        falloff[y * rw + x] = d <= inner ? 1 : clamp(1 - (d - inner) * invSoft, 0, 1)
+      }
     }
   }
 

@@ -281,7 +281,7 @@ let scratchCtx: CanvasRenderingContext2D | null = null
 export function measureTextSpecBounds(spec: TextSpec): Rect {
   if (!scratchCtx) scratchCtx = ctx2d(createCanvas(8, 8))
   const ctx = scratchCtx
-  const weight = spec.bold ? '700' : '400'
+  const weight = clamp(Math.round(Number(spec.fontWeight) || (spec.bold ? 700 : 400)), 100, 900)
   const style = spec.italic ? 'italic ' : ''
   ctx.font = `${style}${weight} ${spec.fontSize}px ${spec.fontFamily}`
   ;(ctx as any).fontKerning = spec.kerning === false ? 'none' : 'normal'
@@ -289,13 +289,14 @@ export function measureTextSpecBounds(spec: TextSpec): Rect {
   const lh = spec.fontSize * (spec.lineHeight || 1.2)
   const padX = spec.fontSize * 0.25
   const padY = spec.fontSize * 0.25
+  const baselineShift = Number(spec.baselineShift) || 0
   if (spec.boxWidth) {
     // Paragraph layers use their editable frame for hit testing; text may be
     // clipped or wrapped inside it, so glyph-only bounds would make empty
     // parts of the text box impossible to reactivate.
     return {
       x: spec.x - padX,
-      y: spec.y - padY,
+      y: spec.y - padY - baselineShift,
       w: Math.max(1, spec.boxWidth) + padX * 2,
       h: Math.max(lh, spec.boxHeight ?? lh * Math.max(1, lines.length)) + padY * 2,
     }
@@ -305,7 +306,7 @@ export function measureTextSpecBounds(spec: TextSpec): Rect {
     const maxChars = Math.max(1, ...lines.map(v => v.length))
     return {
       x: spec.x - padX,
-      y: spec.y - padY,
+      y: spec.y - padY - baselineShift,
       w: Math.max(spec.fontSize, lines.length * lh) + padX * 2,
       h: Math.max(spec.fontSize, maxChars * lh + Math.max(0, maxChars - 1) * tracking) + padY * 2,
     }
@@ -314,11 +315,14 @@ export function measureTextSpecBounds(spec: TextSpec): Rect {
   let maxW = spec.fontSize * 0.5
   for (const line of lines) {
     const tracking = (spec.tracking || 0) * Math.max(0, line.length - 1)
-    maxW = Math.max(maxW, ctx.measureText(line || ' ').width + tracking)
+    let spaces = 0
+    for (const ch of line) if (/\s/.test(ch)) spaces++
+    const wordSpacing = (spec.wordSpacing || 0) * spaces
+    maxW = Math.max(maxW, ctx.measureText(line || ' ').width + tracking + wordSpacing)
   }
   return {
     x: spec.x - padX,
-    y: spec.y - padY,
+    y: spec.y - padY - baselineShift,
     w: maxW + padX * 2,
     h: lh * lines.length + padY * 2,
   }

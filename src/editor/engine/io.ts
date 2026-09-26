@@ -6,6 +6,7 @@ import { newLayer } from './document'
 import type { Layer, PsDocument } from '../types'
 import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId } from '../formats'
+import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
@@ -170,7 +171,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       blendMode: l.blendMode, locked: l.locked, clipped: l.clipped, maskEnabled: l.maskEnabled,
       transform: l.transform, smartFilters: l.smartFilters,
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
-      vectorMask: l.vectorMask ? { ...l.vectorMask, anchors: l.vectorMask.anchors.map(a => ({ ...a })) } : null,
+      vectorMask: cloneVectorMask(l.vectorMask),
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
     },
     canvas: l.canvas ? toDataURL(l.canvas) : undefined,
@@ -255,8 +256,13 @@ export async function openSerializedProject(project: SerializedProject, label = 
   if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) throw new Error('Invalid project dimensions')
   const doc: PsDocument = {
     id: uid(), name, width, height,
-    workingBitDepth: project.doc.workingBitDepth === 16 ? 16 : 8,
-    sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth) ? Number(project.doc.sourceBitDepth) : (project.doc.workingBitDepth === 16 ? 16 : 8),
+    // Current editable raster storage is always rgba-unorm8. Preserve a
+    // historical/project-reported 16-bit value only as source provenance;
+    // never resurrect the old misleading "16-bit working pipeline" claim.
+    workingBitDepth: 8,
+    sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth)
+      ? Number(project.doc.sourceBitDepth)
+      : (project.doc.workingBitDepth === 16 ? 16 : 8),
     workingColorSpace: project.doc.workingColorSpace === 'display-p3' ? 'display-p3' : 'srgb',
     layers: [], activeLayerId: null, selection: null,
     channelView: (channelView ?? 'rgb') as PsDocument['channelView'], savedChannels: [],
@@ -335,18 +341,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
       text: sl.props.text ?? null, shape: sl.props.shape ? { sides: 5, starInset: 45, ...sl.props.shape } : null,
       blendIf: sl.props.blendIf ?? null,
       fx: sl.props.fx ?? null,
-      vectorMask: sl.props.vectorMask && Array.isArray(sl.props.vectorMask.anchors)
-        ? {
-            enabled: sl.props.vectorMask.enabled !== false,
-            closed: !!sl.props.vectorMask.closed,
-            anchors: sl.props.vectorMask.anchors.map((a: any) => ({
-              x: Number(a.x) || 0, y: Number(a.y) || 0,
-              inX: Number(a.inX) || 0, inY: Number(a.inY) || 0,
-              outX: Number(a.outX) || 0, outY: Number(a.outY) || 0,
-              pair: a.pair !== false,
-            })),
-          }
-        : null,
+      vectorMask: normalizeVectorMask(sl.props.vectorMask),
       offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
       origin: sl.props.origin ?? null,
     })

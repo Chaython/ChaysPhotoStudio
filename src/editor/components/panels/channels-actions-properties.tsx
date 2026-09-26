@@ -1128,6 +1128,17 @@ function TextProperties({ layerId }: { layerId: string }) {
           <option value='"Courier New", monospace'>Courier</option>
         </select>
       </div>
+      <div className="grid grid-cols-3 gap-1 text-[10px]">
+        <label className="flex items-center gap-1">Weight
+          <input type="number" value={t.fontWeight ?? (t.bold ? 700 : 400)} min={100} max={900} step={10} onChange={e => update({ fontWeight: Number(e.target.value), bold: Number(e.target.value) >= 650 })} className="w-14 h-5 bg-background border rounded text-[10px] px-1" />
+        </label>
+        <label className="flex items-center gap-1">Word
+          <input type="number" value={t.wordSpacing ?? 0} min={-20} max={100} step={0.5} onChange={e => update({ wordSpacing: Number(e.target.value) })} className="w-14 h-5 bg-background border rounded text-[10px] px-1" />
+        </label>
+        <label className="flex items-center gap-1">Baseline
+          <input type="number" value={t.baselineShift ?? 0} min={-200} max={200} step={0.5} onChange={e => update({ baselineShift: Number(e.target.value) })} className="w-14 h-5 bg-background border rounded text-[10px] px-1" />
+        </label>
+      </div>
       <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
         <label className="flex items-center gap-1">
           <input type="checkbox" checked={t.kerning !== false} onChange={e => update({ kerning: e.target.checked })} />

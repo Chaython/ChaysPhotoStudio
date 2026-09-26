@@ -132,6 +132,29 @@ export function PathsPanel() {
         </button>
       </div>
 
+      <div className="grid grid-cols-5 gap-1">
+        {([
+          ['replace', 'Replace', 'Replace the active layer vector mask with this path'],
+          ['add', 'Add', 'Add this path to the active layer vector mask'],
+          ['subtract', 'Subtract', 'Subtract this path from the active layer vector mask'],
+          ['intersect', 'Intersect', 'Keep only the overlap with this path'],
+          ['exclude', 'Exclude', 'Exclude the overlap (XOR) with this path'],
+        ] as const).map(([op, label, title]) => (
+          <button
+            key={op}
+            className="rounded border border-border px-1 py-1 text-[9px] hover:bg-accent disabled:opacity-40"
+            disabled={!selected || !engine.activeLayer || engine.activeLayer.kind === 'adjustment'}
+            onClick={() => {
+              if (!selected || !engine.activeLayer) return
+              engine.addVectorMaskFromPath(engine.activeLayer.id, selected.id, op)
+            }}
+            title={title}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-center gap-1">
         <button
           className="flex-1 rounded border border-border px-1.5 py-1.5 hover:bg-accent disabled:opacity-40"
@@ -155,7 +178,7 @@ export function PathsPanel() {
       </div>
 
       <div className="text-[9px] leading-relaxed text-muted-foreground">
-        Double-click a path to edit it. Saved paths persist in project files, convert to selections, or become editable non-destructive vector masks.
+        Double-click a path to edit it. Saved paths persist in project files. Vector masks support compound Add, Subtract, Intersect and Exclude operations without rasterizing the paths.
       </div>
     </div>
   )

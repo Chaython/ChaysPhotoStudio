@@ -6,6 +6,7 @@ import { snapToGuides } from '../engine/guides'
 import { useEditorStore } from '../store'
 import { clamp } from '../utils/canvas'
 import type { LiveLayerDrag } from '../types'
+import { cloneVectorMask } from '../engine/vector-mask'
 
 let drag = newDrag()
 let live: LiveLayerDrag | null = null
@@ -108,10 +109,7 @@ function snapshotTransformLayer(layer: Layer): Layer {
       pathAnchors: layer.shape.pathAnchors?.map(a => ({ ...a })),
     } : null,
     smartFilters: layer.smartFilters.map(sf => ({ ...sf, params: { ...sf.params } })),
-    vectorMask: layer.vectorMask ? {
-      ...layer.vectorMask,
-      anchors: layer.vectorMask.anchors.map(a => ({ ...a })),
-    } : null,
+    vectorMask: cloneVectorMask(layer.vectorMask),
     fx: layer.fx ? { ...layer.fx } : null,
     // canvas/source/mask are intentionally retained by reference. Preview
     // transforms REPLACE them rather than mutating these source canvases.

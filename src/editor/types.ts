@@ -107,6 +107,8 @@ export interface TextSpec {
   fontSize: number
   color: string
   bold: boolean
+  /** Numeric OpenType/variable-font weight axis when supported (100..900). */
+  fontWeight?: number
   italic: boolean
   underline?: boolean
   strikethrough?: boolean
@@ -121,6 +123,10 @@ export interface TextSpec {
   fontStretch?: 'ultra-condensed' | 'extra-condensed' | 'condensed' | 'semi-condensed' | 'normal' | 'semi-expanded' | 'expanded' | 'extra-expanded' | 'ultra-expanded'
   lineHeight: number
   tracking: number
+  /** Extra advance added after whitespace characters, in document pixels. */
+  wordSpacing?: number
+  /** Baseline offset in document pixels (positive moves glyphs up). */
+  baselineShift?: number
   /** Paragraph text uses an editable bounding box; point text leaves these unset. */
   boxWidth?: number
   boxHeight?: number
@@ -234,11 +240,20 @@ export interface Layer {
   /** layer mask — white keeps, black hides; mask value stored in alpha channel */
   mask: HTMLCanvasElement | null
   maskEnabled: boolean
-  /** Non-destructive vector mask. Stored independently from the pixel mask. */
+  /** One editable component inside a compound vector mask. */
   vectorMask?: {
+    /** Legacy/primary component retained for project/backward compatibility. */
     anchors: PathAnchor[]
     closed: boolean
     enabled: boolean
+    /** Photoshop-style compound path operations. When present, the first
+     * component is normally Add and later components can add/subtract/
+     * intersect/exclude without rasterizing the vector mask. */
+    paths?: Array<{
+      anchors: PathAnchor[]
+      closed: boolean
+      op: 'add' | 'subtract' | 'intersect' | 'exclude'
+    }>
   } | null
   adjustment: { type: AdjustmentType; params: Record<string, any> } | null
   text: TextSpec | null
