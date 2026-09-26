@@ -15,6 +15,7 @@ import { getOptions, brushSettingsFrom, walkDabs, drawCross } from './shared'
 import { buildSourceDab, sourcePointFor, pressureFlow } from './dab-utils'
 import { cloneCanvas } from '../utils/canvas'
 import { getSamplingComposite } from '../engine/document'
+import { useEditorStore } from '../store'
 
 interface ClonePoint { x: number; y: number; layerId: string | null }
 interface CloneSlot {
@@ -47,6 +48,132 @@ export interface CloneSourceSlotInfo {
   point: { x: number; y: number } | null
   source: HTMLCanvasElement | null
 }
+
+export interface CloneSourcePreset {
+  format: 'zphoto-clone-source'
+  version: 1
+  name?: string
+  selectedSlot: number
+  settings: {
+    aligned: boolean
+    sample: 'layer' | 'current-below' | 'composite'
+    ignoreAdjustments: boolean
+  }
+  sourceTransforms: Record<string, Record<string, unknown>>
+  slots: Array<{
+    point: { x: number; y: number } | null
+    sourcePng: string | null
+  }>
+}
+
+function dataUrlToCanvas(url: string): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const c = document.createElement('canvas')
+      c.width = Math.max(1, img.naturalWidth)
+      c.height = Math.max(1, img.naturalHeight)
+      const cx = c.getContext('2d')
+      if (!cx) { reject(new Error('Canvas 2D unavailable')); return }
+      cx.drawImage(img, 0, 0)
+      resolve(c)
+    }
+    img.onerror = () => reject(new Error('Clone source image could not be decoded'))
+    img.src = url
+  })
+}
+
+export function exportCloneSourcePreset(name?: string): CloneSourcePreset {
+  syncSourceSlot()
+  saveLoadedSlot()
+  const docId = engine.activeDoc?.id ?? null
+  const opts = getOptions('clone-stamp')
+  return {
+    format: 'zphoto-clone-source',
+    version: 1,
+    name,
+    selectedSlot: Math.max(1, Math.min(5, Math.round(Number(opts.sourceSlot) || 1))),
+    settings: {
+      aligned: opts.aligned !== false,
+      sample: opts.sample === 'current-below' ? 'current-below' : opts.sample === 'composite' ? 'composite' : 'layer',
+      ignoreAdjustments: opts.ignoreAdjustments === true,
+    },
+    sourceTransforms: structuredClone(opts.sourceTransforms ?? {}),
+    slots: sourceSlots.map(slot => ({
+      point: slot.docId === docId && slot.point ? { x: slot.point.x, y: slot.point.y } : null,
+      sourcePng: slot.docId === docId && slot.source ? slot.source.toDataURL('image/png') : null,
+    })),
+  }
+}
+
+export async function importCloneSourcePreset(raw: unknown): Promise<number> {
+  if (!raw || typeof raw !== 'object') throw new Error('Invalid Clone Source preset')
+  const preset = raw as Partial<CloneSourcePreset>
+  if (preset.format !== 'zphoto-clone-source' || preset.version !== 1 || !Array.isArray(preset.slots)) {
+    throw new Error('Unsupported Clone Source preset')
+  }
+  const docId = engine.activeDoc?.id
+  if (!docId) throw new Error('Open a document before loading Clone Source presets')
+
+  const decoded: CloneSlot[] = []
+  let loaded = 0
+  for (let i = 0; i < 5; i++) {
+    const src = preset.slots[i]
+    if (!src?.sourcePng || !src.point || !Number.isFinite(src.point.x) || !Number.isFinite(src.point.y)) {
+      decoded.push({ docId, point: null, ref: null, source: null })
+      continue
+    }
+    if (!src.sourcePng.startsWith('data:image/')) throw new Error(`Source #${i + 1} is not an embedded image`)
+    const canvas = await dataUrlToCanvas(src.sourcePng)
+    decoded.push({
+      docId,
+      point: { x: Number(src.point.x), y: Number(src.point.y), layerId: null },
+      ref: null,
+      source: canvas,
+    })
+    loaded++
+  }
+
+  for (let i = 0; i < 5; i++) sourceSlots[i] = decoded[i]
+
+  const current = useEditorStore.getState().toolOptions['clone-stamp'] ?? {}
+  const selectedSlot = Math.max(1, Math.min(5, Math.round(Number(preset.selectedSlot) || 1)))
+  const transforms = preset.sourceTransforms && typeof preset.sourceTransforms === 'object'
+    ? preset.sourceTransforms
+    : {}
+  const selectedTransform = (transforms as Record<string, any>)[String(selectedSlot)] ?? {}
+  useEditorStore.setState(s => ({
+    toolOptions: {
+      ...s.toolOptions,
+      'clone-stamp': {
+        ...current,
+        aligned: preset.settings?.aligned !== false,
+        sample: preset.settings?.sample === 'current-below' || preset.settings?.sample === 'composite'
+          ? preset.settings.sample
+          : 'layer',
+        ignoreAdjustments: preset.settings?.ignoreAdjustments === true,
+        sourceTransforms: transforms,
+        sourceSlot: selectedSlot,
+        rotate: Number(selectedTransform.rotate) || 0,
+        scale: Number(selectedTransform.scale) || 100,
+        mirrored: selectedTransform.mirrored === true,
+        showOverlay: selectedTransform.showOverlay !== false,
+        overlayOpacity: Number.isFinite(selectedTransform.overlayOpacity) ? selectedTransform.overlayOpacity : 50,
+        overlayAutoHide: selectedTransform.overlayAutoHide !== false,
+        overlayClipped: selectedTransform.overlayClipped !== false,
+        overlayBlend: typeof selectedTransform.overlayBlend === 'string' ? selectedTransform.overlayBlend : 'normal',
+        overlayInvert: selectedTransform.overlayInvert === true,
+      },
+    },
+  }))
+
+  st.loadedDocId = null
+  syncSourceSlot()
+  notifyCloneSourcePanel()
+  engine.requestRender()
+  return loaded
+}
+
 
 function notifyCloneSourcePanel() {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('zphoto:clone-source'))
