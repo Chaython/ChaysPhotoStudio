@@ -69,9 +69,13 @@ function makeEraser(): Tool {
 
   function resolveHistorySource(layerId: string): HTMLCanvasElement | null {
     const doc = engine.activeDoc
-    if (!doc?.history.states.length) return null
+    if (!doc) return null
+    const snap = doc.historyBrushSnapshotId
+      ? doc.historySnapshots?.find(s => s.id === doc.historyBrushSnapshotId)?.state
+      : null
+    if (!snap && !doc.history.states.length) return null
     const i = Math.max(0, Math.min(doc.history.states.length - 1, doc.historyBrushSourceIndex ?? 0))
-    const state = doc.history.states[i]
+    const state = snap ?? doc.history.states[i]
     const layer = state?.layers.find(l => l.id === layerId)
     if (!layer?.canvas || layer.kind !== 'raster') return null
     const out = createCanvas(doc.width, doc.height)
