@@ -107,7 +107,10 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
     doc.layers.push(layer as Layer)
   }
-  if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name)
+  if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
+    sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    resolutionPpi: decoded.resolutionPpi,
+  })
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
   engine.docs.push(doc)
   engine.setActiveDocument(doc.id)
