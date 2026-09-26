@@ -279,7 +279,11 @@ export class Engine {
     const src = this.activeDoc
     if (!src) return null
     const flat = compositeDocument(src)
-    const doc = this.addCanvasDocument(flat, `${src.name} copy`)
+    const doc = this.addCanvasDocument(flat, `${src.name} copy`, {
+      sourceBitDepth: src.sourceBitDepth ?? src.workingBitDepth ?? 8,
+      workingColorSpace: src.workingColorSpace ?? 'srgb',
+      resolutionPpi: src.resolutionPpi ?? 72,
+    })
     return doc
   }
 
