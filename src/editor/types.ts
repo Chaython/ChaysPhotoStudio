@@ -194,13 +194,71 @@ export interface GlowFX {
   color: string
   opacity: number       // 0..100
   blur: number          // px
+  /** Inner Glow only: edge starts at the contour; center grows inward. */
+  source?: 'edge' | 'center'
+  choke?: number        // 0..100
+}
+export interface GradientStyleFX {
+  enabled: boolean
+  opacity: number       // 0..100
+  startColor: string
+  endColor: string
+  angle: number         // degrees
+  scale: number         // 10..400 %
+  style: 'linear' | 'radial'
+  reverse?: boolean
+}
+export interface PatternStyleFX {
+  enabled: boolean
+  opacity: number       // 0..100
+  pattern: string
+  scale: number         // 25..400 %
+  offsetX: number
+  offsetY: number
+  fg: string
+  bg: string
+}
+export interface SatinFX {
+  enabled: boolean
+  color: string
+  opacity: number
+  angle: number
+  distance: number
+  size: number
+  invert?: boolean
+}
+export interface BevelEmbossFX {
+  enabled: boolean
+  style: 'inner-bevel' | 'outer-bevel' | 'emboss'
+  technique: 'smooth' | 'chisel-hard' | 'chisel-soft'
+  depth: number         // 1..1000 %
+  direction: 'up' | 'down'
+  size: number          // px
+  soften: number        // px
+  angle: number         // degrees
+  altitude: number      // degrees
+  highlightColor: string
+  highlightOpacity: number
+  shadowColor: string
+  shadowOpacity: number
 }
 export interface StrokeFX {
   enabled: boolean
   color: string
   opacity: number       // 0..100
   size: number          // px
-  position: 'outside' | 'inside'
+  position: 'outside' | 'center' | 'inside'
+  fillType?: 'color' | 'gradient' | 'pattern'
+  gradientStart?: string
+  gradientEnd?: string
+  gradientAngle?: number
+  gradientScale?: number
+  pattern?: string
+  patternScale?: number
+  patternOffsetX?: number
+  patternOffsetY?: number
+  patternFg?: string
+  patternBg?: string
 }
 export interface ColorOverlayFX {
   enabled: boolean
@@ -210,11 +268,16 @@ export interface ColorOverlayFX {
 /** Non-destructive layer styles — rendered by prepareLayer after the layer
  *  mask (the masked silhouette is the fx shape, Photoshop semantics). */
 export interface LayerFX {
-  dropShadow?: ShadowFX
-  outerGlow?: GlowFX
-  innerShadow?: ShadowFX
+  bevelEmboss?: BevelEmbossFX
   stroke?: StrokeFX
+  innerShadow?: ShadowFX
+  innerGlow?: GlowFX
+  satin?: SatinFX
   colorOverlay?: ColorOverlayFX
+  gradientOverlay?: GradientStyleFX
+  patternOverlay?: PatternStyleFX
+  outerGlow?: GlowFX
+  dropShadow?: ShadowFX
 }
 
 export interface Layer {
