@@ -35,11 +35,13 @@
 // ============================================================
 import { applyFilter, applyAdjustment } from '../image-ops'
 import { autoTone, autoContrast, autoColor, matchColor } from '../image-ops/auto'
+import { perceptualWandMask } from '../image-ops/wand'
 
 export type PixelOpKind =
   | 'filter' | 'adjustment'
   | 'auto-tone' | 'auto-contrast' | 'auto-color'
   | 'match-color'
+  | 'wand-mask'
 
 interface OpRequestMessage {
   id: number
@@ -85,6 +87,21 @@ self.onmessage = (ev: MessageEvent) => {
         }
         const source = new ImageData(new Uint8ClampedArray(req.sourceBuffer), req.sourceWidth, req.sourceHeight)
         matchColor(img, source, (req.params ?? {}) as never)
+        break
+      }
+      case 'wand-mask': {
+        const p = req.params ?? {}
+        const x = Math.max(0, Math.min(req.width - 1, Math.round(Number(p.x) || 0)))
+        const y = Math.max(0, Math.min(req.height - 1, Math.round(Number(p.y) || 0)))
+        const mask = perceptualWandMask(img, x, y, p as never)
+        // Return through the existing ImageData transport: encode the grayscale
+        // selection in alpha so no second worker protocol/buffer pool is needed.
+        for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
+          img.data[j] = 255
+          img.data[j + 1] = 255
+          img.data[j + 2] = 255
+          img.data[j + 3] = mask[i]
+        }
         break
       }
       default:
