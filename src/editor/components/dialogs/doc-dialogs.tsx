@@ -31,12 +31,13 @@ export function NewDocDialog({ onClose }: DialogProps) {
   const [h, setH] = useState(1000)
   const [name, setName] = useState('')
   const [fill, setFill] = useState('white')
+  const [resolutionPpi, setResolutionPpi] = useState(300)
   const store = useEditorStore.getState()
 
   const create = () => {
     if (w < 1 || h < 1 || w > 8192 || h > 8192) { store.pushToast('Dimensions must be 1–8192', 'error'); return }
-    engine.newDocument({ name: name || undefined, width: Math.round(w), height: Math.round(h), fill: fill as any })
-    store.pushToast(`Created ${Math.round(w)}×${Math.round(h)} document`, 'success')
+    engine.newDocument({ name: name || undefined, width: Math.round(w), height: Math.round(h), resolutionPpi, fill: fill as any })
+    store.pushToast(`Created ${Math.round(w)}×${Math.round(h)} document at ${Math.round(resolutionPpi)} PPI`, 'success')
     onClose()
   }
 
@@ -72,6 +73,15 @@ export function NewDocDialog({ onClose }: DialogProps) {
             <Input type="number" value={h} min={1} max={8192} onChange={e => setH(Number(e.target.value))} className="h-7 text-xs font-mono" />
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-2 items-end">
+          <div className="space-y-1">
+            <Label className="text-[11px]">Resolution</Label>
+            <Input type="number" value={resolutionPpi} min={1} max={12000} step={1} onChange={e => setResolutionPpi(Math.max(1, Number(e.target.value) || 72))} className="h-7 text-xs font-mono" />
+          </div>
+          <div className="pb-1 text-[10px] text-muted-foreground">
+            PPI · print size {(w / Math.max(1, resolutionPpi)).toFixed(2)} × {(h / Math.max(1, resolutionPpi)).toFixed(2)} in
+          </div>
+        </div>
         <div className="space-y-1">
           <Label className="text-[11px]">Presets</Label>
           <div className="grid grid-cols-1 gap-1">
@@ -96,11 +106,14 @@ export function ImageSizeDialog({ onClose }: DialogProps) {
   const [w, setW] = useState(doc?.width ?? 1000)
   const [h, setH] = useState(doc?.height ?? 1000)
   const [constrain, setConstrain] = useState(true)
+  const [resolutionPpi, setResolutionPpi] = useState(doc?.resolutionPpi ?? 72)
+  const [resample, setResample] = useState(true)
   const ratio = (doc?.width ?? 1) / (doc?.height ?? 1)
 
   const apply = () => {
-    if (w < 4 || h < 4) return
-    engine.resizeImage({ w: Math.round(w), h: Math.round(h) })
+    if (resolutionPpi < 1 || resolutionPpi > 12000) return
+    if (resample && (w < 4 || h < 4)) return
+    engine.resizeImage({ w: Math.round(w), h: Math.round(h), resolutionPpi, resample })
     onClose()
   }
 
@@ -108,11 +121,11 @@ export function ImageSizeDialog({ onClose }: DialogProps) {
     <>
       <DialogHeader><DialogTitle>Image Size</DialogTitle></DialogHeader>
       <div className="space-y-3 py-1">
-        <div className="text-[11px] text-muted-foreground">Current: {doc?.width} × {doc?.height} px ({(((doc?.width ?? 0) * (doc?.height ?? 0)) / 1e6).toFixed(1)} MP)</div>
+        <div className="text-[11px] text-muted-foreground">Current: {doc?.width} × {doc?.height} px ({(((doc?.width ?? 0) * (doc?.height ?? 0)) / 1e6).toFixed(1)} MP) · {Math.round(doc?.resolutionPpi ?? 72)} PPI</div>
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <Label className="text-[11px]">Width</Label>
-            <Input type="number" value={Math.round(w)} onChange={e => {
+            <Input type="number" value={Math.round(w)} disabled={!resample} onChange={e => {
               const nw = Number(e.target.value)
               setW(nw)
               if (constrain) setH(nw / ratio)
@@ -120,7 +133,7 @@ export function ImageSizeDialog({ onClose }: DialogProps) {
           </div>
           <div className="space-y-1">
             <Label className="text-[11px]">Height</Label>
-            <Input type="number" value={Math.round(h)} onChange={e => {
+            <Input type="number" value={Math.round(h)} disabled={!resample} onChange={e => {
               const nh = Number(e.target.value)
               setH(nh)
               if (constrain) setW(nh * ratio)
@@ -131,9 +144,23 @@ export function ImageSizeDialog({ onClose }: DialogProps) {
           <input type="checkbox" checked={constrain} onChange={e => setConstrain(e.target.checked)} className="accent-primary" />
           Constrain proportions
         </label>
+        <div className="grid grid-cols-2 gap-2 items-end">
+          <div className="space-y-1">
+            <Label className="text-[11px]">Resolution (PPI)</Label>
+            <Input type="number" value={resolutionPpi} min={1} max={12000} step={1} onChange={e => setResolutionPpi(Math.max(1, Number(e.target.value) || 72))} className="h-7 text-xs font-mono" />
+          </div>
+          <div className="pb-1 text-[10px] text-muted-foreground">
+            Print: {((resample ? w : (doc?.width ?? w)) / Math.max(1, resolutionPpi)).toFixed(2)} × {((resample ? h : (doc?.height ?? h)) / Math.max(1, resolutionPpi)).toFixed(2)} in
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-[11px] cursor-pointer">
+          <input type="checkbox" checked={resample} onChange={e => setResample(e.target.checked)} className="accent-primary" />
+          Resample pixels
+        </label>
+        {!resample && <div className="text-[10px] text-muted-foreground">Resolution changes physical/print size metadata only; pixel dimensions stay unchanged.</div>}
         <div className="flex gap-1.5">
           {[25, 50, 200].map(p => (
-            <button key={p} className="px-2 py-1 rounded border text-[10px] hover:bg-accent" onClick={() => {
+            <button key={p} disabled={!resample} className="px-2 py-1 rounded border text-[10px] hover:bg-accent disabled:opacity-40 disabled:pointer-events-none" onClick={() => {
               setW((doc?.width ?? 1) * p / 100); setH((doc?.height ?? 1) * p / 100)
             }}>{p}%</button>
           ))}
@@ -256,7 +283,7 @@ export function ExportDialog({ onClose }: DialogProps) {
         }
         showProgress('Building PSD…')
         await sleep(16) // let the progress bar paint before the sync encode
-        const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc))
+        const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), { resolutionPpi: doc.resolutionPpi ?? 72 })
         downloadBlob(blob, `${outName}.psd`)
         store.pushToast(`Exported ${outName}.psd — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
       } else {

@@ -190,11 +190,12 @@ export class Engine {
   }
 
   // ================================================== document management
-  newDocument(opts: { name?: string; width: number; height: number; fill?: 'white' | 'transparent' | 'background' | string }): PsDocument {
+  newDocument(opts: { name?: string; width: number; height: number; resolutionPpi?: number; fill?: 'white' | 'transparent' | 'background' | string }): PsDocument {
     const { width, height } = opts
     const doc: PsDocument = {
       id: uid(), name: opts.name || `Untitled-${this.docs.length + 1}`,
       width, height,
+      resolutionPpi: clamp(Number(opts.resolutionPpi) || 72, 1, 12000),
       workingBitDepth: 8, sourceBitDepth: 8, workingColorSpace: 'srgb',
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
@@ -225,11 +226,12 @@ export class Engine {
   addCanvasDocument(
     canvas: HTMLCanvasElement,
     name: string,
-    meta: { sourceBitDepth?: number; workingColorSpace?: 'srgb' | 'display-p3' } = {},
+    meta: { sourceBitDepth?: number; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number } = {},
   ): PsDocument {
     const doc: PsDocument = {
       id: uid(), name,
       width: canvas.width, height: canvas.height,
+      resolutionPpi: clamp(Number(meta.resolutionPpi) || 72, 1, 12000),
       workingBitDepth: 8,
       sourceBitDepth: meta.sourceBitDepth ?? 8,
       workingColorSpace: meta.workingColorSpace ?? 'srgb',
@@ -277,7 +279,11 @@ export class Engine {
     const src = this.activeDoc
     if (!src) return null
     const flat = compositeDocument(src)
-    const doc = this.addCanvasDocument(flat, `${src.name} copy`)
+    const doc = this.addCanvasDocument(flat, `${src.name} copy`, {
+      sourceBitDepth: src.sourceBitDepth ?? src.workingBitDepth ?? 8,
+      workingColorSpace: src.workingColorSpace ?? 'srgb',
+      resolutionPpi: src.resolutionPpi ?? 72,
+    })
     return doc
   }
 
@@ -306,6 +312,7 @@ export class Engine {
       activeLayerId: doc.activeLayerId,
       selection: doc.selection ? { ...doc.selection } : null,
       width: doc.width, height: doc.height,
+      resolutionPpi: doc.resolutionPpi ?? 72,
       channelView: doc.channelView,
       savedChannels: doc.savedChannels.map(c => ({ ...c })),
       savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
@@ -317,6 +324,7 @@ export class Engine {
     doc.activeLayerId = st.activeLayerId
     doc.selection = st.selection ? { ...st.selection } : null
     doc.width = st.width; doc.height = st.height
+    doc.resolutionPpi = Number.isFinite(st.resolutionPpi) ? Math.max(1, Number(st.resolutionPpi)) : 72
     doc.channelView = st.channelView
     doc.savedChannels = st.savedChannels.map((c: any) => ({ ...c }))
     doc.savedPaths = Array.isArray(st.savedPaths)
@@ -2649,7 +2657,7 @@ export class Engine {
    * their masks warped. Arbitrary projective geometry cannot remain editable as
    * text/shape/smart transforms, so those layer types rasterize individually
    * rather than flattening the whole document. */
-  perspectiveCropTo(quad: Point2[], opts: { targetW?: number; targetH?: number } = {}) {
+  perspectiveCropTo(quad: Point2[], opts: { targetW?: number; targetH?: number; resolutionPpi?: number } = {}) {
     const doc = this.activeDoc
     if (!doc || quad.length !== 4) return
     const auto = quadOutputSize(quad)
@@ -2742,13 +2750,16 @@ export class Engine {
 
     doc.width = outW
     doc.height = outH
+    if (Number.isFinite(opts.resolutionPpi) && Number(opts.resolutionPpi) > 0) {
+      doc.resolutionPpi = clamp(Number(opts.resolutionPpi), 1, 12000)
+    }
     doc._epoch++
     invalidateFlat(doc)
     this.pushHistory('Perspective Crop')
     this.emit()
   }
 
-  cropTo(rect: Rect, opts: { deletePixels?: boolean; targetW?: number; targetH?: number } = {}) {
+  cropTo(rect: Rect, opts: { deletePixels?: boolean; targetW?: number; targetH?: number; resolutionPpi?: number } = {}) {
     const doc = this.activeDoc
     if (!doc) return
     // Photoshop-style crop can extend beyond the current canvas. Negative
@@ -2831,12 +2842,15 @@ export class Engine {
     if (targetW !== w || targetH !== h) this.rescaleDocumentData(doc, targetW, targetH)
 
     const resized = targetW !== w || targetH !== h
+    if (Number.isFinite(opts.resolutionPpi) && Number(opts.resolutionPpi) > 0) {
+      doc.resolutionPpi = clamp(Number(opts.resolutionPpi), 1, 12000)
+    }
     this.pushHistory(resized
       ? (deletePixels ? 'Crop & Resize' : 'Crop & Resize (Preserve Pixels)')
       : (deletePixels ? 'Crop' : 'Crop (Preserve Pixels)'))
     this.recordStep({
       op: 'crop',
-      args: { x, y, w, h, deletePixels, targetW: resized ? targetW : undefined, targetH: resized ? targetH : undefined },
+      args: { x, y, w, h, deletePixels, targetW: resized ? targetW : undefined, targetH: resized ? targetH : undefined, resolutionPpi: doc.resolutionPpi ?? 72 },
       label: resized ? 'Crop & Resize' : 'Crop',
     })
     this.emit()
@@ -2886,15 +2900,24 @@ export class Engine {
     this.emit()
   }
 
-  resizeImage(opts: { w: number; h: number }) {
+  resizeImage(opts: { w: number; h: number; resolutionPpi?: number; resample?: boolean }) {
     const doc = this.activeDoc
     if (!doc) return
     const w = Math.max(1, Math.round(opts.w))
     const h = Math.max(1, Math.round(opts.h))
-    if (w === doc.width && h === doc.height) return
-    this.rescaleDocumentData(doc, w, h)
+    const ppi = clamp(Number(opts.resolutionPpi) || doc.resolutionPpi || 72, 1, 12000)
+    const resample = opts.resample !== false
+    const pixelsChanged = resample && (w !== doc.width || h !== doc.height)
+    const resolutionChanged = Math.abs(ppi - (doc.resolutionPpi ?? 72)) > 1e-6
+    if (!pixelsChanged && !resolutionChanged) return
+    if (pixelsChanged) this.rescaleDocumentData(doc, w, h)
+    doc.resolutionPpi = ppi
     this.pushHistory('Image Size')
-    this.recordStep({ op: 'resizeImage', args: { w: doc.width, h: doc.height }, label: 'Image Size' })
+    this.recordStep({
+      op: 'resizeImage',
+      args: { w: doc.width, h: doc.height, resolutionPpi: ppi, resample },
+      label: 'Image Size',
+    })
     this.emit()
   }
 
@@ -3390,8 +3413,21 @@ export class Engine {
       case 'applyFilter': if (layerId) this.applyFilterToLayer(layerId, a.type, a.params); break
       case 'applyAdjustment': if (layerId) this.applyAdjustmentToLayer(layerId, a.type, a.params); break
       case 'fill': this.fillSelection(a.color); break
-      case 'crop': this.cropTo({ x: a.x, y: a.y, w: a.w, h: a.h }); break
-      case 'resizeImage': this.resizeImage({ w: a.w, h: a.h }); break
+      case 'crop': this.cropTo(
+        { x: a.x, y: a.y, w: a.w, h: a.h },
+        {
+          deletePixels: a.deletePixels,
+          targetW: a.targetW,
+          targetH: a.targetH,
+          resolutionPpi: a.resolutionPpi,
+        },
+      ); break
+      case 'resizeImage': this.resizeImage({
+        w: a.w,
+        h: a.h,
+        resolutionPpi: a.resolutionPpi,
+        resample: a.resample,
+      }); break
       case 'aiUpscale': void this.aiUpscale({ scale: a.scale, detail: a.detail, denoise: a.denoise }); break
       case 'addAdjustmentLayer': this.addAdjustmentLayer(a.type, a.params); break
       case 'setAdjustmentParams': if (this.layerById(a.id)) this.setLayerAdjustment(a.id, a.type, a.params); break

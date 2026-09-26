@@ -308,6 +308,8 @@ export interface HistoryState {
   selection: SelectionState | null
   width: number
   height: number
+  /** Physical document resolution metadata in pixels per inch. */
+  resolutionPpi?: number
   channelView: ChannelView
   savedChannels: SavedChannel[]
   savedPaths?: SavedPath[]
@@ -365,6 +367,8 @@ export interface PsDocument {
   name: string
   width: number
   height: number
+  /** Physical document resolution metadata (Photoshop-style Resolution). */
+  resolutionPpi?: number
   /** Raster layer storage currently used by the editor. Kept explicit so the
    * UI/project format never claims a higher working precision than is real. */
   workingBitDepth?: 8 | 16

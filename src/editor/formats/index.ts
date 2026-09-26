@@ -41,6 +41,8 @@ export interface DecodedImage {
   /** Original component depth before normalization to the editor's working
    * raster. Browser-native formats default to 8 when not introspectable. */
   sourceBitDepth?: number
+  /** Physical resolution metadata when available. */
+  resolutionPpi?: number
   psdLayers?: {
     name: string
     canvas: HTMLCanvasElement      // pixels of the layer rect (canvas space)
@@ -160,6 +162,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
         hasAlpha: psd.hasAlpha,
         format: 'psd',
         sourceBitDepth: psd.depth,
+        resolutionPpi: psd.resolutionPpi,
         psdLayers: psd.layers.map(l => ({
           name: l.name,
           canvas: l.canvas,

@@ -23,6 +23,17 @@ const TOOL_ID = 'measure' as unknown as ToolId
 
 const AMBER = '#e8a33d'
 
+function pixelsPerUnit(unit: string, opts = getOptions(TOOL_ID)): number {
+  if (unit === 'px') return 1
+  if (opts.useDocResolution !== false) {
+    const ppi = Math.max(.001, Number(engine.activeDoc?.resolutionPpi) || 72)
+    if (unit === 'in') return ppi
+    if (unit === 'cm') return ppi / 2.54
+    if (unit === 'mm') return ppi / 25.4
+  }
+  return pixelsPerUnit(unit, opts)
+}
+
 // ---------- state ----------
 let start: Vec | null = null
 let end: Vec | null = null
@@ -44,7 +55,7 @@ function publish(): void {
   const totalLength = all.reduce((sum, s) => sum + Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y), 0)
   const opts = getOptions(TOOL_ID)
   const unit = String(opts.unit ?? 'px')
-  const ppu = Math.max(.001, Number(opts.pixelsPerUnit) || 1)
+  const ppu = pixelsPerUnit(unit, opts)
   g.__zphotoMeasure = {
     length,
     totalLength,
@@ -82,7 +93,7 @@ export function saveCurrentMeasurement(name?: string): string | null {
     name,
     segments: all,
     unit,
-    pixelsPerUnit: Math.max(.001, Number(opts.pixelsPerUnit) || 1),
+    pixelsPerUnit: pixelsPerUnit(unit, opts),
   })
   if (id) engine.ui?.toast('Measurement saved to Info panel', 'success')
   return id
@@ -272,7 +283,7 @@ function drawMeasurement(
     const showDelta = getOptions(TOOL_ID).showDelta !== false
     const opts = getOptions(TOOL_ID)
     const unit = String(opts.unit ?? 'px')
-    const ppu = Math.max(.001, Number(opts.pixelsPerUnit) || 1)
+    const ppu = pixelsPerUnit(unit, opts)
     const calibrated = unit === 'px' ? '' : ` / ${(len / ppu).toFixed(2)} ${unit}`
     const total = segments.reduce((sum, seg) => sum + Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y), 0)
       + (dragging && start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0)

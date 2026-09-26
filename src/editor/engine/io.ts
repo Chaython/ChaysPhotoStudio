@@ -25,6 +25,7 @@ async function sniffFormat(file: File): Promise<ImportFormatId | null> {
 interface DecodedCanvas {
   canvas: HTMLCanvasElement
   sourceBitDepth: number
+  resolutionPpi?: number
 }
 
 /** Decode a file to a canvas while retaining source precision metadata. The
@@ -34,7 +35,7 @@ async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
   const format = await sniffFormat(file)
   if (format && CODEC_FORMATS.includes(format)) {
     const decoded = await decodeFile(file)
-    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8 }
+    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8, resolutionPpi: decoded.resolutionPpi }
   }
   try {
     return { canvas: await fileToCanvas(file), sourceBitDepth: 8 }
@@ -57,7 +58,7 @@ export async function openFiles(files: File[], asLayer = false) {
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded); continue }
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8 })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, resolutionPpi: decoded.resolutionPpi })
         continue
       }
       const decoded = await decodeToCanvas(file)
@@ -67,7 +68,7 @@ export async function openFiles(files: File[], asLayer = false) {
           store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source normalized to the current 8-bit working raster`, 'info')
         }
       } else {
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, resolutionPpi: decoded.resolutionPpi })
       }
     } catch (err) {
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
@@ -81,6 +82,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   const { width, height } = decoded
   const doc: PsDocument = {
     id: uid(), name, width, height,
+    resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
     workingBitDepth: 8,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     workingColorSpace: 'srgb',
@@ -105,7 +107,10 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
     doc.layers.push(layer as Layer)
   }
-  if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name)
+  if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
+    sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    resolutionPpi: decoded.resolutionPpi,
+  })
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
   engine.docs.push(doc)
   engine.setActiveDocument(doc.id)
@@ -152,6 +157,7 @@ export interface SerializedProject {
     workingBitDepth?: 8 | 16
     sourceBitDepth?: number
     workingColorSpace?: 'srgb' | 'display-p3'
+    resolutionPpi?: number
     colorSamplers?: { id: string; x: number; y: number }[]
     measurements?: import('../types').SavedMeasurement[]
     savedPaths?: import('../types').SavedPath[]
@@ -188,6 +194,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       workingBitDepth: doc.workingBitDepth ?? 8,
       sourceBitDepth: doc.sourceBitDepth ?? doc.workingBitDepth ?? 8,
       workingColorSpace: doc.workingColorSpace ?? 'srgb',
+      resolutionPpi: doc.resolutionPpi ?? 72,
       colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
       measurements: (doc.measurements ?? []).map(m => ({
         ...m,
@@ -264,6 +271,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
       ? Number(project.doc.sourceBitDepth)
       : (project.doc.workingBitDepth === 16 ? 16 : 8),
     workingColorSpace: project.doc.workingColorSpace === 'display-p3' ? 'display-p3' : 'srgb',
+    resolutionPpi: Math.max(1, Math.min(12000, Number(project.doc.resolutionPpi) || 72)),
     layers: [], activeLayerId: null, selection: null,
     channelView: (channelView ?? 'rgb') as PsDocument['channelView'], savedChannels: [],
     guides: Array.isArray(project.doc.guides) ? project.doc.guides : [],
