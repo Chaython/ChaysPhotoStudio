@@ -2617,7 +2617,7 @@ export class Engine {
    * their masks warped. Arbitrary projective geometry cannot remain editable as
    * text/shape/smart transforms, so those layer types rasterize individually
    * rather than flattening the whole document. */
-  perspectiveCropTo(quad: Point2[], opts: { targetW?: number; targetH?: number } = {}) {
+  perspectiveCropTo(quad: Point2[], opts: { targetW?: number; targetH?: number; resolutionPpi?: number } = {}) {
     const doc = this.activeDoc
     if (!doc || quad.length !== 4) return
     const auto = quadOutputSize(quad)
@@ -2710,6 +2710,9 @@ export class Engine {
 
     doc.width = outW
     doc.height = outH
+    if (Number.isFinite(opts.resolutionPpi) && Number(opts.resolutionPpi) > 0) {
+      doc.resolutionPpi = clamp(Number(opts.resolutionPpi), 1, 12000)
+    }
     doc._epoch++
     invalidateFlat(doc)
     this.pushHistory('Perspective Crop')
