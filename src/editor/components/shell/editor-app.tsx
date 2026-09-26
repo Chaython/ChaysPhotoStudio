@@ -378,6 +378,115 @@ function Toasts({ mobileMode = false }: { mobileMode?: boolean }) {
   )
 }
 
+
+function MobileInputBar() {
+  const activeTool = useEditorStore(s => s.activeTool)
+  const toolOptions = useEditorStore(s => s.toolOptions[s.activeTool])
+  const setToolOption = useEditorStore(s => s.setToolOption)
+  const [mods, setMods] = useState({ shift: false, alt: false, ctrl: false, pan: false })
+  const def = TOOL_DEFS.find(t => t.id === activeTool)
+  const sizeCtl = def?.options.find(o => o.key === 'size')
+  const size = Number(toolOptions?.size ?? def?.defaults.size)
+
+  useEffect(() => {
+    setVirtualInputState(mods)
+    return () => setVirtualInputState({ shift: false, alt: false, ctrl: false, pan: false })
+  }, [mods])
+
+  const toggle = (key: keyof typeof mods) => {
+    setMods(m => ({ ...m, [key]: !m[key] }))
+  }
+
+  const send = (key: string) => dispatchEditorKey(key, { shift: mods.shift })
+
+  const nudgeSize = (dir: -1 | 1) => {
+    if (!def || !sizeCtl || !Number.isFinite(size)) return
+    const step = size >= 200 ? 25 : size >= 100 ? 10 : size >= 50 ? 5 : size >= 10 ? 2 : 1
+    const next = Math.max(sizeCtl.min ?? 1, Math.min(sizeCtl.max ?? 500, size + dir * step))
+    setToolOption(activeTool, 'size', next)
+  }
+
+  const modifier = (key: keyof typeof mods, label: string, hint: string) => (
+    <button
+      type="button"
+      className={cn(
+        'h-10 min-w-12 px-2 rounded-md border text-[10px] font-semibold touch-manipulation transition-colors',
+        mods[key]
+          ? 'border-primary bg-primary/20 text-primary'
+          : 'border-border bg-background/60 text-muted-foreground active:bg-accent',
+      )}
+      onClick={() => toggle(key)}
+      aria-pressed={mods[key]}
+      title={hint}
+    >
+      {label}
+    </button>
+  )
+
+  const action = (label: string, key: string, Icon: React.ComponentType<{ size?: number }>, hint: string) => (
+    <button
+      type="button"
+      className="h-10 min-w-11 px-2 rounded-md border border-border bg-background/60 text-muted-foreground active:bg-accent active:text-foreground flex items-center justify-center gap-1 touch-manipulation"
+      onClick={() => send(key)}
+      title={hint}
+      aria-label={hint}
+    >
+      <Icon size={14} />
+      <span className="text-[9px]">{label}</span>
+    </button>
+  )
+
+  return (
+    <div className="h-[58px] flex-shrink-0 border-t bg-panel/95 backdrop-blur supports-[backdrop-filter]:bg-panel/90">
+      <div className="h-full flex items-center gap-1.5 overflow-x-auto zphoto-scroll px-2 py-1.5" role="toolbar" aria-label="Touch modifiers and tool actions">
+        {modifier('shift', 'Shift', 'Virtual Shift — add selections, constrain movement, or use the tool’s Shift behavior')}
+        {modifier('alt', 'Alt', 'Virtual Alt / Option — subtract selections, sample clone/heal sources, or use the tool’s Alt behavior')}
+        {modifier('ctrl', 'Ctrl', 'Virtual Ctrl / Cmd — edit paths, multi-select, or use the tool’s Ctrl/Cmd behavior')}
+        {modifier('pan', 'Pan', 'Pan the canvas with one finger without changing tools')}
+
+        <div className="h-8 w-px bg-border shrink-0 mx-0.5" />
+
+        {action('Cancel', 'Escape', Icons.X, 'Cancel the current tool operation (Escape)')}
+        {action('Done', 'Enter', Icons.Check, 'Commit/finish the current tool operation (Enter)')}
+        {action('Back', 'Backspace', Icons.Undo2, 'Remove the last point or perform the active tool’s Backspace action')}
+        {action('Delete', 'Delete', Icons.Trash2, 'Delete the selected point/content or perform the active tool’s Delete action')}
+
+        {sizeCtl && Number.isFinite(size) && (
+          <>
+            <div className="h-8 w-px bg-border shrink-0 mx-0.5" />
+            <button type="button" className="h-10 min-w-10 rounded-md border bg-background/60 active:bg-accent" onClick={() => nudgeSize(-1)} title="Decrease brush/tool size" aria-label="Decrease tool size">
+              <Icons.Minus size={15} className="mx-auto" />
+            </button>
+            <div className="min-w-10 text-center text-[9px] text-muted-foreground tabular-nums">
+              <div className="font-medium text-foreground">{Math.round(size)}</div>
+              <div>Size</div>
+            </div>
+            <button type="button" className="h-10 min-w-10 rounded-md border bg-background/60 active:bg-accent" onClick={() => nudgeSize(1)} title="Increase brush/tool size" aria-label="Increase tool size">
+              <Icons.Plus size={15} className="mx-auto" />
+            </button>
+          </>
+        )}
+
+        <div className="h-8 w-px bg-border shrink-0 mx-0.5" />
+
+        <button type="button" className="h-10 w-10 shrink-0 rounded-md border bg-background/60 active:bg-accent" onClick={() => send('ArrowLeft')} aria-label="Nudge left"><Icons.ArrowLeft size={14} className="mx-auto" /></button>
+        <button type="button" className="h-10 w-10 shrink-0 rounded-md border bg-background/60 active:bg-accent" onClick={() => send('ArrowUp')} aria-label="Nudge up"><Icons.ArrowUp size={14} className="mx-auto" /></button>
+        <button type="button" className="h-10 w-10 shrink-0 rounded-md border bg-background/60 active:bg-accent" onClick={() => send('ArrowDown')} aria-label="Nudge down"><Icons.ArrowDown size={14} className="mx-auto" /></button>
+        <button type="button" className="h-10 w-10 shrink-0 rounded-md border bg-background/60 active:bg-accent" onClick={() => send('ArrowRight')} aria-label="Nudge right"><Icons.ArrowRight size={14} className="mx-auto" /></button>
+
+        <button
+          type="button"
+          className="h-10 min-w-12 px-2 rounded-md border border-border bg-background/60 text-[9px] text-muted-foreground active:bg-accent"
+          onClick={() => setMods({ shift: false, alt: false, ctrl: false, pan: false })}
+          title="Release all virtual modifiers"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function MobileStatusBar() {
   return (
     <div className="h-7 flex items-center px-3 bg-panel border-t text-[10px] text-muted-foreground flex-shrink-0">
@@ -386,14 +495,15 @@ function MobileStatusBar() {
   )
 }
 
-function MobileToolsToggle({ onOpenPanels, panelsOpen, onOpenTools, toolsOpen }: {
+function MobileToolsToggle({ onOpenPanels, panelsOpen, onOpenTools, toolsOpen, raised }: {
   onOpenPanels(): void
   panelsOpen: boolean
   onOpenTools(): void
   toolsOpen: boolean
+  raised: boolean
 }) {
   return (
-    <div className="md:hidden fixed right-3 bottom-11 z-40 flex flex-col gap-2">
+    <div className={cn('fixed right-3 z-40 flex flex-col gap-2', raised ? 'bottom-[72px]' : 'bottom-11')}>
       <button
         className="w-11 h-11 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform"
         onClick={onOpenPanels}
@@ -437,7 +547,7 @@ function MobileToolsSheet({ onClose }: { onClose(): void }) {
   }
 
   return (
-    <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-label="Quick tools">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-label="Quick tools">
       <div className="flex-1 bg-black/50" onClick={onClose} />
       <div className="bg-panel border-t rounded-t-xl max-h-[65vh] flex flex-col animate-in slide-in-from-bottom-4 duration-200 shadow-2xl">
         <div className="flex items-center px-4 h-10 border-b flex-shrink-0">
