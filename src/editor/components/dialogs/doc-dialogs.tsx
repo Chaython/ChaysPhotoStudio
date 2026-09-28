@@ -34,7 +34,7 @@ export function NewDocDialog({ onClose }: DialogProps) {
   const [fill, setFill] = useState('white')
   const [resolutionPpi, setResolutionPpi] = useState(300)
   const caps = canvasPixelCapabilities()
-  const [bitDepth, setBitDepth] = useState<8 | 16>(caps.float16Context && caps.float16ImageData ? 16 : 8)
+  const [bitDepth, setBitDepth] = useState<8 | 16 | 32>(caps.float16Context && caps.float16ImageData ? 16 : 8)
   const [colorSpace, setColorSpace] = useState<'srgb' | 'display-p3'>(caps.displayP3 ? 'display-p3' : 'srgb')
   const store = useEditorStore.getState()
 
@@ -89,11 +89,16 @@ export function NewDocDialog({ onClose }: DialogProps) {
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <Label className="text-[11px]">Color depth</Label>
-            <Select value={String(bitDepth)} onValueChange={v => setBitDepth(v === '16' ? 16 : 8)}>
+            <Select value={String(bitDepth)} onValueChange={v => {
+              const next = v === '32' ? 32 : v === '16' ? 16 : 8
+              setBitDepth(next)
+              if (next === 32) setColorSpace('srgb')
+            }}>
               <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent className="z-50">
                 <SelectItem value="8" className="text-xs">8-bit/channel</SelectItem>
                 <SelectItem value="16" className="text-xs" disabled={!caps.float16Context || !caps.float16ImageData}>16-bit float working raster</SelectItem>
+                <SelectItem value="32" className="text-xs" disabled={!caps.float16Context || !caps.float16ImageData}>32-bit float HDR (scene-linear)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -103,13 +108,16 @@ export function NewDocDialog({ onClose }: DialogProps) {
               <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent className="z-50">
                 <SelectItem value="srgb" className="text-xs">sRGB</SelectItem>
-                <SelectItem value="display-p3" className="text-xs" disabled={!caps.displayP3}>Display P3</SelectItem>
+                <SelectItem value="display-p3" className="text-xs" disabled={!caps.displayP3 || bitDepth === 32}>Display P3</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
+        {bitDepth === 32 && (
+          <div className="text-[10px] text-muted-foreground">32-bit mode stores authoritative scene-linear Float32 pixels; the canvas is a 16F sRGB display/edit mirror. SDR-only filters are disabled rather than clipping HDR highlights.</div>
+        )}
         {(!caps.float16Context || !caps.float16ImageData) && (
-          <div className="text-[10px] text-muted-foreground">16-bit working canvases are unavailable in this browser; 8-bit remains available.</div>
+          <div className="text-[10px] text-muted-foreground">16/32-bit working canvases are unavailable in this browser; 8-bit remains available.</div>
         )}
         <div className="space-y-1">
           <Label className="text-[11px]">Presets</Label>
@@ -262,7 +270,7 @@ export function ExportDialog({ onClose }: DialogProps) {
   const [scale, setScale] = useState(1)
   const [background, setBackground] = useState('#ffffff')
   const [tiffCompression, setTiffCompression] = useState<'none' | 'lzw'>('lzw')
-  const [tiffBitDepth, setTiffBitDepth] = useState<8 | 16>(doc?.workingBitDepth === 16 ? 16 : 8)
+  const [tiffBitDepth, setTiffBitDepth] = useState<8 | 16>((doc?.workingBitDepth ?? 8) >= 16 ? 16 : 8)
   const [icoSizes, setIcoSizes] = useState<number[]>([16, 32, 48, 256])
   const [name, setName] = useState(doc?.name ?? 'export')
   const [busy, setBusy] = useState(false)
@@ -313,7 +321,7 @@ export function ExportDialog({ onClose }: DialogProps) {
         }
         showProgress('Building PSD…')
         await sleep(16) // let the progress bar paint before the sync encode
-        const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), { resolutionPpi: doc.resolutionPpi ?? 72, depth: doc.workingBitDepth === 16 ? 16 : 8 })
+        const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), { resolutionPpi: doc.resolutionPpi ?? 72, depth: doc.workingBitDepth === 32 ? 32 : doc.workingBitDepth === 16 ? 16 : 8 })
         downloadBlob(blob, `${outName}.psd`)
         store.pushToast(`Exported ${outName}.psd — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
       } else {
@@ -410,10 +418,10 @@ export function ExportDialog({ onClose }: DialogProps) {
               <SelectTrigger className="h-7 text-xs w-44"><SelectValue /></SelectTrigger>
               <SelectContent className="z-50">
                 <SelectItem value="8" className="text-xs">8-bit/channel</SelectItem>
-                <SelectItem value="16" className="text-xs" disabled={doc?.workingBitDepth !== 16}>16-bit/channel</SelectItem>
+                <SelectItem value="16" className="text-xs" disabled={(doc?.workingBitDepth ?? 8) < 16}>16-bit/channel</SelectItem>
               </SelectContent>
             </Select>
-            {doc?.workingBitDepth !== 16 && <div className="text-[10px] text-muted-foreground">16-bit TIFF export requires a 16-bit working document.</div>}
+            {(doc?.workingBitDepth ?? 8) < 16 && <div className="text-[10px] text-muted-foreground">16-bit TIFF export requires a high-depth working document.</div>}
           </div>
         )}
         {opts.includes('icoSizes') && (
