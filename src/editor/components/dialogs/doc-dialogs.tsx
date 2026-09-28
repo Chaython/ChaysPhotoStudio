@@ -313,7 +313,7 @@ export function ExportDialog({ onClose }: DialogProps) {
         }
         showProgress('Building PSD…')
         await sleep(16) // let the progress bar paint before the sync encode
-        const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), { resolutionPpi: doc.resolutionPpi ?? 72 })
+        const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), { resolutionPpi: doc.resolutionPpi ?? 72, depth: doc.workingBitDepth === 16 ? 16 : 8 })
         downloadBlob(blob, `${outName}.psd`)
         store.pushToast(`Exported ${outName}.psd — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
       } else {
