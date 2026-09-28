@@ -20,6 +20,7 @@ import type { ImportFormatId, RawImage } from './decoders'
 import type { ExportFormatId } from './encoders'
 import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtension, publishedFormatKind, PHOTOPEA_IMPORT_ACCEPT } from './photopea-formats'
 import { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
+import { decodeDds, decodeIcns, decodeIff } from './legacy-raster'
 import type { ParsedDocumentLayer } from './document-parser-types'
 
 export type { ImportFormatId, RawImage } from './decoders'
@@ -252,6 +253,13 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
     case 'pcx': return fromRaw(decodePcx(bytes), 'pcx')
     case 'bmp': return fromRaw(decodeBmp(bytes), 'bmp')
     case 'ico': return fromRaw(await decodeIco(bytes), 'ico')
+    case 'dds': return fromRaw(decodeDds(bytes), 'dds')
+    case 'iff': return fromRaw(decodeIff(bytes), 'iff')
+    case 'anim': return fromRaw(decodeIff(bytes), 'anim')
+    case 'icns': {
+      const canvas = await decodeIcns(bytes)
+      return { canvas, width: canvas.width, height: canvas.height, hasAlpha: scanAlpha(getImageData(canvas).data), format: 'icns', sourceBitDepth: 8 }
+    }
     case 'psd': {
       const psd = await decodePsd(bytes)
       return {
