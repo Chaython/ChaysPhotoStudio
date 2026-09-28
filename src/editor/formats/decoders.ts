@@ -11,7 +11,7 @@ import { createCanvas, ctx2d, canvasProfile, putFloat16Pixels } from '../utils/c
 
 export type ImportFormatId =
   | 'png' | 'jpeg' | 'gif' | 'webp' | 'avif' | 'heic' | 'jxl' | 'jp2' | 'svg'
-  | 'bmp' | 'ico' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx'
+  | 'bmp' | 'ico' | 'icns' | 'dds' | 'iff' | 'anim' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx'
 
 /** decoded raster: tightly packed 8-bit RGBA (ImageData-compatible).
  *  Typed as Uint8ClampedArray<ArrayBuffer> (not ArrayBufferLike) so it feeds
@@ -116,6 +116,13 @@ export function detectFormat(bytes: Uint8Array): ImportFormatId | null {
   if (eq('#?RADIANCE') || eq('#?RGBE')) return 'hdr'
   if ((eq('PF') || eq('Pf')) && n >= 3 && (b[2] === 0x20 || b[2] === 0x09 || b[2] === 0x0a || b[2] === 0x0d)) return 'pfm'
   if (eq('8BPS')) return 'psd'
+  if (eq('DDS ')) return 'dds'
+  if (eq('icns')) return 'icns'
+  if (eq('FORM') && n >= 12) {
+    const iffType = ascii(b, 8, 4)
+    if (iffType === 'ANIM') return 'anim'
+    if (iffType === 'ILBM' || iffType === 'PBM ') return 'iff'
+  }
   if (eq('BM') && n >= 6) return 'bmp'
   if (b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0) return 'ico' // ICONDIR
   if (b[0] === 0 && b[1] === 0 && b[2] === 2 && b[3] === 0) {
