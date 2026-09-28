@@ -5,7 +5,7 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec,
-  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot,
+  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, TransformWarpSpec,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
@@ -28,7 +28,10 @@ import {
 import { getScriptApi } from './scripting-api'
 import * as imageOps from '../image-ops'
 import { homography, projectPoint, quadOutputSize, warpCanvasPerspective, type Point2 } from '../image-ops/perspective'
-import { mapRectPointToQuad, warpCanvasToQuad } from '../image-ops/transform'
+import {
+  cloneWarpMesh, mapNormalizedPointThroughWarp, mapRectPointToQuad, regularWarpMesh,
+  validateWarpMesh, warpCanvasToMesh, warpCanvasToQuad, warpMeshDestinationPoints,
+} from '../image-ops/transform'
 import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 
 export const MAX_HISTORY = 50
@@ -64,7 +67,7 @@ function processSelectionMaskRegion(
 
 type Listener = () => void
 
-export type TransformMode = 'free' | 'scale' | 'rotate' | 'skew' | 'distort' | 'perspective'
+export type TransformMode = 'free' | 'scale' | 'rotate' | 'skew' | 'distort' | 'perspective' | 'warp'
 export type TransformReference = 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br'
 export interface LayerTransformCommand {
   mode: TransformMode
@@ -79,6 +82,7 @@ export interface LayerTransformCommand {
   perspectiveY?: number
   reference?: TransformReference
   cornerOffsets?: [Point2, Point2, Point2, Point2]
+  warp?: TransformWarpSpec | null
 }
 
 /** 1×1 scratch context for measuring text (layerContentRect) — measureText
@@ -1021,17 +1025,24 @@ export class Engine {
     }
     if (l.kind === 'smart' && l.source) {
       const t = l.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
+      let quad: [Point2, Point2, Point2, Point2]
       if (t.quad?.length === 4) {
-        const xs = t.quad.map(p => p.x), ys = t.quad.map(p => p.y)
-        const x0 = Math.min(...xs), x1 = Math.max(...xs)
-        const y0 = Math.min(...ys), y1 = Math.max(...ys)
-        return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) }
+        quad = t.quad.map(p => ({ ...p })) as [Point2, Point2, Point2, Point2]
+      } else {
+        const hw = l.source.width * t.scale / 2, hh = l.source.height * t.scale / 2
+        const cos = Math.cos(t.rotation), sin = Math.sin(t.rotation)
+        const map = (x: number, y: number): Point2 => ({
+          x: t.x + x * cos - y * sin,
+          y: t.y + x * sin + y * cos,
+        })
+        quad = [map(-hw, -hh), map(hw, -hh), map(hw, hh), map(-hw, hh)]
       }
-      const sw = l.source.width * t.scale, sh = l.source.height * t.scale
-      if (!t.rotation) return { x: t.x - sw / 2, y: t.y - sh / 2, w: sw, h: sh }
-      const cos = Math.abs(Math.cos(t.rotation)), sin = Math.abs(Math.sin(t.rotation))
-      const w = sw * cos + sh * sin, h = sw * sin + sh * cos
-      return { x: t.x - w / 2, y: t.y - h / 2, w, h }
+      const mesh = validateWarpMesh(t.warp)
+      const pts = mesh ? warpMeshDestinationPoints(mesh, quad) : quad
+      const xs = pts.map(p => p.x), ys = pts.map(p => p.y)
+      const x0 = Math.min(...xs), x1 = Math.max(...xs)
+      const y0 = Math.min(...ys), y1 = Math.max(...ys)
+      return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) }
     }
     if (l.kind === 'shape' && l.shape) {
       const s = l.shape
@@ -3541,6 +3552,12 @@ export class Engine {
     ]
   }
 
+  layerWarpMesh(id: string, cols = 3, rows = 3): TransformWarpSpec {
+    const layer = this.layerById(id)
+    const existing = layer?.kind === 'smart' ? validateWarpMesh(layer.transform?.warp) : null
+    return existing ? cloneWarpMesh(existing) : regularWarpMesh(cols, rows)
+  }
+
   private transformReferencePoint(quad: Point2[], ref: TransformReference): Point2 {
     const xs = quad.map(p => p.x), ys = quad.map(p => p.y)
     const x0 = Math.min(...xs), x1 = Math.max(...xs)
@@ -3589,6 +3606,20 @@ export class Engine {
     }) as [Point2, Point2, Point2, Point2]
   }
 
+  private mapDocPointThroughWarp(
+    point: Point2,
+    sourceRect: Rect,
+    mesh: TransformWarpSpec,
+    quad: [Point2, Point2, Point2, Point2],
+  ): Point2 {
+    const normalized = {
+      x: (point.x - sourceRect.x) / Math.max(1e-9, sourceRect.w),
+      y: (point.y - sourceRect.y) / Math.max(1e-9, sourceRect.h),
+    }
+    const warped = mapNormalizedPointThroughWarp(normalized, mesh)
+    return mapRectPointToQuad(warped, { x: 0, y: 0, w: 1, h: 1 }, quad)
+  }
+
   private quadArea(q: Point2[]): number {
     let area = 0
     for (let i = 0; i < q.length; i++) {
@@ -3611,6 +3642,81 @@ export class Engine {
 
     const base = this.layerTransformQuad(id)
     if (!base) { this.ui?.toast('This layer has no transformable content', 'error'); return }
+
+    if (cmd.mode === 'warp') {
+      const mesh = validateWarpMesh(cmd.warp)
+      if (!mesh) { this.ui?.toast('Warp mesh is invalid', 'error'); return }
+
+      if (layer.kind === 'smart' && layer.source) {
+        const t = layer.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
+        layer.transform = { ...t, warp: cloneWarpMesh(mesh) }
+        layer._v++
+        invalidateFlat(doc)
+        if (remember) this.lastTransformCommand = structuredClone(cmd)
+        this.pushHistory('Transform Warp')
+        this.emit()
+        return
+      }
+
+      const r = this.layerContentRect(id)
+      if (!r || r.w < 1 || r.h < 1) return
+      let source: HTMLCanvasElement
+      if (layer.kind === 'raster' && layer.canvas) {
+        source = layer.canvas
+      } else {
+        const full = layer.kind === 'text' && layer.text
+          ? renderTextCanvas(doc, layer.text)
+          : layer.kind === 'shape' && layer.shape
+            ? renderShapeCanvas(doc, layer.shape)
+            : null
+        if (!full) return
+        source = createCanvas(Math.max(1, Math.ceil(r.w)), Math.max(1, Math.ceil(r.h)))
+        ctx2d(source).drawImage(full, -r.x, -r.y)
+      }
+
+      const destination = warpMeshDestinationPoints(mesh, base)
+      const warped = warpCanvasToMesh(source, mesh, destination)
+      layer.kind = 'raster'
+      layer.canvas = warped.canvas
+      layer.offsetX = warped.offsetX
+      layer.offsetY = warped.offsetY
+      layer.source = null
+      layer.transform = null
+      layer.text = null
+      layer.shape = null
+      layer.smartFilters = []
+
+      if (layer.mask) {
+        const maskTile = createCanvas(source.width, source.height)
+        ctx2d(maskTile).drawImage(layer.mask, -r.x, -r.y)
+        const wm = warpCanvasToMesh(maskTile, mesh, destination)
+        const docMask = createCanvas(doc.width, doc.height)
+        ctx2d(docMask).drawImage(wm.canvas, wm.offsetX, wm.offsetY)
+        layer.mask = docMask
+        layer._mv++
+      }
+      if (layer.vectorMask) {
+        const mapAnchor = (a: PathAnchor): PathAnchor => {
+          const p = this.mapDocPointThroughWarp({ x: a.x, y: a.y }, r, mesh, base)
+          const pin = this.mapDocPointThroughWarp({ x: a.x + a.inX, y: a.y + a.inY }, r, mesh, base)
+          const pout = this.mapDocPointThroughWarp({ x: a.x + a.outX, y: a.y + a.outY }, r, mesh, base)
+          return {
+            ...a, x: p.x, y: p.y,
+            inX: pin.x - p.x, inY: pin.y - p.y,
+            outX: pout.x - p.x, outY: pout.y - p.y,
+          }
+        }
+        layer.vectorMask = mapVectorMask(layer.vectorMask, mapAnchor)
+      }
+
+      layer._v++
+      invalidateFlat(doc)
+      if (remember) this.lastTransformCommand = structuredClone(cmd)
+      this.pushHistory('Transform Warp')
+      this.emit()
+      return
+    }
+
     const target = this.transformedQuad(base, cmd)
     if (this.quadArea(target) < 1) { this.ui?.toast('Transform would collapse the layer', 'error'); return }
 
