@@ -11,7 +11,7 @@ import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
   createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData,
   hexToRgb, rgbToHex, clamp, drawSoftDab, canvasToBlob, downloadBlob, getMaskAlpha,
-  canvasProfile, canvasPixelCapabilities, setCanvasWorkingProfile,
+  canvasProfile, canvasPixelCapabilities, setCanvasWorkingProfile, getProcessingPixelData, putProcessingPixelData,
 } from '../utils/canvas'
 import {
   compositeDocument, getFlatComposite, invalidateFlat, newLayer,
@@ -2414,9 +2414,9 @@ export class Engine {
     if (!doc) return
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
-    const img = getImageData(l.canvas)
+    const img = getProcessingPixelData(l.canvas)
     imageOps.applyAdjustment(img, type, params)
-    putImageData(l.canvas, img)
+    putProcessingPixelData(l.canvas, img)
     invalidateFlat(doc)
     this.pushHistory(typeLabel(type))
     this.recordStep({ op: 'applyAdjustment', args: { layerId, type, params: { ...params } }, label: typeLabel(type) })
@@ -2433,9 +2433,9 @@ export class Engine {
     }
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
-    const img = getImageData(l.canvas)
+    const img = getProcessingPixelData(l.canvas)
     imageOps.applyFilter(img, type, params)
-    putImageData(l.canvas, img)
+    putProcessingPixelData(l.canvas, img)
     invalidateFlat(doc)
     this.pushHistory(filterLabel(type))
     this.recordStep({ op: 'applyFilter', args: { layerId, type, params: { ...params } }, label: filterLabel(type) })
@@ -2554,7 +2554,7 @@ export class Engine {
     // getImageData inside is fresh + disposable → zero-copy transfer to the worker;
     // on an unrecoverable worker failure it re-fetches and runs synchronously
     const out = await runPixelOpFromCanvas(l.canvas, spec)
-    putImageData(l.canvas, out)
+    putProcessingPixelData(l.canvas, out)
     invalidateFlat(doc)
     this.pushHistory(label)
     this.emit()
@@ -2567,7 +2567,7 @@ export class Engine {
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
     const out = await runPixelOpFromCanvas(l.canvas, { kind: 'adjustment', type, params })
-    putImageData(l.canvas, out)
+    putProcessingPixelData(l.canvas, out)
     invalidateFlat(doc)
     this.pushHistory(typeLabel(type))
     this.recordStep({ op: 'applyAdjustment', args: { layerId, type, params: { ...params } }, label: typeLabel(type) })
@@ -2585,7 +2585,7 @@ export class Engine {
     }
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
-    let out: ImageData
+    let out
     try {
       out = await runPixelOpFromCanvas(l.canvas, { kind: 'filter', type, params })
     } catch (err) {
@@ -2594,7 +2594,7 @@ export class Engine {
       console.error('[zphoto] filter worker failed safely', err)
       return
     }
-    putImageData(l.canvas, out)
+    putProcessingPixelData(l.canvas, out)
     invalidateFlat(doc)
     this.pushHistory(filterLabel(type))
     this.recordStep({ op: 'applyFilter', args: { layerId, type, params: { ...params } }, label: filterLabel(type) })
