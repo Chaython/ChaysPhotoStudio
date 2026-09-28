@@ -335,7 +335,10 @@ export class Engine {
   private captureState(doc: PsDocument, label: string) {
     return {
       label, time: Date.now(),
-      layers: doc.layers.map(l => ({ ...l })),
+      layers: doc.layers.map(l => ({
+        ...l,
+        transform: l.transform ? structuredClone(l.transform) : null,
+      })),
       activeLayerId: doc.activeLayerId,
       selection: doc.selection ? { ...doc.selection } : null,
       width: doc.width, height: doc.height,
@@ -347,7 +350,10 @@ export class Engine {
   }
 
   private restoreState(doc: PsDocument, st: any) {
-    doc.layers = st.layers.map((l: any) => ({ ...l }))
+    doc.layers = st.layers.map((l: any) => ({
+      ...l,
+      transform: l.transform ? structuredClone(l.transform) : null,
+    }))
     doc.activeLayerId = st.activeLayerId
     doc.selection = st.selection ? { ...st.selection } : null
     doc.width = st.width; doc.height = st.height
@@ -776,6 +782,7 @@ export class Engine {
     const src = id ? this.layerById(id) : this.activeLayer
     if (!doc || !src) return null
     const copy: Layer = { ...src, id: uid(), name: `${src.name} copy`, _v: src._v + 1 }
+    if (src.transform) copy.transform = structuredClone(src.transform)
     if (src.canvas) copy.canvas = cloneCanvas(src.canvas)
     if (src.mask) copy.mask = cloneCanvas(src.mask)
     if (src.source) copy.source = cloneCanvas(src.source)
@@ -1435,7 +1442,12 @@ export class Engine {
       l.offsetX = (l.offsetX ?? 0) + dx
       l.offsetY = (l.offsetY ?? 0) + dy
     } else if (l.kind === 'smart' && l.transform) {
-      l.transform = { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy }
+      l.transform = {
+        ...l.transform,
+        x: l.transform.x + dx,
+        y: l.transform.y + dy,
+        quad: l.transform.quad?.map(p => ({ x: p.x + dx, y: p.y + dy })) as typeof l.transform.quad,
+      }
     } else if (l.kind === 'text' && l.text) {
       l.text = { ...l.text, x: l.text.x + dx, y: l.text.y + dy }
     } else if (l.kind === 'shape' && l.shape) {
@@ -2881,9 +2893,13 @@ export class Engine {
       if (l.mask) l.mask = resampleCanvas(l.mask, w, h)
       if (l.source) l.source = resampleCanvas(l.source, Math.max(1, Math.round(l.source.width * sx)), Math.max(1, Math.round(l.source.height * sy)))
       if (l.transform) {
-        l.transform.x *= sx
-        l.transform.y *= sy
-        l.transform.scale *= smin
+        l.transform = {
+          ...l.transform,
+          x: l.transform.x * sx,
+          y: l.transform.y * sy,
+          scale: l.transform.scale * smin,
+          quad: l.transform.quad?.map(p => ({ x: p.x * sx, y: p.y * sy })) as typeof l.transform.quad,
+        }
       }
       if (l.text) {
         l.text.x *= sx
@@ -3097,7 +3113,14 @@ export class Engine {
         ctx2d(next).drawImage(l.mask, -x, -y)
         l.mask = next
       }
-      if (l.transform) { l.transform.x -= x; l.transform.y -= y }
+      if (l.transform) {
+        l.transform = {
+          ...l.transform,
+          x: l.transform.x - x,
+          y: l.transform.y - y,
+          quad: l.transform.quad?.map(p => ({ x: p.x - x, y: p.y - y })) as typeof l.transform.quad,
+        }
+      }
       if (l.text) { l.text.x -= x; l.text.y -= y }
       if (l.shape) { l.shape.x -= x; l.shape.y -= y }
       if (l.vectorMask) {
@@ -3183,7 +3206,14 @@ export class Engine {
         ctx2d(c).drawImage(l.mask, dx, dy)
         l.mask = c
       }
-      if (l.transform) { l.transform.x += dx; l.transform.y += dy }
+      if (l.transform) {
+        l.transform = {
+          ...l.transform,
+          x: l.transform.x + dx,
+          y: l.transform.y + dy,
+          quad: l.transform.quad?.map(p => ({ x: p.x + dx, y: p.y + dy })) as typeof l.transform.quad,
+        }
+      }
       if (l.text) { l.text.x += dx; l.text.y += dy }
       if (l.shape) { l.shape.x += dx; l.shape.y += dy }
       l._v++; l._mv++
@@ -3272,7 +3302,14 @@ export class Engine {
         // source is already resized by sx/sy here — so transform.scale must
         // stay UNCHANGED or the layer would render at sx² (double-scale).
         l.source = await imageOps.lanczosResample(l.source, Math.round(l.source.width * sx), Math.round(l.source.height * sy))
-        if (l.transform) { l.transform.x *= sx; l.transform.y *= sy }
+        if (l.transform) {
+          l.transform = {
+            ...l.transform,
+            x: l.transform.x * sx,
+            y: l.transform.y * sy,
+            quad: l.transform.quad?.map(p => ({ x: p.x * sx, y: p.y * sy })) as typeof l.transform.quad,
+          }
+        }
       }
       if (l.text) { l.text.x *= sx; l.text.y *= sy; l.text.fontSize *= sy }
       if (l.shape) {
