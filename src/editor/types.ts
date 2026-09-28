@@ -99,6 +99,10 @@ export interface TransformSpec {
   y: number
   scale: number
   rotation: number // radians, cw
+  /** Optional projective Smart Object quad in document coordinates.
+   * Corners are TL, TR, BR, BL. When present it supersedes x/y/scale/rotation
+   * for rendering while those legacy fields remain for backward compatibility. */
+  quad?: [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }]
 }
 
 export interface TextSpec {

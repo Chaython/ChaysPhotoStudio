@@ -47,6 +47,22 @@ function gridSizeLabel(px: number): string {
 
 const openDlg = (type: any, props?: any) => store().openDialog(type, props)
 
+const transformItems: MenuItem[] = [
+  { id: 'transform-again', label: 'Again', enabled: () => engine.canRepeatTransform(), run: () => engine.repeatLastTransform() },
+  S(),
+  { id: 'transform-scale', label: 'Scale…', run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'scale' }) },
+  { id: 'transform-rotate', label: 'Rotate…', run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'rotate' }) },
+  { id: 'transform-skew', label: 'Skew…', run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'skew' }) },
+  { id: 'transform-distort', label: 'Distort…', run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'distort' }) },
+  { id: 'transform-perspective', label: 'Perspective…', run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'perspective' }) },
+  S(),
+  { id: 'transform-180', label: 'Rotate 180°', run: () => engine.transformLayer(engine.activeLayer?.id ?? '', { mode: 'rotate', rotation: 180 }) },
+  { id: 'transform-90cw', label: 'Rotate 90° Clockwise', run: () => engine.transformLayer(engine.activeLayer?.id ?? '', { mode: 'rotate', rotation: 90 }) },
+  { id: 'transform-90ccw', label: 'Rotate 90° Counter Clockwise', run: () => engine.transformLayer(engine.activeLayer?.id ?? '', { mode: 'rotate', rotation: -90 }) },
+  { id: 'transform-flip-h', label: 'Flip Horizontal', run: () => { const l = engine.activeLayer; if (l) engine.flipLayer(l.id, 'horizontal') } },
+  { id: 'transform-flip-v', label: 'Flip Vertical', run: () => { const l = engine.activeLayer; if (l) engine.flipLayer(l.id, 'vertical') } },
+]
+
 // ---------- Image > Adjustments (destructive) ----------
 const adjustmentItems: MenuItem[] = ([
   'brightness-contrast', 'levels', 'exposure', 'vibrance', 'hue-saturation',
@@ -232,9 +248,8 @@ export const MENUS: MenuItem[][] = [
     { id: 'edit-fill-bg', label: 'Fill with Background', shortcut: sc('fillBg'), run: () => engine.fillSelection(store().bgColor) },
     { id: 'edit-clear', label: 'Clear Selection', shortcut: sc('clearSelection'), run: () => engine.deleteSelectionPixels() },
     S(),
-    { id: 'edit-transform', label: 'Free Transform…', shortcut: sc('transform'), run: () => openDlg('transform', { layerId: engine.activeLayer?.id }) },
-    { id: 'edit-flip-h', label: 'Flip Layer Horizontal', run: () => { const l = engine.activeLayer; if (l) engine.flipLayer(l.id, 'horizontal') } },
-    { id: 'edit-flip-v', label: 'Flip Layer Vertical', run: () => { const l = engine.activeLayer; if (l) engine.flipLayer(l.id, 'vertical') } },
+    { id: 'edit-transform', label: 'Free Transform…', shortcut: sc('transform'), run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'free' }) },
+    { id: 'edit-transform-submenu', label: 'Transform', submenu: transformItems },
     S(),
     { id: 'edit-caf', label: 'Content-Aware Fill…', run: () => openDlg('content-aware-fill') },
     S(),
