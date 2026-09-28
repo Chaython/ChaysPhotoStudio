@@ -93,7 +93,7 @@ function inferCanvasProfile(c: HTMLCanvasElement): CanvasWorkingProfile {
   }) | null
   const attrs = ctx?.getContextAttributes?.()
   const profile: CanvasWorkingProfile = {
-    bitDepth: attrs?.colorType === 'float16' ? 16 : 8,
+    bitDepth: (attrs as any)?.colorType === 'float16' ? 16 : 8,
     colorSpace: attrs?.colorSpace === 'display-p3' ? 'display-p3' : 'srgb',
   }
   canvasProfiles.set(c, profile)
@@ -127,7 +127,7 @@ export function createCanvas(
   if (!ctx) throw new Error('2D context unavailable')
   const attrs = ctx.getContextAttributes?.()
   canvasProfiles.set(c, {
-    bitDepth: attrs?.colorType === 'float16' ? 16 : requested.bitDepth === 16 && caps.float16Context ? 16 : 8,
+    bitDepth: (attrs as any)?.colorType === 'float16' ? 16 : requested.bitDepth === 16 && caps.float16Context ? 16 : 8,
     colorSpace: attrs?.colorSpace === 'display-p3' ? 'display-p3' : requested.colorSpace === 'display-p3' && caps.displayP3 ? 'display-p3' : 'srgb',
   })
   return c
