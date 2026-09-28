@@ -185,6 +185,39 @@ export function splitWarpMesh(
   return next
 }
 
+export function removeWarpSplit(
+  mesh: TransformWarpSpec,
+  axis: 'u' | 'v',
+  lineIndex: number,
+): TransformWarpSpec {
+  const m = validateWarpMesh(mesh)
+  if (!m) return regularWarpMesh(3, 3)
+  const lines = axis === 'u' ? m.u : m.v
+  if (lineIndex <= 0 || lineIndex >= lines.length - 1) return cloneWarpMesh(m)
+  if ((axis === 'u' ? m.u.length : m.v.length) <= 2) return cloneWarpMesh(m)
+
+  const next: TransformWarpSpec = axis === 'u'
+    ? { u: m.u.filter((_, i) => i !== lineIndex), v: [...m.v], points: [] }
+    : { u: [...m.u], v: m.v.filter((_, i) => i !== lineIndex), points: [] }
+
+  if (axis === 'u') {
+    for (let row = 0; row < m.v.length; row++) {
+      for (let col = 0; col < m.u.length; col++) {
+        if (col === lineIndex) continue
+        next.points.push({ ...m.points[meshIndex(m, col, row)] })
+      }
+    }
+  } else {
+    for (let row = 0; row < m.v.length; row++) {
+      if (row === lineIndex) continue
+      for (let col = 0; col < m.u.length; col++) {
+        next.points.push({ ...m.points[meshIndex(m, col, row)] })
+      }
+    }
+  }
+  return next
+}
+
 export function resampleWarpMesh(mesh: TransformWarpSpec, cols: number, rows: number): TransformWarpSpec {
   const m = validateWarpMesh(mesh) ?? regularWarpMesh(cols, rows)
   const next = regularWarpMesh(cols, rows)
@@ -217,6 +250,7 @@ export function presetWarpMesh(
   bend = 0,
   horizontal = 0,
   vertical = 0,
+  orientation: 'horizontal' | 'vertical' = 'horizontal',
 ): TransformWarpSpec {
   const mesh = regularWarpMesh(cols, rows)
   if (preset === 'custom') return mesh
@@ -224,7 +258,9 @@ export function presetWarpMesh(
   const hd = clamp(horizontal, -100, 100) / 100
   const vd = clamp(vertical, -100, 100) / 100
   mesh.points = mesh.points.map(p => {
-    const x0 = p.x, y0 = p.y
+    const px = orientation === 'vertical' ? p.y : p.x
+    const py = orientation === 'vertical' ? p.x : p.y
+    const x0 = px, y0 = py
     const u = x0 * 2 - 1, v = y0 * 2 - 1
     let x = x0, y = y0
     if (preset === 'arc') {
@@ -243,7 +279,7 @@ export function presetWarpMesh(
     // Photoshop's H/V fields are directional cross-axis distortion controls.
     x += hd * (y0 - .5) * .28
     y += vd * (x0 - .5) * .28
-    return { x, y }
+    return orientation === 'vertical' ? { x: y, y: x } : { x, y }
   })
   return mesh
 }
