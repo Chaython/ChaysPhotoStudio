@@ -3,7 +3,7 @@ import type { Layer, LayerKind, PsDocument, Rect, TextSpec, ShapeSpec, BlendIfSe
 import { BLEND_GCO } from '../constants/tools'
 import { createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData, hexToRgb, clamp } from '../utils/canvas'
 import * as imageOps from '../image-ops'
-import { warpCanvasToQuad } from '../image-ops/transform'
+import { validateWarpMesh, warpCanvasToMesh, warpCanvasToQuad, warpMeshDestinationPoints } from '../image-ops/transform'
 import { applyLayerFX, hasEnabledFX } from './layer-fx'
 import { glCompositeDocument } from './gl/gl-composite'
 import { traceShapePath } from './shape-path'
@@ -502,7 +502,24 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
     const t = layer.transform || { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
-    if (t.quad?.length === 4) {
+
+    const affineQuad = () => {
+      const hw = layer.source!.width * t.scale / 2
+      const hh = layer.source!.height * t.scale / 2
+      const cos = Math.cos(t.rotation), sin = Math.sin(t.rotation)
+      const map = (x: number, y: number) => ({
+        x: t.x + x * cos - y * sin,
+        y: t.y + x * sin + y * cos,
+      })
+      return [map(-hw, -hh), map(hw, -hh), map(hw, hh), map(-hw, hh)]
+    }
+    const quad = t.quad?.length === 4 ? t.quad : affineQuad()
+    const mesh = validateWarpMesh(t.warp)
+    if (mesh) {
+      const destination = warpMeshDestinationPoints(mesh, quad)
+      const warped = warpCanvasToMesh(layer.source, mesh, destination)
+      ctx.drawImage(warped.canvas, warped.offsetX, warped.offsetY)
+    } else if (t.quad?.length === 4) {
       const warped = warpCanvasToQuad(layer.source, t.quad)
       ctx.drawImage(warped.canvas, warped.offsetX, warped.offsetY)
     } else {
