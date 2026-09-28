@@ -94,6 +94,16 @@ export interface SmartFilter {
   enabled: boolean
 }
 
+export interface TransformWarpSpec {
+  /** Source-space split positions, normalized 0..1. Arbitrary internal values
+   * model Photoshop Split Warp lines; endpoints must remain 0 and 1. */
+  u: number[]
+  v: number[]
+  /** Destination mesh points in normalized source coordinates, row-major.
+   * Length = u.length * v.length. Values may extend outside 0..1. */
+  points: { x: number; y: number }[]
+}
+
 export interface TransformSpec {
   x: number       // doc-space anchor (center of placed source)
   y: number
@@ -103,6 +113,9 @@ export interface TransformSpec {
    * Corners are TL, TR, BR, BL. When present it supersedes x/y/scale/rotation
    * for rendering while those legacy fields remain for backward compatibility. */
   quad?: [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }]
+  /** Optional non-destructive Transform Warp mesh, applied in normalized
+   * source coordinates before the affine/projective placement above. */
+  warp?: TransformWarpSpec | null
 }
 
 export interface TextSpec {
