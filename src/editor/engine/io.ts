@@ -89,6 +89,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
     workingBitDepth: 8,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
     selection: null, channelView: 'rgb', savedChannels: [],
@@ -193,6 +194,7 @@ export interface SerializedProject {
     sourceBitDepth?: number
     workingColorSpace?: 'srgb' | 'display-p3'
     resolutionPpi?: number
+    psdImageResources?: string[]
     colorSamplers?: { id: string; x: number; y: number }[]
     measurements?: import('../types').SavedMeasurement[]
     savedPaths?: import('../types').SavedPath[]
@@ -287,6 +289,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       sourceBitDepth: doc.sourceBitDepth ?? doc.workingBitDepth ?? 8,
       workingColorSpace: doc.workingColorSpace ?? 'srgb',
       resolutionPpi: doc.resolutionPpi ?? 72,
+      psdImageResources: doc.psdImageResources ? [...doc.psdImageResources] : undefined,
       colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
       measurements: (doc.measurements ?? []).map(m => ({
         ...m,
@@ -447,6 +450,9 @@ export async function openSerializedProject(project: SerializedProject, label = 
     sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth)
       ? Number(project.doc.sourceBitDepth)
       : (project.doc.workingBitDepth === 16 ? 16 : 8),
+    psdImageResources: Array.isArray(project.doc.psdImageResources)
+      ? project.doc.psdImageResources.filter((v: unknown) => typeof v === 'string')
+      : undefined,
     workingColorSpace: project.doc.workingColorSpace === 'display-p3' && canvasPixelCapabilities().displayP3 ? 'display-p3' : 'srgb',
     resolutionPpi: Math.max(1, Math.min(12000, Number(project.doc.resolutionPpi) || 72)),
     layers: [], activeLayerId: null, selection: null,
