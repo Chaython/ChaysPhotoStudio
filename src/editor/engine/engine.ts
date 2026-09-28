@@ -1521,16 +1521,28 @@ export class Engine {
       }
       mutated = true
     } else if (baseKind === 'smart' && layer.source) {
-      // non-destructive: uniform scale (corner-handle semantics), rotation
-      // composes onto the existing transform (no flip — TransformSpec scale
-      // is positive; flipping a smart layer rasterizes it instead)
       const s = Math.abs((sx + sy) / 2) || 0.01
       const t = layer.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
       const [nx, ny] = map(t.x, t.y)
-      layer.transform = {
-        x: nx, y: ny,
-        scale: Math.max(0.01, t.scale * s),
-        rotation: t.rotation + rot,
+      if (t.quad || t.warp) {
+        const currentQuad = this.layerTransformQuad(id)
+        const nextQuad = currentQuad?.map(p => {
+          const [x, y] = map(p.x, p.y)
+          return { x, y }
+        }) as typeof t.quad
+        layer.transform = {
+          ...t,
+          x: nx,
+          y: ny,
+          quad: nextQuad,
+        }
+      } else {
+        layer.transform = {
+          ...t,
+          x: nx, y: ny,
+          scale: Math.max(0.01, t.scale * s),
+          rotation: t.rotation + rot,
+        }
       }
       mutated = true
     } else if ((baseKind === 'text' || baseKind === 'shape') && Math.abs(rot) < 0.002 && sx > 0 && sy > 0) {
