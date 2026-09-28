@@ -112,7 +112,7 @@ export function formatFromFileName(name: string | undefined | null): ImportForma
   if (ext === 'jxl') return 'jxl'
   if (ext === 'jp2' || ext === 'j2k' || ext === 'j2c' || ext === 'jpx') return 'jp2'
   return null
-
+}
 
 /** browser-native decode (png / jpeg / gif / webp / avif / svg) */
 async function decodeNativeCanvas(file: File | Blob, format: string | null): Promise<HTMLCanvasElement> {
