@@ -1,3 +1,4 @@
+import { createPixelImageLike, type PixelImage } from './pixel-data'
 // ============================================================
 // High-quality blur / resampling primitives for image-ops.
 //  - exact-equivalent box decomposition of a gaussian (Kovesi's
@@ -69,7 +70,7 @@ export function gaussianBlurFloat(buf: Float32Array, w: number, h: number, sigma
 }
 
 /** Exact full-resolution RGB blur used for small images/radii. */
-function blurImageDataExact(img: ImageData, sigma: number): void {
+function blurImageDataExact(img: PixelImage, sigma: number): void {
   const { width: w, height: h, data } = img
   const n = w * h
   const ch = new Float32Array(n)
@@ -101,11 +102,11 @@ function blurProxyScale(w: number, h: number, sigma: number): number {
 
 /** Area-average RGB downsample. Alpha is intentionally ignored: final alpha
  * is preserved from the original ImageData exactly, matching the old blur. */
-function downsampleBlurProxy(img: ImageData, scale: number): ImageData {
+function downsampleBlurProxy(img: PixelImage, scale: number): PixelImage {
   const sw = img.width, sh = img.height
   const dw = Math.max(1, Math.ceil(sw / scale))
   const dh = Math.max(1, Math.ceil(sh / scale))
-  const out = new ImageData(dw, dh)
+  const out = createPixelImageLike(img, dw, dh)
   const src = img.data, dst = out.data
   for (let y = 0; y < dh; y++) {
     const y0 = y * scale
@@ -132,7 +133,7 @@ function downsampleBlurProxy(img: ImageData, scale: number): ImageData {
 }
 
 /** Bilinear RGB upsample back into the original image; alpha is untouched. */
-function upsampleBlurProxy(proxy: ImageData, target: ImageData): void {
+function upsampleBlurProxy(proxy: PixelImage, target: PixelImage): void {
   const sw = proxy.width, sh = proxy.height
   const dw = target.width, dh = target.height
   const src = proxy.data, dst = target.data
@@ -167,7 +168,7 @@ function upsampleBlurProxy(proxy: ImageData, target: ImageData): void {
  * Large/broad blurs use a conservative downsampled proxy so a 20-50 MP image
  * cannot turn into hundreds of millions of JS pixel operations.
  */
-export function blurImageData(img: ImageData, sigma: number): void {
+export function blurImageData(img: PixelImage, sigma: number): void {
   if (!(sigma >= 0.4)) return
   const scale = blurProxyScale(img.width, img.height, sigma)
   if (scale === 1) {
