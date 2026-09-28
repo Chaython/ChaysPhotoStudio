@@ -43,6 +43,7 @@ import {
   quickSelectRegion, refineMask, selectSubject,
 } from './selection'
 import { inpaint } from './inpaint'
+import type { PixelImage } from './pixel-data'
 
 // ------------------------------------------------------------------ registries
 /** Combined filter registry. filters.ts keeps the original entries as a
@@ -64,18 +65,18 @@ void _filtersComplete
 
 export { ADJUSTMENTS, FILTERS }
 
-export function applyAdjustment(img: ImageData, type: AdjustmentType, params: Record<string, any>) {
+export function applyAdjustment(img: PixelImage, type: AdjustmentType, params: Record<string, any>) {
   const def = ADJUSTMENTS[type]
   if (!def) return
   const merged = { ...def.defaults, ...params }
-  def.apply(img, merged)
+  def.apply(img as ImageData, merged)
 }
 
-export function applyFilter(img: ImageData, type: FilterType, params: Record<string, any>) {
+export function applyFilter(img: PixelImage, type: FilterType, params: Record<string, any>) {
   const def = FILTERS[type]
   if (!def) return
   const merged = { ...def.defaults, ...params }
-  def.apply(img, merged)
+  def.apply(img as ImageData, merged)
 }
 
 // ---- LUT engine (color-lookup adjustment + .cube import) ----
@@ -118,6 +119,7 @@ export { seamCarve, boxResampleMask, type SeamCarveOptions, type SeamCarveResult
 
 // ---- core primitives (kept in the public surface for the engine/tools) ----
 export { floodFillMask, computeHistogram } from './core'
+export { createPixelImage, createPixelImageLike, clonePixelImage, isFloatPixelImage, sampleLut256, type PixelImage, type FloatPixelImage } from './pixel-data'
 
 // ---- perceptual Magic Wand / Select Similar ----
 export { perceptualWandMask, type PerceptualWandOptions } from './wand'
