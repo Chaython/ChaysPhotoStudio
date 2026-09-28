@@ -116,7 +116,9 @@ interface InternalJob {
   sourceWidth: number
   sourceHeight: number
   pixelType: 'u8' | 'f32'
+  dynamicRange: 'sdr' | 'scene-linear'
   sourcePixelType: 'u8' | 'f32'
+  sourceDynamicRange: 'sdr' | 'scene-linear'
   /** keepInput mode: the caller's untouched input to re-run synchronously on failure */
   original: PixelImage | null
   onProgress?: (p: number) => void
@@ -151,9 +153,12 @@ function pixelType(img: PixelImage): 'u8' | 'f32' {
   return isFloatPixelImage(img) ? 'f32' : 'u8'
 }
 
-function pixelImageFromBuffer(buffer: ArrayBuffer, width: number, height: number, type: 'u8' | 'f32'): PixelImage {
+function pixelImageFromBuffer(
+  buffer: ArrayBuffer, width: number, height: number, type: 'u8' | 'f32',
+  dynamicRange: 'sdr' | 'scene-linear' = 'sdr',
+): PixelImage {
   if (type === 'f32') {
-    return { width, height, data: new Float32Array(buffer), precision: 'float32' }
+    return { width, height, data: new Float32Array(buffer), precision: 'float32', dynamicRange }
   }
   return new ImageData(new Uint8ClampedArray(buffer), width, height)
 }
@@ -254,7 +259,7 @@ function flushPendingSync(): void {
       continue
     }
     try {
-      const img = pixelImageFromBuffer(job.buffer, job.width, job.height, job.pixelType)
+      const img = pixelImageFromBuffer(job.buffer, job.width, job.height, job.pixelType, job.dynamicRange)
       job.resolve(runPixelOpSync(img, job.op))
     } catch (err) {
       job.reject(err)
@@ -306,7 +311,7 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
   entry.job = null
   job.entry = null
   if (msg.kind === 'done' && msg.buffer) {
-    job.resolve(pixelImageFromBuffer(msg.buffer, job.width, job.height, job.pixelType))
+    job.resolve(pixelImageFromBuffer(msg.buffer, job.width, job.height, job.pixelType, job.dynamicRange))
     drainQueue()
     return
   }
@@ -332,7 +337,7 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
       job.reject(workerRequiredError(job.op))
     } else if (msg.buffer) {
       try {
-        const img = pixelImageFromBuffer(msg.buffer, job.width, job.height, job.pixelType)
+        const img = pixelImageFromBuffer(msg.buffer, job.width, job.height, job.pixelType, job.dynamicRange)
         job.resolve(runPixelOpSync(img, job.op))
       } catch (err) {
         job.reject(err)
@@ -381,7 +386,9 @@ function dispatch(entry: WorkerEntry, job: InternalJob): void {
       sourceWidth: job.sourceBuffer ? job.sourceWidth : undefined,
       sourceHeight: job.sourceBuffer ? job.sourceHeight : undefined,
       pixelType: job.pixelType,
+      dynamicRange: job.dynamicRange,
       sourcePixelType: job.sourceBuffer ? job.sourcePixelType : undefined,
+      sourceDynamicRange: job.sourceBuffer ? job.sourceDynamicRange : undefined,
     },
     transfer,
   )
@@ -440,11 +447,13 @@ export function runPixelOpAsync(img: PixelImage, op: PixelOpSpec, opts: PixelOpR
   let sourceWidth = 0
   let sourceHeight = 0
   let sourcePixelType: 'u8' | 'f32' = 'u8'
+  let sourceDynamicRange: 'sdr' | 'scene-linear' = 'sdr'
   if (op.source) {
     sourceBuffer = copyPixelBuffer(op.source)
     sourceWidth = op.source.width
     sourceHeight = op.source.height
     sourcePixelType = pixelType(op.source)
+    sourceDynamicRange = isFloatPixelImage(op.source) ? (op.source.dynamicRange ?? 'sdr') : 'sdr'
   }
 
   return new Promise<PixelImage>((resolve, reject) => {
@@ -458,7 +467,9 @@ export function runPixelOpAsync(img: PixelImage, op: PixelOpSpec, opts: PixelOpR
       sourceWidth,
       sourceHeight,
       pixelType: pixelType(img),
+      dynamicRange: isFloatPixelImage(img) ? (img.dynamicRange ?? 'sdr') : 'sdr',
       sourcePixelType,
+      sourceDynamicRange,
       original: keepInput ? img : null,
       onProgress: opts.onProgress,
       resolve,
