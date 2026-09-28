@@ -10,6 +10,8 @@ export interface FloatPixelImage {
   data: Float32Array
   /** Marker used by the worker/canvas bridge; channel values are 0..255 floats. */
   precision: 'float32'
+  /** scene-linear buffers may contain RGB values above 255 (= >1.0). */
+  dynamicRange?: 'sdr' | 'scene-linear'
 }
 
 export type PixelImage = ImageData | FloatPixelImage
@@ -21,13 +23,15 @@ export function isFloatPixelImage(img: PixelImage): img is FloatPixelImage {
 
 export function createPixelImage(width: number, height: number, float = false): PixelImage {
   if (float) {
-    return { width, height, data: new Float32Array(width * height * 4), precision: 'float32' }
+    return { width, height, data: new Float32Array(width * height * 4), precision: 'float32', dynamicRange: 'sdr' }
   }
   return new ImageData(width, height)
 }
 
 export function createPixelImageLike(img: PixelImage, width = img.width, height = img.height): PixelImage {
-  return createPixelImage(width, height, isFloatPixelImage(img))
+  const out = createPixelImage(width, height, isFloatPixelImage(img))
+  if (isFloatPixelImage(out) && isFloatPixelImage(img)) out.dynamicRange = img.dynamicRange
+  return out
 }
 
 export function clonePixelImage<T extends PixelImage>(img: T): T {
@@ -37,6 +41,7 @@ export function clonePixelImage<T extends PixelImage>(img: T): T {
       height: img.height,
       data: new Float32Array(img.data),
       precision: 'float32',
+      dynamicRange: img.dynamicRange,
     } as T
   }
   return new ImageData(new Uint8ClampedArray(img.data), img.width, img.height) as T
@@ -55,4 +60,14 @@ export function sampleLut256(lut: ArrayLike<number>, value: number): number {
 /** Histogram bin for a potentially fractional 0..255 sample. */
 export function histBin(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)))
+}
+
+
+export function isSceneLinearHdr(img: PixelImage): boolean {
+  return isFloatPixelImage(img) && img.dynamicRange === 'scene-linear'
+}
+
+/** Upper channel bound for operations whose math is valid above SDR white. */
+export function pixelChannelCeiling(img: PixelImage): number {
+  return isSceneLinearHdr(img) ? Number.POSITIVE_INFINITY : 255
 }
