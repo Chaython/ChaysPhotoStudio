@@ -1,7 +1,7 @@
 // ---------- Document model: layer factories, layer preparation (content/mask/filters), full composite ----------
 import type { Layer, LayerKind, PsDocument, Rect, TextSpec, ShapeSpec, BlendIfSettings, AdjustmentType, FilterType, LiveLayerDrag } from '../types'
 import { BLEND_GCO } from '../constants/tools'
-import { createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData, hexToRgb, clamp, canvasProfile, currentCanvasWorkingProfile } from '../utils/canvas'
+import { createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData, getProcessingPixelData, putProcessingPixelData, hexToRgb, clamp, canvasProfile, currentCanvasWorkingProfile } from '../utils/canvas'
 import * as imageOps from '../image-ops'
 import { validateWarpMesh, warpCanvasToMesh, warpCanvasToQuad, warpMeshDestinationPoints } from '../image-ops/transform'
 import { applyLayerFX, hasEnabledFX } from './layer-fx'
@@ -404,8 +404,8 @@ function drawWithBlendIf(
     return
   }
   const w = acc.width, h = acc.height
-  const accData = getImageData(acc)
-  const srcData = getImageData(src)
+  const accData = getProcessingPixelData(acc)
+  const srcData = getProcessingPixelData(src)
   const ad = accData.data, sd = srcData.data
   const b = layer.blendIf
   const chanIdx = b.channel === 'r' ? 0 : b.channel === 'g' ? 1 : b.channel === 'b' ? 2 : -1
@@ -421,7 +421,7 @@ function drawWithBlendIf(
     if (f < 1) sd[i + 3] = Math.round(sd[i + 3] * f)
   }
   const tmp = createCanvas(w, h)
-  putImageData(tmp, srcData)
+  putProcessingPixelData(tmp, srcData)
   targetCtx.save()
   targetCtx.globalAlpha = alpha
   try { targetCtx.globalCompositeOperation = gco } catch { /* fallback */ }
@@ -432,9 +432,9 @@ function drawWithBlendIf(
 // ---------- adjustment layer application ----------
 function applyAdjustmentToCanvas(src: HTMLCanvasElement, type: AdjustmentType, params: Record<string, any>): HTMLCanvasElement {
   const out = cloneCanvas(src)
-  const img = getImageData(out)
+  const img = getProcessingPixelData(out)
   imageOps.applyAdjustment(img, type, params)
-  putImageData(out, img)
+  putProcessingPixelData(out, img)
   return out
 }
 
@@ -543,9 +543,9 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   if (layer.kind === 'smart' && layer.smartFilters.length) {
     for (const sf of layer.smartFilters) {
       if (!sf.enabled) continue
-      const img = getImageData(out)
+      const img = getProcessingPixelData(out)
       imageOps.applyFilter(img, sf.type, sf.params)
-      putImageData(out, img)
+      putProcessingPixelData(out, img)
     }
   }
 
@@ -553,9 +553,9 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   // instead of synchronous full-resolution JS pixel math on every slider tick.
   if (doc.previewFilter && doc.previewFilter.layerId === layer.id) {
     if (!applyFastPreviewFilter(out, doc.previewFilter.type, doc.previewFilter.params)) {
-      const img = getImageData(out)
+      const img = getProcessingPixelData(out)
       imageOps.applyFilter(img, doc.previewFilter.type, doc.previewFilter.params)
-      putImageData(out, img)
+      putProcessingPixelData(out, img)
     }
   }
 
@@ -983,21 +983,21 @@ export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement): 
 
   // channel view
   if (doc.channelView !== 'rgb') {
-    const img = getImageData(acc)
+    const img = getProcessingPixelData(acc)
     const d = img.data
     const ch = doc.channelView === 'r' ? 0 : doc.channelView === 'g' ? 1 : 2
     for (let k = 0; k < d.length; k += 4) {
       const v = d[k + ch]
       d[k] = v; d[k + 1] = v; d[k + 2] = v
     }
-    putImageData(acc, img)
+    putProcessingPixelData(acc, img)
   }
 
   // dialog live-preview adjustment
   if (doc.previewAdjustment) {
-    const img = getImageData(acc)
+    const img = getProcessingPixelData(acc)
     imageOps.applyAdjustment(img, doc.previewAdjustment.type, doc.previewAdjustment.params)
-    putImageData(acc, img)
+    putProcessingPixelData(acc, img)
   }
 
   outCtx.drawImage(acc, 0, 0)
