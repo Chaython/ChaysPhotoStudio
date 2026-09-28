@@ -57,7 +57,9 @@ interface OpRequestMessage {
   buffer: ArrayBuffer
   sourceBuffer?: ArrayBuffer
   pixelType?: 'u8' | 'f32'
+  dynamicRange?: 'sdr' | 'scene-linear'
   sourcePixelType?: 'u8' | 'f32'
+  sourceDynamicRange?: 'sdr' | 'scene-linear'
 }
 
 /** worker-scope postMessage (DedicatedWorkerGlobalScope signature, transfer list second arg) */
@@ -74,7 +76,7 @@ self.onmessage = (ev: MessageEvent) => {
   let img: PixelImage | null = null
   try {
     img = req.pixelType === 'f32'
-      ? { width: req.width, height: req.height, data: new Float32Array(req.buffer), precision: 'float32' }
+      ? { width: req.width, height: req.height, data: new Float32Array(req.buffer), precision: 'float32', dynamicRange: req.dynamicRange ?? 'sdr' }
       : new ImageData(new Uint8ClampedArray(req.buffer), req.width, req.height)
     switch (req.op) {
       case 'filter':
@@ -91,7 +93,7 @@ self.onmessage = (ev: MessageEvent) => {
           throw new Error('match-color requires a source ImageData (sourceBuffer + sourceWidth + sourceHeight)')
         }
         const source: PixelImage = req.sourcePixelType === 'f32'
-          ? { width: req.sourceWidth, height: req.sourceHeight, data: new Float32Array(req.sourceBuffer), precision: 'float32' }
+          ? { width: req.sourceWidth, height: req.sourceHeight, data: new Float32Array(req.sourceBuffer), precision: 'float32', dynamicRange: req.sourceDynamicRange ?? 'sdr' }
           : new ImageData(new Uint8ClampedArray(req.sourceBuffer), req.sourceWidth, req.sourceHeight)
         matchColor(img, source, (req.params ?? {}) as never)
         break
