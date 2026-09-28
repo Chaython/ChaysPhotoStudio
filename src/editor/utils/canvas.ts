@@ -86,6 +86,45 @@ export function currentCanvasWorkingProfile(): CanvasWorkingProfile {
   return { ...defaultProfile }
 }
 
+/** IEC 61966-2-1 transfer functions. Values above 1 are intentionally kept:
+ * float16/Float32 HDR previews need to carry scene values above SDR white. */
+export function sceneLinearToSrgb(v: number): number {
+  if (!Number.isFinite(v)) return 0
+  if (v <= 0.0031308) return v * 12.92
+  return 1.055 * Math.pow(Math.max(0, v), 1 / 2.4) - 0.055
+}
+
+export function srgbToSceneLinear(v: number): number {
+  if (!Number.isFinite(v)) return 0
+  if (v <= 0.04045) return v / 12.92
+  return Math.pow((Math.max(0, v) + 0.055) / 1.055, 2.4)
+}
+
+export function hdrFloat32ToPreviewCanvas(
+  pixels: Float32Array, width: number, height: number,
+  colorSpace: CanvasColorSpace = 'srgb',
+): HTMLCanvasElement {
+  const c = createCanvas(width, height, { bitDepth: 16, colorSpace })
+  const values = new Float32Array(pixels.length)
+  for (let i = 0; i < pixels.length; i += 4) {
+    values[i] = sceneLinearToSrgb(pixels[i])
+    values[i + 1] = sceneLinearToSrgb(pixels[i + 1])
+    values[i + 2] = sceneLinearToSrgb(pixels[i + 2])
+    values[i + 3] = pixels[i + 3]
+  }
+  if (!putFloat16Pixels(c, values, colorSpace)) {
+    const out = new Uint8ClampedArray(pixels.length)
+    for (let i = 0; i < pixels.length; i += 4) {
+      out[i] = Math.max(0, Math.min(255, Math.round(values[i] * 255)))
+      out[i + 1] = Math.max(0, Math.min(255, Math.round(values[i + 1] * 255)))
+      out[i + 2] = Math.max(0, Math.min(255, Math.round(values[i + 2] * 255)))
+      out[i + 3] = Math.max(0, Math.min(255, Math.round(values[i + 3] * 255)))
+    }
+    putImageData(c, new ImageData(out, width, height))
+  }
+  return c
+}
+
 function inferCanvasProfile(c: HTMLCanvasElement): CanvasWorkingProfile {
   const existing = canvasProfiles.get(c)
   if (existing) return existing
