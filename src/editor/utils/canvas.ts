@@ -187,7 +187,13 @@ export function putFloat16Pixels(
   const Float16 = (globalThis as any).Float16Array
   if (canvasProfile(c).bitDepth !== 16 || typeof Float16 !== 'function') return false
   try {
-    const data = pixels instanceof Float16 ? pixels : new Float16(Array.from(pixels as ArrayLike<number>))
+    let data
+    if (pixels instanceof Float16) {
+      data = pixels
+    } else {
+      data = new Float16(pixels.length)
+      for (let i = 0; i < pixels.length; i++) data[i] = Number(pixels[i])
+    }
     const image = new (ImageData as any)(data, c.width, c.height, {
       pixelFormat: 'rgba-float16',
       colorSpace,
