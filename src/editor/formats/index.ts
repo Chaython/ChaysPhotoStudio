@@ -16,6 +16,10 @@ import {
   encodeTiff, encodeTiff16, encodeBmp, encodeTga, encodeQoi, encodePpm, encodeIco,
 } from './encoders'
 import { decodePsd, psdBlendKeyToMode } from './psd'
+import {
+  decodeBundledHeic, decodeBundledJxl, decodeBundledJp2, decodeBundledRaw,
+  decodeBundledPdf, decodeBundledEps,
+} from './bundled-codecs'
 import type { ImportFormatId, RawImage } from './decoders'
 import type { ExportFormatId } from './encoders'
 
@@ -43,6 +47,9 @@ export interface DecodedImage {
   sourceBitDepth?: number
   /** Physical resolution metadata when available. */
   resolutionPpi?: number
+  /** Scene-linear source pixels retained for a true 32-bit HDR document. */
+  sourceFloatPixels?: Float32Array
+  sourceColorSpace?: 'srgb' | 'linear-srgb'
   psdLayers?: {
     name: string
     canvas: HTMLCanvasElement      // pixels of the layer rect (canvas space)
@@ -61,7 +68,7 @@ export interface DecodedImage {
 
 /** file-input `accept` value covering every decodable format */
 export const IMPORT_ACCEPT =
-  'image/*,.tif,.tiff,.psd,.psb,.tga,.icb,.vda,.qoi,.pcx,.ppm,.pgm,.pbm,.pam,.pfm,.hdr,.rgbe,.heic,.heif,.hif,.jxl,.jp2,.j2k,.j2c,.ico,.bmp'
+  'image/*,.tif,.tiff,.psd,.psb,.tga,.icb,.vda,.qoi,.pcx,.ppm,.pgm,.pbm,.pam,.pfm,.hdr,.rgbe,.heic,.heif,.hif,.jxl,.jp2,.j2k,.j2c,.ico,.bmp,.pdf,.ai,.eps,.ps,.dng,.cr2,.cr3,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.pef,.3fr,.fff,.iiq,.kdc,.dcr,.mrw,.x3f,.erf,.mef,.mos,.rwl,.raw'
 
 /** format sniff from MIME type when magic bytes are inconclusive */
 function formatFromMime(type: string): ImportFormatId | null {
@@ -81,9 +88,31 @@ function formatFromMime(type: string): ImportFormatId | null {
     case 'image/x-icon': case 'image/vnd.microsoft.icon': return 'ico'
     case 'image/tiff': case 'image/x-tiff': return 'tiff'
     case 'image/x-tga': case 'image/x-truevision': case 'image/x-targa': return 'tga'
+    case 'application/pdf': return 'pdf'
+    case 'application/postscript': return 'eps'
     default: return null
   }
 }
+
+const RAW_EXTENSIONS = new Set([
+  'dng','cr2','cr3','nef','nrw','arw','srf','sr2','raf','orf','rw2','pef',
+  '3fr','fff','iiq','kdc','dcr','mrw','x3f','erf','mef','mos','rwl','raw',
+])
+
+export function formatFromFileName(name: string | undefined | null): ImportFormatId | null {
+  if (!name) return null
+  const ext = name.toLowerCase().split('.').pop() ?? ''
+  if (RAW_EXTENSIONS.has(ext)) return 'raw'
+  if (ext === 'pdf') return 'pdf'
+  if (ext === 'eps' || ext === 'ps') return 'eps'
+  // Modern Illustrator files are PDF-compatible. Legacy Illustrator EPS files
+  // are identified by their %!PS magic before this filename fallback runs.
+  if (ext === 'ai') return 'pdf'
+  if (ext === 'heic' || ext === 'heif' || ext === 'hif') return 'heic'
+  if (ext === 'jxl') return 'jxl'
+  if (ext === 'jp2' || ext === 'j2k' || ext === 'j2c' || ext === 'jpx') return 'jp2'
+  return null
+
 
 /** browser-native decode (png / jpeg / gif / webp / avif / svg) */
 async function decodeNativeCanvas(file: File | Blob, format: string | null): Promise<HTMLCanvasElement> {
@@ -147,6 +176,8 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
     hasAlpha: scanAlpha(raw.rgba),
     format,
     sourceBitDepth: raw.sourceBitDepth ?? 8,
+    sourceFloatPixels: raw.rgbaFloat,
+    sourceColorSpace: raw.sourceColorSpace,
   }
 }
 
@@ -158,8 +189,12 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
  *  TIFF, PSD, TGA, PNM, QOI, PCX, ICO-DIB) is decoded here. */
 export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
-  let format = detectFormat(bytes)
+  const named = formatFromFileName((file as File).name)
+  // RAW extensions override container-like magic (notably DNG's TIFF header)
+  // so LibRaw performs demosaic / camera color processing.
+  let format = named === 'raw' ? 'raw' : detectFormat(bytes)
   if (!format) format = formatFromMime(file.type)
+  if (!format) format = named
   if (!format) {
     if (file.type.startsWith('image/')) {
       // unknown image/* subtype — let the browser try
@@ -186,6 +221,18 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
     case 'pcx': return fromRaw(decodePcx(bytes), 'pcx')
     case 'bmp': return fromRaw(decodeBmp(bytes), 'bmp')
     case 'ico': return fromRaw(await decodeIco(bytes), 'ico')
+    case 'heic': return fromRaw(await decodeBundledHeic(bytes), 'heic')
+    case 'jxl': return fromRaw(await decodeBundledJxl(bytes), 'jxl')
+    case 'jp2': return fromRaw(await decodeBundledJp2(bytes), 'jp2')
+    case 'raw': return fromRaw(await decodeBundledRaw(bytes), 'raw')
+    case 'pdf': {
+      const canvas = await decodeBundledPdf(bytes)
+      return { canvas, width: canvas.width, height: canvas.height, hasAlpha: scanAlpha(getImageData(canvas).data), format: 'pdf', sourceBitDepth: 8 }
+    }
+    case 'eps': {
+      const canvas = decodeBundledEps(bytes)
+      return { canvas, width: canvas.width, height: canvas.height, hasAlpha: scanAlpha(getImageData(canvas).data), format: 'eps', sourceBitDepth: 8 }
+    }
     case 'psd': {
       const psd = await decodePsd(bytes)
       return {
@@ -211,7 +258,8 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
       }
     }
     default: {
-      // png / jpeg / gif / webp / avif / svg — native
+      // png / jpeg / gif / webp / avif / svg — native. HEIC/JXL/JP2
+      // never reach this fallback: they use the bundled codecs above.
       const canvas = await decodeNativeCanvas(file, format)
       return {
         canvas,
