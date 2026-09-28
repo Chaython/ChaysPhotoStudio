@@ -1,7 +1,7 @@
 // ---------- Document model: layer factories, layer preparation (content/mask/filters), full composite ----------
 import type { Layer, LayerKind, PsDocument, Rect, TextSpec, ShapeSpec, BlendIfSettings, AdjustmentType, FilterType, LiveLayerDrag } from '../types'
 import { BLEND_GCO } from '../constants/tools'
-import { createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData, hexToRgb, clamp } from '../utils/canvas'
+import { createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData, hexToRgb, clamp, canvasProfile, currentCanvasWorkingProfile } from '../utils/canvas'
 import * as imageOps from '../image-ops'
 import { validateWarpMesh, warpCanvasToMesh, warpCanvasToQuad, warpMeshDestinationPoints } from '../image-ops/transform'
 import { applyLayerFX, hasEnabledFX } from './layer-fx'
@@ -672,8 +672,13 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
  *  fresh accumulator per call (heavy GC churn at multi-layer frame rates) */
 let scratchAcc: HTMLCanvasElement | null = null
 function getScratch(w: number, h: number): HTMLCanvasElement {
-  if (!scratchAcc || scratchAcc.width !== w || scratchAcc.height !== h) {
-    scratchAcc = createCanvas(w, h)
+  const profile = currentCanvasWorkingProfile()
+  const staleProfile = scratchAcc && (
+    canvasProfile(scratchAcc).bitDepth !== profile.bitDepth ||
+    canvasProfile(scratchAcc).colorSpace !== profile.colorSpace
+  )
+  if (!scratchAcc || scratchAcc.width !== w || scratchAcc.height !== h || staleProfile) {
+    scratchAcc = createCanvas(w, h, profile)
   }
   return scratchAcc
 }
