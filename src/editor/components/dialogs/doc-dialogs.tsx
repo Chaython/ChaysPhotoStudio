@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { engine } from '../../engine/engine'
+import { engine, type TransformMode, type TransformReference } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob } from '../../utils/canvas'
 import { compositeDocument, getFlatComposite } from '../../engine/document'
@@ -416,40 +416,219 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
   const layerId = inst.props?.layerId ?? engine.activeLayer?.id
   const layer = layerId ? engine.layerById(layerId) : null
   const isSmart = layer?.kind === 'smart'
+  const initialMode = (inst.props?.mode ?? 'free') as TransformMode
+  const [mode, setMode] = useState<TransformMode>(initialMode)
   const [x, setX] = useState(0)
   const [y, setY] = useState(0)
-  const [scale, setScale] = useState(100)
+  const [scaleX, setScaleX] = useState(100)
+  const [scaleY, setScaleY] = useState(100)
+  const [linked, setLinked] = useState(true)
   const [rot, setRot] = useState(0)
+  const [skewX, setSkewX] = useState(0)
+  const [skewY, setSkewY] = useState(0)
+  const [perspectiveX, setPerspectiveX] = useState(0)
+  const [perspectiveY, setPerspectiveY] = useState(0)
+  const [reference, setReference] = useState<TransformReference>('mc')
+  const [corners, setCorners] = useState([
+    { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
+  ] as const)
+
+  const setScaleAxis = (axis: 'x' | 'y', value: number) => {
+    const next = Math.max(1, Math.min(400, value))
+    if (axis === 'x') {
+      setScaleX(next)
+      if (linked) setScaleY(next)
+    } else {
+      setScaleY(next)
+      if (linked) setScaleX(next)
+    }
+  }
+
+  const setCorner = (index: number, axis: 'x' | 'y', value: number) => {
+    setCorners(prev => prev.map((p, i) => i === index ? { ...p, [axis]: value } : p) as typeof prev)
+  }
 
   const apply = () => {
     if (!layerId) return
-    engine.freeTransformLayer(layerId, { x, y, scale: scale / 100, rotation: rot })
+    engine.transformLayer(layerId, {
+      mode,
+      x, y,
+      scaleX: scaleX / 100,
+      scaleY: scaleY / 100,
+      rotation: rot,
+      skewX, skewY,
+      perspectiveX, perspectiveY,
+      reference,
+      cornerOffsets: corners.map(p => ({ ...p })) as any,
+    })
     onClose()
   }
 
+  const refs: { id: TransformReference; label: string }[] = [
+    { id: 'tl', label: '↖' }, { id: 'tc', label: '↑' }, { id: 'tr', label: '↗' },
+    { id: 'ml', label: '←' }, { id: 'mc', label: '●' }, { id: 'mr', label: '→' },
+    { id: 'bl', label: '↙' }, { id: 'bc', label: '↓' }, { id: 'br', label: '↘' },
+  ]
+
+  const title = mode === 'free' ? 'Free Transform'
+    : mode === 'scale' ? 'Scale'
+      : mode === 'rotate' ? 'Rotate'
+        : mode === 'skew' ? 'Skew'
+          : mode === 'distort' ? 'Distort'
+            : 'Perspective'
+
   return (
     <>
-      <DialogHeader><DialogTitle>Free Transform{isSmart ? ' — Smart Object (non-destructive)' : ''}</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle>{title}{isSmart ? ' — Smart Object (non-destructive)' : ''}</DialogTitle>
+      </DialogHeader>
+
       <div className="space-y-3 py-1">
+        <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+          <div className="space-y-1">
+            <Label className="text-[11px]">Transform Mode</Label>
+            <Select value={mode} onValueChange={v => setMode(v as TransformMode)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="free">Free Transform</SelectItem>
+                <SelectItem value="scale">Scale</SelectItem>
+                <SelectItem value="rotate">Rotate</SelectItem>
+                <SelectItem value="skew">Skew</SelectItem>
+                <SelectItem value="distort">Distort</SelectItem>
+                <SelectItem value="perspective">Perspective</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {(mode === 'free' || mode === 'scale' || mode === 'rotate' || mode === 'skew') && (
+            <div className="space-y-1">
+              <Label className="text-[11px]">Reference Point</Label>
+              <div className="grid grid-cols-3 gap-px rounded border bg-border p-px w-[78px]">
+                {refs.map(r => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={`h-6 text-[10px] bg-background hover:bg-accent ${reference === r.id ? 'text-primary bg-primary/10' : 'text-muted-foreground'}`}
+                    onClick={() => setReference(r.id)}
+                    title={`Reference point: ${r.id}`}
+                    aria-pressed={reference === r.id}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <Label className="text-[11px]">Offset X (px)</Label>
-            <Input type="number" value={x} onChange={e => setX(Number(e.target.value))} className="h-7 text-xs font-mono" />
+            <Input type="number" value={x} onChange={e => setX(Number(e.target.value))} className="h-8 text-xs font-mono" />
           </div>
           <div className="space-y-1">
             <Label className="text-[11px]">Offset Y (px)</Label>
-            <Input type="number" value={y} onChange={e => setY(Number(e.target.value))} className="h-7 text-xs font-mono" />
+            <Input type="number" value={y} onChange={e => setY(Number(e.target.value))} className="h-8 text-xs font-mono" />
           </div>
         </div>
-        <div className="space-y-1">
-          <Label className="text-[11px]">Scale: {scale}%</Label>
-          <input type="range" min={1} max={400} value={scale} onChange={e => setScale(Number(e.target.value))} className="w-full accent-primary" />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-[11px]">Rotation: {rot}°</Label>
-          <input type="range" min={-180} max={180} value={rot} onChange={e => setRot(Number(e.target.value))} className="w-full accent-primary" />
-        </div>
+
+        {(mode === 'free' || mode === 'scale') && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-[11px]">Scale</Label>
+              <label className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer">
+                <input type="checkbox" checked={linked} onChange={e => setLinked(e.target.checked)} className="accent-primary" />
+                Link proportions
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">W: {scaleX}%</Label>
+                <input type="range" min={1} max={400} value={scaleX} onChange={e => setScaleAxis('x', Number(e.target.value))} className="w-full accent-primary" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">H: {scaleY}%</Label>
+                <input type="range" min={1} max={400} value={scaleY} onChange={e => setScaleAxis('y', Number(e.target.value))} className="w-full accent-primary" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(mode === 'free' || mode === 'rotate') && (
+          <div className="space-y-1">
+            <Label className="text-[11px]">Rotation: {rot}°</Label>
+            <input type="range" min={-180} max={180} step={1} value={rot} onChange={e => setRot(Number(e.target.value))} className="w-full accent-primary" />
+          </div>
+        )}
+
+        {mode === 'skew' && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-[11px]">Horizontal Skew: {skewX}°</Label>
+              <input type="range" min={-80} max={80} step={1} value={skewX} onChange={e => setSkewX(Number(e.target.value))} className="w-full accent-primary" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Vertical Skew: {skewY}°</Label>
+              <input type="range" min={-80} max={80} step={1} value={skewY} onChange={e => setSkewY(Number(e.target.value))} className="w-full accent-primary" />
+            </div>
+          </div>
+        )}
+
+        {mode === 'perspective' && (
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <Label className="text-[11px]">Horizontal Perspective: {perspectiveX}%</Label>
+              <input type="range" min={-100} max={100} value={perspectiveX} onChange={e => setPerspectiveX(Number(e.target.value))} className="w-full accent-primary" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Vertical Perspective: {perspectiveY}%</Label>
+              <input type="range" min={-100} max={100} value={perspectiveY} onChange={e => setPerspectiveY(Number(e.target.value))} className="w-full accent-primary" />
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Opposing corners move symmetrically, matching Photoshop Perspective behavior.
+            </p>
+          </div>
+        )}
+
+        {mode === 'distort' && (
+          <div className="space-y-2">
+            <Label className="text-[11px]">Corner Offsets (px)</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {['Top Left', 'Top Right', 'Bottom Right', 'Bottom Left'].map((label, i) => (
+                <div key={label} className="rounded border p-2 space-y-1">
+                  <div className="text-[10px] font-medium">{label}</div>
+                  <div className="grid grid-cols-2 gap-1">
+                    <Input
+                      type="number"
+                      value={corners[i].x}
+                      onChange={e => setCorner(i, 'x', Number(e.target.value))}
+                      className="h-7 text-[10px] font-mono"
+                      aria-label={`${label} X offset`}
+                    />
+                    <Input
+                      type="number"
+                      value={corners[i].y}
+                      onChange={e => setCorner(i, 'y', Number(e.target.value))}
+                      className="h-7 text-[10px] font-mono"
+                      aria-label={`${label} Y offset`}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Distort moves all four corners independently. Positive X moves right; positive Y moves down.
+            </p>
+          </div>
+        )}
+
+        {!isSmart && (mode === 'skew' || mode === 'distort' || mode === 'perspective' || ((mode === 'free' || mode === 'scale') && scaleX !== scaleY)) && layer && (layer.kind === 'text' || layer.kind === 'shape') && (
+          <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[10px] text-amber-700 dark:text-amber-300">
+            This advanced transform rasterizes the editable {layer.kind} layer. Smart Objects stay projective and re-editable.
+          </div>
+        )}
       </div>
+
       <DialogFooter>
         <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
         <Button size="sm" onClick={apply}>Apply</Button>
