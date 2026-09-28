@@ -83,20 +83,6 @@ export function mapRectPointToQuad(
 }
 
 
-function triangleArea(a: Point2, b: Point2, c: Point2) {
-  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
-}
-
-function barycentric(p: Point2, a: Point2, b: Point2, c: Point2): [number, number, number] | null {
-  const den = triangleArea(a, b, c)
-  if (Math.abs(den) < 1e-9) return null
-  const w1 = triangleArea(p, b, c) / den
-  const w2 = triangleArea(a, p, c) / den
-  const w3 = 1 - w1 - w2
-  const eps = -1e-4
-  return w1 >= eps && w2 >= eps && w3 >= eps ? [w1, w2, w3] : null
-}
-
 export function regularWarpMesh(cols: number, rows: number): TransformWarpSpec {
   const c = Math.max(1, Math.min(12, Math.round(cols)))
   const r = Math.max(1, Math.min(12, Math.round(rows)))
@@ -284,29 +270,42 @@ export function presetWarpMesh(
   return mesh
 }
 
-function renderTriangle(
-  source: ImageData,
-  dst: ImageData,
+function drawAffineTriangle(
+  ctx: CanvasRenderingContext2D,
+  source: HTMLCanvasElement,
   offsetX: number,
   offsetY: number,
-  da: Point2, db: Point2, dc: Point2,
   sa: Point2, sb: Point2, sc: Point2,
+  da: Point2, db: Point2, dc: Point2,
 ) {
-  const minX = Math.max(0, Math.floor(Math.min(da.x, db.x, dc.x) - offsetX) - 1)
-  const maxX = Math.min(dst.width - 1, Math.ceil(Math.max(da.x, db.x, dc.x) - offsetX) + 1)
-  const minY = Math.max(0, Math.floor(Math.min(da.y, db.y, dc.y) - offsetY) - 1)
-  const maxY = Math.min(dst.height - 1, Math.ceil(Math.max(da.y, db.y, dc.y) - offsetY) + 1)
-  for (let y = minY; y <= maxY; y++) {
-    const dy = y + offsetY + .5
-    for (let x = minX; x <= maxX; x++) {
-      const dx = x + offsetX + .5
-      const w = barycentric({ x: dx, y: dy }, da, db, dc)
-      if (!w) continue
-      const sx = sa.x * w[0] + sb.x * w[1] + sc.x * w[2]
-      const sy = sa.y * w[0] + sb.y * w[1] + sc.y * w[2]
-      sampleBilinear(source, sx, sy, dst.data, (y * dst.width + x) * 4)
-    }
-  }
+  const den = sa.x * (sb.y - sc.y) + sb.x * (sc.y - sa.y) + sc.x * (sa.y - sb.y)
+  if (Math.abs(den) < 1e-9) return
+
+  const solve = (a: number, b: number, c: number) => ({
+    x: (a * (sb.y - sc.y) + b * (sc.y - sa.y) + c * (sa.y - sb.y)) / den,
+    y: (a * (sc.x - sb.x) + b * (sa.x - sc.x) + c * (sb.x - sa.x)) / den,
+    z: (
+      a * (sb.x * sc.y - sc.x * sb.y) +
+      b * (sc.x * sa.y - sa.x * sc.y) +
+      c * (sa.x * sb.y - sb.x * sa.y)
+    ) / den,
+  })
+  const X = solve(da.x, db.x, dc.x)
+  const Y = solve(da.y, db.y, dc.y)
+
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.beginPath()
+  ctx.moveTo(da.x - offsetX, da.y - offsetY)
+  ctx.lineTo(db.x - offsetX, db.y - offsetY)
+  ctx.lineTo(dc.x - offsetX, dc.y - offsetY)
+  ctx.closePath()
+  ctx.clip()
+  ctx.setTransform(X.x, Y.x, X.y, Y.y, X.z - offsetX, Y.z - offsetY)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(source, 0, 0)
+  ctx.restore()
 }
 
 /**
@@ -327,9 +326,7 @@ export function warpCanvasToMesh(
   const maxX = Math.ceil(Math.max(...destinationPoints.map(p => p.x))) + 2
   const maxY = Math.ceil(Math.max(...destinationPoints.map(p => p.y))) + 2
   const out = createCanvas(Math.max(1, maxX - minX + 1), Math.max(1, maxY - minY + 1))
-  const src = ctx2d(source).getImageData(0, 0, source.width, source.height)
   const dc = ctx2d(out)
-  const dst = dc.createImageData(out.width, out.height)
 
   for (let row = 0; row < m.v.length - 1; row++) {
     for (let col = 0; col < m.u.length - 1; col++) {
@@ -339,14 +336,13 @@ export function warpCanvasToMesh(
       const i01 = meshIndex(m, col, row + 1)
       const d00 = destinationPoints[i00], d10 = destinationPoints[i10]
       const d11 = destinationPoints[i11], d01 = destinationPoints[i01]
-      const s00 = { x: m.u[col] * (source.width - 1), y: m.v[row] * (source.height - 1) }
-      const s10 = { x: m.u[col + 1] * (source.width - 1), y: m.v[row] * (source.height - 1) }
-      const s11 = { x: m.u[col + 1] * (source.width - 1), y: m.v[row + 1] * (source.height - 1) }
-      const s01 = { x: m.u[col] * (source.width - 1), y: m.v[row + 1] * (source.height - 1) }
-      renderTriangle(src, dst, minX, minY, d00, d10, d11, s00, s10, s11)
-      renderTriangle(src, dst, minX, minY, d00, d11, d01, s00, s11, s01)
+      const s00 = { x: m.u[col] * source.width, y: m.v[row] * source.height }
+      const s10 = { x: m.u[col + 1] * source.width, y: m.v[row] * source.height }
+      const s11 = { x: m.u[col + 1] * source.width, y: m.v[row + 1] * source.height }
+      const s01 = { x: m.u[col] * source.width, y: m.v[row + 1] * source.height }
+      drawAffineTriangle(dc, source, minX, minY, s00, s10, s11, d00, d10, d11)
+      drawAffineTriangle(dc, source, minX, minY, s00, s11, s01, d00, d11, d01)
     }
   }
-  dc.putImageData(dst, 0, 0)
   return { canvas: out, offsetX: minX, offsetY: minY }
 }
