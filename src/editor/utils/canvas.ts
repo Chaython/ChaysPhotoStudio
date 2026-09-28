@@ -4,25 +4,28 @@ export function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
 }
 
+export type CanvasBitDepth = 8 | 16
+export type CanvasColorSpace = 'srgb' | 'display-p3'
+
+export interface CanvasWorkingProfile {
+  bitDepth: CanvasBitDepth
+  colorSpace: CanvasColorSpace
+}
+
 export interface CanvasPixelCapabilities {
-  workingPixelFormat: 'rgba-unorm8'
-  workingBitDepth: 8
-  workingColorSpace: 'srgb'
+  workingPixelFormat: 'rgba-unorm8' | 'rgba-float16'
+  workingBitDepth: CanvasBitDepth
+  workingColorSpace: CanvasColorSpace
   float16Context: boolean
   float16ImageData: boolean
   displayP3: boolean
 }
 
 let pixelCaps: CanvasPixelCapabilities | null = null
+let defaultProfile: CanvasWorkingProfile = { bitDepth: 8, colorSpace: 'srgb' }
+const canvasProfiles = new WeakMap<HTMLCanvasElement, CanvasWorkingProfile>()
 
-/** The current editor intentionally keeps raster layer storage on the
- * universally-compatible 8-bit Canvas 2D path. This feature probe reports
- * whether the runtime ALSO exposes the newer float16 / Display-P3 APIs so the
- * UI can distinguish "working precision" from hardware/browser capability.
- *
- * Do not silently flip createCanvas()/ctx2d() to float16: most existing pixel
- * processors operate in 0..255 ImageData space and would need a coordinated
- * migration to normalized float pixels first. */
+/** Feature-probe the modern Canvas 2D float16 / Display-P3 path. */
 export function canvasPixelCapabilities(): CanvasPixelCapabilities {
   if (pixelCaps) return pixelCaps
   let float16Context = false
@@ -57,9 +60,9 @@ export function canvasPixelCapabilities(): CanvasPixelCapabilities {
   }
 
   pixelCaps = {
-    workingPixelFormat: 'rgba-unorm8',
-    workingBitDepth: 8,
-    workingColorSpace: 'srgb',
+    workingPixelFormat: float16Context && float16ImageData ? 'rgba-float16' : 'rgba-unorm8',
+    workingBitDepth: float16Context && float16ImageData ? 16 : 8,
+    workingColorSpace: displayP3 ? 'display-p3' : 'srgb',
     float16Context,
     float16ImageData,
     displayP3,
@@ -67,36 +70,133 @@ export function canvasPixelCapabilities(): CanvasPixelCapabilities {
   return pixelCaps
 }
 
+/** Set the profile inherited by newly-created color canvases. Unsupported
+ * requests fall back cleanly rather than pretending a higher precision exists. */
+export function setCanvasWorkingProfile(profile: CanvasWorkingProfile): CanvasWorkingProfile {
+  const caps = canvasPixelCapabilities()
+  defaultProfile = {
+    bitDepth: profile.bitDepth === 16 && caps.float16Context && caps.float16ImageData ? 16 : 8,
+    colorSpace: profile.colorSpace === 'display-p3' && caps.displayP3 ? 'display-p3' : 'srgb',
+  }
+  return { ...defaultProfile }
+}
 
-export function createCanvas(w: number, h: number): HTMLCanvasElement {
+export function currentCanvasWorkingProfile(): CanvasWorkingProfile {
+  return { ...defaultProfile }
+}
+
+function inferCanvasProfile(c: HTMLCanvasElement): CanvasWorkingProfile {
+  const existing = canvasProfiles.get(c)
+  if (existing) return existing
+  const ctx = c.getContext('2d') as (CanvasRenderingContext2D & {
+    getContextAttributes?: () => { colorType?: string; colorSpace?: string }
+  }) | null
+  const attrs = ctx?.getContextAttributes?.()
+  const profile: CanvasWorkingProfile = {
+    bitDepth: attrs?.colorType === 'float16' ? 16 : 8,
+    colorSpace: attrs?.colorSpace === 'display-p3' ? 'display-p3' : 'srgb',
+  }
+  canvasProfiles.set(c, profile)
+  return profile
+}
+
+export function canvasProfile(c: HTMLCanvasElement): CanvasWorkingProfile {
+  return { ...inferCanvasProfile(c) }
+}
+
+export function createCanvas(
+  w: number,
+  h: number,
+  profile: CanvasWorkingProfile = defaultProfile,
+): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = Math.max(1, Math.round(w))
   c.height = Math.max(1, Math.round(h))
+  const caps = canvasPixelCapabilities()
+  const requested: CanvasWorkingProfile = {
+    bitDepth: profile.bitDepth === 16 && caps.float16Context && caps.float16ImageData ? 16 : 8,
+    colorSpace: profile.colorSpace === 'display-p3' && caps.displayP3 ? 'display-p3' : 'srgb',
+  }
+  const ctx = c.getContext('2d', {
+    willReadFrequently: true,
+    colorType: requested.bitDepth === 16 ? 'float16' : 'unorm8',
+    colorSpace: requested.colorSpace,
+  } as any) as (CanvasRenderingContext2D & {
+    getContextAttributes?: () => { colorType?: string; colorSpace?: string }
+  }) | null
+  if (!ctx) throw new Error('2D context unavailable')
+  const attrs = ctx.getContextAttributes?.()
+  canvasProfiles.set(c, {
+    bitDepth: attrs?.colorType === 'float16' ? 16 : requested.bitDepth === 16 && caps.float16Context ? 16 : 8,
+    colorSpace: attrs?.colorSpace === 'display-p3' ? 'display-p3' : requested.colorSpace === 'display-p3' && caps.displayP3 ? 'display-p3' : 'srgb',
+  })
   return c
 }
 
 export function ctx2d(c: HTMLCanvasElement): CanvasRenderingContext2D {
-  const ctx = c.getContext('2d', { willReadFrequently: true })
+  const ctx = c.getContext('2d')
   if (!ctx) throw new Error('2D context unavailable')
+  inferCanvasProfile(c)
   return ctx
 }
 
 export function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
-  const c = createCanvas(src.width, src.height)
+  const c = createCanvas(src.width, src.height, canvasProfile(src))
   ctx2d(c).drawImage(src, 0, 0)
   return c
 }
 
-export function canvasFromImage(img: ImageBitmap | HTMLImageElement | HTMLCanvasElement, w?: number, h?: number): HTMLCanvasElement {
+export function canvasFromImage(
+  img: ImageBitmap | HTMLImageElement | HTMLCanvasElement,
+  w?: number,
+  h?: number,
+  profile?: CanvasWorkingProfile,
+): HTMLCanvasElement {
   const cw = w ?? (img as any).width
   const ch = h ?? (img as any).height
-  const c = createCanvas(cw, ch)
+  const inherited = profile ?? (img instanceof HTMLCanvasElement ? canvasProfile(img) : defaultProfile)
+  const c = createCanvas(cw, ch, inherited)
   ctx2d(c).drawImage(img as any, 0, 0, cw, ch)
   return c
 }
 
 export function getImageData(c: HTMLCanvasElement): ImageData {
   return ctx2d(c).getImageData(0, 0, c.width, c.height)
+}
+
+/** Read a float16 backing store without quantizing through legacy ImageData.
+ * Returns null on browsers that expose a float16 context but not float16 ImageData. */
+export function getFloat16ImageData(c: HTMLCanvasElement): any | null {
+  if (canvasProfile(c).bitDepth !== 16) return null
+  try {
+    const p = canvasProfile(c)
+    return (ctx2d(c) as any).getImageData(0, 0, c.width, c.height, {
+      pixelFormat: 'rgba-float16',
+      colorSpace: p.colorSpace,
+    })
+  } catch {
+    return null
+  }
+}
+
+export function putFloat16Pixels(
+  c: HTMLCanvasElement,
+  pixels: ArrayLike<number>,
+  colorSpace: CanvasColorSpace = canvasProfile(c).colorSpace,
+): boolean {
+  const Float16 = (globalThis as any).Float16Array
+  if (canvasProfile(c).bitDepth !== 16 || typeof Float16 !== 'function') return false
+  try {
+    const data = pixels instanceof Float16 ? pixels : new Float16(Array.from(pixels as ArrayLike<number>))
+    const image = new (ImageData as any)(data, c.width, c.height, {
+      pixelFormat: 'rgba-float16',
+      colorSpace,
+    })
+    ;(ctx2d(c) as any).putImageData(image, 0, 0)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function putImageData(c: HTMLCanvasElement, data: ImageData) {
