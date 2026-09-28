@@ -892,7 +892,8 @@ export function decodePnm(bytes: Uint8Array): RawImage {
       else if (key === 'ENDHDR') break
     }
     binary = true
-    if (pos < n && WS(bytes[pos])) pos++ // single whitespace after ENDHDR
+    // readHeaderLine-style parsing above already consumed ENDHDR's newline;
+    // pos is exactly the first raster byte (which may itself equal whitespace).
   } else {
     width = parseInt(nextToken(), 10)
     height = parseInt(nextToken(), 10)
