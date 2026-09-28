@@ -11,6 +11,7 @@ import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
   createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData,
   hexToRgb, rgbToHex, clamp, drawSoftDab, canvasToBlob, downloadBlob, getMaskAlpha,
+  canvasProfile, canvasPixelCapabilities, setCanvasWorkingProfile,
 } from '../utils/canvas'
 import {
   compositeDocument, getFlatComposite, invalidateFlat, newLayer,
@@ -213,13 +214,26 @@ export class Engine {
   }
 
   // ================================================== document management
-  newDocument(opts: { name?: string; width: number; height: number; resolutionPpi?: number; fill?: 'white' | 'transparent' | 'background' | string }): PsDocument {
+  newDocument(opts: {
+    name?: string
+    width: number
+    height: number
+    resolutionPpi?: number
+    bitDepth?: 8 | 16
+    colorSpace?: 'srgb' | 'display-p3'
+    fill?: 'white' | 'transparent' | 'background' | string
+  }): PsDocument {
     const { width, height } = opts
+    const caps = canvasPixelCapabilities()
+    const profile = setCanvasWorkingProfile({
+      bitDepth: opts.bitDepth === 16 && caps.float16Context && caps.float16ImageData ? 16 : 8,
+      colorSpace: opts.colorSpace === 'display-p3' && caps.displayP3 ? 'display-p3' : 'srgb',
+    })
     const doc: PsDocument = {
       id: uid(), name: opts.name || `Untitled-${this.docs.length + 1}`,
       width, height,
       resolutionPpi: clamp(Number(opts.resolutionPpi) || 72, 1, 12000),
-      workingBitDepth: 8, sourceBitDepth: 8, workingColorSpace: 'srgb',
+      workingBitDepth: profile.bitDepth, sourceBitDepth: profile.bitDepth, workingColorSpace: profile.colorSpace,
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0 },
@@ -241,6 +255,7 @@ export class Engine {
     doc.activeLayerId = bg.id
     this.docs.push(doc)
     this._activeId = doc.id
+    setCanvasWorkingProfile({ bitDepth: doc.workingBitDepth ?? 8, colorSpace: doc.workingColorSpace ?? 'srgb' })
     this.pushHistory('New Document', doc)
     this.emit()
     return doc
@@ -249,15 +264,20 @@ export class Engine {
   addCanvasDocument(
     canvas: HTMLCanvasElement,
     name: string,
-    meta: { sourceBitDepth?: number; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number } = {},
+    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number } = {},
   ): PsDocument {
+    const incoming = canvasProfile(canvas)
+    const profile = setCanvasWorkingProfile({
+      bitDepth: meta.workingBitDepth ?? incoming.bitDepth,
+      colorSpace: meta.workingColorSpace ?? incoming.colorSpace,
+    })
     const doc: PsDocument = {
       id: uid(), name,
       width: canvas.width, height: canvas.height,
       resolutionPpi: clamp(Number(meta.resolutionPpi) || 72, 1, 12000),
-      workingBitDepth: 8,
-      sourceBitDepth: meta.sourceBitDepth ?? 8,
-      workingColorSpace: meta.workingColorSpace ?? 'srgb',
+      workingBitDepth: profile.bitDepth,
+      sourceBitDepth: meta.sourceBitDepth ?? profile.bitDepth,
+      workingColorSpace: profile.colorSpace,
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0 },
@@ -272,6 +292,7 @@ export class Engine {
     doc.activeLayerId = layer.id
     this.docs.push(doc)
     this._activeId = doc.id
+    setCanvasWorkingProfile({ bitDepth: doc.workingBitDepth ?? 8, colorSpace: doc.workingColorSpace ?? 'srgb' })
     this.pushHistory('Open', doc)
     this.emit()
     return doc
@@ -288,13 +309,17 @@ export class Engine {
     this.docs.splice(idx, 1)
     if (this._activeId === id) {
       this._activeId = this.docs[Math.min(idx, this.docs.length - 1)]?.id ?? null
+      const next = this.activeDoc
+      setCanvasWorkingProfile({ bitDepth: next?.workingBitDepth ?? 8, colorSpace: next?.workingColorSpace ?? 'srgb' })
     }
     this.emit()
   }
 
   setActiveDocument(id: string) {
-    if (!this.docs.find(d => d.id === id)) return
+    const doc = this.docs.find(d => d.id === id)
+    if (!doc) return
     this._activeId = id
+    setCanvasWorkingProfile({ bitDepth: doc.workingBitDepth ?? 8, colorSpace: doc.workingColorSpace ?? 'srgb' })
     this.emit()
   }
 
@@ -668,7 +693,12 @@ export class Engine {
     if (opts?.center !== false && (canvas.width !== doc.width || canvas.height !== doc.height)) {
       // keep the pixels at native size, registered in the doc CENTER — nothing
       // is cropped and the layer can be moved/transformed losslessly afterwards
-      layer.canvas = cloneCanvas(canvas)
+      const placed = createCanvas(canvas.width, canvas.height, {
+        bitDepth: doc.workingBitDepth ?? 8,
+        colorSpace: doc.workingColorSpace ?? 'srgb',
+      })
+      ctx2d(placed).drawImage(canvas, 0, 0)
+      layer.canvas = placed
       layer.offsetX = Math.round((doc.width - canvas.width) / 2)
       layer.offsetY = Math.round((doc.height - canvas.height) / 2)
     } else {
