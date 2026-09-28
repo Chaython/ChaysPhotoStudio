@@ -60,7 +60,7 @@ export async function openFiles(files: File[], asLayer = false) {
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded); continue }
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, resolutionPpi: decoded.resolutionPpi })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi })
         continue
       }
       const decoded = await decodeToCanvas(file)
@@ -86,7 +86,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   const doc: PsDocument = {
     id: uid(), name, width, height,
     resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
-    workingBitDepth: 8,
+    workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
@@ -112,6 +112,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   }
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
     resolutionPpi: decoded.resolutionPpi,
   })
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
