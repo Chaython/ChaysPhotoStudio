@@ -43,7 +43,7 @@ import {
   quickSelectRegion, refineMask, selectSubject,
 } from './selection'
 import { inpaint } from './inpaint'
-import type { PixelImage } from './pixel-data'
+import { isSceneLinearHdr, type PixelImage } from './pixel-data'
 
 // ------------------------------------------------------------------ registries
 /** Combined filter registry. filters.ts keeps the original entries as a
@@ -65,7 +65,13 @@ void _filtersComplete
 
 export { ADJUSTMENTS, FILTERS }
 
+export const HDR_SAFE_ADJUSTMENTS = new Set<AdjustmentType>(['exposure'])
+export const HDR_SAFE_FILTERS = new Set<FilterType>(['gaussian-blur', 'box-blur', 'motion-blur', 'radial-blur'])
+
 export function applyAdjustment(img: PixelImage, type: AdjustmentType, params: Record<string, any>) {
+  if (isSceneLinearHdr(img) && !HDR_SAFE_ADJUSTMENTS.has(type)) {
+    throw new Error(`${type} is not yet HDR-safe in 32-bit scene-linear mode`)
+  }
   const def = ADJUSTMENTS[type]
   if (!def) return
   const merged = { ...def.defaults, ...params }
@@ -73,6 +79,9 @@ export function applyAdjustment(img: PixelImage, type: AdjustmentType, params: R
 }
 
 export function applyFilter(img: PixelImage, type: FilterType, params: Record<string, any>) {
+  if (isSceneLinearHdr(img) && !HDR_SAFE_FILTERS.has(type)) {
+    throw new Error(`${type} is not yet HDR-safe in 32-bit scene-linear mode`)
+  }
   const def = FILTERS[type]
   if (!def) return
   const merged = { ...def.defaults, ...params }
