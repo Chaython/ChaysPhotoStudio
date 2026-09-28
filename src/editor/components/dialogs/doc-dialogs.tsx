@@ -17,6 +17,13 @@ import { TransformWarpEditor } from './transform-warp-editor'
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
+function base64Bytes(text: string): Uint8Array {
+  const raw = atob(text)
+  const out = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
+  return out
+}
+
 const PRESETS = [
   { label: 'Default 1600 × 1000', w: 1600, h: 1000 },
   { label: 'Full HD 1920 × 1080', w: 1920, h: 1080 },
@@ -309,6 +316,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             visible: l.visible,
             clipped: l.clipped,
             mask: l.maskEnabled ? l.mask : null,
+            additionalInfo: l.psdAdditionalInfo?.map(base64Bytes),
           })
         }
         showProgress('Building PSD…')
