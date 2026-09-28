@@ -412,6 +412,13 @@ export function ExportDialog({ onClose }: DialogProps) {
   )
 }
 
+type TransformCornerOffsets = [
+  { x: number; y: number },
+  { x: number; y: number },
+  { x: number; y: number },
+  { x: number; y: number },
+]
+
 export function TransformDialog({ inst, onClose }: DialogProps) {
   const layerId = inst.props?.layerId ?? engine.activeLayer?.id
   const layer = layerId ? engine.layerById(layerId) : null
@@ -429,9 +436,9 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
   const [perspectiveX, setPerspectiveX] = useState(0)
   const [perspectiveY, setPerspectiveY] = useState(0)
   const [reference, setReference] = useState<TransformReference>('mc')
-  const [corners, setCorners] = useState([
+  const [corners, setCorners] = useState<TransformCornerOffsets>([
     { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
-  ] as const)
+  ])
 
   const setScaleAxis = (axis: 'x' | 'y', value: number) => {
     const next = Math.max(1, Math.min(400, value))
@@ -445,7 +452,13 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
   }
 
   const setCorner = (index: number, axis: 'x' | 'y', value: number) => {
-    setCorners(prev => prev.map((p, i) => i === index ? { ...p, [axis]: value } : p) as typeof prev)
+    setCorners(prev => {
+      const next: TransformCornerOffsets = [
+        { ...prev[0] }, { ...prev[1] }, { ...prev[2] }, { ...prev[3] },
+      ]
+      next[index] = { ...next[index], [axis]: value }
+      return next
+    })
   }
 
   const apply = () => {
@@ -459,7 +472,9 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
       skewX, skewY,
       perspectiveX, perspectiveY,
       reference,
-      cornerOffsets: corners.map(p => ({ ...p })) as any,
+      cornerOffsets: [
+        { ...corners[0] }, { ...corners[1] }, { ...corners[2] }, { ...corners[3] },
+      ],
     })
     onClose()
   }
