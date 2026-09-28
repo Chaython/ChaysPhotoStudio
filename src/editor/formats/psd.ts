@@ -4,14 +4,14 @@
 // the Image Data section (raw / RLE / ZIP), Layer & Mask Info
 // parsed into per-layer canvases (rect, channel ids incl. -1
 // alpha / -2 user mask, blend key, opacity, visible, name
-// (Pascal + 'luni' unicode), 8-bit and 16-bit (downshifted).
-// Writer: RGB 8-bit, per-row RLE layers + composite — byte
+// (Pascal + 'luni' unicode), preserving 8-bit and 16-bit samples.
+// Writer: RGB 8/16-bit, per-row RLE layers + composite — byte
 // layout follows the Adobe spec (lengths BEFORE sections,
 // 4-byte alignment, channel data length tables) so real
 // Photoshop opens the files.
 // ============================================================
 
-import { createCanvas, ctx2d, getImageData } from '../utils/canvas'
+import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels } from '../utils/canvas'
 import type { BlendMode } from '../types'
 
 // ---------- blend mode mapping ----------
@@ -65,8 +65,8 @@ export interface PsdDecoded {
   canvas: HTMLCanvasElement      // merged composite
   width: number
   height: number
-  /** Original PSD/PSB component depth. Raster canvases are currently
-   * normalized to 8-bit after decoding. */
+  /** Original PSD/PSB component depth. 16-bit files are retained in
+   * float16 canvases when the runtime supports them. */
   depth: 8 | 16
   hasAlpha: boolean
   layers: PsdLayer[]             // bottom-first (PSD storage order)
@@ -96,44 +96,54 @@ interface PsdLayerRecord {
   maskRect: [number, number, number, number] | null // top, left, bottom, right
 }
 
-/** decode one channel (raw / RLE / ZIP) to an 8-bit plane of w*h */
-async function decodePsdChannel(
-  bytes: Uint8Array, view: DataView, pos: number, compr: number,
-  w: number, h: number, depth: number, dataLen: number,
-): Promise<Uint8Array> {
-  const bpc = depth >> 3
-  const rowBytes = w * bpc
-  const out = new Uint8Array(w * h)
-  if (w <= 0 || h <= 0) return out
-  if (compr === 0) {
-    const src = bytes.subarray(pos, Math.min(pos + rowBytes * h, bytes.length))
-    if (bpc === 1) out.set(src.subarray(0, w * h))
-    else for (let i = 0, s = 1; i < w * h; i++, s += 2) out[i] = src[s] // 16-bit BE → high byte
+type PsdPlane = Uint8Array | Uint16Array
+
+function emptyPsdPlane(depth: number, n: number): PsdPlane {
+  return depth === 16 ? new Uint16Array(n) : new Uint8Array(n)
+}
+
+function psdPlaneFromBytes(raw: Uint8Array, depth: number, n: number): PsdPlane {
+  if (depth === 8) {
+    const out = new Uint8Array(n)
+    out.set(raw.subarray(0, n))
     return out
   }
+  const out = new Uint16Array(n)
+  const count = Math.min(n, raw.length >> 1)
+  for (let i = 0, p = 0; i < count; i++, p += 2) out[i] = (raw[p] << 8) | raw[p + 1]
+  return out
+}
+
+/** Decode one channel (raw / RLE / ZIP) without reducing 16-bit samples. */
+async function decodePsdChannel(
+  bytes: Uint8Array, view: DataView, pos: number, compr: number,
+  w: number, h: number, depth: number, dataLen: number, rowLenBytes: 2 | 4 = 2,
+): Promise<PsdPlane> {
+  const bpc = depth >> 3
+  const rowBytes = w * bpc
+  const n = w * h
+  if (w <= 0 || h <= 0) return emptyPsdPlane(depth, n)
+  if (compr === 0) {
+    const raw = bytes.subarray(pos, Math.min(pos + rowBytes * h, bytes.length))
+    return psdPlaneFromBytes(raw, depth, n)
+  }
   if (compr === 1) {
-    // per-row RLE: h 2-byte row lengths, then packed rows
-    if (pos + 2 * h > bytes.length) return out
+    if (pos + rowLenBytes * h > bytes.length) return emptyPsdPlane(depth, n)
     let p = pos
     const raw = new Uint8Array(rowBytes * h)
     for (let y = 0; y < h; y++) {
-      const rowLen = view.getUint16(p)
-      p += 2
-      decodePackBitsRow(bytes, p, p + rowLen, raw, y * rowBytes, rowBytes)
+      const rowLen = rowLenBytes === 4 ? view.getUint32(p) : view.getUint16(p)
+      p += rowLenBytes
+      decodePackBitsRow(bytes, p, Math.min(bytes.length, p + rowLen), raw, y * rowBytes, rowBytes)
       p += rowLen
     }
-    if (bpc === 1) out.set(raw.subarray(0, w * h))
-    else for (let i = 0, s = 1; i < w * h; i++, s += 2) out[i] = raw[s]
-    return out
+    return psdPlaneFromBytes(raw, depth, n)
   }
   if (compr === 2) {
-    // ZIP (no prediction)
     const data = await inflateZlib(bytes.subarray(pos, pos + Math.max(0, dataLen)))
-    if (bpc === 1) out.set(data.subarray(0, w * h))
-    else for (let i = 0, s = 1; i < w * h; i++, s += 2) out[i] = data[s]
-    return out
+    return psdPlaneFromBytes(data, depth, n)
   }
-  return out // unknown compression → empty channel
+  return emptyPsdPlane(depth, n)
 }
 
 function decodePackBitsRow(src: Uint8Array, start: number, end: number, out: Uint8Array, outOff: number, outLen: number): void {
@@ -155,73 +165,73 @@ function decodePackBitsRow(src: Uint8Array, start: number, end: number, out: Uin
 
 /** combine channel planes → RGBA (RGBA / gray / CMYK / indexed) */
 function channelsToRgba(
-  chans: Map<number, Uint8Array>, w: number, h: number,
+  chans: Map<number, PsdPlane>, w: number, h: number,
   colorMode: number, clut: Uint8Array | null,
-): { rgba: Uint8ClampedArray<ArrayBuffer>; hasAlpha: boolean } {
+): { rgba: Uint8ClampedArray<ArrayBuffer>; rgba16?: Uint16Array; hasAlpha: boolean } {
   const n = w * h
   const out = new Uint8ClampedArray(n * 4)
-  const r = chans.get(0)
-  const g = chans.get(1)
-  const b = chans.get(2)
-  const k = chans.get(3)
-  const a = chans.get(-1)
+  const high = Array.from(chans.values()).some(v => v instanceof Uint16Array)
+  const out16 = high ? new Uint16Array(n * 4) : undefined
+  const r = chans.get(0), g = chans.get(1), b = chans.get(2), k = chans.get(3), a = chans.get(-1)
+  const s16 = (p: PsdPlane | undefined, i: number, fallback = 0): number =>
+    !p ? fallback : p instanceof Uint16Array ? p[i] : p[i] * 257
+  const s8 = (p: PsdPlane | undefined, i: number, fallback = 0): number =>
+    !p ? fallback : p instanceof Uint16Array ? Math.round(p[i] / 257) : p[i]
   let hasAlpha = false
-  if (a) {
-    for (let i = 0, o = 3; i < n; i++, o += 4) {
-      const v = a[i]
-      out[o] = v
-      if (v < 255) hasAlpha = true
-    }
-  } else {
-    for (let o = 3; o < out.length; o += 4) out[o] = 255
-  }
-  switch (colorMode) {
-    case 3: { // RGB
-      for (let i = 0, o = 0; i < n; i++, o += 4) {
-        out[o] = r ? r[i] : 0
-        out[o + 1] = g ? g[i] : 0
-        out[o + 2] = b ? b[i] : 0
+
+  for (let i = 0, o = 0; i < n; i++, o += 4) {
+    const av16 = a ? s16(a, i, 65535) : 65535
+    const av8 = Math.round(av16 / 257)
+    out[o + 3] = av8
+    if (out16) out16[o + 3] = av16
+    if (av16 < 65535) hasAlpha = true
+
+    let rr16 = 0, gg16 = 0, bb16 = 0
+    switch (colorMode) {
+      case 3:
+        rr16 = s16(r, i); gg16 = s16(g, i); bb16 = s16(b, i)
+        break
+      case 1:
+      case 8:
+        rr16 = gg16 = bb16 = s16(r, i)
+        break
+      case 4: {
+        const cc = s16(r, i), mm = s16(g, i), yy = s16(b, i), kk = s16(k, i)
+        const inv = 65535 - kk
+        rr16 = Math.round(((65535 - cc) * inv) / 65535)
+        gg16 = Math.round(((65535 - mm) * inv) / 65535)
+        bb16 = Math.round(((65535 - yy) * inv) / 65535)
+        break
       }
-      break
-    }
-    case 1: // grayscale
-    case 8: { // duotone (stored as grayscale)
-      for (let i = 0, o = 0; i < n; i++, o += 4) {
-        const v = r ? r[i] : 0
-        out[o] = v; out[o + 1] = v; out[o + 2] = v
-      }
-      break
-    }
-    case 4: { // CMYK
-      for (let i = 0, o = 0; i < n; i++, o += 4) {
-        const c = r ? r[i] : 0
-        const m = g ? g[i] : 0
-        const y = b ? b[i] : 0
-        const kk = k ? k[i] : 0
-        const inv = 255 - kk
-        out[o] = Math.round(((255 - c) * inv) / 255)
-        out[o + 1] = Math.round(((255 - m) * inv) / 255)
-        out[o + 2] = Math.round(((255 - y) * inv) / 255)
-      }
-      break
-    }
-    case 2: { // indexed
-      for (let i = 0, o = 0; i < n; i++, o += 4) {
-        const idx = (r ? r[i] : 0) * 3
+      case 2: {
+        const idx = s8(r, i) * 3
         if (clut && idx + 2 < clut.length) {
-          out[o] = clut[idx]; out[o + 1] = clut[idx + 1]; out[o + 2] = clut[idx + 2]
+          rr16 = clut[idx] * 257
+          gg16 = clut[idx + 1] * 257
+          bb16 = clut[idx + 2] * 257
         }
+        break
       }
-      break
+      default:
+        throw new Error(`Unsupported PSD color mode ${colorMode}`)
     }
-    default:
-      throw new Error(`Unsupported PSD color mode ${colorMode}`)
+    out[o] = Math.round(rr16 / 257)
+    out[o + 1] = Math.round(gg16 / 257)
+    out[o + 2] = Math.round(bb16 / 257)
+    if (out16) {
+      out16[o] = rr16; out16[o + 1] = gg16; out16[o + 2] = bb16
+    }
   }
-  return { rgba: out, hasAlpha }
+  return { rgba: out, rgba16: out16, hasAlpha }
 }
 
-function rgbaToCanvas2(rgba: Uint8ClampedArray<ArrayBuffer>, w: number, h: number): HTMLCanvasElement {
-  const c = createCanvas(w, h)
+function rgbaToCanvas2(rgba: Uint8ClampedArray<ArrayBuffer>, w: number, h: number, rgba16?: Uint16Array): HTMLCanvasElement {
+  const c = createCanvas(w, h, { bitDepth: rgba16 ? 16 : 8, colorSpace: 'srgb' })
+  if (rgba16) {
+    const values = new Float32Array(rgba16.length)
+    for (let i = 0; i < rgba16.length; i++) values[i] = rgba16[i] / 65535
+    if (putFloat16Pixels(c, values, 'srgb')) return c
+  }
   ctx2d(c).putImageData(new ImageData(rgba, w, h), 0, 0)
   return c
 }
@@ -295,7 +305,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const lmEnd = pos + lmLen
 
   const records: PsdLayerRecord[] = []
-  const layerChannels: Map<number, Uint8Array>[] = []
+  const layerChannels: Map<number, PsdPlane>[] = []
   if (lmLen > 0 && lmEnd <= bytes.length) {
     // layer info
     const liLen = readLength(pos)
@@ -377,7 +387,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
 
       // channel image data (follows the records)
       for (const rec of records) {
-        const chans = new Map<number, Uint8Array>()
+        const chans = new Map<number, PsdPlane>()
         const lw = rec.right - rec.left
         const lh = rec.bottom - rec.top
         for (const ch of rec.channels) {
@@ -388,9 +398,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           const mw = isMask && rec.maskRect ? rec.maskRect[3] - rec.maskRect[1] : lw
           const mh = isMask && rec.maskRect ? rec.maskRect[2] - rec.maskRect[0] : lh
           try {
-            chans.set(ch.id, await decodePsdChannel(bytes, view, pos, compr, Math.max(0, mw), Math.max(0, mh), depth, Math.max(0, ch.len - 2)))
+            chans.set(ch.id, await decodePsdChannel(bytes, view, pos, compr, Math.max(0, mw), Math.max(0, mh), depth, Math.max(0, ch.len - 2), psb ? 4 : 2))
           } catch {
-            chans.set(ch.id, new Uint8Array(Math.max(0, mw) * Math.max(0, mh)))
+            chans.set(ch.id, emptyPsdPlane(depth, Math.max(0, mw) * Math.max(0, mh)))
           }
           pos = chStart + ch.len // lengths cover compression + row table + data
         }
@@ -411,8 +421,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     if (lw <= 0 || lh <= 0) continue
     let canvas: HTMLCanvasElement
     try {
-      const { rgba } = channelsToRgba(chans, lw, lh, colorMode, clut)
-      canvas = rgbaToCanvas2(rgba, lw, lh)
+      const { rgba, rgba16 } = channelsToRgba(chans, lw, lh, colorMode, clut)
+      canvas = rgbaToCanvas2(rgba, lw, lh, rgba16)
     } catch {
       continue
     }
@@ -431,7 +441,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           for (let x = 0; x < Math.min(mw, width - mLeft); x++) {
             const o = ((mTop + y) * width + (mLeft + x)) * 4
             md[o] = 255; md[o + 1] = 255; md[o + 2] = 255
-            md[o + 3] = mch[y * mw + x]
+            md[o + 3] = mch instanceof Uint16Array ? Math.round(mch[y * mw + x] / 257) : mch[y * mw + x]
           }
         }
         ctx2d(mask).putImageData(mimg, 0, 0)
@@ -462,7 +472,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     pos += 2
     const bpc = depth >> 3
     const rowBytes = width * bpc
-    const chans = new Map<number, Uint8Array>()
+    const chans = new Map<number, PsdPlane>()
     const compositeId = (c: number): number =>
       (colorMode === 3 && c < 3) || (colorMode === 4 && c < 4) || (colorMode === 1 && c < 1) || (colorMode === 2 && c < 1) || (colorMode === 8 && c < 1) ? c : -1
     if (compr === 0) {
@@ -486,16 +496,20 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           decodePackBitsRow(bytes, pos, pos + rl, raw, y * rowBytes, rowBytes)
           pos += rl
         }
-        const chan = new Uint8Array(width * height)
-        if (bpc === 1) chan.set(raw.subarray(0, width * height))
-        else for (let i = 0, s = 1; i < width * height; i++, s += 2) chan[i] = raw[s]
-        chans.set(compositeId(c), chan)
+        chans.set(compositeId(c), psdPlaneFromBytes(raw, depth, width * height))
+      }
+    } else if (compr === 2) {
+      const data = await inflateZlib(bytes.subarray(pos))
+      const channelBytes = rowBytes * height
+      for (let ci = 0; ci < channels; ci++) {
+        const raw = data.subarray(ci * channelBytes, (ci + 1) * channelBytes)
+        chans.set(compositeId(ci), psdPlaneFromBytes(raw, depth, width * height))
       }
     } else {
       throw new Error(`Unsupported composite compression ${compr}`)
     }
     const res = channelsToRgba(chans, width, height, colorMode, clut)
-    composite = rgbaToCanvas2(res.rgba, width, height)
+    composite = rgbaToCanvas2(res.rgba, width, height, res.rgba16)
     hasAlpha = res.hasAlpha
   } catch {
     composite = null
@@ -519,7 +533,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
 }
 
 // ============================================================
-// writing — buildPsd(): RGB 8-bit PSD v1, per-row RLE
+// writing — buildPsd(): RGB 8/16-bit PSD v1, per-row RLE
 // ============================================================
 
 export interface PsdLayerInput {
@@ -582,14 +596,56 @@ function encodeRleChannel(chan: Uint8Array, w: number, h: number): Uint8Array {
   return out
 }
 
-function splitChannels(img: ImageData): { r: Uint8Array; g: Uint8Array; b: Uint8Array; a: Uint8Array } {
-  const d = img.data
-  const n = img.width * img.height
-  const r = new Uint8Array(n), g = new Uint8Array(n), b = new Uint8Array(n), a = new Uint8Array(n)
+function splitCanvasChannels(canvas: HTMLCanvasElement, depth: 8 | 16): { r: Uint8Array; g: Uint8Array; b: Uint8Array; a: Uint8Array } {
+  const n = canvas.width * canvas.height
+  const bpc = depth >> 3
+  const r = new Uint8Array(n * bpc), g = new Uint8Array(n * bpc), b = new Uint8Array(n * bpc), a = new Uint8Array(n * bpc)
+  if (depth === 16) {
+    const hi = getFloat16ImageData(canvas)
+    const fallback = hi?.data ? null : getImageData(canvas).data
+    const src = hi?.data as ArrayLike<number> | undefined
+    const write = (dst: Uint8Array, i: number, value: number) => {
+      const v = Math.max(0, Math.min(65535, Math.round(value)))
+      dst[i * 2] = v >>> 8
+      dst[i * 2 + 1] = v & 255
+    }
+    for (let i = 0, o = 0; i < n; i++, o += 4) {
+      if (src) {
+        write(r, i, Number(src[o]) * 65535)
+        write(g, i, Number(src[o + 1]) * 65535)
+        write(b, i, Number(src[o + 2]) * 65535)
+        write(a, i, Number(src[o + 3]) * 65535)
+      } else {
+        write(r, i, (fallback?.[o] ?? 0) * 257)
+        write(g, i, (fallback?.[o + 1] ?? 0) * 257)
+        write(b, i, (fallback?.[o + 2] ?? 0) * 257)
+        write(a, i, (fallback?.[o + 3] ?? 255) * 257)
+      }
+    }
+    return { r, g, b, a }
+  }
+  const d = getImageData(canvas).data
   for (let i = 0, o = 0; i < n; i++, o += 4) {
     r[i] = d[o]; g[i] = d[o + 1]; b[i] = d[o + 2]; a[i] = d[o + 3]
   }
   return { r, g, b, a }
+}
+
+function maskChannelBytes(canvas: HTMLCanvasElement, depth: 8 | 16): Uint8Array {
+  const d = getImageData(canvas).data
+  const n = canvas.width * canvas.height
+  if (depth === 8) {
+    const out = new Uint8Array(n)
+    for (let i = 0, o = 3; i < n; i++, o += 4) out[i] = d[o]
+    return out
+  }
+  const out = new Uint8Array(n * 2)
+  for (let i = 0, o = 3; i < n; i++, o += 4) {
+    const v = d[o] * 257
+    out[i * 2] = v >>> 8
+    out[i * 2 + 1] = v & 255
+  }
+  return out
 }
 
 function asciiBytes(s: string): Uint8Array {
@@ -631,8 +687,10 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number } = {},
+  options: { resolutionPpi?: number; depth?: 8 | 16 } = {},
 ): Blob {
+  const depth: 8 | 16 = options.depth === 16 ? 16 : 8
+  const bpc = depth >> 3
   // normalize: composite must be doc-size
   let flat = composite
   if (composite.width !== width || composite.height !== height) {
@@ -654,13 +712,13 @@ export function buildPsd(
   for (const input of list) {
     const w = input.canvas.width
     const h = input.canvas.height
-    const img = getImageData(input.canvas)
-    const { r, g, b, a } = splitChannels(img)
+    const { r, g, b, a } = splitCanvasChannels(input.canvas, depth)
+    const rowBytes = w * bpc
     const channels: { id: number; block: Uint8Array }[] = [
-      { id: 0, block: encodeRleChannel(r, w, h) },
-      { id: 1, block: encodeRleChannel(g, w, h) },
-      { id: 2, block: encodeRleChannel(b, w, h) },
-      { id: -1, block: encodeRleChannel(a, w, h) },
+      { id: 0, block: encodeRleChannel(r, rowBytes, h) },
+      { id: 1, block: encodeRleChannel(g, rowBytes, h) },
+      { id: 2, block: encodeRleChannel(b, rowBytes, h) },
+      { id: -1, block: encodeRleChannel(a, rowBytes, h) },
     ]
     // mask: full-document-size canvas → doc-sized channel
     let maskDoc: { w: number; h: number; chan: Uint8Array } | null = null
@@ -670,9 +728,7 @@ export function buildPsd(
         mCanvas = createCanvas(width, height)
         ctx2d(mCanvas).drawImage(input.mask, 0, 0, width, height)
       }
-      const mimg = getImageData(mCanvas)
-      const mchan = new Uint8Array(width * height)
-      for (let i = 0, o = 3; i < mchan.length; i++, o += 4) mchan[i] = mimg.data[o]
+      const mchan = maskChannelBytes(mCanvas, depth)
       maskDoc = { w: width, h: height, chan: mchan }
     }
     prepared.push({ input, channels, maskDoc })
@@ -685,7 +741,7 @@ export function buildPsd(
     const w = p.input.canvas.width
     const h = p.input.canvas.height
     const allChannels = p.maskDoc
-      ? [...p.channels, { id: -2, block: encodeRleChannel(p.maskDoc.chan, p.maskDoc.w, p.maskDoc.h) }]
+      ? [...p.channels, { id: -2, block: encodeRleChannel(p.maskDoc.chan, p.maskDoc.w * bpc, p.maskDoc.h) }]
       : p.channels
     // record
     recordParts.push(
@@ -749,14 +805,13 @@ export function buildPsd(
   const resources = concatUint8([asciiBytes('8BIM'), u16(0x0400), new Uint8Array([0, 0]), u32(resData.length), resData])
 
   // ---- merged composite: RLE with a shared channels × height row table ----
-  const compImg = getImageData(flat)
-  const comp = splitChannels(compImg)
+  const comp = splitCanvasChannels(flat, depth)
   const compChannels: { id: number; chan: Uint8Array }[] = [
     { id: 0, chan: comp.r }, { id: 1, chan: comp.g }, { id: 2, chan: comp.b }, { id: -1, chan: comp.a },
   ]
   const compRows: Uint8Array[][] = compChannels.map(c => {
     const rows: Uint8Array[] = []
-    for (let y = 0; y < height; y++) rows.push(packBitsRow(c.chan, y * width, width))
+    for (let y = 0; y < height; y++) rows.push(packBitsRow(c.chan, y * width * bpc, width * bpc))
     return rows
   })
   const tableSize = 2 * compChannels.length * height
@@ -788,7 +843,7 @@ export function buildPsd(
   hv.setUint16(12, 4)     // channels
   hv.setUint32(14, height)
   hv.setUint32(18, width)
-  hv.setUint16(22, 8)     // depth
+  hv.setUint16(22, depth) // depth
   hv.setUint16(24, 3)     // color mode: RGB
 
   return new Blob([header, u32(0), u32(resources.length), resources, lmSection, compositeSection] as unknown as BlobPart[], {
