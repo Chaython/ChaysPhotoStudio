@@ -11,6 +11,7 @@
 //     pipeline. The bridge is inert in a plain browser.
 // ============================================================
 import { useEffect } from 'react'
+import { IMPORT_ACCEPT } from '@/editor/formats'
 
 export function AppBridges() {
   useEffect(() => {
@@ -67,7 +68,7 @@ export function AppBridges() {
           if (cmd !== 'open') return
           const input = document.createElement('input')
           input.type = 'file'
-          input.accept = 'image/*,.zproj.json'
+          input.accept = IMPORT_ACCEPT
           input.multiple = true
           input.onchange = () => {
             const files = Array.from(input.files ?? [])
