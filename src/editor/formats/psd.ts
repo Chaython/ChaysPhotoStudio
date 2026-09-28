@@ -644,11 +644,13 @@ function i32(v: number): Uint8Array {
 }
 
 function unicodeLayerNameBlock(name: string): Uint8Array {
-  const chars = Array.from(name || 'Layer')
-  const data = new Uint8Array(4 + chars.length * 2)
+  const text = name || 'Layer'
+  // PSD stores the Unicode layer name as UTF-16BE code units. Use JS string
+  // length/codeUnitAt semantics so surrogate pairs remain intact.
+  const data = new Uint8Array(4 + text.length * 2)
   const dv = new DataView(data.buffer)
-  dv.setUint32(0, chars.length)
-  for (let i = 0; i < chars.length; i++) dv.setUint16(4 + i * 2, chars[i].charCodeAt(0))
+  dv.setUint32(0, text.length)
+  for (let i = 0; i < text.length; i++) dv.setUint16(4 + i * 2, text.charCodeAt(i))
   const padded = data.length + (data.length & 1)
   const out = new Uint8Array(8 + 4 + padded)
   out.set(asciiBytes('8BIM'), 0)
