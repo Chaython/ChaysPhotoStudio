@@ -7,13 +7,13 @@
 // it needs the live layer stack, so ExportDialog calls buildPsd()
 // (re-exported below) itself.
 // ============================================================
-import { createCanvas, ctx2d, canvasToBlob, getImageData, hexToRgb } from '../utils/canvas'
+import { createCanvas, ctx2d, canvasToBlob, getImageData, getFloat16ImageData, hexToRgb } from '../utils/canvas'
 import {
-  detectFormat, decodeTiff, decodeTga, decodePnm, decodeQoi, decodePcx, decodeBmp, decodeIco,
+  detectFormat, decodeTiff, decodeTga, decodePnm, decodePfm, decodeRadianceHdr, decodeQoi, decodePcx, decodeBmp, decodeIco,
   rawToCanvas, scanAlpha,
 } from './decoders'
 import {
-  encodeTiff, encodeBmp, encodeTga, encodeQoi, encodePpm, encodeIco,
+  encodeTiff, encodeTiff16, encodeBmp, encodeTga, encodeQoi, encodePpm, encodeIco,
 } from './encoders'
 import { decodePsd, psdBlendKeyToMode } from './psd'
 import type { ImportFormatId, RawImage } from './decoders'
@@ -61,7 +61,7 @@ export interface DecodedImage {
 
 /** file-input `accept` value covering every decodable format */
 export const IMPORT_ACCEPT =
-  'image/*,.tif,.tiff,.psd,.psb,.tga,.icb,.vda,.qoi,.pcx,.ppm,.pgm,.pbm,.pam,.ico,.bmp'
+  'image/*,.tif,.tiff,.psd,.psb,.tga,.icb,.vda,.qoi,.pcx,.ppm,.pgm,.pbm,.pam,.pfm,.hdr,.rgbe,.heic,.heif,.hif,.jxl,.jp2,.j2k,.j2c,.ico,.bmp'
 
 /** format sniff from MIME type when magic bytes are inconclusive */
 function formatFromMime(type: string): ImportFormatId | null {
@@ -71,6 +71,11 @@ function formatFromMime(type: string): ImportFormatId | null {
     case 'image/gif': return 'gif'
     case 'image/webp': return 'webp'
     case 'image/avif': return 'avif'
+    case 'image/heic': case 'image/heif': return 'heic'
+    case 'image/jxl': return 'jxl'
+    case 'image/jp2': case 'image/jpx': case 'image/j2k': return 'jp2'
+    case 'image/vnd.radiance': case 'image/x-hdr': return 'hdr'
+    case 'image/x-portable-floatmap': return 'pfm'
     case 'image/svg+xml': return 'svg'
     case 'image/bmp': case 'image/x-bmp': case 'image/x-ms-bmp': case 'image/vnd.wap.wbmp': return 'bmp'
     case 'image/x-icon': case 'image/vnd.microsoft.icon': return 'ico'
@@ -101,11 +106,37 @@ async function decodeNativeCanvas(file: File | Blob, format: string | null): Pro
       URL.revokeObjectURL(url)
     }
   }
-  const bitmap = await createImageBitmap(file)
-  const c = createCanvas(bitmap.width, bitmap.height)
-  ctx2d(c).drawImage(bitmap, 0, 0)
-  bitmap.close()
-  return c
+  try {
+    const bitmap = await createImageBitmap(file)
+    const c = createCanvas(bitmap.width, bitmap.height)
+    ctx2d(c).drawImage(bitmap, 0, 0)
+    bitmap.close()
+    return c
+  } catch (bitmapError) {
+    const Decoder = (globalThis as any).ImageDecoder
+    if (typeof Decoder !== 'function') throw bitmapError
+    const mime = file.type || (
+      format === 'heic' ? 'image/heic' :
+      format === 'jxl' ? 'image/jxl' :
+      format === 'jp2' ? 'image/jp2' :
+      format === 'avif' ? 'image/avif' : ''
+    )
+    if (!mime) throw bitmapError
+    const decoder = new Decoder({ data: await file.arrayBuffer(), type: mime })
+    try {
+      await decoder.tracks.ready
+      const decoded = await decoder.decode({ frameIndex: 0 })
+      const image = decoded.image
+      const w = image.displayWidth || image.codedWidth
+      const h = image.displayHeight || image.codedHeight
+      const c = createCanvas(w, h)
+      ctx2d(c).drawImage(image, 0, 0)
+      image.close?.()
+      return c
+    } finally {
+      decoder.close?.()
+    }
+  }
 }
 
 function fromRaw(raw: RawImage, format: string): DecodedImage {
@@ -149,6 +180,8 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
     case 'tiff': return fromRaw(await decodeTiff(bytes), 'tiff')
     case 'tga': return fromRaw(decodeTga(bytes), 'tga')
     case 'ppm': return fromRaw(decodePnm(bytes), 'ppm')
+    case 'pfm': return fromRaw(decodePfm(bytes), 'pfm')
+    case 'hdr': return fromRaw(decodeRadianceHdr(bytes), 'hdr')
     case 'qoi': return fromRaw(decodeQoi(bytes), 'qoi')
     case 'pcx': return fromRaw(decodePcx(bytes), 'pcx')
     case 'bmp': return fromRaw(decodeBmp(bytes), 'bmp')
@@ -201,7 +234,7 @@ export interface ExportFormatInfo {
   label: string
   ext: string
   alpha: boolean
-  options: ('quality' | 'background' | 'icoSizes' | 'tiffCompression' | 'psdLayers')[]
+  options: ('quality' | 'background' | 'icoSizes' | 'tiffCompression' | 'tiffBitDepth' | 'psdLayers')[]
   /** one-line hint rendered under the format select */
   hint: string
 }
@@ -211,7 +244,7 @@ export const FORMAT_INFO: ExportFormatInfo[] = [
   { id: 'png', label: 'PNG', ext: 'png', alpha: true, options: [], hint: 'PNG — lossless, alpha' },
   { id: 'jpeg', label: 'JPEG', ext: 'jpg', alpha: false, options: ['quality', 'background'], hint: 'JPEG — lossy, no alpha (flattened)' },
   { id: 'webp', label: 'WebP', ext: 'webp', alpha: true, options: ['quality'], hint: 'WebP — lossy, alpha' },
-  { id: 'tiff', label: 'TIFF', ext: 'tif', alpha: true, options: ['tiffCompression'], hint: 'TIFF — LZW lossless, alpha' },
+  { id: 'tiff', label: 'TIFF', ext: 'tif', alpha: true, options: ['tiffCompression', 'tiffBitDepth'], hint: 'TIFF — 8/16-bit RGBA, LZW lossless, alpha' },
   { id: 'bmp', label: 'BMP', ext: 'bmp', alpha: true, options: ['background'], hint: 'BMP — 24/32-bit (alpha kept when present)' },
   { id: 'tga', label: 'TGA', ext: 'tga', alpha: true, options: ['background'], hint: 'TGA — RLE, 24/32-bit' },
   { id: 'qoi', label: 'QOI', ext: 'qoi', alpha: true, options: [], hint: 'QOI — lossless, compact' },
@@ -229,6 +262,8 @@ export interface EncodeCanvasOptions {
   icoSizes?: number[]
   /** TIFF predictor-free strip compression — default LZW */
   tiffCompression?: 'none' | 'lzw'
+  /** TIFF channel precision; 16 requires a float16 working canvas. */
+  tiffBitDepth?: 8 | 16
 }
 
 function u8Blob(bytes: Uint8Array, type: string): Blob {
@@ -275,8 +310,13 @@ export async function encodeCanvas(
     case 'webp':
       return canvasToBlob(canvas, 'image/webp', Math.min(1, Math.max(0.01, (opts.quality ?? 92) / 100)))
     case 'tiff': {
+      const lzw = (opts.tiffCompression ?? 'lzw') === 'lzw'
+      if (opts.tiffBitDepth === 16) {
+        const hi = getFloat16ImageData(canvas)
+        if (hi?.data) return u8Blob(encodeTiff16(hi.data, w, h, lzw), 'image/tiff')
+      }
       const img = getImageData(canvas)
-      return u8Blob(encodeTiff(img.data, w, h, (opts.tiffCompression ?? 'lzw') === 'lzw'), 'image/tiff')
+      return u8Blob(encodeTiff(img.data, w, h, lzw), 'image/tiff')
     }
     case 'bmp': {
       const img = getImageData(canvas)
