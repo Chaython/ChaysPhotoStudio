@@ -45,6 +45,7 @@ export interface DecodedImage {
   sourceBitDepth?: number
   /** Physical resolution metadata when available. */
   resolutionPpi?: number
+  psdImageResources?: Uint8Array[]
   psdLayers?: {
     name: string
     canvas: HTMLCanvasElement      // pixels of the layer rect (canvas space)
@@ -58,6 +59,8 @@ export interface DecodedImage {
     clipped?: boolean
     /** full-document-size mask canvas, mask value in the alpha channel */
     mask?: HTMLCanvasElement | null
+    /** opaque Photoshop additional-layer-information blocks */
+    additionalInfo?: Uint8Array[]
   }[]
 }
 
@@ -228,6 +231,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
         format: 'psd',
         sourceBitDepth: psd.depth,
         resolutionPpi: psd.resolutionPpi,
+        psdImageResources: psd.imageResources.map(b => b.slice()),
         psdLayers: psd.layers.map(l => ({
           name: l.name,
           canvas: l.canvas,
@@ -239,6 +243,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
           visible: l.visible,
           clipped: l.clipped,
           mask: l.mask,
+          additionalInfo: l.additionalInfo.map(b => b.slice()),
         })),
       }
     }
