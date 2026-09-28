@@ -13,6 +13,7 @@ import { compositeDocument, getFlatComposite } from '../../engine/document'
 import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd } from '../../formats'
 import type { PsdLayerInput } from '../../formats'
 import type { DialogProps } from './generic-dialogs'
+import { TransformWarpEditor } from './transform-warp-editor'
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
@@ -439,6 +440,7 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
   const [corners, setCorners] = useState<TransformCornerOffsets>([
     { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
   ])
+  const [warpMesh, setWarpMesh] = useState(() => layerId ? engine.layerWarpMesh(layerId, 3, 3) : { u: [0, 1], v: [0, 1], points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }] })
 
   const setScaleAxis = (axis: 'x' | 'y', value: number) => {
     const next = Math.max(1, Math.min(400, value))
@@ -475,6 +477,7 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
       cornerOffsets: [
         { ...corners[0] }, { ...corners[1] }, { ...corners[2] }, { ...corners[3] },
       ],
+      warp: mode === 'warp' ? warpMesh : undefined,
     })
     onClose()
   }
@@ -490,7 +493,8 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
       : mode === 'rotate' ? 'Rotate'
         : mode === 'skew' ? 'Skew'
           : mode === 'distort' ? 'Distort'
-            : 'Perspective'
+            : mode === 'perspective' ? 'Perspective'
+              : 'Warp'
 
   return (
     <>
@@ -511,6 +515,7 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
                 <SelectItem value="skew">Skew</SelectItem>
                 <SelectItem value="distort">Distort</SelectItem>
                 <SelectItem value="perspective">Perspective</SelectItem>
+                <SelectItem value="warp">Warp</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -536,16 +541,18 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <Label className="text-[11px]">Offset X (px)</Label>
-            <Input type="number" value={x} onChange={e => setX(Number(e.target.value))} className="h-8 text-xs font-mono" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-[11px]">Offset Y (px)</Label>
-            <Input type="number" value={y} onChange={e => setY(Number(e.target.value))} className="h-8 text-xs font-mono" />
-          </div>
-        </div>
+        {mode !== 'warp' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Offset X (px)</Label>
+                      <Input type="number" value={x} onChange={e => setX(Number(e.target.value))} className="h-8 text-xs font-mono" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Offset Y (px)</Label>
+                      <Input type="number" value={y} onChange={e => setY(Number(e.target.value))} className="h-8 text-xs font-mono" />
+                    </div>
+                  </div>
+        )}
 
         {(mode === 'free' || mode === 'scale') && (
           <div className="space-y-2">
@@ -637,9 +644,13 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
           </div>
         )}
 
-        {!isSmart && (mode === 'skew' || mode === 'distort' || mode === 'perspective' || ((mode === 'free' || mode === 'scale') && scaleX !== scaleY)) && layer && (layer.kind === 'text' || layer.kind === 'shape') && (
+        {mode === 'warp' && layerId && (
+          <TransformWarpEditor layerId={layerId} mesh={warpMesh} onChange={setWarpMesh} />
+        )}
+
+        {!isSmart && (mode === 'skew' || mode === 'distort' || mode === 'perspective' || mode === 'warp' || ((mode === 'free' || mode === 'scale') && scaleX !== scaleY)) && layer && (layer.kind === 'text' || layer.kind === 'shape') && (
           <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[10px] text-amber-700 dark:text-amber-300">
-            This advanced transform rasterizes the editable {layer.kind} layer. Smart Objects stay projective and re-editable.
+            This advanced transform rasterizes the editable {layer.kind} layer. Smart Objects keep Warp and projective transforms non-destructive and re-editable.
           </div>
         )}
       </div>
