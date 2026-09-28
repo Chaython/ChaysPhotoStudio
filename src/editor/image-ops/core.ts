@@ -3,6 +3,7 @@
 // NOTE: owned by the lead agent — worker-safe, no DOM deps beyond ImageData.
 
 import { clamp } from '../utils/canvas'
+import { createPixelImageLike, histBin, type PixelImage } from './pixel-data'
 
 type Arr = Uint8ClampedArray | Uint16Array | Float32Array
 
@@ -45,7 +46,7 @@ export function gaussianBlurChannel(buf: Float32Array, w: number, h: number, rad
 }
 
 /** Gaussian blur on an ImageData (alpha preserved, RGB blurred) */
-export function gaussianBlurImage(img: ImageData, radius: number) {
+export function gaussianBlurImage(img: PixelImage, radius: number) {
   if (radius < 0.5) return
   const { width: w, height: h, data } = img
   const ch = new Float32Array(w * h)
@@ -164,7 +165,7 @@ export interface FloodOptions {
  * seed color, restricted to the optional bounds.
  */
 export function floodFillMask(
-  img: ImageData, sx: number, sy: number, opts: FloodOptions,
+  img: PixelImage, sx: number, sy: number, opts: FloodOptions,
   bounds?: { x: number; y: number; w: number; h: number }
 ): Uint8ClampedArray {
   const { width: w, height: h, data } = img
@@ -320,9 +321,9 @@ export function floodFillMask(
 }
 
 // ---------- convolution ----------
-export function convolve3x3(img: ImageData, kernel: number[], divisor = 1, offset = 0) {
+export function convolve3x3(img: PixelImage, kernel: number[], divisor = 1, offset = 0) {
   const { width: w, height: h, data } = img
-  const src = new Uint8ClampedArray(data)
+  const src = Float32Array.from(data)
   const side = 3, half = 1
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -347,26 +348,26 @@ export function convolve3x3(img: ImageData, kernel: number[], divisor = 1, offse
 
 // ---------- histogram ----------
 export interface Histogram { r: Uint32Array; g: Uint32Array; b: Uint32Array; l: Uint32Array; total: number }
-export function computeHistogram(img: ImageData): Histogram {
+export function computeHistogram(img: PixelImage): Histogram {
   const r = new Uint32Array(256), g = new Uint32Array(256), b = new Uint32Array(256), l = new Uint32Array(256)
   const d = img.data
   let total = 0
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] < 8) continue
-    r[d[i]]++; g[d[i + 1]]++; b[d[i + 2]]++
-    l[Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])]++
+    r[histBin(d[i])]++; g[histBin(d[i + 1])]++; b[histBin(d[i + 2])]++
+    l[histBin(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])]++
     total++
   }
   return { r, g, b, l, total }
 }
 
 // ---------- downsample (box) for analysis ----------
-export function downsampleImage(img: ImageData, maxDim: number): ImageData {
+export function downsampleImage(img: PixelImage, maxDim: number): PixelImage {
   const { width: w, height: h } = img
   const scale = Math.min(1, maxDim / Math.max(w, h))
   if (scale >= 1) return img
   const nw = Math.max(1, Math.round(w * scale)), nh = Math.max(1, Math.round(h * scale))
-  const out = new ImageData(nw, nh)
+  const out = createPixelImageLike(img, nw, nh)
   const fx = w / nw, fy = h / nh
   for (let y = 0; y < nh; y++) {
     for (let x = 0; x < nw; x++) {
@@ -388,7 +389,7 @@ export function downsampleImage(img: ImageData, maxDim: number): ImageData {
 }
 
 /** bilinear sample from ImageData */
-export function sampleImage(img: ImageData, x: number, y: number, out: number[] = []): number[] {
+export function sampleImage(img: PixelImage, x: number, y: number, out: number[] = []): number[] {
   const { width: w, height: h, data } = img
   x = clamp(x, 0, w - 1); y = clamp(y, 0, h - 1)
   const x0 = Math.floor(x), y0 = Math.floor(y)
