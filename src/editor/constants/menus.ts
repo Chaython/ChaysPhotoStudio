@@ -55,6 +55,7 @@ const transformItems: MenuItem[] = [
   { id: 'transform-skew', label: 'Skew…', run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'skew' }) },
   { id: 'transform-distort', label: 'Distort…', run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'distort' }) },
   { id: 'transform-perspective', label: 'Perspective…', run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'perspective' }) },
+  { id: 'transform-warp', label: 'Warp…', run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'warp' }) },
   S(),
   { id: 'transform-180', label: 'Rotate 180°', run: () => engine.transformLayer(engine.activeLayer?.id ?? '', { mode: 'rotate', rotation: 180 }) },
   { id: 'transform-90cw', label: 'Rotate 90° Clockwise', run: () => engine.transformLayer(engine.activeLayer?.id ?? '', { mode: 'rotate', rotation: 90 }) },

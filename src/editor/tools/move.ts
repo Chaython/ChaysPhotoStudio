@@ -102,7 +102,7 @@ let groupTransform: GroupTransformState | null = null
 function snapshotTransformLayer(layer: Layer): Layer {
   return {
     ...layer,
-    transform: layer.transform ? { ...layer.transform } : null,
+    transform: layer.transform ? structuredClone(layer.transform) : null,
     text: layer.text ? { ...layer.text } : null,
     shape: layer.shape ? {
       ...layer.shape,
@@ -504,8 +504,9 @@ export const moveTool: Tool = {
       let ex = 0, ey = 0
       if (base?.kind === 'raster') { ex = base.offsetX ?? 0; ey = base.offsetY ?? 0 }
       else if (base?.kind === 'smart' && base.transform && base.source) {
-        ex = base.transform.x - (base.source.width * base.transform.scale) / 2
-        ey = base.transform.y - (base.source.height * base.transform.scale) / 2
+        const br = engine.layerContentRect(base.id)
+        ex = br?.x ?? base.transform.x - (base.source.width * base.transform.scale) / 2
+        ey = br?.y ?? base.transform.y - (base.source.height * base.transform.scale) / 2
       } else if (base?.text) { ex = base.text.x; ey = base.text.y }
       else if (base?.shape) { ex = base.shape.x; ey = base.shape.y }
       const nx = Math.round((ex + dx) / gs) * gs
@@ -604,7 +605,12 @@ export const moveTool: Tool = {
           base.offsetY = (base.offsetY ?? 0) + dy
           base._v++
         } else if (base.kind === 'smart' && base.transform) {
-          base.transform = { ...base.transform, x: base.transform.x + dx, y: base.transform.y + dy }
+          base.transform = {
+            ...base.transform,
+            x: base.transform.x + dx,
+            y: base.transform.y + dy,
+            quad: base.transform.quad?.map(p => ({ x: p.x + dx, y: p.y + dy })) as typeof base.transform.quad,
+          }
           base._v++
         } else if (base.kind === 'text' && base.text) {
           base.text = { ...base.text, x: base.text.x + dx, y: base.text.y + dy }
@@ -622,7 +628,12 @@ export const moveTool: Tool = {
             l.offsetY = (l.offsetY ?? 0) + dy
             l._v++
           } else if (l.kind === 'smart' && l.transform) {
-            l.transform = { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy }
+            l.transform = {
+              ...l.transform,
+              x: l.transform.x + dx,
+              y: l.transform.y + dy,
+              quad: l.transform.quad?.map(p => ({ x: p.x + dx, y: p.y + dy })) as typeof l.transform.quad,
+            }
             l._v++
           } else if (l.kind === 'text' && l.text) {
             l.text = { ...l.text, x: l.text.x + dx, y: l.text.y + dy }

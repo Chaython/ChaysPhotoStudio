@@ -5,7 +5,7 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec,
-  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot,
+  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, TransformWarpSpec,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
@@ -28,7 +28,10 @@ import {
 import { getScriptApi } from './scripting-api'
 import * as imageOps from '../image-ops'
 import { homography, projectPoint, quadOutputSize, warpCanvasPerspective, type Point2 } from '../image-ops/perspective'
-import { mapRectPointToQuad, warpCanvasToQuad } from '../image-ops/transform'
+import {
+  cloneWarpMesh, mapNormalizedPointThroughWarp, mapRectPointToQuad, regularWarpMesh,
+  validateWarpMesh, warpCanvasToMesh, warpCanvasToQuad, warpMeshDestinationPoints,
+} from '../image-ops/transform'
 import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 
 export const MAX_HISTORY = 50
@@ -64,7 +67,7 @@ function processSelectionMaskRegion(
 
 type Listener = () => void
 
-export type TransformMode = 'free' | 'scale' | 'rotate' | 'skew' | 'distort' | 'perspective'
+export type TransformMode = 'free' | 'scale' | 'rotate' | 'skew' | 'distort' | 'perspective' | 'warp'
 export type TransformReference = 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br'
 export interface LayerTransformCommand {
   mode: TransformMode
@@ -79,6 +82,7 @@ export interface LayerTransformCommand {
   perspectiveY?: number
   reference?: TransformReference
   cornerOffsets?: [Point2, Point2, Point2, Point2]
+  warp?: TransformWarpSpec | null
 }
 
 /** 1×1 scratch context for measuring text (layerContentRect) — measureText
@@ -331,7 +335,10 @@ export class Engine {
   private captureState(doc: PsDocument, label: string) {
     return {
       label, time: Date.now(),
-      layers: doc.layers.map(l => ({ ...l })),
+      layers: doc.layers.map(l => ({
+        ...l,
+        transform: l.transform ? structuredClone(l.transform) : null,
+      })),
       activeLayerId: doc.activeLayerId,
       selection: doc.selection ? { ...doc.selection } : null,
       width: doc.width, height: doc.height,
@@ -343,7 +350,10 @@ export class Engine {
   }
 
   private restoreState(doc: PsDocument, st: any) {
-    doc.layers = st.layers.map((l: any) => ({ ...l }))
+    doc.layers = st.layers.map((l: any) => ({
+      ...l,
+      transform: l.transform ? structuredClone(l.transform) : null,
+    }))
     doc.activeLayerId = st.activeLayerId
     doc.selection = st.selection ? { ...st.selection } : null
     doc.width = st.width; doc.height = st.height
@@ -772,6 +782,7 @@ export class Engine {
     const src = id ? this.layerById(id) : this.activeLayer
     if (!doc || !src) return null
     const copy: Layer = { ...src, id: uid(), name: `${src.name} copy`, _v: src._v + 1 }
+    if (src.transform) copy.transform = structuredClone(src.transform)
     if (src.canvas) copy.canvas = cloneCanvas(src.canvas)
     if (src.mask) copy.mask = cloneCanvas(src.mask)
     if (src.source) copy.source = cloneCanvas(src.source)
@@ -1021,17 +1032,24 @@ export class Engine {
     }
     if (l.kind === 'smart' && l.source) {
       const t = l.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
+      let quad: [Point2, Point2, Point2, Point2]
       if (t.quad?.length === 4) {
-        const xs = t.quad.map(p => p.x), ys = t.quad.map(p => p.y)
-        const x0 = Math.min(...xs), x1 = Math.max(...xs)
-        const y0 = Math.min(...ys), y1 = Math.max(...ys)
-        return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) }
+        quad = t.quad.map(p => ({ ...p })) as [Point2, Point2, Point2, Point2]
+      } else {
+        const hw = l.source.width * t.scale / 2, hh = l.source.height * t.scale / 2
+        const cos = Math.cos(t.rotation), sin = Math.sin(t.rotation)
+        const map = (x: number, y: number): Point2 => ({
+          x: t.x + x * cos - y * sin,
+          y: t.y + x * sin + y * cos,
+        })
+        quad = [map(-hw, -hh), map(hw, -hh), map(hw, hh), map(-hw, hh)]
       }
-      const sw = l.source.width * t.scale, sh = l.source.height * t.scale
-      if (!t.rotation) return { x: t.x - sw / 2, y: t.y - sh / 2, w: sw, h: sh }
-      const cos = Math.abs(Math.cos(t.rotation)), sin = Math.abs(Math.sin(t.rotation))
-      const w = sw * cos + sh * sin, h = sw * sin + sh * cos
-      return { x: t.x - w / 2, y: t.y - h / 2, w, h }
+      const mesh = validateWarpMesh(t.warp)
+      const pts = mesh ? warpMeshDestinationPoints(mesh, quad) : quad
+      const xs = pts.map(p => p.x), ys = pts.map(p => p.y)
+      const x0 = Math.min(...xs), x1 = Math.max(...xs)
+      const y0 = Math.min(...ys), y1 = Math.max(...ys)
+      return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) }
     }
     if (l.kind === 'shape' && l.shape) {
       const s = l.shape
@@ -1424,7 +1442,12 @@ export class Engine {
       l.offsetX = (l.offsetX ?? 0) + dx
       l.offsetY = (l.offsetY ?? 0) + dy
     } else if (l.kind === 'smart' && l.transform) {
-      l.transform = { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy }
+      l.transform = {
+        ...l.transform,
+        x: l.transform.x + dx,
+        y: l.transform.y + dy,
+        quad: l.transform.quad?.map(p => ({ x: p.x + dx, y: p.y + dy })) as typeof l.transform.quad,
+      }
     } else if (l.kind === 'text' && l.text) {
       l.text = { ...l.text, x: l.text.x + dx, y: l.text.y + dy }
     } else if (l.kind === 'shape' && l.shape) {
@@ -1510,16 +1533,28 @@ export class Engine {
       }
       mutated = true
     } else if (baseKind === 'smart' && layer.source) {
-      // non-destructive: uniform scale (corner-handle semantics), rotation
-      // composes onto the existing transform (no flip — TransformSpec scale
-      // is positive; flipping a smart layer rasterizes it instead)
       const s = Math.abs((sx + sy) / 2) || 0.01
       const t = layer.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
       const [nx, ny] = map(t.x, t.y)
-      layer.transform = {
-        x: nx, y: ny,
-        scale: Math.max(0.01, t.scale * s),
-        rotation: t.rotation + rot,
+      if (t.quad || t.warp) {
+        const currentQuad = this.layerTransformQuad(id)
+        const nextQuad = currentQuad?.map(p => {
+          const [x, y] = map(p.x, p.y)
+          return { x, y }
+        }) as typeof t.quad
+        layer.transform = {
+          ...t,
+          x: nx,
+          y: ny,
+          quad: nextQuad,
+        }
+      } else {
+        layer.transform = {
+          ...t,
+          x: nx, y: ny,
+          scale: Math.max(0.01, t.scale * s),
+          rotation: t.rotation + rot,
+        }
       }
       mutated = true
     } else if ((baseKind === 'text' || baseKind === 'shape') && Math.abs(rot) < 0.002 && sx > 0 && sy > 0) {
@@ -2858,9 +2893,13 @@ export class Engine {
       if (l.mask) l.mask = resampleCanvas(l.mask, w, h)
       if (l.source) l.source = resampleCanvas(l.source, Math.max(1, Math.round(l.source.width * sx)), Math.max(1, Math.round(l.source.height * sy)))
       if (l.transform) {
-        l.transform.x *= sx
-        l.transform.y *= sy
-        l.transform.scale *= smin
+        l.transform = {
+          ...l.transform,
+          x: l.transform.x * sx,
+          y: l.transform.y * sy,
+          scale: l.transform.scale * smin,
+          quad: l.transform.quad?.map(p => ({ x: p.x * sx, y: p.y * sy })) as typeof l.transform.quad,
+        }
       }
       if (l.text) {
         l.text.x *= sx
@@ -3074,7 +3113,14 @@ export class Engine {
         ctx2d(next).drawImage(l.mask, -x, -y)
         l.mask = next
       }
-      if (l.transform) { l.transform.x -= x; l.transform.y -= y }
+      if (l.transform) {
+        l.transform = {
+          ...l.transform,
+          x: l.transform.x - x,
+          y: l.transform.y - y,
+          quad: l.transform.quad?.map(p => ({ x: p.x - x, y: p.y - y })) as typeof l.transform.quad,
+        }
+      }
       if (l.text) { l.text.x -= x; l.text.y -= y }
       if (l.shape) { l.shape.x -= x; l.shape.y -= y }
       if (l.vectorMask) {
@@ -3160,7 +3206,14 @@ export class Engine {
         ctx2d(c).drawImage(l.mask, dx, dy)
         l.mask = c
       }
-      if (l.transform) { l.transform.x += dx; l.transform.y += dy }
+      if (l.transform) {
+        l.transform = {
+          ...l.transform,
+          x: l.transform.x + dx,
+          y: l.transform.y + dy,
+          quad: l.transform.quad?.map(p => ({ x: p.x + dx, y: p.y + dy })) as typeof l.transform.quad,
+        }
+      }
       if (l.text) { l.text.x += dx; l.text.y += dy }
       if (l.shape) { l.shape.x += dx; l.shape.y += dy }
       l._v++; l._mv++
@@ -3249,7 +3302,14 @@ export class Engine {
         // source is already resized by sx/sy here — so transform.scale must
         // stay UNCHANGED or the layer would render at sx² (double-scale).
         l.source = await imageOps.lanczosResample(l.source, Math.round(l.source.width * sx), Math.round(l.source.height * sy))
-        if (l.transform) { l.transform.x *= sx; l.transform.y *= sy }
+        if (l.transform) {
+          l.transform = {
+            ...l.transform,
+            x: l.transform.x * sx,
+            y: l.transform.y * sy,
+            quad: l.transform.quad?.map(p => ({ x: p.x * sx, y: p.y * sy })) as typeof l.transform.quad,
+          }
+        }
       }
       if (l.text) { l.text.x *= sx; l.text.y *= sy; l.text.fontSize *= sy }
       if (l.shape) {
@@ -3315,17 +3375,22 @@ export class Engine {
     for (const l of doc.layers) {
       if (l.canvas) l.canvas = rotateCanvasPixels(l.canvas)
       if (l.mask) l.mask = rotateCanvasPixels(l.mask)
-      if (l.source) {
-        // bake transform into source-space: simpler: keep source, wrap in smart rotate via transform math
-        l.source = rotateCanvasPixels(l.source)
-      }
       if (l.transform) {
-        // rotate anchor point around old center
         const t = l.transform
-        const ox = t.x - doc.width / 2, oy = t.y - doc.height / 2
-        t.x = w / 2 + ox * rc - oy * rs
-        t.y = h / 2 + ox * rs + oy * rc
-        t.rotation += rad
+        const mapPoint = (p: Point2): Point2 => {
+          const ox = p.x - doc.width / 2, oy = p.y - doc.height / 2
+          return { x: w / 2 + ox * rc - oy * rs, y: h / 2 + ox * rs + oy * rc }
+        }
+        if (l.kind === 'smart' && l.source) {
+          const quad = this.layerTransformQuad(l.id)
+          const nextQuad = quad?.map(mapPoint) as typeof t.quad
+          const center = mapPoint({ x: t.x, y: t.y })
+          l.transform = { ...t, x: center.x, y: center.y, rotation: t.rotation + rad, quad: nextQuad }
+          // Smart Object source pixels remain untouched; placement rotates.
+        } else {
+          const center = mapPoint({ x: t.x, y: t.y })
+          l.transform = { ...t, x: center.x, y: center.y, rotation: t.rotation + rad }
+        }
       }
       if (l.text) {
         const ox = l.text.x - doc.width / 2, oy = l.text.y - doc.height / 2
@@ -3369,16 +3434,35 @@ export class Engine {
     for (const l of doc.layers) {
       if (l.canvas) l.canvas = flip(l.canvas)
       if (l.mask) l.mask = flip(l.mask)
-      if (l.source) l.source = flip(l.source)
+      if (l.source && l.kind !== 'smart') l.source = flip(l.source)
       if (l.kind === 'raster' && l.canvas) {
         // mirror the registration so the flipped pixels land at the mirrored doc rect
         if (dir === 'horizontal') l.offsetX = doc.width - (l.offsetX ?? 0) - l.canvas.width
         else l.offsetY = doc.height - (l.offsetY ?? 0) - l.canvas.height
       }
       if (l.transform) {
-        if (dir === 'horizontal') l.transform.x = doc.width - l.transform.x
-        else l.transform.y = doc.height - l.transform.y
-        l.transform.rotation = -l.transform.rotation
+        const t = l.transform
+        if (l.kind === 'smart' && l.source) {
+          const quad = this.layerTransformQuad(l.id)
+          const nextQuad = quad?.map(p => ({
+            x: dir === 'horizontal' ? doc.width - p.x : p.x,
+            y: dir === 'vertical' ? doc.height - p.y : p.y,
+          })) as typeof t.quad
+          l.transform = {
+            ...t,
+            x: dir === 'horizontal' ? doc.width - t.x : t.x,
+            y: dir === 'vertical' ? doc.height - t.y : t.y,
+            rotation: -t.rotation,
+            quad: nextQuad,
+          }
+        } else {
+          l.transform = {
+            ...t,
+            x: dir === 'horizontal' ? doc.width - t.x : t.x,
+            y: dir === 'vertical' ? doc.height - t.y : t.y,
+            rotation: -t.rotation,
+          }
+        }
       }
       l._v++; l._mv++
     }
@@ -3541,6 +3625,12 @@ export class Engine {
     ]
   }
 
+  layerWarpMesh(id: string, cols = 3, rows = 3): TransformWarpSpec {
+    const layer = this.layerById(id)
+    const existing = layer?.kind === 'smart' ? validateWarpMesh(layer.transform?.warp) : null
+    return existing ? cloneWarpMesh(existing) : regularWarpMesh(cols, rows)
+  }
+
   private transformReferencePoint(quad: Point2[], ref: TransformReference): Point2 {
     const xs = quad.map(p => p.x), ys = quad.map(p => p.y)
     const x0 = Math.min(...xs), x1 = Math.max(...xs)
@@ -3589,6 +3679,20 @@ export class Engine {
     }) as [Point2, Point2, Point2, Point2]
   }
 
+  private mapDocPointThroughWarp(
+    point: Point2,
+    sourceRect: Rect,
+    mesh: TransformWarpSpec,
+    quad: [Point2, Point2, Point2, Point2],
+  ): Point2 {
+    const normalized = {
+      x: (point.x - sourceRect.x) / Math.max(1e-9, sourceRect.w),
+      y: (point.y - sourceRect.y) / Math.max(1e-9, sourceRect.h),
+    }
+    const warped = mapNormalizedPointThroughWarp(normalized, mesh)
+    return mapRectPointToQuad(warped, { x: 0, y: 0, w: 1, h: 1 }, quad)
+  }
+
   private quadArea(q: Point2[]): number {
     let area = 0
     for (let i = 0; i < q.length; i++) {
@@ -3611,6 +3715,81 @@ export class Engine {
 
     const base = this.layerTransformQuad(id)
     if (!base) { this.ui?.toast('This layer has no transformable content', 'error'); return }
+
+    if (cmd.mode === 'warp') {
+      const mesh = validateWarpMesh(cmd.warp)
+      if (!mesh) { this.ui?.toast('Warp mesh is invalid', 'error'); return }
+
+      if (layer.kind === 'smart' && layer.source) {
+        const t = layer.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
+        layer.transform = { ...t, warp: cloneWarpMesh(mesh) }
+        layer._v++
+        invalidateFlat(doc)
+        if (remember) this.lastTransformCommand = structuredClone(cmd)
+        this.pushHistory('Transform Warp')
+        this.emit()
+        return
+      }
+
+      const r = this.layerContentRect(id)
+      if (!r || r.w < 1 || r.h < 1) return
+      let source: HTMLCanvasElement
+      if (layer.kind === 'raster' && layer.canvas) {
+        source = layer.canvas
+      } else {
+        const full = layer.kind === 'text' && layer.text
+          ? renderTextCanvas(doc, layer.text)
+          : layer.kind === 'shape' && layer.shape
+            ? renderShapeCanvas(doc, layer.shape)
+            : null
+        if (!full) return
+        source = createCanvas(Math.max(1, Math.ceil(r.w)), Math.max(1, Math.ceil(r.h)))
+        ctx2d(source).drawImage(full, -r.x, -r.y)
+      }
+
+      const destination = warpMeshDestinationPoints(mesh, base)
+      const warped = warpCanvasToMesh(source, mesh, destination)
+      layer.kind = 'raster'
+      layer.canvas = warped.canvas
+      layer.offsetX = warped.offsetX
+      layer.offsetY = warped.offsetY
+      layer.source = null
+      layer.transform = null
+      layer.text = null
+      layer.shape = null
+      layer.smartFilters = []
+
+      if (layer.mask) {
+        const maskTile = createCanvas(source.width, source.height)
+        ctx2d(maskTile).drawImage(layer.mask, -r.x, -r.y)
+        const wm = warpCanvasToMesh(maskTile, mesh, destination)
+        const docMask = createCanvas(doc.width, doc.height)
+        ctx2d(docMask).drawImage(wm.canvas, wm.offsetX, wm.offsetY)
+        layer.mask = docMask
+        layer._mv++
+      }
+      if (layer.vectorMask) {
+        const mapAnchor = (a: PathAnchor): PathAnchor => {
+          const p = this.mapDocPointThroughWarp({ x: a.x, y: a.y }, r, mesh, base)
+          const pin = this.mapDocPointThroughWarp({ x: a.x + a.inX, y: a.y + a.inY }, r, mesh, base)
+          const pout = this.mapDocPointThroughWarp({ x: a.x + a.outX, y: a.y + a.outY }, r, mesh, base)
+          return {
+            ...a, x: p.x, y: p.y,
+            inX: pin.x - p.x, inY: pin.y - p.y,
+            outX: pout.x - p.x, outY: pout.y - p.y,
+          }
+        }
+        layer.vectorMask = mapVectorMask(layer.vectorMask, mapAnchor)
+      }
+
+      layer._v++
+      invalidateFlat(doc)
+      if (remember) this.lastTransformCommand = structuredClone(cmd)
+      this.pushHistory('Transform Warp')
+      this.emit()
+      return
+    }
+
     const target = this.transformedQuad(base, cmd)
     if (this.quadArea(target) < 1) { this.ui?.toast('Transform would collapse the layer', 'error'); return }
 
