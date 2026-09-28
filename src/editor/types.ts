@@ -311,6 +311,14 @@ export interface Layer {
    *  Moving a raster layer only shifts these (non-destructive: pixels that
    *  hang off the canvas are kept, like Photoshop). */
   canvas: HTMLCanvasElement | null
+  /** True 32-bit scene-linear RGBA backing store. The canvas is only the
+   * float16 display/edit mirror for HDR layers; this Float32 buffer is the
+   * authoritative raster whenever present. Values may exceed 1.0. */
+  hdrPixels?: Float32Array | null
+  hdrColorSpace?: 'linear-srgb'
+  /** transient pre-edit float16 mirror used to merge Canvas2D edits back into
+   * the Float32 store without reducing untouched pixels to half precision. */
+  _hdrPreviewBefore?: Float32Array | null
   offsetX?: number
   offsetY?: number
   /** native resolution source for smart layers */
@@ -493,9 +501,8 @@ export interface PsDocument {
   resolutionPpi?: number
   /** Raster layer storage currently used by the editor. Kept explicit so the
    * UI/project format never claims a higher working precision than is real. */
-  workingBitDepth?: 8 | 16
-  /** Original decoded component depth when known (for example 16-bit TIFF/PSD
-   * imported into today's 8-bit working raster). */
+  workingBitDepth?: 8 | 16 | 32
+  /** Original decoded component depth when known. */
   sourceBitDepth?: number
   /** Working canvas color space. The current default is sRGB; Display-P3 is
    * capability-probed separately before any future wide-gamut migration. */
