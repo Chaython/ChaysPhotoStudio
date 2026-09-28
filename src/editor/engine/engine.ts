@@ -12,6 +12,7 @@ import {
   createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData,
   hexToRgb, rgbToHex, clamp, drawSoftDab, canvasToBlob, downloadBlob, getMaskAlpha,
   canvasProfile, canvasPixelCapabilities, setCanvasWorkingProfile, getProcessingPixelData, putProcessingPixelData,
+  getFloat16ImageData, hdrFloat32ToPreviewCanvas, srgbToSceneLinear,
 } from '../utils/canvas'
 import {
   compositeDocument, getFlatComposite, invalidateFlat, newLayer,
@@ -28,6 +29,7 @@ import {
 } from './selection'
 import { getScriptApi } from './scripting-api'
 import * as imageOps from '../image-ops'
+import { isFloatPixelImage, type PixelImage } from '../image-ops/pixel-data'
 import { homography, projectPoint, quadOutputSize, warpCanvasPerspective, type Point2 } from '../image-ops/perspective'
 import {
   cloneWarpMesh, mapNormalizedPointThroughWarp, mapRectPointToQuad, regularWarpMesh,
@@ -36,6 +38,63 @@ import {
 import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 
 export const MAX_HISTORY = 50
+
+
+function canvasDepthForDocument(depth: 8 | 16 | 32 | undefined): 8 | 16 {
+  return depth === 8 ? 8 : 16
+}
+
+function canvasFloatSnapshot(canvas: HTMLCanvasElement): Float32Array {
+  const hi = getFloat16ImageData(canvas)
+  if (hi?.data) {
+    const src = hi.data as ArrayLike<number>
+    const out = new Float32Array(src.length)
+    for (let i = 0; i < src.length; i++) out[i] = Number(src[i])
+    return out
+  }
+  const d = getImageData(canvas).data
+  const out = new Float32Array(d.length)
+  for (let i = 0; i < d.length; i++) out[i] = d[i] / 255
+  return out
+}
+
+function hdrPixelsFromCanvas(canvas: HTMLCanvasElement): Float32Array {
+  const preview = canvasFloatSnapshot(canvas)
+  const out = new Float32Array(preview.length)
+  for (let i = 0; i < preview.length; i += 4) {
+    out[i] = srgbToSceneLinear(preview[i])
+    out[i + 1] = srgbToSceneLinear(preview[i + 1])
+    out[i + 2] = srgbToSceneLinear(preview[i + 2])
+    out[i + 3] = preview[i + 3]
+  }
+  return out
+}
+
+function hdrProcessingImage(layer: Layer): PixelImage | null {
+  if (!layer.hdrPixels || !layer.canvas) return null
+  const data = new Float32Array(layer.hdrPixels.length)
+  for (let i = 0; i < data.length; i++) data[i] = layer.hdrPixels[i] * 255
+  return {
+    width: layer.canvas.width,
+    height: layer.canvas.height,
+    data,
+    precision: 'float32',
+    dynamicRange: 'scene-linear',
+  }
+}
+
+function commitHdrProcessingImage(layer: Layer, img: PixelImage): boolean {
+  if (!layer.hdrPixels || !layer.canvas || !isFloatPixelImage(img)) return false
+  const expected = layer.canvas.width * layer.canvas.height * 4
+  if (img.data.length !== expected) return false
+  const hdr = new Float32Array(expected)
+  for (let i = 0; i < expected; i++) hdr[i] = img.data[i] / 255
+  layer.hdrPixels = hdr
+  layer.hdrColorSpace = 'linear-srgb'
+  layer.canvas = hdrFloat32ToPreviewCanvas(hdr, img.width, img.height, 'srgb')
+  layer._hdrPreviewBefore = null
+  return true
+}
 
 function processSelectionMaskRegion(
   mask: HTMLCanvasElement,
@@ -118,6 +177,49 @@ export class Engine {
   private recordingAction: PsAction | null = null
   private lastTransformCommand: LayerTransformCommand | null = null
 
+  private mergeHdrCanvasEdits(layer: Layer): void {
+    if (!layer.hdrPixels || !layer.canvas || !layer._hdrPreviewBefore) return
+    const before = layer._hdrPreviewBefore
+    const now = canvasFloatSnapshot(layer.canvas)
+    if (before.length !== now.length || layer.hdrPixels.length !== now.length) {
+      layer.hdrPixels = hdrPixelsFromCanvas(layer.canvas)
+      layer.hdrColorSpace = 'linear-srgb'
+      layer._hdrPreviewBefore = null
+      return
+    }
+    const hdr = layer.hdrPixels
+    const eps = 1e-5
+    for (let i = 0; i < now.length; i += 4) {
+      if (
+        Math.abs(now[i] - before[i]) <= eps &&
+        Math.abs(now[i + 1] - before[i + 1]) <= eps &&
+        Math.abs(now[i + 2] - before[i + 2]) <= eps &&
+        Math.abs(now[i + 3] - before[i + 3]) <= eps
+      ) continue
+      hdr[i] = srgbToSceneLinear(now[i])
+      hdr[i + 1] = srgbToSceneLinear(now[i + 1])
+      hdr[i + 2] = srgbToSceneLinear(now[i + 2])
+      hdr[i + 3] = now[i + 3]
+    }
+    layer._hdrPreviewBefore = null
+  }
+
+  private syncPendingHdrCanvasEdits(doc: PsDocument | null = this.activeDoc): void {
+    if (!doc) return
+    for (const layer of doc.layers) this.mergeHdrCanvasEdits(layer)
+  }
+
+  private processingPixelsForLayer(layer: Layer): PixelImage | null {
+    if (!layer.canvas) return null
+    return hdrProcessingImage(layer) ?? getProcessingPixelData(layer.canvas)
+  }
+
+  private commitProcessingPixelsForLayer(layer: Layer, img: PixelImage): void {
+    if (commitHdrProcessingImage(layer, img)) return
+    if (layer.canvas) putProcessingPixelData(layer.canvas, img)
+    layer._hdrPreviewBefore = null
+  }
+
   onChange(cb: Listener): () => void {
     this.listeners.add(cb)
     return () => this.listeners.delete(cb)
@@ -133,6 +235,7 @@ export class Engine {
     // Keep multi-layer selection coherent no matter which subsystem changed
     // activeLayerId. The active layer is always the primary member.
     const doc = this.activeDoc
+    this.syncPendingHdrCanvasEdits(doc)
     if (doc) {
       const valid = (doc.selectedLayerIds ?? []).filter(id => doc.layers.some(l => l.id === id))
       if (doc.activeLayerId) {
@@ -203,8 +306,32 @@ export class Engine {
     if (!l || !doc || l.kind !== 'raster' || !l.canvas) return l ?? null
     const ox = l.offsetX ?? 0, oy = l.offsetY ?? 0
     if (!ox && !oy) return l
-    const c = createCanvas(doc.width, doc.height)
+    const c = createCanvas(doc.width, doc.height, {
+      bitDepth: canvasDepthForDocument(doc.workingBitDepth),
+      colorSpace: doc.workingColorSpace ?? 'srgb',
+    })
     ctx2d(c).drawImage(l.canvas, ox, oy)
+    if (l.hdrPixels) {
+      const srcW = l.canvas.width, srcH = l.canvas.height
+      const baked = new Float32Array(doc.width * doc.height * 4)
+      for (let y = 0; y < srcH; y++) {
+        const dy = y + Math.round(oy)
+        if (dy < 0 || dy >= doc.height) continue
+        for (let x = 0; x < srcW; x++) {
+          const dx = x + Math.round(ox)
+          if (dx < 0 || dx >= doc.width) continue
+          const si = (y * srcW + x) * 4
+          const di = (dy * doc.width + dx) * 4
+          baked[di] = l.hdrPixels[si]
+          baked[di + 1] = l.hdrPixels[si + 1]
+          baked[di + 2] = l.hdrPixels[si + 2]
+          baked[di + 3] = l.hdrPixels[si + 3]
+        }
+      }
+      l.hdrPixels = baked
+      l.hdrColorSpace = 'linear-srgb'
+      l._hdrPreviewBefore = null
+    }
     l.canvas = c
     l.offsetX = 0
     l.offsetY = 0
@@ -219,21 +346,23 @@ export class Engine {
     width: number
     height: number
     resolutionPpi?: number
-    bitDepth?: 8 | 16
+    bitDepth?: 8 | 16 | 32
     colorSpace?: 'srgb' | 'display-p3'
     fill?: 'white' | 'transparent' | 'background' | string
   }): PsDocument {
     const { width, height } = opts
     const caps = canvasPixelCapabilities()
+    const wantsHighDepth = (opts.bitDepth === 16 || opts.bitDepth === 32) && caps.float16Context && caps.float16ImageData
     const profile = setCanvasWorkingProfile({
-      bitDepth: opts.bitDepth === 16 && caps.float16Context && caps.float16ImageData ? 16 : 8,
-      colorSpace: opts.colorSpace === 'display-p3' && caps.displayP3 ? 'display-p3' : 'srgb',
+      bitDepth: wantsHighDepth ? 16 : 8,
+      colorSpace: opts.colorSpace === 'display-p3' && opts.bitDepth !== 32 && caps.displayP3 ? 'display-p3' : 'srgb',
     })
+    const workingBitDepth: 8 | 16 | 32 = opts.bitDepth === 32 && wantsHighDepth ? 32 : profile.bitDepth
     const doc: PsDocument = {
       id: uid(), name: opts.name || `Untitled-${this.docs.length + 1}`,
       width, height,
       resolutionPpi: clamp(Number(opts.resolutionPpi) || 72, 1, 12000),
-      workingBitDepth: profile.bitDepth, sourceBitDepth: profile.bitDepth, workingColorSpace: profile.colorSpace,
+      workingBitDepth, sourceBitDepth: workingBitDepth, workingColorSpace: profile.colorSpace,
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0 },
@@ -251,11 +380,16 @@ export class Engine {
     } else {
       bg.name = 'Layer 1'
     }
+    if (workingBitDepth === 32 && bg.canvas) {
+      bg.hdrPixels = hdrPixelsFromCanvas(bg.canvas)
+      bg.hdrColorSpace = 'linear-srgb'
+      bg.canvas = hdrFloat32ToPreviewCanvas(bg.hdrPixels, width, height, 'srgb')
+    }
     doc.layers.push(bg)
     doc.activeLayerId = bg.id
     this.docs.push(doc)
     this._activeId = doc.id
-    setCanvasWorkingProfile({ bitDepth: doc.workingBitDepth ?? 8, colorSpace: doc.workingColorSpace ?? 'srgb' })
+    setCanvasWorkingProfile({ bitDepth: canvasDepthForDocument(doc.workingBitDepth), colorSpace: doc.workingColorSpace ?? 'srgb' })
     this.pushHistory('New Document', doc)
     this.emit()
     return doc
@@ -264,19 +398,22 @@ export class Engine {
   addCanvasDocument(
     canvas: HTMLCanvasElement,
     name: string,
-    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number } = {},
+    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16 | 32; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number; hdrPixels?: Float32Array } = {},
   ): PsDocument {
     const incoming = canvasProfile(canvas)
+    const requestedDepth = meta.workingBitDepth ?? incoming.bitDepth
     const profile = setCanvasWorkingProfile({
-      bitDepth: meta.workingBitDepth ?? incoming.bitDepth,
-      colorSpace: meta.workingColorSpace ?? incoming.colorSpace,
+      bitDepth: requestedDepth === 8 ? 8 : 16,
+      colorSpace: requestedDepth === 32 ? 'srgb' : (meta.workingColorSpace ?? incoming.colorSpace),
     })
+    const workingBitDepth: 8 | 16 | 32 =
+      requestedDepth === 32 && profile.bitDepth === 16 ? 32 : profile.bitDepth
     const doc: PsDocument = {
       id: uid(), name,
       width: canvas.width, height: canvas.height,
       resolutionPpi: clamp(Number(meta.resolutionPpi) || 72, 1, 12000),
-      workingBitDepth: profile.bitDepth,
-      sourceBitDepth: meta.sourceBitDepth ?? profile.bitDepth,
+      workingBitDepth,
+      sourceBitDepth: meta.sourceBitDepth ?? workingBitDepth,
       workingColorSpace: profile.colorSpace,
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
@@ -288,11 +425,18 @@ export class Engine {
     }
     const layer = newLayer('raster', name.replace(/\.[^.]+$/, ''), canvas.width, canvas.height)
     ctx2d(layer.canvas!).drawImage(canvas, 0, 0)
+    if (workingBitDepth === 32) {
+      layer.hdrPixels = meta.hdrPixels && meta.hdrPixels.length === canvas.width * canvas.height * 4
+        ? new Float32Array(meta.hdrPixels)
+        : hdrPixelsFromCanvas(canvas)
+      layer.hdrColorSpace = 'linear-srgb'
+      layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, canvas.width, canvas.height, 'srgb')
+    }
     doc.layers.push(layer)
     doc.activeLayerId = layer.id
     this.docs.push(doc)
     this._activeId = doc.id
-    setCanvasWorkingProfile({ bitDepth: doc.workingBitDepth ?? 8, colorSpace: doc.workingColorSpace ?? 'srgb' })
+    setCanvasWorkingProfile({ bitDepth: canvasDepthForDocument(doc.workingBitDepth), colorSpace: doc.workingColorSpace ?? 'srgb' })
     this.pushHistory('Open', doc)
     this.emit()
     return doc
@@ -310,7 +454,7 @@ export class Engine {
     if (this._activeId === id) {
       this._activeId = this.docs[Math.min(idx, this.docs.length - 1)]?.id ?? null
       const next = this.activeDoc
-      setCanvasWorkingProfile({ bitDepth: next?.workingBitDepth ?? 8, colorSpace: next?.workingColorSpace ?? 'srgb' })
+      setCanvasWorkingProfile({ bitDepth: canvasDepthForDocument(next?.workingBitDepth), colorSpace: next?.workingColorSpace ?? 'srgb' })
     }
     this.emit()
   }
@@ -319,7 +463,7 @@ export class Engine {
     const doc = this.docs.find(d => d.id === id)
     if (!doc) return
     this._activeId = id
-    setCanvasWorkingProfile({ bitDepth: doc.workingBitDepth ?? 8, colorSpace: doc.workingColorSpace ?? 'srgb' })
+    setCanvasWorkingProfile({ bitDepth: canvasDepthForDocument(doc.workingBitDepth), colorSpace: doc.workingColorSpace ?? 'srgb' })
     this.emit()
   }
 
@@ -338,6 +482,7 @@ export class Engine {
   // ================================================== history
   pushHistory(label: string, doc: PsDocument = this.activeDoc!) {
     if (!doc) return
+    this.syncPendingHdrCanvasEdits(doc)
     const st = this.captureState(doc, label)
     const h = doc.history
     h.states = h.states.slice(0, h.index + 1)
@@ -362,6 +507,8 @@ export class Engine {
       label, time: Date.now(),
       layers: doc.layers.map(l => ({
         ...l,
+        hdrPixels: l.hdrPixels ? new Float32Array(l.hdrPixels) : null,
+        _hdrPreviewBefore: null,
         transform: l.transform ? structuredClone(l.transform) : null,
       })),
       activeLayerId: doc.activeLayerId,
@@ -377,6 +524,8 @@ export class Engine {
   private restoreState(doc: PsDocument, st: any) {
     doc.layers = st.layers.map((l: any) => ({
       ...l,
+      hdrPixels: l.hdrPixels ? new Float32Array(l.hdrPixels) : null,
+      _hdrPreviewBefore: null,
       transform: l.transform ? structuredClone(l.transform) : null,
     }))
     doc.activeLayerId = st.activeLayerId
@@ -648,7 +797,12 @@ export class Engine {
     if (layer.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels — rasterize first', 'error'); return null }
     if (layer.kind !== 'raster') this.rasterizeLayer(layer.id)
     const l = this.layerById(layerId)!
+    this.mergeHdrCanvasEdits(l)
     if (l.canvas) l.canvas = cloneCanvas(l.canvas)
+    if (l.hdrPixels && l.canvas) {
+      l.hdrPixels = new Float32Array(l.hdrPixels)
+      l._hdrPreviewBefore = canvasFloatSnapshot(l.canvas)
+    }
     l._v++
     invalidateFlat(doc)
     return l
@@ -678,6 +832,11 @@ export class Engine {
     if (!doc) return null
     const layer = newLayer('raster', name || this.nextLayerName(), doc.width, doc.height)
     if (opts?.canvas) ctx2d(layer.canvas!).drawImage(opts.canvas, 0, 0)
+    if (doc.workingBitDepth === 32 && layer.canvas) {
+      layer.hdrPixels = hdrPixelsFromCanvas(layer.canvas)
+      layer.hdrColorSpace = 'linear-srgb'
+      layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
+    }
     doc.layers.push(layer)
     doc.activeLayerId = layer.id
     this.pushHistory('New Layer')
@@ -694,7 +853,7 @@ export class Engine {
       // keep the pixels at native size, registered in the doc CENTER — nothing
       // is cropped and the layer can be moved/transformed losslessly afterwards
       const placed = createCanvas(canvas.width, canvas.height, {
-        bitDepth: doc.workingBitDepth ?? 8,
+        bitDepth: canvasDepthForDocument(doc.workingBitDepth),
         colorSpace: doc.workingColorSpace ?? 'srgb',
       })
       ctx2d(placed).drawImage(canvas, 0, 0)
@@ -703,6 +862,11 @@ export class Engine {
       layer.offsetY = Math.round((doc.height - canvas.height) / 2)
     } else {
       ctx2d(layer.canvas!).drawImage(canvas, 0, 0)
+    }
+    if (doc.workingBitDepth === 32 && layer.canvas) {
+      layer.hdrPixels = hdrPixelsFromCanvas(layer.canvas)
+      layer.hdrColorSpace = 'linear-srgb'
+      layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
     }
     doc.layers.push(layer)
     doc.activeLayerId = layer.id
@@ -2414,9 +2578,10 @@ export class Engine {
     if (!doc) return
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
-    const img = getProcessingPixelData(l.canvas)
+    const img = this.processingPixelsForLayer(l)
+    if (!img) return
     imageOps.applyAdjustment(img, type, params)
-    putProcessingPixelData(l.canvas, img)
+    this.commitProcessingPixelsForLayer(l, img)
     invalidateFlat(doc)
     this.pushHistory(typeLabel(type))
     this.recordStep({ op: 'applyAdjustment', args: { layerId, type, params: { ...params } }, label: typeLabel(type) })
@@ -2433,9 +2598,10 @@ export class Engine {
     }
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
-    const img = getProcessingPixelData(l.canvas)
+    const img = this.processingPixelsForLayer(l)
+    if (!img) return
     imageOps.applyFilter(img, type, params)
-    putProcessingPixelData(l.canvas, img)
+    this.commitProcessingPixelsForLayer(l, img)
     invalidateFlat(doc)
     this.pushHistory(filterLabel(type))
     this.recordStep({ op: 'applyFilter', args: { layerId, type, params: { ...params } }, label: filterLabel(type) })
@@ -2553,8 +2719,11 @@ export class Engine {
     if (!l?.canvas) return
     // getImageData inside is fresh + disposable → zero-copy transfer to the worker;
     // on an unrecoverable worker failure it re-fetches and runs synchronously
-    const out = await runPixelOpFromCanvas(l.canvas, spec)
-    putProcessingPixelData(l.canvas, out)
+    const hdrInput = hdrProcessingImage(l)
+    const out = hdrInput
+      ? await runPixelOpAsync(hdrInput, spec)
+      : await runPixelOpFromCanvas(l.canvas, spec)
+    this.commitProcessingPixelsForLayer(l, out)
     invalidateFlat(doc)
     this.pushHistory(label)
     this.emit()
@@ -2566,8 +2735,12 @@ export class Engine {
     if (!doc) return
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
-    const out = await runPixelOpFromCanvas(l.canvas, { kind: 'adjustment', type, params })
-    putProcessingPixelData(l.canvas, out)
+    const spec: PixelOpSpec = { kind: 'adjustment', type, params }
+    const hdrInput = hdrProcessingImage(l)
+    const out = hdrInput
+      ? await runPixelOpAsync(hdrInput, spec)
+      : await runPixelOpFromCanvas(l.canvas, spec)
+    this.commitProcessingPixelsForLayer(l, out)
     invalidateFlat(doc)
     this.pushHistory(typeLabel(type))
     this.recordStep({ op: 'applyAdjustment', args: { layerId, type, params: { ...params } }, label: typeLabel(type) })
@@ -2587,14 +2760,18 @@ export class Engine {
     if (!l?.canvas) return
     let out
     try {
-      out = await runPixelOpFromCanvas(l.canvas, { kind: 'filter', type, params })
+      const spec: PixelOpSpec = { kind: 'filter', type, params }
+      const hdrInput = hdrProcessingImage(l)
+      out = hdrInput
+        ? await runPixelOpAsync(hdrInput, spec)
+        : await runPixelOpFromCanvas(l.canvas, spec)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.ui?.toast(`Filter not applied: ${message}`, 'error')
       console.error('[zphoto] filter worker failed safely', err)
       return
     }
-    putProcessingPixelData(l.canvas, out)
+    this.commitProcessingPixelsForLayer(l, out)
     invalidateFlat(doc)
     this.pushHistory(filterLabel(type))
     this.recordStep({ op: 'applyFilter', args: { layerId, type, params: { ...params } }, label: filterLabel(type) })
