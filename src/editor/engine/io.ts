@@ -11,7 +11,7 @@ import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
-const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico']
+const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim']
 
 /** sniff the first 64 bytes — enough for every magic-byte signature we know */
 async function sniffFormat(file: File): Promise<ImportFormatId | null> {
