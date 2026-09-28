@@ -75,6 +75,9 @@ export interface PsdDecoded {
   layers: PsdLayer[]             // bottom-first (PSD storage order)
   /** ResolutionInfo image-resource metadata, pixels per inch. */
   resolutionPpi: number
+  /** Opaque non-resolution image-resource blocks retained byte-for-byte
+   * (ICC/XMP/EXIF/thumbnail/guides/slices and other Photoshop metadata). */
+  imageResources: Uint8Array[]
 }
 
 async function inflateZlib(data: Uint8Array): Promise<Uint8Array> {
@@ -267,10 +270,12 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const resStart = pos
   const resEnd = Math.min(bytes.length, resStart + resLen)
   let resolutionPpi = 72
+  const imageResources: Uint8Array[] = []
   // Parse Photoshop Image Resource Blocks enough to recover ResolutionInfo
   // (0x0400). The Pascal name is padded to an even byte boundary and resource
   // data is also even-padded.
   while (pos + 12 <= resEnd) {
+    const blockStart = pos
     const signature = str4(pos)
     if (signature !== '8BIM' && signature !== 'MeSa') break
     const id = view.getUint16(pos + 4)
@@ -291,6 +296,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       if (Number.isFinite(ppi) && ppi > 0) resolutionPpi = Math.max(1, Math.min(12000, ppi))
     }
     pos = dataStart + dataLen + (dataLen & 1)
+    // ResolutionInfo is regenerated from the live document. Preserve all other
+    // resources exactly, including unknown/private Adobe resources.
+    if (id !== 0x0400 && pos <= resEnd) imageResources.push(bytes.slice(blockStart, pos))
   }
   pos = resEnd
   // ---- layer & mask info ----
@@ -529,7 +537,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
   }
 
-  return { canvas: composite, width, height, depth: depth as 8 | 16, hasAlpha, layers, resolutionPpi }
+  return { canvas: composite, width, height, depth: depth as 8 | 16, hasAlpha, layers, resolutionPpi, imageResources }
 }
 
 // ============================================================
@@ -670,7 +678,7 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number } = {},
+  options: { resolutionPpi?: number; imageResources?: Uint8Array[] } = {},
 ): Blob {
   // normalize: composite must be doc-size
   let flat = composite
@@ -789,7 +797,13 @@ export function buildPsd(
   resView.setUint32(8, fixedPpi)    // vRes
   resView.setUint16(12, 1)          // vResUnit
   resView.setUint16(14, 1)          // heightUnit
-  const resources = concatUint8([asciiBytes('8BIM'), u16(0x0400), new Uint8Array([0, 0]), u32(resData.length), resData])
+  const resolutionResource = concatUint8([asciiBytes('8BIM'), u16(0x0400), new Uint8Array([0, 0]), u32(resData.length), resData])
+  const preservedResources = (options.imageResources ?? []).filter(block => {
+    if (!(block instanceof Uint8Array) || block.length < 12) return false
+    const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
+    return sig === '8BIM' || sig === 'MeSa'
+  })
+  const resources = concatUint8([resolutionResource, ...preservedResources])
 
   // ---- merged composite: RLE with a shared channels × height row table ----
   const compImg = getImageData(flat)
