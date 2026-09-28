@@ -7,11 +7,11 @@
 //   createImageBitmap               — PNG-embedded ICO entries
 // ============================================================
 
-import { createCanvas, ctx2d } from '../utils/canvas'
+import { createCanvas, ctx2d, canvasProfile, putFloat16Pixels } from '../utils/canvas'
 
 export type ImportFormatId =
-  | 'png' | 'jpeg' | 'gif' | 'webp' | 'avif' | 'svg'
-  | 'bmp' | 'ico' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'qoi' | 'pcx'
+  | 'png' | 'jpeg' | 'gif' | 'webp' | 'avif' | 'heic' | 'jxl' | 'jp2' | 'svg'
+  | 'bmp' | 'ico' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx'
 
 /** decoded raster: tightly packed 8-bit RGBA (ImageData-compatible).
  *  Typed as Uint8ClampedArray<ArrayBuffer> (not ArrayBufferLike) so it feeds
@@ -19,16 +19,48 @@ export type ImportFormatId =
 export interface RawImage {
   width: number
   height: number
+  /** Always present as an 8-bit display / compatibility representation. */
   rgba: Uint8ClampedArray<ArrayBuffer>
-  /** Original decoded component depth before normalization to the current
-   * 8-bit RGBA working raster. */
+  /** Optional full-precision integer samples, interleaved RGBA 0..65535. */
+  rgba16?: Uint16Array<ArrayBuffer>
+  /** Optional full-precision floating samples. RGB is linear-sRGB when
+   * sourceColorSpace is linear-srgb; alpha remains linear 0..1. */
+  rgbaFloat?: Float32Array<ArrayBuffer>
+  sourceColorSpace?: 'srgb' | 'linear-srgb'
+  /** Original decoded component depth before any compatibility conversion. */
   sourceBitDepth?: number
 }
 
 // ---------- shared helpers ----------
 
+function linearToSrgbUnit(v: number): number {
+  return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(Math.max(0, v), 1 / 2.4) - 0.055
+}
+
 export function rawToCanvas(raw: RawImage): HTMLCanvasElement {
-  const c = createCanvas(raw.width, raw.height)
+  const highPrecision = !!raw.rgba16 || !!raw.rgbaFloat
+  const c = createCanvas(raw.width, raw.height, { bitDepth: highPrecision ? 16 : 8, colorSpace: 'srgb' })
+  if (highPrecision && canvasProfile(c).bitDepth === 16) {
+    const n = raw.width * raw.height * 4
+    const values = new Float32Array(n)
+    if (raw.rgba16) {
+      for (let i = 0; i < n; i++) values[i] = raw.rgba16[i] / 65535
+    } else if (raw.rgbaFloat) {
+      for (let i = 0; i < n; i += 4) {
+        if (raw.sourceColorSpace === 'linear-srgb') {
+          values[i] = linearToSrgbUnit(raw.rgbaFloat[i])
+          values[i + 1] = linearToSrgbUnit(raw.rgbaFloat[i + 1])
+          values[i + 2] = linearToSrgbUnit(raw.rgbaFloat[i + 2])
+        } else {
+          values[i] = raw.rgbaFloat[i]
+          values[i + 1] = raw.rgbaFloat[i + 1]
+          values[i + 2] = raw.rgbaFloat[i + 2]
+        }
+        values[i + 3] = raw.rgbaFloat[i + 3]
+      }
+    }
+    if (putFloat16Pixels(c, values, 'srgb')) return c
+  }
   ctx2d(c).putImageData(new ImageData(raw.rgba, raw.width, raw.height), 0, 0)
   return c
 }
@@ -73,6 +105,16 @@ export function detectFormat(bytes: Uint8Array): ImportFormatId | null {
   if (eq('GIF8')) return 'gif'
   if (eq('RIFF') && eq('WEBP', 8)) return 'webp'
   if (eq('qoif')) return 'qoi'
+  if (n >= 2 && b[0] === 0xff && b[1] === 0x0a) return 'jxl'
+  if (n >= 12 && b[0] === 0x00 && b[1] === 0x00 && b[2] === 0x00 && b[3] === 0x0c &&
+      b[4] === 0x4a && b[5] === 0x58 && b[6] === 0x4c && b[7] === 0x20 &&
+      b[8] === 0x0d && b[9] === 0x0a && b[10] === 0x87 && b[11] === 0x0a) return 'jxl'
+  if (n >= 12 && b[0] === 0x00 && b[1] === 0x00 && b[2] === 0x00 && b[3] === 0x0c &&
+      b[4] === 0x6a && b[5] === 0x50 && b[6] === 0x20 && b[7] === 0x20 &&
+      b[8] === 0x0d && b[9] === 0x0a && b[10] === 0x87 && b[11] === 0x0a) return 'jp2'
+  if (n >= 4 && b[0] === 0xff && b[1] === 0x4f && b[2] === 0xff && b[3] === 0x51) return 'jp2'
+  if (eq('#?RADIANCE') || eq('#?RGBE')) return 'hdr'
+  if ((eq('PF') || eq('Pf')) && n >= 3 && (b[2] === 0x20 || b[2] === 0x09 || b[2] === 0x0a || b[2] === 0x0d)) return 'pfm'
   if (eq('8BPS')) return 'psd'
   if (eq('BM') && n >= 6) return 'bmp'
   if (b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0) return 'ico' // ICONDIR
@@ -85,8 +127,11 @@ export function detectFormat(bytes: Uint8Array): ImportFormatId | null {
   }
   if (b[0] === 0x3a && b[1] === 0xde && b[2] === 0x68 && b[3] === 0xb1) return 'pcx' // DCX
   if (eq('ftyp', 4)) {
-    const brand = ascii(b, 8, 4)
-    if (brand === 'avif' || brand === 'avis' || brand === 'mif1') return 'avif'
+    const brands: string[] = []
+    for (let off = 8; off + 4 <= Math.min(n, 64); off += 4) brands.push(ascii(b, off, 4))
+    if (brands.some(x => x === 'avif' || x === 'avis')) return 'avif'
+    if (brands.some(x => ['heic','heix','hevc','hevx','heim','heis','hevm','hevs','heif','heifs'].includes(x))) return 'heic'
+    if (brands.some(x => x === 'mif1' || x === 'msf1')) return 'heic'
     return null
   }
   // PCX header heuristic (works with a 32-byte sniff — extra fields checked
@@ -413,6 +458,9 @@ export async function decodeTiff(bytes: Uint8Array): Promise<RawImage> {
 
   const planes: Uint8Array[] = []
   for (let p = 0; p < spp; p++) planes.push(new Uint8Array(width * height))
+  const planes16: Uint16Array[] | null = bps === 16
+    ? Array.from({ length: spp }, () => new Uint16Array(width * height))
+    : null
   const out = new Uint8ClampedArray(width * height * 4)
 
   const nPlanesToRead = planar === 2 ? spp : 1
@@ -435,12 +483,15 @@ export async function decodeTiff(bytes: Uint8Array): Promise<RawImage> {
         const raw = await decompressTiffBlock(bytes, off, cnt, compression, expected)
 
         let sampleBytes: Uint8Array
+        let sample16: Uint16Array | null = null
         let rowBytes: number
         if (packed) {
           sampleBytes = unpackSubByte(raw, bps, blockFullW, fullH, photometric !== 3)
           rowBytes = blockFullW
         } else if (bps === 16) {
-          sampleBytes = normalize16(raw, le, blockFullW, fullH, sppEff, predictor === 2)
+          sample16 = decode16Samples(raw, le, blockFullW, fullH, sppEff, predictor === 2)
+          sampleBytes = new Uint8Array(sample16.length)
+          for (let i = 0; i < sample16.length; i++) sampleBytes[i] = sample16[i] >>> 8
           rowBytes = blockFullW * sppEff
         } else {
           if (predictor === 2) applyPredictor8(raw, blockFullW, fullH, sppEff)
@@ -450,9 +501,11 @@ export async function decodeTiff(bytes: Uint8Array): Promise<RawImage> {
 
         if (planar === 2) {
           copyIntoPlane(planes[plane], width, dstX, dstY, dstW, dstH, sampleBytes, rowBytes, 1, 0)
+          if (planes16 && sample16) copyIntoPlane16(planes16[plane], width, dstX, dstY, dstW, dstH, sample16, rowBytes, 1, 0)
         } else {
           for (let s = 0; s < spp; s++) {
             copyIntoPlane(planes[s], width, dstX, dstY, dstW, dstH, sampleBytes, rowBytes, spp, s)
+            if (planes16 && sample16) copyIntoPlane16(planes16[s], width, dstX, dstY, dstW, dstH, sample16, rowBytes, spp, s)
           }
         }
       }
@@ -460,7 +513,10 @@ export async function decodeTiff(bytes: Uint8Array): Promise<RawImage> {
   }
 
   combinePlanes(out, planes, width * height, photometric, alphaSample, assocAlpha, invertGray, palette)
-  return { width, height, rgba: out, sourceBitDepth: bps }
+  const rgba16 = planes16 && photometric !== 3
+    ? combinePlanes16(planes16, width * height, photometric, alphaSample, assocAlpha, invertGray)
+    : undefined
+  return { width, height, rgba: out, rgba16, sourceBitDepth: bps }
 }
 
 function copyIntoPlane(
@@ -470,6 +526,25 @@ function copyIntoPlane(
 ): void {
   for (let y = 0; y < dstH; y++) {
     const sIdx = y * rowBytes + sampleIdx
+    const dIdx = (dstY + y) * imgW + dstX
+    if (spp === 1) {
+      plane.set(src.subarray(sIdx, sIdx + dstW), dIdx)
+    } else {
+      const end = dIdx + dstW
+      let s = sIdx
+      let d = dIdx
+      while (d < end) { plane[d++] = src[s]; s += spp }
+    }
+  }
+}
+
+function copyIntoPlane16(
+  plane: Uint16Array, imgW: number,
+  dstX: number, dstY: number, dstW: number, dstH: number,
+  src: Uint16Array, rowSamples: number, spp: number, sampleIdx: number,
+): void {
+  for (let y = 0; y < dstH; y++) {
+    const sIdx = y * rowSamples + sampleIdx
     const dIdx = (dstY + y) * imgW + dstX
     if (spp === 1) {
       plane.set(src.subarray(sIdx, sIdx + dstW), dIdx)
@@ -493,11 +568,11 @@ function applyPredictor8(raw: Uint8Array, w: number, rows: number, spp: number):
   }
 }
 
-/** 16-bit samples (file byte order) → 8-bit; applies the horizontal
- *  predictor (tag 317 = 2) on the native 16-bit values in the same pass. */
-function normalize16(raw: Uint8Array, le: boolean, w: number, rows: number, spp: number, pred: boolean): Uint8Array {
+/** Decode native 16-bit samples without discarding the low byte; applies the
+ * horizontal predictor (tag 317 = 2) before storing each reconstructed sample. */
+function decode16Samples(raw: Uint8Array, le: boolean, w: number, rows: number, spp: number, pred: boolean): Uint16Array {
   const n = w * rows * spp
-  const out = new Uint8Array(n)
+  const out = new Uint16Array(n)
   const rowLen = w * spp
   for (let y = 0; y < rows; y++) {
     const row = y * rowLen
@@ -509,7 +584,7 @@ function normalize16(raw: Uint8Array, le: boolean, w: number, rows: number, spp:
         const b1 = raw[idx * 2 + 1]
         let v = le ? (b1 << 8) | b0 : (b0 << 8) | b1
         if (pred) { v = (v + acc) & 0xffff; acc = v }
-        out[idx] = v >> 8
+        out[idx] = v
       }
     }
   }
@@ -597,6 +672,39 @@ function combinePlanes(
     out[o + 2] = b
     out[o + 3] = a
   }
+}
+
+function combinePlanes16(
+  planes: Uint16Array[], n: number,
+  photometric: number, alphaSample: number, assocAlpha: boolean, invertGray: boolean,
+): Uint16Array {
+  const out = new Uint16Array(n * 4)
+  const p0 = planes[0], p1 = planes[1], p2 = planes[2], p3 = planes[3]
+  const pAlpha = alphaSample >= 0 && planes[alphaSample] ? planes[alphaSample] : null
+  for (let i = 0, o = 0; i < n; i++, o += 4) {
+    let r = 0, g = 0, b = 0
+    const a = pAlpha ? pAlpha[i] : 65535
+    if (photometric === 0 || photometric === 1) {
+      let v = p0[i]
+      if (invertGray) v = 65535 - v
+      r = g = b = v
+    } else if (photometric === 2) {
+      r = p0[i]; g = p1 ? p1[i] : 0; b = p2 ? p2[i] : 0
+    } else if (photometric === 5) {
+      const k = p3 ? p3[i] : 0
+      r = Math.round(((65535 - p0[i]) * (65535 - k)) / 65535)
+      g = Math.round(((65535 - (p1 ? p1[i] : 0)) * (65535 - k)) / 65535)
+      b = Math.round(((65535 - (p2 ? p2[i] : 0)) * (65535 - k)) / 65535)
+    }
+    if (assocAlpha && a > 0 && a < 65535) {
+      const f = 65535 / a
+      r = Math.min(65535, Math.round(r * f))
+      g = Math.min(65535, Math.round(g * f))
+      b = Math.min(65535, Math.round(b * f))
+    }
+    out[o] = r; out[o + 1] = g; out[o + 2] = b; out[o + 3] = a
+  }
+  return out
 }
 
 // ============================================================
@@ -802,8 +910,10 @@ export function decodePnm(bytes: Uint8Array): RawImage {
   const pixCount = width * height
   const out = new Uint8ClampedArray(pixCount * 4)
   const scale16 = maxval > 255
+  const out16 = scale16 ? new Uint16Array(pixCount * 4) : undefined
   const val = (i: number): number => (scale16 ? (bytes[i] << 8) | bytes[i + 1] : bytes[i])
   const scale = (v: number): number => (maxval === 1 ? (v ? 255 : 0) : Math.round((v * 255) / maxval))
+  const scaleTo16 = (v: number): number => Math.round((Math.max(0, Math.min(maxval, v)) * 65535) / maxval)
 
   if (magic === 'P7') {
     const isBW = tupltype.startsWith('BLACKANDWHITE')
@@ -826,8 +936,20 @@ export function decodePnm(bytes: Uint8Array): RawImage {
         out[o + 2] = scale(val(p + 2 * bps))
       }
       out[o + 3] = hasAlpha ? scale(val(p + colorCount * bps)) : 255
+      if (out16) {
+        if (colorCount === 1) {
+          const raw = val(p)
+          const v16 = isBW ? (raw ? 0 : 65535) : scaleTo16(raw)
+          out16[o] = v16; out16[o + 1] = v16; out16[o + 2] = v16
+        } else {
+          out16[o] = scaleTo16(val(p))
+          out16[o + 1] = scaleTo16(val(p + bps))
+          out16[o + 2] = scaleTo16(val(p + 2 * bps))
+        }
+        out16[o + 3] = hasAlpha ? scaleTo16(val(p + colorCount * bps)) : 65535
+      }
     }
-    return { width, height, rgba: out }
+    return { width, height, rgba: out, rgba16: out16, sourceBitDepth: scale16 ? 16 : Math.max(1, Math.ceil(Math.log2(maxval + 1))) }
   }
 
   switch (magic) {
@@ -846,8 +968,10 @@ export function decodePnm(bytes: Uint8Array): RawImage {
     case 'P2': {
       let o = 0
       for (let i = 0; i < pixCount; i++) {
-        const v = scale(parseInt(nextToken(), 10) || 0)
+        const raw = parseInt(nextToken(), 10) || 0
+        const v = scale(raw)
         out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
+        if (out16) { const v16 = scaleTo16(raw); out16[o] = v16; out16[o + 1] = v16; out16[o + 2] = v16; out16[o + 3] = 65535 }
         o += 4
       }
       break
@@ -855,10 +979,11 @@ export function decodePnm(bytes: Uint8Array): RawImage {
     case 'P3': {
       let o = 0
       for (let i = 0; i < pixCount; i++) {
-        out[o] = scale(parseInt(nextToken(), 10) || 0)
-        out[o + 1] = scale(parseInt(nextToken(), 10) || 0)
-        out[o + 2] = scale(parseInt(nextToken(), 10) || 0)
-        out[o + 3] = 255
+        const rr = parseInt(nextToken(), 10) || 0
+        const gg = parseInt(nextToken(), 10) || 0
+        const bb = parseInt(nextToken(), 10) || 0
+        out[o] = scale(rr); out[o + 1] = scale(gg); out[o + 2] = scale(bb); out[o + 3] = 255
+        if (out16) { out16[o] = scaleTo16(rr); out16[o + 1] = scaleTo16(gg); out16[o + 2] = scaleTo16(bb); out16[o + 3] = 65535 }
         o += 4
       }
       break
@@ -881,8 +1006,10 @@ export function decodePnm(bytes: Uint8Array): RawImage {
       const bps = scale16 ? 2 : 1
       if (pos + pixCount * bps > n) throw new Error('Truncated PGM (P5) raster')
       for (let i = 0, o = 0, p = pos; i < pixCount; i++, o += 4, p += bps) {
-        const v = scale(val(p))
+        const raw = val(p)
+        const v = scale(raw)
         out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
+        if (out16) { const v16 = scaleTo16(raw); out16[o] = v16; out16[o + 1] = v16; out16[o + 2] = v16; out16[o + 3] = 65535 }
       }
       break
     }
@@ -890,15 +1017,155 @@ export function decodePnm(bytes: Uint8Array): RawImage {
       const bps = scale16 ? 2 : 1
       if (pos + pixCount * 3 * bps > n) throw new Error('Truncated PPM (P6) raster')
       for (let i = 0, o = 0, p = pos; i < pixCount; i++, o += 4, p += 3 * bps) {
-        out[o] = scale(val(p))
-        out[o + 1] = scale(val(p + bps))
-        out[o + 2] = scale(val(p + 2 * bps))
-        out[o + 3] = 255
+        const rr = val(p), gg = val(p + bps), bb = val(p + 2 * bps)
+        out[o] = scale(rr); out[o + 1] = scale(gg); out[o + 2] = scale(bb); out[o + 3] = 255
+        if (out16) { out16[o] = scaleTo16(rr); out16[o + 1] = scaleTo16(gg); out16[o + 2] = scaleTo16(bb); out16[o + 3] = 65535 }
       }
       break
     }
   }
-  return { width, height, rgba: out }
+  return { width, height, rgba: out, rgba16: out16, sourceBitDepth: scale16 ? 16 : Math.max(1, Math.ceil(Math.log2(maxval + 1))) }
+}
+
+// ============================================================
+// PFM / Radiance HDR — floating-point scene-referred formats
+// ============================================================
+
+function floatPreview(linear: Float32Array): Uint8ClampedArray<ArrayBuffer> {
+  const out = new Uint8ClampedArray(linear.length)
+  const aces = (x: number) => {
+    x = Math.max(0, x)
+    return Math.max(0, Math.min(1, (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14)))
+  }
+  for (let i = 0; i < linear.length; i += 4) {
+    out[i] = Math.round(linearToSrgbUnit(aces(linear[i])) * 255)
+    out[i + 1] = Math.round(linearToSrgbUnit(aces(linear[i + 1])) * 255)
+    out[i + 2] = Math.round(linearToSrgbUnit(aces(linear[i + 2])) * 255)
+    out[i + 3] = Math.round(Math.max(0, Math.min(1, linear[i + 3])) * 255)
+  }
+  return out
+}
+
+function readHeaderLine(bytes: Uint8Array, state: { pos: number }): string {
+  const start = state.pos
+  while (state.pos < bytes.length && bytes[state.pos] !== 0x0a) state.pos++
+  let end = state.pos
+  if (state.pos < bytes.length) state.pos++
+  if (end > start && bytes[end - 1] === 0x0d) end--
+  return ascii(bytes, start, end - start)
+}
+
+export function decodePfm(bytes: Uint8Array): RawImage {
+  const state = { pos: 0 }
+  const magic = readHeaderLine(bytes, state).trim()
+  if (magic !== 'PF' && magic !== 'Pf') throw new Error('Not a PFM file')
+  let dims = ''
+  while (!dims && state.pos < bytes.length) {
+    const line = readHeaderLine(bytes, state).trim()
+    if (line && !line.startsWith('#')) dims = line
+  }
+  const dm = /^(\d+)\s+(\d+)$/.exec(dims)
+  if (!dm) throw new Error('Invalid PFM dimensions')
+  const width = Number(dm[1]), height = Number(dm[2])
+  if (width < 1 || height < 1 || width * height > 268435456) throw new Error('Invalid PFM dimensions')
+  const scaleLine = readHeaderLine(bytes, state).trim()
+  const scale = Number(scaleLine)
+  if (!Number.isFinite(scale) || scale === 0) throw new Error('Invalid PFM scale')
+  const little = scale < 0
+  const mul = Math.abs(scale)
+  const channels = magic === 'PF' ? 3 : 1
+  const count = width * height * channels
+  if (state.pos + count * 4 > bytes.length) throw new Error('Truncated PFM raster')
+  const view = new DataView(bytes.buffer, bytes.byteOffset + state.pos, count * 4)
+  const rgbaFloat = new Float32Array(width * height * 4)
+  for (let fy = 0; fy < height; fy++) {
+    const y = height - 1 - fy
+    for (let x = 0; x < width; x++) {
+      const src = (fy * width + x) * channels
+      const dst = (y * width + x) * 4
+      if (channels === 1) {
+        const v = view.getFloat32(src * 4, little) * mul
+        rgbaFloat[dst] = v; rgbaFloat[dst + 1] = v; rgbaFloat[dst + 2] = v
+      } else {
+        rgbaFloat[dst] = view.getFloat32(src * 4, little) * mul
+        rgbaFloat[dst + 1] = view.getFloat32((src + 1) * 4, little) * mul
+        rgbaFloat[dst + 2] = view.getFloat32((src + 2) * 4, little) * mul
+      }
+      rgbaFloat[dst + 3] = 1
+    }
+  }
+  return { width, height, rgba: floatPreview(rgbaFloat), rgbaFloat, sourceColorSpace: 'linear-srgb', sourceBitDepth: 32 }
+}
+
+export function decodeRadianceHdr(bytes: Uint8Array): RawImage {
+  const state = { pos: 0 }
+  const sig = readHeaderLine(bytes, state).trim()
+  if (sig !== '#?RADIANCE' && sig !== '#?RGBE') throw new Error('Not a Radiance HDR file')
+  let line = ''
+  while (state.pos < bytes.length) {
+    line = readHeaderLine(bytes, state).trim()
+    if (!line) break
+  }
+  let res = readHeaderLine(bytes, state).trim()
+  while (!res && state.pos < bytes.length) res = readHeaderLine(bytes, state).trim()
+  const m = /^([+-])Y\s+(\d+)\s+([+-])X\s+(\d+)$/.exec(res)
+  if (!m) throw new Error('Unsupported Radiance HDR orientation')
+  const height = Number(m[2]), width = Number(m[4])
+  if (width < 1 || height < 1 || width * height > 268435456) throw new Error('Invalid HDR dimensions')
+  const yTopDown = m[1] === '-'
+  const xLeftRight = m[3] === '+'
+  const rgbe = new Uint8Array(width * height * 4)
+
+  for (let sy = 0; sy < height; sy++) {
+    const row = new Uint8Array(width * 4)
+    if (width >= 8 && width <= 0x7fff && state.pos + 4 <= bytes.length &&
+        bytes[state.pos] === 2 && bytes[state.pos + 1] === 2 &&
+        ((bytes[state.pos + 2] << 8) | bytes[state.pos + 3]) === width) {
+      state.pos += 4
+      for (let ch = 0; ch < 4; ch++) {
+        let x = 0
+        while (x < width) {
+          if (state.pos >= bytes.length) throw new Error('Truncated HDR RLE')
+          const code = bytes[state.pos++]
+          if (code > 128) {
+            const run = code - 128
+            if (run < 1 || state.pos >= bytes.length || x + run > width) throw new Error('Corrupt HDR RLE run')
+            const v = bytes[state.pos++]
+            for (let k = 0; k < run; k++) row[(x++ * 4) + ch] = v
+          } else {
+            const run = code
+            if (run < 1 || state.pos + run > bytes.length || x + run > width) throw new Error('Corrupt HDR RLE literal')
+            for (let k = 0; k < run; k++) row[(x++ * 4) + ch] = bytes[state.pos++]
+          }
+        }
+      }
+    } else {
+      const need = width * 4
+      if (state.pos + need > bytes.length) throw new Error('Truncated HDR raster')
+      row.set(bytes.subarray(state.pos, state.pos + need))
+      state.pos += need
+    }
+    const y = yTopDown ? sy : height - 1 - sy
+    for (let sx = 0; sx < width; sx++) {
+      const x = xLeftRight ? sx : width - 1 - sx
+      const src = sx * 4
+      const dst = (y * width + x) * 4
+      rgbe[dst] = row[src]; rgbe[dst + 1] = row[src + 1]; rgbe[dst + 2] = row[src + 2]; rgbe[dst + 3] = row[src + 3]
+    }
+  }
+
+  const rgbaFloat = new Float32Array(width * height * 4)
+  for (let i = 0; i < rgbe.length; i += 4) {
+    const e = rgbe[i + 3]
+    if (e) {
+      const f = Math.pow(2, e - 136)
+      rgbaFloat[i] = (rgbe[i] + 0.5) * f
+      rgbaFloat[i + 1] = (rgbe[i + 1] + 0.5) * f
+      rgbaFloat[i + 2] = (rgbe[i + 2] + 0.5) * f
+    }
+    rgbaFloat[i + 3] = 1
+  }
+  return { width, height, rgba: floatPreview(rgbaFloat), rgbaFloat, sourceColorSpace: 'linear-srgb', sourceBitDepth: 32 }
 }
 
 // ============================================================
