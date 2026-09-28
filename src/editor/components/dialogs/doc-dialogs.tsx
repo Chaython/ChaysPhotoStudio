@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { engine, type TransformMode, type TransformReference } from '../../engine/engine'
 import { useEditorStore } from '../../store'
-import { createCanvas, ctx2d, downloadBlob } from '../../utils/canvas'
+import { createCanvas, ctx2d, downloadBlob, canvasPixelCapabilities } from '../../utils/canvas'
 import { compositeDocument, getFlatComposite } from '../../engine/document'
 import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd } from '../../formats'
 import type { PsdLayerInput } from '../../formats'
@@ -33,12 +33,15 @@ export function NewDocDialog({ onClose }: DialogProps) {
   const [name, setName] = useState('')
   const [fill, setFill] = useState('white')
   const [resolutionPpi, setResolutionPpi] = useState(300)
+  const caps = canvasPixelCapabilities()
+  const [bitDepth, setBitDepth] = useState<8 | 16>(caps.float16Context && caps.float16ImageData ? 16 : 8)
+  const [colorSpace, setColorSpace] = useState<'srgb' | 'display-p3'>(caps.displayP3 ? 'display-p3' : 'srgb')
   const store = useEditorStore.getState()
 
   const create = () => {
     if (w < 1 || h < 1 || w > 8192 || h > 8192) { store.pushToast('Dimensions must be 1–8192', 'error'); return }
-    engine.newDocument({ name: name || undefined, width: Math.round(w), height: Math.round(h), resolutionPpi, fill: fill as any })
-    store.pushToast(`Created ${Math.round(w)}×${Math.round(h)} document at ${Math.round(resolutionPpi)} PPI`, 'success')
+    const doc = engine.newDocument({ name: name || undefined, width: Math.round(w), height: Math.round(h), resolutionPpi, bitDepth, colorSpace, fill: fill as any })
+    store.pushToast(`Created ${Math.round(w)}×${Math.round(h)} · ${doc.workingBitDepth}-bit · ${doc.workingColorSpace} · ${Math.round(resolutionPpi)} PPI`, 'success')
     onClose()
   }
 
@@ -83,6 +86,31 @@ export function NewDocDialog({ onClose }: DialogProps) {
             PPI · print size {(w / Math.max(1, resolutionPpi)).toFixed(2)} × {(h / Math.max(1, resolutionPpi)).toFixed(2)} in
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label className="text-[11px]">Color depth</Label>
+            <Select value={String(bitDepth)} onValueChange={v => setBitDepth(v === '16' ? 16 : 8)}>
+              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent className="z-50">
+                <SelectItem value="8" className="text-xs">8-bit/channel</SelectItem>
+                <SelectItem value="16" className="text-xs" disabled={!caps.float16Context || !caps.float16ImageData}>16-bit float working raster</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px]">Color space</Label>
+            <Select value={colorSpace} onValueChange={v => setColorSpace(v === 'display-p3' ? 'display-p3' : 'srgb')}>
+              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent className="z-50">
+                <SelectItem value="srgb" className="text-xs">sRGB</SelectItem>
+                <SelectItem value="display-p3" className="text-xs" disabled={!caps.displayP3}>Display P3</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {(!caps.float16Context || !caps.float16ImageData) && (
+          <div className="text-[10px] text-muted-foreground">16-bit working canvases are unavailable in this browser; 8-bit remains available.</div>
+        )}
         <div className="space-y-1">
           <Label className="text-[11px]">Presets</Label>
           <div className="grid grid-cols-1 gap-1">
@@ -234,6 +262,7 @@ export function ExportDialog({ onClose }: DialogProps) {
   const [scale, setScale] = useState(1)
   const [background, setBackground] = useState('#ffffff')
   const [tiffCompression, setTiffCompression] = useState<'none' | 'lzw'>('lzw')
+  const [tiffBitDepth, setTiffBitDepth] = useState<8 | 16>(doc?.workingBitDepth === 16 ? 16 : 8)
   const [icoSizes, setIcoSizes] = useState<number[]>([16, 32, 48, 256])
   const [name, setName] = useState(doc?.name ?? 'export')
   const [busy, setBusy] = useState(false)
@@ -304,6 +333,7 @@ export function ExportDialog({ onClose }: DialogProps) {
           background,
           icoSizes: effectiveIcoSizes.length ? effectiveIcoSizes : undefined,
           tiffCompression,
+          tiffBitDepth,
         })
         downloadBlob(blob, `${outName}.${info.ext}`)
         store.pushToast(`Exported ${outName}.${info.ext}`, 'success')
@@ -371,6 +401,19 @@ export function ExportDialog({ onClose }: DialogProps) {
                 <SelectItem value="none" className="text-xs">None</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        )}
+        {opts.includes('tiffBitDepth') && (
+          <div className="space-y-1">
+            <Label className="text-[11px]">TIFF channel depth</Label>
+            <Select value={String(tiffBitDepth)} onValueChange={v => setTiffBitDepth(v === '16' ? 16 : 8)}>
+              <SelectTrigger className="h-7 text-xs w-44"><SelectValue /></SelectTrigger>
+              <SelectContent className="z-50">
+                <SelectItem value="8" className="text-xs">8-bit/channel</SelectItem>
+                <SelectItem value="16" className="text-xs" disabled={doc?.workingBitDepth !== 16}>16-bit/channel</SelectItem>
+              </SelectContent>
+            </Select>
+            {doc?.workingBitDepth !== 16 && <div className="text-[10px] text-muted-foreground">16-bit TIFF export requires a 16-bit working document.</div>}
           </div>
         )}
         {opts.includes('icoSizes') && (
