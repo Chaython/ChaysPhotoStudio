@@ -3,10 +3,10 @@ import { engine } from './engine'
 import { useEditorStore } from '../store'
 import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile } from '../utils/canvas'
 import { newLayer } from './document'
-import type { HistoryState, Layer, PsDocument } from '../types'
+import type { HistoryState, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
 import { decodeFile, detectFormat } from '../formats'
-import type { DecodedImage, ImportFormatId } from '../formats'
-import { isPhotopeaPublishedExtension } from '../formats'
+import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
+import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension } from '../formats'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
@@ -64,6 +64,15 @@ export async function openFiles(files: File[], asLayer = false) {
         engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, resolutionPpi: decoded.resolutionPpi })
         continue
       }
+      if (!asLayer && hasDedicatedDocumentParser(file.name)) {
+        const decoded = await decodeFile(file)
+        if (decoded.documentLayers?.length) {
+          addStructuredDocument(file.name, decoded)
+          for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(warning, 'info')
+          if ((decoded.warnings?.length ?? 0) > 3) store.pushToast(`${decoded.warnings!.length - 3} additional import warnings`, 'info')
+          continue
+        }
+      }
       const decoded = await decodeToCanvas(file)
       if (asLayer && engine.activeDoc) {
         engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
@@ -79,6 +88,80 @@ export async function openFiles(files: File[], asLayer = false) {
       store.pushToast(`Failed to open ${file.name}${why}`, 'error')
     }
   }
+}
+
+const DEFAULT_TEXT: TextSpec = {
+  content: 'Type here', fontFamily: 'Arial', fontSize: 48, color: '#000000',
+  bold: false, italic: false, align: 'left', lineHeight: 1.2, tracking: 0, x: 0, y: 48,
+}
+
+const DEFAULT_SHAPE: ShapeSpec = {
+  shape: 'rect', x: 0, y: 0, w: 100, h: 100, radius: 0,
+  fill: '#000000', fillOpacity: 100, stroke: null, strokeWidth: 0, strokeOpacity: 100,
+  sides: 5, starInset: 50,
+}
+
+function layerFromParsed(parsed: ParsedDocumentLayer, width: number, height: number): Layer | null {
+  const kind = parsed.kind
+  const layer = newLayer(kind, parsed.name || 'Layer', width, height)
+  layer.visible = parsed.visible !== false
+  layer.opacity = Math.max(0, Math.min(100, Math.round(Number(parsed.opacity ?? 100))))
+  layer.blendMode = (parsed.blendMode || 'normal') as Layer['blendMode']
+
+  if (kind === 'raster') {
+    if (!parsed.canvas) return null
+    layer.canvas = parsed.canvas
+    layer.offsetX = Number(parsed.left) || 0
+    layer.offsetY = Number(parsed.top) || 0
+  } else if (kind === 'smart') {
+    if (!parsed.source && !parsed.canvas) return null
+    layer.source = parsed.source ?? parsed.canvas ?? null
+    layer.transform = parsed.transform ?? {
+      x: (Number(parsed.left) || 0) + (layer.source?.width ?? width) / 2,
+      y: (Number(parsed.top) || 0) + (layer.source?.height ?? height) / 2,
+      scale: 1, rotation: 0,
+    }
+  } else if (kind === 'text') {
+    if (!parsed.text) return null
+    layer.text = { ...DEFAULT_TEXT, ...parsed.text } as TextSpec
+  } else if (kind === 'shape') {
+    if (!parsed.shape) return null
+    layer.shape = { ...DEFAULT_SHAPE, ...parsed.shape } as ShapeSpec
+  }
+  return layer
+}
+
+function addStructuredDocument(name: string, decoded: DecodedImage): PsDocument {
+  const width = Math.max(1, decoded.width), height = Math.max(1, decoded.height)
+  const doc: PsDocument = {
+    id: uid(), name, width, height,
+    resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
+    workingBitDepth: 8,
+    sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    workingColorSpace: 'srgb',
+    layers: [], activeLayerId: null,
+    selection: null, channelView: 'rgb', savedChannels: [],
+    guides: [],
+    view: { zoom: 1, panX: 0, panY: 0 },
+    history: { states: [], index: -1 },
+    historyBrushSourceIndex: 0,
+    dirty: false, previewFilter: null, previewAdjustment: null,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+  }
+  for (const parsed of decoded.documentLayers ?? []) {
+    const layer = layerFromParsed(parsed, width, height)
+    if (layer) doc.layers.push(layer)
+  }
+  if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
+    sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    resolutionPpi: decoded.resolutionPpi,
+  })
+  doc.activeLayerId = doc.layers[doc.layers.length - 1].id
+  engine.docs.push(doc)
+  engine.setActiveDocument(doc.id)
+  engine.pushHistory(`Open ${decoded.format.toUpperCase()}`, doc)
+  engine.emit()
+  return doc
 }
 
 /** build a document from decoded PSD layers */
