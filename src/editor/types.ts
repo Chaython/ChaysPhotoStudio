@@ -341,6 +341,12 @@ export interface Layer {
   blendIf: BlendIfSettings | null
   /** non-destructive layer styles (drop shadow / glow / stroke / overlay) */
   fx: LayerFX | null
+  /** Opaque Photoshop additional-layer-information blocks retained from an
+   * imported PSD/PSB. They are encoded as base64 so project JSON and history
+   * snapshots can preserve unsupported Photoshop metadata losslessly. Blocks
+   * that Chay's Photo Studio writes itself (e.g. the Unicode layer name) are
+   * regenerated on export rather than stored here. */
+  psdAdditionalInfo?: string[]
   /** provenance marker — 'detect' = lifted from an AI-detected object box
    *  (Detect Objects dialog → "Layer"); lets the Layers panel badge it */
   origin?: 'detect'
