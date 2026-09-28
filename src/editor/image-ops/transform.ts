@@ -194,6 +194,21 @@ export function resampleWarpMesh(mesh: TransformWarpSpec, cols: number, rows: nu
 
 export type WarpPreset = 'custom' | 'arc' | 'arch' | 'bulge' | 'flag' | 'wave'
 
+export function warpMeshDestinationPoints(
+  mesh: TransformWarpSpec,
+  quad: Point2[],
+): Point2[] {
+  const m = validateWarpMesh(mesh)
+  if (!m || quad.length !== 4) return []
+  const unit = [
+    { x: 0, y: 0 }, { x: 1, y: 0 },
+    { x: 1, y: 1 }, { x: 0, y: 1 },
+  ]
+  const h = homography(unit, quad)
+  if (!h) return []
+  return m.points.map(p => projectPoint(h, p))
+}
+
 /** Photoshop-style preset warp generator. Bend/H/V are percentages. */
 export function presetWarpMesh(
   cols: number,
