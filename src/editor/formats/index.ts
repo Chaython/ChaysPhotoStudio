@@ -19,14 +19,18 @@ import { decodePsd, psdBlendKeyToMode } from './psd'
 import type { ImportFormatId, RawImage } from './decoders'
 import type { ExportFormatId } from './encoders'
 import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtension, publishedFormatKind, PHOTOPEA_IMPORT_ACCEPT } from './photopea-formats'
+import { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
+import type { ParsedDocumentLayer } from './document-parser-types'
 
 export type { ImportFormatId, RawImage } from './decoders'
 export type { ExportFormatId } from './encoders'
 export type { PsdDecoded, PsdLayer, PsdLayerInput } from './psd'
+export type { ParsedDocument, ParsedDocumentLayer } from './document-parser-types'
 export { detectFormat, rawToCanvas, scanAlpha } from './decoders'
 export { ICO_SIZE_POOL } from './encoders'
 export { decodePsd, buildPsd, psdBlendKeyToMode, blendModeToPsdKey } from './psd'
 export { PHOTOPEA_IMPORT_ACCEPT, PHOTOPEA_COMPLEX_EXTENSIONS, PHOTOPEA_RASTER_EXTENSIONS, PHOTOPEA_RAW_EXTENSIONS, PHOTOPEA_ANIMATED_EXTENSIONS, EXTRA_IMPORT_EXTENSIONS, fileExtension, publishedFormatKind, isPhotopeaPublishedExtension } from './photopea-formats'
+export { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 
 // ============================================================
 // import
@@ -45,6 +49,9 @@ export interface DecodedImage {
   sourceBitDepth?: number
   /** Physical resolution metadata when available. */
   resolutionPpi?: number
+  /** Semantic layers supplied by dedicated non-PSD document parsers. */
+  documentLayers?: ParsedDocumentLayer[]
+  warnings?: string[]
   psdImageResources?: Uint8Array[]
   psdLayers?: {
     name: string
@@ -163,6 +170,30 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
 export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const sourceName = (file as File).name || ''
+  // Dedicated structured parsers keep editable objects/layers for supported
+  // document containers. A composite preview is still attached for Place,
+  // Open-as-Layer and callers that only understand a canvas.
+  if (sourceName && hasDedicatedDocumentParser(sourceName)) {
+    const parsed = await parseStructuredDocument(file, sourceName)
+    if (parsed) {
+      let canvas = parsed.composite ?? null
+      if (!canvas) {
+        try { canvas = await decodePublishedFormatPreview(file, sourceName) }
+        catch { canvas = createCanvas(parsed.width, parsed.height) }
+      }
+      return {
+        canvas,
+        width: parsed.width,
+        height: parsed.height,
+        hasAlpha: scanAlpha(getImageData(canvas).data),
+        format: fileExtension(sourceName),
+        sourceBitDepth: parsed.sourceBitDepth ?? 8,
+        resolutionPpi: parsed.resolutionPpi,
+        documentLayers: parsed.layers,
+        warnings: parsed.warnings,
+      }
+    }
+  }
   // Most camera RAW formats are TIFF-family containers. Their magic bytes
   // therefore look like ordinary TIFF even though the sensor payload is not a
   // baseline RGB TIFF. Route them to the RAW/embedded-preview path before the
