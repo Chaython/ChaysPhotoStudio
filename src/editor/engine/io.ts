@@ -1,7 +1,7 @@
 // File IO: open images, place layers, project save/load, export
 import { engine } from './engine'
 import { useEditorStore } from '../store'
-import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid } from '../utils/canvas'
+import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile } from '../utils/canvas'
 import { newLayer } from './document'
 import type { HistoryState, Layer, PsDocument } from '../types'
 import { decodeFile, detectFormat } from '../formats'
@@ -10,12 +10,12 @@ import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
-const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'qoi', 'pcx', 'ico']
+const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico']
 
-/** sniff the first 32 bytes — enough for every magic-byte signature we know */
+/** sniff the first 64 bytes — enough for every magic-byte signature we know */
 async function sniffFormat(file: File): Promise<ImportFormatId | null> {
   try {
-    const head = new Uint8Array(await file.slice(0, 32).arrayBuffer())
+    const head = new Uint8Array(await file.slice(0, 64).arrayBuffer())
     return detectFormat(head)
   } catch {
     return null
@@ -25,23 +25,25 @@ async function sniffFormat(file: File): Promise<ImportFormatId | null> {
 interface DecodedCanvas {
   canvas: HTMLCanvasElement
   sourceBitDepth: number
+  workingBitDepth: 8 | 16
   resolutionPpi?: number
 }
 
-/** Decode a file to a canvas while retaining source precision metadata. The
- * current working raster remains 8-bit; this prevents 16-bit input from being
- * silently presented as a 16-bit editing pipeline. */
+/** Decode while retaining source precision. Custom high-depth codecs create
+ * rgba-float16 canvases when the runtime supports them; otherwise they expose
+ * the same file through an 8-bit compatibility preview. */
 async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
   const format = await sniffFormat(file)
   if (format && CODEC_FORMATS.includes(format)) {
     const decoded = await decodeFile(file)
-    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8, resolutionPpi: decoded.resolutionPpi }
+    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi }
   }
   try {
-    return { canvas: await fileToCanvas(file), sourceBitDepth: 8 }
+    const canvas = await fileToCanvas(file)
+    return { canvas, sourceBitDepth: 8, workingBitDepth: canvasProfile(canvas).bitDepth }
   } catch {
     const decoded = await decodeFile(file)
-    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8 }
+    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi }
   }
 }
 
@@ -65,10 +67,11 @@ export async function openFiles(files: File[], asLayer = false) {
       if (asLayer && engine.activeDoc) {
         engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
         if (decoded.sourceBitDepth > 8) {
-          store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source normalized to the current 8-bit working raster`, 'info')
+          const targetDepth = engine.activeDoc?.workingBitDepth ?? 8
+          store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed into the ${targetDepth}-bit document`, 'info')
         }
       } else {
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, resolutionPpi: decoded.resolutionPpi })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi })
       }
     } catch (err) {
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
@@ -125,7 +128,7 @@ export async function placeImageAsSmartLayer(file: File) {
     const decoded = await decodeToCanvas(file)
     engine.placeSmartLayer(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
     if (decoded.sourceBitDepth > 8) {
-      store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source is preserved only as an 8-bit smart-object raster today`, 'info')
+      store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed as a ${decoded.workingBitDepth}-bit smart-object raster`, 'info')
     }
     store.pushToast(`Placed ${file.name} as Smart Object`, 'success')
   } catch {
@@ -134,11 +137,20 @@ export async function placeImageAsSmartLayer(file: File) {
 }
 
 // ---------- project format ----------
+interface SerializedFloatCanvas {
+  width: number
+  height: number
+  colorSpace: 'srgb' | 'display-p3'
+  data: string
+}
+
 export interface SerializedLayer {
   props: Record<string, any>
   canvas?: string
+  canvas16?: SerializedFloatCanvas
   mask?: string
   source?: string
+  source16?: SerializedFloatCanvas
 }
 
 interface SerializedHistoryState {
@@ -164,7 +176,7 @@ interface SerializedHistorySnapshot {
 
 export interface SerializedProject {
   format: 'z-photo-project'
-  version: 1 | 2
+  version: 1 | 2 | 3
   doc: {
     name: string
     width: number
@@ -194,6 +206,36 @@ export interface SerializedProject {
 
 const projectHandles = new Map<string, any>()
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let out = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    out += String.fromCharCode(...bytes.subarray(i, Math.min(bytes.length, i + chunk)))
+  }
+  return btoa(out)
+}
+
+function base64ToBytes(text: string): Uint8Array {
+  const raw = atob(text)
+  const out = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
+  return out
+}
+
+function serializeFloatCanvas(c: HTMLCanvasElement | null): SerializedFloatCanvas | undefined {
+  if (!c || canvasProfile(c).bitDepth !== 16) return undefined
+  const image = getFloat16ImageData(c)
+  if (!image?.data?.buffer) return undefined
+  const data = image.data
+  const bytes = new Uint8Array(data.buffer, data.byteOffset ?? 0, data.byteLength)
+  return {
+    width: c.width,
+    height: c.height,
+    colorSpace: canvasProfile(c).colorSpace,
+    data: bytesToBase64(bytes),
+  }
+}
+
 function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): SerializedLayer {
   return {
     props: {
@@ -205,8 +247,10 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
     },
     canvas: l.canvas ? toDataURL(l.canvas) : undefined,
+    canvas16: serializeFloatCanvas(l.canvas),
     mask: l.mask ? toDataURL(l.mask) : undefined,
     source: l.source ? toDataURL(l.source) : undefined,
+    source16: serializeFloatCanvas(l.source),
   }
 }
 
@@ -230,7 +274,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
   const toDataURL = (c: HTMLCanvasElement) => c.toDataURL('image/png')
   const layers: SerializedLayer[] = doc.layers.map(l => serializeLayer(l, toDataURL))
   return {
-    format: 'z-photo-project', version: 2,
+    format: 'z-photo-project', version: 3,
     doc: {
       name: doc.name, width: doc.width, height: doc.height,
       channelView: doc.channelView, guides: doc.guides ?? [], view: { ...doc.view },
@@ -302,12 +346,23 @@ export async function saveProject(opts: { saveAs?: boolean } = {}) {
   }
 }
 
-async function dataURLToCanvas(url: string): Promise<HTMLCanvasElement> {
+async function dataURLToCanvas(url: string, hi?: SerializedFloatCanvas): Promise<HTMLCanvasElement> {
   const img = new Image()
   img.src = url
   await img.decode()
-  const c = createCanvas(img.naturalWidth, img.naturalHeight)
+  const profile = hi ? { bitDepth: 16 as const, colorSpace: hi.colorSpace } : { bitDepth: 8 as const, colorSpace: 'srgb' as const }
+  const c = createCanvas(img.naturalWidth, img.naturalHeight, profile)
   ctx2d(c).drawImage(img, 0, 0)
+  if (hi && hi.width === c.width && hi.height === c.height) {
+    const Float16 = (globalThis as any).Float16Array
+    if (typeof Float16 === 'function') {
+      try {
+        const bytes = base64ToBytes(hi.data)
+        const aligned = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.slice().buffer
+        putFloat16Pixels(c, new Float16(aligned), hi.colorSpace)
+      } catch { /* keep PNG compatibility preview */ }
+    }
+  }
   return c
 }
 
@@ -329,9 +384,9 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
     origin: sl.props.origin ?? null,
   })
-  if (sl.canvas) layer.canvas = await dataURLToCanvas(sl.canvas)
+  if (sl.canvas) layer.canvas = await dataURLToCanvas(sl.canvas, sl.canvas16)
   if (sl.mask) layer.mask = await dataURLToCanvas(sl.mask)
-  if (sl.source) layer.source = await dataURLToCanvas(sl.source)
+  if (sl.source) layer.source = await dataURLToCanvas(sl.source, sl.source16)
   if (layer.kind === 'raster' && !layer.canvas) layer.canvas = createCanvas(width, height)
   layer._v = 1
   layer._mv = 1
@@ -376,16 +431,19 @@ export async function openSerializedProject(project: SerializedProject, label = 
   if (project.format !== 'z-photo-project') throw new Error('Unsupported project format')
   const { name, width, height, channelView } = project.doc
   if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) throw new Error('Invalid project dimensions')
+  const caps = canvasPixelCapabilities()
+  setCanvasWorkingProfile({
+    bitDepth: project.doc.workingBitDepth === 16 && caps.float16Context && caps.float16ImageData ? 16 : 8,
+    colorSpace: project.doc.workingColorSpace === 'display-p3' && caps.displayP3 ? 'display-p3' : 'srgb',
+  })
   const doc: PsDocument = {
     id: uid(), name, width, height,
-    // Current editable raster storage is always rgba-unorm8. Preserve a
-    // historical/project-reported 16-bit value only as source provenance;
-    // never resurrect the old misleading "16-bit working pipeline" claim.
-    workingBitDepth: 8,
+    workingBitDepth: project.doc.workingBitDepth === 16 &&
+      canvasPixelCapabilities().float16Context && canvasPixelCapabilities().float16ImageData ? 16 : 8,
     sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth)
       ? Number(project.doc.sourceBitDepth)
       : (project.doc.workingBitDepth === 16 ? 16 : 8),
-    workingColorSpace: project.doc.workingColorSpace === 'display-p3' ? 'display-p3' : 'srgb',
+    workingColorSpace: project.doc.workingColorSpace === 'display-p3' && canvasPixelCapabilities().displayP3 ? 'display-p3' : 'srgb',
     resolutionPpi: Math.max(1, Math.min(12000, Number(project.doc.resolutionPpi) || 72)),
     layers: [], activeLayerId: null, selection: null,
     channelView: (channelView ?? 'rgb') as PsDocument['channelView'], savedChannels: [],
