@@ -3375,17 +3375,22 @@ export class Engine {
     for (const l of doc.layers) {
       if (l.canvas) l.canvas = rotateCanvasPixels(l.canvas)
       if (l.mask) l.mask = rotateCanvasPixels(l.mask)
-      if (l.source) {
-        // bake transform into source-space: simpler: keep source, wrap in smart rotate via transform math
-        l.source = rotateCanvasPixels(l.source)
-      }
       if (l.transform) {
-        // rotate anchor point around old center
         const t = l.transform
-        const ox = t.x - doc.width / 2, oy = t.y - doc.height / 2
-        t.x = w / 2 + ox * rc - oy * rs
-        t.y = h / 2 + ox * rs + oy * rc
-        t.rotation += rad
+        const mapPoint = (p: Point2): Point2 => {
+          const ox = p.x - doc.width / 2, oy = p.y - doc.height / 2
+          return { x: w / 2 + ox * rc - oy * rs, y: h / 2 + ox * rs + oy * rc }
+        }
+        if (l.kind === 'smart' && l.source) {
+          const quad = this.layerTransformQuad(l.id)
+          const nextQuad = quad?.map(mapPoint) as typeof t.quad
+          const center = mapPoint({ x: t.x, y: t.y })
+          l.transform = { ...t, x: center.x, y: center.y, rotation: t.rotation + rad, quad: nextQuad }
+          // Smart Object source pixels remain untouched; placement rotates.
+        } else {
+          const center = mapPoint({ x: t.x, y: t.y })
+          l.transform = { ...t, x: center.x, y: center.y, rotation: t.rotation + rad }
+        }
       }
       if (l.text) {
         const ox = l.text.x - doc.width / 2, oy = l.text.y - doc.height / 2
@@ -3429,16 +3434,35 @@ export class Engine {
     for (const l of doc.layers) {
       if (l.canvas) l.canvas = flip(l.canvas)
       if (l.mask) l.mask = flip(l.mask)
-      if (l.source) l.source = flip(l.source)
+      if (l.source && l.kind !== 'smart') l.source = flip(l.source)
       if (l.kind === 'raster' && l.canvas) {
         // mirror the registration so the flipped pixels land at the mirrored doc rect
         if (dir === 'horizontal') l.offsetX = doc.width - (l.offsetX ?? 0) - l.canvas.width
         else l.offsetY = doc.height - (l.offsetY ?? 0) - l.canvas.height
       }
       if (l.transform) {
-        if (dir === 'horizontal') l.transform.x = doc.width - l.transform.x
-        else l.transform.y = doc.height - l.transform.y
-        l.transform.rotation = -l.transform.rotation
+        const t = l.transform
+        if (l.kind === 'smart' && l.source) {
+          const quad = this.layerTransformQuad(l.id)
+          const nextQuad = quad?.map(p => ({
+            x: dir === 'horizontal' ? doc.width - p.x : p.x,
+            y: dir === 'vertical' ? doc.height - p.y : p.y,
+          })) as typeof t.quad
+          l.transform = {
+            ...t,
+            x: dir === 'horizontal' ? doc.width - t.x : t.x,
+            y: dir === 'vertical' ? doc.height - t.y : t.y,
+            rotation: -t.rotation,
+            quad: nextQuad,
+          }
+        } else {
+          l.transform = {
+            ...t,
+            x: dir === 'horizontal' ? doc.width - t.x : t.x,
+            y: dir === 'vertical' ? doc.height - t.y : t.y,
+            rotation: -t.rotation,
+          }
+        }
       }
       l._v++; l._mv++
     }
