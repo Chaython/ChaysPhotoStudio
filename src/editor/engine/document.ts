@@ -3,6 +3,7 @@ import type { Layer, LayerKind, PsDocument, Rect, TextSpec, ShapeSpec, BlendIfSe
 import { BLEND_GCO } from '../constants/tools'
 import { createCanvas, ctx2d, cloneCanvas, uid, getImageData, putImageData, hexToRgb, clamp } from '../utils/canvas'
 import * as imageOps from '../image-ops'
+import { warpCanvasToQuad } from '../image-ops/transform'
 import { applyLayerFX, hasEnabledFX } from './layer-fx'
 import { glCompositeDocument } from './gl/gl-composite'
 import { traceShapePath } from './shape-path'
@@ -501,12 +502,17 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
     const t = layer.transform || { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
-    ctx.save()
-    ctx.translate(t.x, t.y)
-    ctx.rotate(t.rotation)
-    ctx.scale(t.scale, t.scale)
-    ctx.drawImage(layer.source, -layer.source.width / 2, -layer.source.height / 2)
-    ctx.restore()
+    if (t.quad?.length === 4) {
+      const warped = warpCanvasToQuad(layer.source, t.quad)
+      ctx.drawImage(warped.canvas, warped.offsetX, warped.offsetY)
+    } else {
+      ctx.save()
+      ctx.translate(t.x, t.y)
+      ctx.rotate(t.rotation)
+      ctx.scale(t.scale, t.scale)
+      ctx.drawImage(layer.source, -layer.source.width / 2, -layer.source.height / 2)
+      ctx.restore()
+    }
     content = c
   }
   if (!content) return null
