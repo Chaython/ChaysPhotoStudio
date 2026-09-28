@@ -1,3 +1,4 @@
+import type { PixelImage } from '../image-ops/pixel-data'
 // Canvas / color / math helpers used across the engine
 
 export function uid(): string {
@@ -207,6 +208,39 @@ export function putFloat16Pixels(
 
 export function putImageData(c: HTMLCanvasElement, data: ImageData) {
   ctx2d(c).putImageData(data, 0, 0)
+}
+
+/** Read a canvas into the CPU pixel-operation contract. Float16 canvases are
+ * expanded to Float32 in the historical 0..255 working scale so filters keep
+ * their existing parameter semantics without 8-bit quantization. */
+export function getProcessingPixelData(c: HTMLCanvasElement): PixelImage {
+  if (canvasProfile(c).bitDepth === 16) {
+    const hi = getFloat16ImageData(c)
+    if (hi?.data) {
+      const src = hi.data as ArrayLike<number>
+      const data = new Float32Array(src.length)
+      for (let i = 0; i < src.length; i++) data[i] = Number(src[i]) * 255
+      return { width: c.width, height: c.height, data, precision: 'float32' }
+    }
+  }
+  return getImageData(c)
+}
+
+/** Write a CPU pixel-operation result without reducing a float result to
+ * Uint8. 8-bit canvases intentionally retain legacy clamping behavior. */
+export function putProcessingPixelData(c: HTMLCanvasElement, img: PixelImage): void {
+  if (img.data instanceof Float32Array && canvasProfile(c).bitDepth === 16) {
+    const normalized = new Float32Array(img.data.length)
+    for (let i = 0; i < img.data.length; i++) normalized[i] = img.data[i] / 255
+    if (putFloat16Pixels(c, normalized, canvasProfile(c).colorSpace)) return
+  }
+  if (img instanceof ImageData) {
+    putImageData(c, img)
+    return
+  }
+  const data = new Uint8ClampedArray(img.data.length)
+  for (let i = 0; i < img.data.length; i++) data[i] = img.data[i]
+  putImageData(c, new ImageData(data, img.width, img.height))
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
