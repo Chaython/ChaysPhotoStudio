@@ -28,6 +28,7 @@ import {
 import { getScriptApi } from './scripting-api'
 import * as imageOps from '../image-ops'
 import { homography, projectPoint, quadOutputSize, warpCanvasPerspective, type Point2 } from '../image-ops/perspective'
+import { mapRectPointToQuad, warpCanvasToQuad } from '../image-ops/transform'
 import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 
 export const MAX_HISTORY = 50
@@ -63,6 +64,23 @@ function processSelectionMaskRegion(
 
 type Listener = () => void
 
+export type TransformMode = 'free' | 'scale' | 'rotate' | 'skew' | 'distort' | 'perspective'
+export type TransformReference = 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br'
+export interface LayerTransformCommand {
+  mode: TransformMode
+  x?: number
+  y?: number
+  scaleX?: number
+  scaleY?: number
+  rotation?: number
+  skewX?: number
+  skewY?: number
+  perspectiveX?: number
+  perspectiveY?: number
+  reference?: TransformReference
+  cornerOffsets?: [Point2, Point2, Point2, Point2]
+}
+
 /** 1×1 scratch context for measuring text (layerContentRect) — measureText
  *  only needs the font state, never the backing store size */
 let _textCtx: CanvasRenderingContext2D | null = null
@@ -93,6 +111,7 @@ export class Engine {
   // actions recorder
   actions: PsAction[] = []
   private recordingAction: PsAction | null = null
+  private lastTransformCommand: LayerTransformCommand | null = null
 
   onChange(cb: Listener): () => void {
     this.listeners.add(cb)
@@ -1002,9 +1021,14 @@ export class Engine {
     }
     if (l.kind === 'smart' && l.source) {
       const t = l.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
+      if (t.quad?.length === 4) {
+        const xs = t.quad.map(p => p.x), ys = t.quad.map(p => p.y)
+        const x0 = Math.min(...xs), x1 = Math.max(...xs)
+        const y0 = Math.min(...ys), y1 = Math.max(...ys)
+        return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) }
+      }
       const sw = l.source.width * t.scale, sh = l.source.height * t.scale
       if (!t.rotation) return { x: t.x - sw / 2, y: t.y - sh / 2, w: sw, h: sh }
-      // rotated AABB of the scaled source rect about its center
       const cos = Math.abs(Math.cos(t.rotation)), sin = Math.abs(Math.sin(t.rotation))
       const w = sw * cos + sh * sin, h = sw * sin + sh * cos
       return { x: t.x - w / 2, y: t.y - h / 2, w, h }
@@ -1063,7 +1087,12 @@ export class Engine {
       layer.offsetX = (layer.offsetX ?? 0) + dx
       layer.offsetY = (layer.offsetY ?? 0) + dy
     } else if (layer.kind === 'smart' && layer.transform) {
-      layer.transform = { ...layer.transform, x: layer.transform.x + dx, y: layer.transform.y + dy }
+      layer.transform = {
+        ...layer.transform,
+        x: layer.transform.x + dx,
+        y: layer.transform.y + dy,
+        quad: layer.transform.quad?.map(p => ({ x: p.x + dx, y: p.y + dy })) as typeof layer.transform.quad,
+      }
     } else if (layer.kind === 'text' && layer.text) {
       layer.text = { ...layer.text, x: layer.text.x + dx, y: layer.text.y + dy }
     } else if (layer.kind === 'shape' && layer.shape) {
@@ -3482,6 +3511,204 @@ export class Engine {
     invalidateFlat(doc)
     this.pushHistory('Free Transform')
     this.emit()
+  }
+
+
+  /** Current transform quad in document coordinates (TL, TR, BR, BL). */
+  layerTransformQuad(id: string): [Point2, Point2, Point2, Point2] | null {
+    const doc = this.activeDoc
+    const layer = this.layerById(id)
+    if (!doc || !layer) return null
+    if (layer.kind === 'smart' && layer.source) {
+      const t = layer.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
+      if (t.quad?.length === 4) return t.quad.map(p => ({ ...p })) as [Point2, Point2, Point2, Point2]
+      const hw = layer.source.width * t.scale / 2
+      const hh = layer.source.height * t.scale / 2
+      const cos = Math.cos(t.rotation), sin = Math.sin(t.rotation)
+      const map = (x: number, y: number): Point2 => ({
+        x: t.x + x * cos - y * sin,
+        y: t.y + x * sin + y * cos,
+      })
+      return [map(-hw, -hh), map(hw, -hh), map(hw, hh), map(-hw, hh)]
+    }
+    const r = this.layerContentRect(id)
+    if (!r) return null
+    return [
+      { x: r.x, y: r.y },
+      { x: r.x + r.w, y: r.y },
+      { x: r.x + r.w, y: r.y + r.h },
+      { x: r.x, y: r.y + r.h },
+    ]
+  }
+
+  private transformReferencePoint(quad: Point2[], ref: TransformReference): Point2 {
+    const xs = quad.map(p => p.x), ys = quad.map(p => p.y)
+    const x0 = Math.min(...xs), x1 = Math.max(...xs)
+    const y0 = Math.min(...ys), y1 = Math.max(...ys)
+    const xf = ref.endsWith('l') ? 0 : ref.endsWith('r') ? 1 : .5
+    const yf = ref.startsWith('t') ? 0 : ref.startsWith('b') ? 1 : .5
+    return { x: x0 + (x1 - x0) * xf, y: y0 + (y1 - y0) * yf }
+  }
+
+  private transformedQuad(base: [Point2, Point2, Point2, Point2], cmd: LayerTransformCommand): [Point2, Point2, Point2, Point2] {
+    const tx = Number(cmd.x) || 0, ty = Number(cmd.y) || 0
+    if (cmd.mode === 'distort') {
+      const o = cmd.cornerOffsets ?? [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }]
+      return base.map((p, i) => ({ x: p.x + (o[i]?.x || 0) + tx, y: p.y + (o[i]?.y || 0) + ty })) as [Point2, Point2, Point2, Point2]
+    }
+    if (cmd.mode === 'perspective') {
+      const xs = base.map(p => p.x), ys = base.map(p => p.y)
+      const w = Math.max(1, Math.max(...xs) - Math.min(...xs))
+      const h = Math.max(1, Math.max(...ys) - Math.min(...ys))
+      const px = clamp(Number(cmd.perspectiveX) || 0, -100, 100) / 200 * w
+      const py = clamp(Number(cmd.perspectiveY) || 0, -100, 100) / 200 * h
+      const out: [Point2, Point2, Point2, Point2] = base.map(p => ({ ...p })) as any
+      // Horizontal: positive narrows the top / widens the bottom.
+      out[0].x += px; out[1].x -= px; out[2].x += px; out[3].x -= px
+      // Vertical: positive narrows the left / widens the right.
+      out[0].y += py; out[3].y -= py; out[1].y -= py; out[2].y += py
+      for (const p of out) { p.x += tx; p.y += ty }
+      return out
+    }
+
+    const ref = this.transformReferencePoint(base, cmd.reference ?? 'mc')
+    const sx = cmd.mode === 'rotate' || cmd.mode === 'skew' ? 1 : Math.max(.01, Number(cmd.scaleX) || 1)
+    const sy = cmd.mode === 'rotate' || cmd.mode === 'skew' ? 1 : Math.max(.01, Number(cmd.scaleY) || 1)
+    const skewX = cmd.mode === 'skew' ? Math.tan(clamp(Number(cmd.skewX) || 0, -80, 80) * Math.PI / 180) : 0
+    const skewY = cmd.mode === 'skew' ? Math.tan(clamp(Number(cmd.skewY) || 0, -80, 80) * Math.PI / 180) : 0
+    const rot = (cmd.mode === 'scale' || cmd.mode === 'skew' ? 0 : Number(cmd.rotation) || 0) * Math.PI / 180
+    const cos = Math.cos(rot), sin = Math.sin(rot)
+    return base.map(p => {
+      const ox = p.x - ref.x, oy = p.y - ref.y
+      const ax = ox * sx + oy * skewX
+      const ay = oy * sy + ox * skewY
+      return {
+        x: ref.x + ax * cos - ay * sin + tx,
+        y: ref.y + ax * sin + ay * cos + ty,
+      }
+    }) as [Point2, Point2, Point2, Point2]
+  }
+
+  private quadArea(q: Point2[]): number {
+    let area = 0
+    for (let i = 0; i < q.length; i++) {
+      const a = q[i], b = q[(i + 1) % q.length]
+      area += a.x * b.y - b.x * a.y
+    }
+    return Math.abs(area) / 2
+  }
+
+  /** Apply Photoshop-style Scale/Rotate/Skew/Distort/Perspective.
+   * Smart Objects retain a projective quad; raster content is resampled once.
+   * Text/shape layers remain editable for ordinary uniform Free Transform, but
+   * advanced projective transforms rasterize them (with undo available). */
+  transformLayer(id: string, cmd: LayerTransformCommand, remember = true) {
+    const doc = this.activeDoc
+    const layer = this.layerById(id)
+    if (!doc || !layer) return
+    if (layer.locked) { this.ui?.toast('Layer is locked', 'error'); return }
+    if (layer.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels to transform', 'error'); return }
+
+    const base = this.layerTransformQuad(id)
+    if (!base) { this.ui?.toast('This layer has no transformable content', 'error'); return }
+    const target = this.transformedQuad(base, cmd)
+    if (this.quadArea(target) < 1) { this.ui?.toast('Transform would collapse the layer', 'error'); return }
+
+    if (layer.kind === 'smart' && layer.source) {
+      const t = layer.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
+      const cx = target.reduce((s, p) => s + p.x, 0) / 4
+      const cy = target.reduce((s, p) => s + p.y, 0) / 4
+      layer.transform = { ...t, x: cx, y: cy, quad: target }
+      layer._v++
+      invalidateFlat(doc)
+      if (remember) this.lastTransformCommand = structuredClone(cmd)
+      this.pushHistory(`Transform ${cmd.mode[0].toUpperCase() + cmd.mode.slice(1)}`)
+      this.emit()
+      return
+    }
+
+    // Preserve native editable text/shape for transformations representable by
+    // the existing uniform scale/rotate model.
+    if (
+      (layer.kind === 'text' || layer.kind === 'shape') &&
+      (cmd.mode === 'free' || cmd.mode === 'scale' || cmd.mode === 'rotate') &&
+      Math.abs((cmd.scaleX ?? 1) - (cmd.scaleY ?? 1)) < 1e-6
+    ) {
+      this.freeTransformLayer(id, {
+        x: cmd.x ?? 0,
+        y: cmd.y ?? 0,
+        scale: cmd.mode === 'rotate' ? 1 : (cmd.scaleX ?? 1),
+        rotation: cmd.mode === 'scale' ? 0 : (cmd.rotation ?? 0),
+      })
+      if (remember) this.lastTransformCommand = structuredClone(cmd)
+      return
+    }
+
+    const r = this.layerContentRect(id)
+    if (!r || r.w < 1 || r.h < 1) return
+    let source: HTMLCanvasElement
+    if (layer.kind === 'raster' && layer.canvas) {
+      source = layer.canvas
+    } else {
+      const full = layer.kind === 'text' && layer.text
+        ? renderTextCanvas(doc, layer.text)
+        : layer.kind === 'shape' && layer.shape
+          ? renderShapeCanvas(doc, layer.shape)
+          : null
+      if (!full) return
+      source = createCanvas(Math.max(1, Math.ceil(r.w)), Math.max(1, Math.ceil(r.h)))
+      ctx2d(source).drawImage(full, -r.x, -r.y)
+    }
+
+    const warped = warpCanvasToQuad(source, target)
+    // Advanced transforms rasterize text/shapes but preserve masks, vector
+    // masks and Layer Styles as independent layer metadata.
+    layer.kind = 'raster'
+    layer.canvas = warped.canvas
+    layer.offsetX = warped.offsetX
+    layer.offsetY = warped.offsetY
+    layer.source = null
+    layer.transform = null
+    layer.text = null
+    layer.shape = null
+    layer.smartFilters = []
+
+    if (layer.mask) {
+      const maskTile = createCanvas(source.width, source.height)
+      ctx2d(maskTile).drawImage(layer.mask, -r.x, -r.y)
+      const wm = warpCanvasToQuad(maskTile, target)
+      const docMask = createCanvas(doc.width, doc.height)
+      ctx2d(docMask).drawImage(wm.canvas, wm.offsetX, wm.offsetY)
+      layer.mask = docMask
+      layer._mv++
+    }
+    if (layer.vectorMask) {
+      const mapAnchor = (a: PathAnchor): PathAnchor => {
+        const p = mapRectPointToQuad({ x: a.x, y: a.y }, r, target)
+        const pin = mapRectPointToQuad({ x: a.x + a.inX, y: a.y + a.inY }, r, target)
+        const pout = mapRectPointToQuad({ x: a.x + a.outX, y: a.y + a.outY }, r, target)
+        return {
+          ...a, x: p.x, y: p.y,
+          inX: pin.x - p.x, inY: pin.y - p.y,
+          outX: pout.x - p.x, outY: pout.y - p.y,
+        }
+      }
+      layer.vectorMask = mapVectorMask(layer.vectorMask, mapAnchor)
+    }
+
+    layer._v++
+    invalidateFlat(doc)
+    if (remember) this.lastTransformCommand = structuredClone(cmd)
+    this.pushHistory(`Transform ${cmd.mode[0].toUpperCase() + cmd.mode.slice(1)}`)
+    this.emit()
+  }
+
+  canRepeatTransform() { return !!this.lastTransformCommand }
+
+  repeatLastTransform() {
+    const layer = this.activeLayer
+    if (!layer || !this.lastTransformCommand) return
+    this.transformLayer(layer.id, structuredClone(this.lastTransformCommand), false)
   }
 
   // ================================================== view
