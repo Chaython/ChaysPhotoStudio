@@ -1,0 +1,39 @@
+name: Refresh codec lockfile
+
+on:
+  push:
+    branches: [feature/full-high-depth-codecs]
+    paths:
+      - package.json
+      - .github/workflows/refresh-codec-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/full-high-depth-codecs
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Resolve dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          NEXT_TELEMETRY_DISABLED: 1
+        run: bun install
+      - name: Commit lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- bun.lock; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bun.lock
+          git commit -m "Update Bun lockfile for bundled codecs"
+          git push origin HEAD:feature/full-high-depth-codecs
