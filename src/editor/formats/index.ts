@@ -18,6 +18,7 @@ import {
 import { decodePsd, psdBlendKeyToMode } from './psd'
 import type { ImportFormatId, RawImage } from './decoders'
 import type { ExportFormatId } from './encoders'
+import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtension, publishedFormatKind, PHOTOPEA_IMPORT_ACCEPT } from './photopea-formats'
 
 export type { ImportFormatId, RawImage } from './decoders'
 export type { ExportFormatId } from './encoders'
@@ -25,6 +26,7 @@ export type { PsdDecoded, PsdLayer, PsdLayerInput } from './psd'
 export { detectFormat, rawToCanvas, scanAlpha } from './decoders'
 export { ICO_SIZE_POOL } from './encoders'
 export { decodePsd, buildPsd, psdBlendKeyToMode, blendModeToPsdKey } from './psd'
+export { PHOTOPEA_IMPORT_ACCEPT, PHOTOPEA_COMPLEX_EXTENSIONS, PHOTOPEA_RASTER_EXTENSIONS, PHOTOPEA_RAW_EXTENSIONS, PHOTOPEA_ANIMATED_EXTENSIONS, EXTRA_IMPORT_EXTENSIONS, fileExtension, publishedFormatKind, isPhotopeaPublishedExtension } from './photopea-formats'
 
 // ============================================================
 // import
@@ -60,8 +62,7 @@ export interface DecodedImage {
 }
 
 /** file-input `accept` value covering every decodable format */
-export const IMPORT_ACCEPT =
-  'image/*,.tif,.tiff,.psd,.psb,.tga,.icb,.vda,.qoi,.pcx,.ppm,.pgm,.pbm,.pam,.pfm,.hdr,.rgbe,.heic,.heif,.hif,.jxl,.jp2,.j2k,.j2c,.ico,.bmp'
+export const IMPORT_ACCEPT = `${PHOTOPEA_IMPORT_ACCEPT},.zproj.json`
 
 /** format sniff from MIME type when magic bytes are inconclusive */
 function formatFromMime(type: string): ImportFormatId | null {
@@ -161,6 +162,21 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   let format = detectFormat(bytes)
   if (!format) format = formatFromMime(file.type)
   if (!format) {
+    const name = (file as File).name || ''
+    if (isPhotopeaPublishedExtension(name)) {
+      const canvas = publishedFormatKind(name) === 'video'
+        ? (await import('./photopea-formats')).decodeVideoFrame(file)
+        : decodePublishedFormatPreview(file, name)
+      const resolved = await canvas
+      return {
+        canvas: resolved,
+        width: resolved.width,
+        height: resolved.height,
+        hasAlpha: scanAlpha(getImageData(resolved).data),
+        format: fileExtension(name) || file.type || 'unknown',
+        sourceBitDepth: 8,
+      }
+    }
     if (file.type.startsWith('image/')) {
       // unknown image/* subtype — let the browser try
       const canvas = await decodeNativeCanvas(file, null)
