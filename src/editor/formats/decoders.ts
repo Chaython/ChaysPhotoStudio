@@ -22,10 +22,10 @@ export interface RawImage {
   /** Always present as an 8-bit display / compatibility representation. */
   rgba: Uint8ClampedArray<ArrayBuffer>
   /** Optional full-precision integer samples, interleaved RGBA 0..65535. */
-  rgba16?: Uint16Array<ArrayBuffer>
+  rgba16?: Uint16Array
   /** Optional full-precision floating samples. RGB is linear-sRGB when
    * sourceColorSpace is linear-srgb; alpha remains linear 0..1. */
-  rgbaFloat?: Float32Array<ArrayBuffer>
+  rgbaFloat?: Float32Array
   sourceColorSpace?: 'srgb' | 'linear-srgb'
   /** Original decoded component depth before any compatibility conversion. */
   sourceBitDepth?: number
