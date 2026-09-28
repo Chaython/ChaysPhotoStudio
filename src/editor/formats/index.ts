@@ -159,6 +159,22 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
  *  TIFF, PSD, TGA, PNM, QOI, PCX, ICO-DIB) is decoded here. */
 export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
+  const sourceName = (file as File).name || ''
+  // Most camera RAW formats are TIFF-family containers. Their magic bytes
+  // therefore look like ordinary TIFF even though the sensor payload is not a
+  // baseline RGB TIFF. Route them to the RAW/embedded-preview path before the
+  // TIFF codec gets a chance to misclassify them.
+  if (publishedFormatKind(sourceName) === 'raw') {
+    const canvas = await decodePublishedFormatPreview(file, sourceName)
+    return {
+      canvas,
+      width: canvas.width,
+      height: canvas.height,
+      hasAlpha: scanAlpha(getImageData(canvas).data),
+      format: fileExtension(sourceName),
+      sourceBitDepth: 8,
+    }
+  }
   let format = detectFormat(bytes)
   if (!format) format = formatFromMime(file.type)
   if (!format) {
