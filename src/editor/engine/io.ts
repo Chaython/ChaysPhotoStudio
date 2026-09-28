@@ -1,22 +1,24 @@
 // File IO: open images, place layers, project save/load, export
 import { engine } from './engine'
 import { useEditorStore } from '../store'
-import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile } from '../utils/canvas'
+import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
 import { newLayer } from './document'
 import type { HistoryState, Layer, PsDocument } from '../types'
-import { decodeFile, detectFormat } from '../formats'
+import { decodeFile, detectFormat, formatFromFileName } from '../formats'
 import type { DecodedImage, ImportFormatId } from '../formats'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
-const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico']
+const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'heic', 'jxl', 'jp2', 'raw', 'pdf', 'eps']
 
 /** sniff the first 64 bytes — enough for every magic-byte signature we know */
 async function sniffFormat(file: File): Promise<ImportFormatId | null> {
   try {
     const head = new Uint8Array(await file.slice(0, 64).arrayBuffer())
-    return detectFormat(head)
+    const named = formatFromFileName(file.name)
+    if (named === 'raw') return 'raw'
+    return detectFormat(head) ?? named
   } catch {
     return null
   }
@@ -25,8 +27,9 @@ async function sniffFormat(file: File): Promise<ImportFormatId | null> {
 interface DecodedCanvas {
   canvas: HTMLCanvasElement
   sourceBitDepth: number
-  workingBitDepth: 8 | 16
+  workingBitDepth: 8 | 16 | 32
   resolutionPpi?: number
+  hdrPixels?: Float32Array
 }
 
 /** Decode while retaining source precision. Custom high-depth codecs create
@@ -36,14 +39,30 @@ async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
   const format = await sniffFormat(file)
   if (format && CODEC_FORMATS.includes(format)) {
     const decoded = await decodeFile(file)
-    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi }
+    return {
+      canvas: decoded.canvas,
+      sourceBitDepth: decoded.sourceBitDepth ?? 8,
+      workingBitDepth: decoded.sourceFloatPixels && decoded.sourceColorSpace === 'linear-srgb' ? 32 : canvasProfile(decoded.canvas).bitDepth,
+      resolutionPpi: decoded.resolutionPpi,
+      hdrPixels: decoded.sourceFloatPixels && decoded.sourceColorSpace === 'linear-srgb'
+        ? new Float32Array(decoded.sourceFloatPixels)
+        : undefined,
+    }
   }
   try {
     const canvas = await fileToCanvas(file)
     return { canvas, sourceBitDepth: 8, workingBitDepth: canvasProfile(canvas).bitDepth }
   } catch {
     const decoded = await decodeFile(file)
-    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi }
+    return {
+      canvas: decoded.canvas,
+      sourceBitDepth: decoded.sourceBitDepth ?? 8,
+      workingBitDepth: decoded.sourceFloatPixels && decoded.sourceColorSpace === 'linear-srgb' ? 32 : canvasProfile(decoded.canvas).bitDepth,
+      resolutionPpi: decoded.resolutionPpi,
+      hdrPixels: decoded.sourceFloatPixels && decoded.sourceColorSpace === 'linear-srgb'
+        ? new Float32Array(decoded.sourceFloatPixels)
+        : undefined,
+    }
   }
 }
 
@@ -65,13 +84,13 @@ export async function openFiles(files: File[], asLayer = false) {
       }
       const decoded = await decodeToCanvas(file)
       if (asLayer && engine.activeDoc) {
-        engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
+        engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''), { hdrPixels: engine.activeDoc?.workingBitDepth === 32 ? decoded.hdrPixels : undefined })
         if (decoded.sourceBitDepth > 8) {
           const targetDepth = engine.activeDoc?.workingBitDepth ?? 8
           store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed into the ${targetDepth}-bit document`, 'info')
         }
       } else {
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi, hdrPixels: decoded.hdrPixels })
       }
     } catch (err) {
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
@@ -145,10 +164,18 @@ interface SerializedFloatCanvas {
   data: string
 }
 
+interface SerializedHdrCanvas {
+  width: number
+  height: number
+  colorSpace: 'linear-srgb'
+  data: string
+}
+
 export interface SerializedLayer {
   props: Record<string, any>
   canvas?: string
   canvas16?: SerializedFloatCanvas
+  hdr32?: SerializedHdrCanvas
   mask?: string
   source?: string
   source16?: SerializedFloatCanvas
@@ -177,7 +204,7 @@ interface SerializedHistorySnapshot {
 
 export interface SerializedProject {
   format: 'z-photo-project'
-  version: 1 | 2 | 3
+  version: 1 | 2 | 3 | 4
   doc: {
     name: string
     width: number
@@ -188,7 +215,7 @@ export interface SerializedProject {
     frames?: any[]
     activeLayerId?: string | null
     historyBrushSourceIndex?: number
-    workingBitDepth?: 8 | 16
+    workingBitDepth?: 8 | 16 | 32
     sourceBitDepth?: number
     workingColorSpace?: 'srgb' | 'display-p3'
     resolutionPpi?: number
@@ -237,6 +264,17 @@ function serializeFloatCanvas(c: HTMLCanvasElement | null): SerializedFloatCanva
   }
 }
 
+function serializeHdrPixels(l: Layer): SerializedHdrCanvas | undefined {
+  if (!l.hdrPixels || !l.canvas) return undefined
+  const bytes = new Uint8Array(l.hdrPixels.buffer, l.hdrPixels.byteOffset, l.hdrPixels.byteLength)
+  return {
+    width: l.canvas.width,
+    height: l.canvas.height,
+    colorSpace: 'linear-srgb',
+    data: bytesToBase64(bytes),
+  }
+}
+
 function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): SerializedLayer {
   return {
     props: {
@@ -249,6 +287,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
     },
     canvas: l.canvas ? toDataURL(l.canvas) : undefined,
     canvas16: serializeFloatCanvas(l.canvas),
+    hdr32: serializeHdrPixels(l),
     mask: l.mask ? toDataURL(l.mask) : undefined,
     source: l.source ? toDataURL(l.source) : undefined,
     source16: serializeFloatCanvas(l.source),
@@ -275,7 +314,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
   const toDataURL = (c: HTMLCanvasElement) => c.toDataURL('image/png')
   const layers: SerializedLayer[] = doc.layers.map(l => serializeLayer(l, toDataURL))
   return {
-    format: 'z-photo-project', version: 3,
+    format: 'z-photo-project', version: 4,
     doc: {
       name: doc.name, width: doc.width, height: doc.height,
       channelView: doc.channelView, guides: doc.guides ?? [], view: { ...doc.view },
@@ -386,6 +425,18 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     origin: sl.props.origin ?? null,
   })
   if (sl.canvas) layer.canvas = await dataURLToCanvas(sl.canvas, sl.canvas16)
+  if (sl.hdr32?.data && sl.hdr32.width > 0 && sl.hdr32.height > 0) {
+    try {
+      const bytes = base64ToBytes(sl.hdr32.data)
+      const copy = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.slice().buffer
+      const hdr = new Float32Array(copy)
+      if (hdr.length === sl.hdr32.width * sl.hdr32.height * 4) {
+        layer.hdrPixels = new Float32Array(hdr)
+        layer.hdrColorSpace = 'linear-srgb'
+        layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, sl.hdr32.width, sl.hdr32.height, 'srgb')
+      }
+    } catch { /* keep PNG/float16 compatibility canvas */ }
+  }
   if (sl.mask) layer.mask = await dataURLToCanvas(sl.mask)
   if (sl.source) layer.source = await dataURLToCanvas(sl.source, sl.source16)
   if (layer.kind === 'raster' && !layer.canvas) layer.canvas = createCanvas(width, height)
@@ -433,18 +484,19 @@ export async function openSerializedProject(project: SerializedProject, label = 
   const { name, width, height, channelView } = project.doc
   if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) throw new Error('Invalid project dimensions')
   const caps = canvasPixelCapabilities()
+  const requestedDepth = project.doc.workingBitDepth === 32 ? 32 : project.doc.workingBitDepth === 16 ? 16 : 8
+  const physicalDepth: 8 | 16 = requestedDepth !== 8 && caps.float16Context && caps.float16ImageData ? 16 : 8
   setCanvasWorkingProfile({
-    bitDepth: project.doc.workingBitDepth === 16 && caps.float16Context && caps.float16ImageData ? 16 : 8,
-    colorSpace: project.doc.workingColorSpace === 'display-p3' && caps.displayP3 ? 'display-p3' : 'srgb',
+    bitDepth: physicalDepth,
+    colorSpace: requestedDepth === 32 ? 'srgb' : (project.doc.workingColorSpace === 'display-p3' && caps.displayP3 ? 'display-p3' : 'srgb'),
   })
   const doc: PsDocument = {
     id: uid(), name, width, height,
-    workingBitDepth: project.doc.workingBitDepth === 16 &&
-      canvasPixelCapabilities().float16Context && canvasPixelCapabilities().float16ImageData ? 16 : 8,
+    workingBitDepth: requestedDepth === 32 ? 32 : physicalDepth,
     sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth)
       ? Number(project.doc.sourceBitDepth)
       : (project.doc.workingBitDepth === 16 ? 16 : 8),
-    workingColorSpace: project.doc.workingColorSpace === 'display-p3' && canvasPixelCapabilities().displayP3 ? 'display-p3' : 'srgb',
+    workingColorSpace: requestedDepth === 32 ? 'srgb' : (project.doc.workingColorSpace === 'display-p3' && canvasPixelCapabilities().displayP3 ? 'display-p3' : 'srgb'),
     resolutionPpi: Math.max(1, Math.min(12000, Number(project.doc.resolutionPpi) || 72)),
     layers: [], activeLayerId: null, selection: null,
     channelView: (channelView ?? 'rgb') as PsDocument['channelView'], savedChannels: [],
