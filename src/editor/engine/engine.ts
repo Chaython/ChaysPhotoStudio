@@ -833,7 +833,9 @@ export class Engine {
     const layer = newLayer('raster', name || this.nextLayerName(), doc.width, doc.height)
     if (opts?.canvas) ctx2d(layer.canvas!).drawImage(opts.canvas, 0, 0)
     if (doc.workingBitDepth === 32 && layer.canvas) {
-      layer.hdrPixels = hdrPixelsFromCanvas(layer.canvas)
+      layer.hdrPixels = opts?.hdrPixels && opts.hdrPixels.length === layer.canvas.width * layer.canvas.height * 4
+        ? new Float32Array(opts.hdrPixels)
+        : hdrPixelsFromCanvas(layer.canvas)
       layer.hdrColorSpace = 'linear-srgb'
       layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
     }
@@ -845,7 +847,7 @@ export class Engine {
     return layer
   }
 
-  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean }): Layer | null {
+  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array }): Layer | null {
     const doc = this.activeDoc
     if (!doc) return null
     const layer = newLayer('raster', name || this.nextLayerName(), doc.width, doc.height)
