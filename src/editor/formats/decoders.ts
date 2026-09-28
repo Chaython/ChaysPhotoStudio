@@ -12,6 +12,7 @@ import { createCanvas, ctx2d, canvasProfile, putFloat16Pixels } from '../utils/c
 export type ImportFormatId =
   | 'png' | 'jpeg' | 'gif' | 'webp' | 'avif' | 'heic' | 'jxl' | 'jp2' | 'svg'
   | 'bmp' | 'ico' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx'
+  | 'raw' | 'pdf' | 'eps'
 
 /** decoded raster: tightly packed 8-bit RGBA (ImageData-compatible).
  *  Typed as Uint8ClampedArray<ArrayBuffer> (not ArrayBufferLike) so it feeds
@@ -99,6 +100,8 @@ export function detectFormat(bytes: Uint8Array): ImportFormatId | null {
     for (let i = 0; i < s.length; i++) if (b[off + i] !== s.charCodeAt(i)) return false
     return true
   }
+  if (eq('%PDF-')) return 'pdf'
+  if (eq('%!PS-Adobe') || eq('%!PS')) return 'eps'
   if (eq('II*\0') || eq('MM\0*')) return 'tiff'
   if (n >= 8 && b[0] === 0x89 && eq('PNG\r\n\x1a\n')) return 'png'
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpeg'
