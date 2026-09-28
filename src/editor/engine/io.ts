@@ -6,6 +6,7 @@ import { newLayer } from './document'
 import type { HistoryState, Layer, PsDocument } from '../types'
 import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId } from '../formats'
+import { isPhotopeaPublishedExtension } from '../formats'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
@@ -52,8 +53,8 @@ export async function openFiles(files: File[], asLayer = false) {
   for (const file of files) {
     if (file.name.endsWith('.zproj.json')) { await openProjectFile(file); continue }
     const format = await sniffFormat(file)
-    if (!format && !file.type.startsWith('image/')) {
-      store.pushToast(`Skipped ${file.name} — not an image`, 'error')
+    if (!format && !file.type.startsWith('image/') && !isPhotopeaPublishedExtension(file.name)) {
+      store.pushToast(`Skipped ${file.name} — unsupported file type`, 'error')
       continue
     }
     try {
