@@ -36,12 +36,13 @@ async function inflateRaw(data: Uint8Array, expected: number): Promise<Uint8Arra
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
-    total += value.length
+    const chunk = value as Uint8Array
+    total += chunk.length
     if (total > Math.min(MAX_ENTRY_BYTES, Math.max(expected + 1024 * 1024, expected * 2))) {
       await reader.cancel()
       throw new Error('ZIP entry expanded beyond its declared size')
     }
-    chunks.push(value)
+    chunks.push(chunk)
   }
   const out = new Uint8Array(total)
   let p = 0
