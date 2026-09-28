@@ -503,6 +503,8 @@ export interface PsDocument {
   /** Original decoded component depth when known (for example 16-bit TIFF/PSD
    * imported into today's 8-bit working raster). */
   sourceBitDepth?: number
+  /** Opaque Photoshop image-resource blocks retained from imported PSD/PSB. */
+  psdImageResources?: string[]
   /** Working canvas color space. The current default is sRGB; Display-P3 is
    * capability-probed separately before any future wide-gamut migration. */
   workingColorSpace?: 'srgb' | 'display-p3'
