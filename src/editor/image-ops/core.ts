@@ -362,7 +362,7 @@ export function computeHistogram(img: PixelImage): Histogram {
 }
 
 // ---------- downsample (box) for analysis ----------
-export function downsampleImage(img: PixelImage, maxDim: number): PixelImage {
+export function downsampleImage<T extends PixelImage>(img: T, maxDim: number): T {
   const { width: w, height: h } = img
   const scale = Math.min(1, maxDim / Math.max(w, h))
   if (scale >= 1) return img
