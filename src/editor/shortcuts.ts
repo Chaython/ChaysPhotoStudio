@@ -27,6 +27,7 @@ import { TOOL_DEFS, TOOL_MAP } from './constants/tools'
 import { engine } from './engine/engine'
 import { openFiles, saveProject } from './engine/io'
 import { useEditorStore } from './store'
+import { IMPORT_ACCEPT } from './formats'
 
 // ---------- command ids ----------
 export type CommandId =
@@ -65,7 +66,7 @@ const viewport = () => (window as any).__zphotoViewport
 function pickImages() {
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = 'image/*,.zproj.json'
+  input.accept = IMPORT_ACCEPT
   input.multiple = true
   input.onchange = () => { if (input.files?.length) void openFiles(Array.from(input.files)) }
   input.click()
