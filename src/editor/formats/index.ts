@@ -115,7 +115,7 @@ async function decodeNativeCanvas(file: File | Blob, format: string | null): Pro
   } catch (bitmapError) {
     const Decoder = (globalThis as any).ImageDecoder
     if (typeof Decoder !== 'function') throw bitmapError
-    const mime = file.type || (
+    const mime = file.type.startsWith('image/') ? file.type : (
       format === 'heic' ? 'image/heic' :
       format === 'jxl' ? 'image/jxl' :
       format === 'jp2' ? 'image/jp2' :
