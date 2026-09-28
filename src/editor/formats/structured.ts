@@ -3,8 +3,9 @@ import { fileExtension } from './photopea-formats'
 import { parseSketch } from './sketch'
 import { parseXd } from './xd'
 import { parseKrita } from './krita'
+import { parseSvgDocument } from './svg-document'
 
-const DEDICATED = new Set(['sketch', 'xd', 'kra'])
+const DEDICATED = new Set(['sketch', 'xd', 'kra', 'svg'])
 
 export function hasDedicatedDocumentParser(name: string): boolean {
   return DEDICATED.has(fileExtension(name))
@@ -18,6 +19,7 @@ export async function parseStructuredDocument(file: File | Blob, name = (file as
     case 'sketch': return parseSketch(bytes, name)
     case 'xd': return parseXd(bytes, name)
     case 'kra': return parseKrita(bytes, name)
+    case 'svg': return parseSvgDocument(bytes, name)
     default: return null
   }
 }
