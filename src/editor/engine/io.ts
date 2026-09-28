@@ -109,6 +109,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     layer.visible = psd.visible
     layer.clipped = !!psd.clipped
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
+    if (psd.additionalInfo?.length) layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
     doc.layers.push(layer as Layer)
   }
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
@@ -245,6 +246,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       transform: l.transform, smartFilters: l.smartFilters,
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
       vectorMask: cloneVectorMask(l.vectorMask),
+      psdAdditionalInfo: Array.isArray(l.psdAdditionalInfo) ? [...l.psdAdditionalInfo] : undefined,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
     },
     canvas: l.canvas ? toDataURL(l.canvas) : undefined,
@@ -382,6 +384,7 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     blendIf: sl.props.blendIf ?? null,
     fx: sl.props.fx ?? null,
     vectorMask: normalizeVectorMask(sl.props.vectorMask),
+    psdAdditionalInfo: Array.isArray(sl.props.psdAdditionalInfo) ? sl.props.psdAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
     offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
     origin: sl.props.origin ?? null,
   })
