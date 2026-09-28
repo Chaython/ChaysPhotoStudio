@@ -51,7 +51,7 @@ export function warpCanvasToQuad(
   const out = createCanvas(width, height)
   if (!inv) return { canvas: out, offsetX: minX, offsetY: minY }
 
-  const src = ctx2d(source, { willReadFrequently: true } as any).getImageData(0, 0, source.width, source.height)
+  const src = ctx2d(source).getImageData(0, 0, source.width, source.height)
   const dc = ctx2d(out)
   const dst = dc.createImageData(width, height)
 
