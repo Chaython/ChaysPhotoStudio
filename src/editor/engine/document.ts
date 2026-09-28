@@ -15,6 +15,7 @@ export function newLayer(kind: LayerKind, name: string, w: number, h: number): L
     id: uid(), name, kind, visible: true, opacity: 100, blendMode: 'normal',
     locked: false, clipped: false,
     canvas: kind === 'raster' ? createCanvas(w, h) : null,
+    hdrPixels: null, hdrColorSpace: undefined, _hdrPreviewBefore: null,
     source: null, transform: null, smartFilters: [],
     mask: null, maskEnabled: true,
     adjustment: null, text: null, shape: null, blendIf: null, fx: null,
