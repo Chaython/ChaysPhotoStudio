@@ -693,7 +693,12 @@ export class Engine {
     if (opts?.center !== false && (canvas.width !== doc.width || canvas.height !== doc.height)) {
       // keep the pixels at native size, registered in the doc CENTER — nothing
       // is cropped and the layer can be moved/transformed losslessly afterwards
-      layer.canvas = cloneCanvas(canvas)
+      const placed = createCanvas(canvas.width, canvas.height, {
+        bitDepth: doc.workingBitDepth ?? 8,
+        colorSpace: doc.workingColorSpace ?? 'srgb',
+      })
+      ctx2d(placed).drawImage(canvas, 0, 0)
+      layer.canvas = placed
       layer.offsetX = Math.round((doc.width - canvas.width) / 2)
       layer.offsetY = Math.round((doc.height - canvas.height) / 2)
     } else {
