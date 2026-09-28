@@ -161,6 +161,93 @@ export function encodeTiff(rgba: Uint8ClampedArray, width: number, height: numbe
   return out
 }
 
+
+/** 16-bit/channel RGBA TIFF. Input samples are normalized floats (0..1),
+ * typically from rgba-float16 Canvas ImageData. */
+export function encodeTiff16(rgba: ArrayLike<number>, width: number, height: number, lzw: boolean): Uint8Array {
+  const samplesPerPixel = 4
+  const bytesPerRow = width * samplesPerPixel * 2
+  const rowsPerStrip = Math.max(1, Math.min(height, Math.floor((1 << 20) / bytesPerRow) || 1))
+  const numStrips = Math.ceil(height / rowsPerStrip)
+  const strips: Uint8Array[] = []
+  for (let s = 0; s < numStrips; s++) {
+    const y0 = s * rowsPerStrip
+    const rows = Math.min(rowsPerStrip, height - y0)
+    const raw = new Uint8Array(rows * bytesPerRow)
+    const view = new DataView(raw.buffer)
+    let o = 0
+    const start = y0 * width * 4
+    const end = start + rows * width * 4
+    for (let i = start; i < end; i++) {
+      const sample = Math.max(0, Math.min(1, Number(rgba[i]) || 0))
+      view.setUint16(o, Math.round(sample * 65535), true)
+      o += 2
+    }
+    strips.push(lzw ? lzwEncodeTiff(raw) : raw)
+  }
+
+  const TAGS = [
+    { tag: 256, type: 4, count: 1 },
+    { tag: 257, type: 4, count: 1 },
+    { tag: 258, type: 3, count: 4 },
+    { tag: 259, type: 3, count: 1 },
+    { tag: 262, type: 3, count: 1 },
+    { tag: 273, type: 4, count: numStrips },
+    { tag: 277, type: 3, count: 1 },
+    { tag: 278, type: 4, count: 1 },
+    { tag: 279, type: 4, count: numStrips },
+    { tag: 284, type: 3, count: 1 },
+    { tag: 338, type: 3, count: 1 },
+  ] as const
+
+  const ifdOff = 8
+  const ifdSize = 2 + TAGS.length * 12 + 4
+  const bitsOff = ifdOff + ifdSize
+  const stripOffArr = bitsOff + 8
+  const countArr = stripOffArr + 4 * numStrips
+  const dataStart = (countArr + 4 * numStrips + 3) & ~3
+  const stripOffsets: number[] = []
+  let acc = dataStart
+  for (const strip of strips) { stripOffsets.push(acc); acc += strip.length }
+
+  const out = new Uint8Array(acc)
+  const view = new DataView(out.buffer)
+  out.set([0x49, 0x49], 0)
+  view.setUint16(2, 42, true)
+  view.setUint32(4, ifdOff, true)
+  for (let i = 0; i < 4; i++) view.setUint16(bitsOff + i * 2, 16, true)
+  for (let s = 0; s < numStrips; s++) {
+    view.setUint32(stripOffArr + s * 4, stripOffsets[s], true)
+    view.setUint32(countArr + s * 4, strips[s].length, true)
+  }
+  view.setUint16(ifdOff, TAGS.length, true)
+  let e = ifdOff + 2
+  for (const t of TAGS) {
+    view.setUint16(e, t.tag, true)
+    view.setUint16(e + 2, t.type, true)
+    view.setUint32(e + 4, t.count, true)
+    const field = e + 8
+    switch (t.tag) {
+      case 256: view.setUint32(field, width, true); break
+      case 257: view.setUint32(field, height, true); break
+      case 258: view.setUint32(field, bitsOff, true); break
+      case 259: view.setUint16(field, lzw ? 5 : 1, true); break
+      case 262: view.setUint16(field, 2, true); break
+      case 273: view.setUint32(field, numStrips > 1 ? stripOffArr : stripOffsets[0] ?? 0, true); break
+      case 277: view.setUint16(field, 4, true); break
+      case 278: view.setUint32(field, rowsPerStrip, true); break
+      case 279: view.setUint32(field, numStrips > 1 ? countArr : strips[0]?.length ?? 0, true); break
+      case 284: view.setUint16(field, 1, true); break
+      case 338: view.setUint16(field, 2, true); break
+    }
+    e += 12
+  }
+  view.setUint32(e, 0, true)
+  let o = dataStart
+  for (const strip of strips) { out.set(strip, o); o += strip.length }
+  return out
+}
+
 // ============================================================
 // BMP — 24-bit BGR (flattened) or 32-bit BGRA, bottom-up
 // ============================================================
