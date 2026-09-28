@@ -27,10 +27,13 @@ function alphaBlock(src:Uint8Array,off:number):number[]{
     for(let i=1;i<=4;i++)table.push(Math.round(((5-i)*a0+i*a1)/5))
     table.push(0,255)
   }
-  let bits=0n
-  for(let i=0;i<6;i++)bits|=BigInt(src[off+2+i])<<BigInt(8*i)
   const out:number[]=[]
-  for(let i=0;i<16;i++)out.push(table[Number((bits>>BigInt(i*3))&7n)]??255)
+  for(let i=0;i<16;i++){
+    const bit=i*3,bi=off+2+(bit>>3),shift=bit&7
+    let code=(src[bi]>>shift)&7
+    if(shift>5)code=((src[bi]>>shift)|(src[bi+1]<<(8-shift)))&7
+    out.push(table[code]??255)
+  }
   return out
 }
 function bc4Values(src:Uint8Array,off:number):number[]{return alphaBlock(src,off)}
@@ -45,8 +48,10 @@ function decodeBc(bytes:Uint8Array,off:number,w:number,h:number,kind:'bc1'|'bc2'
     let colorOff=p
     if(kind==='bc2'){
       alpha=[]
-      let bits=0n;for(let i=0;i<8;i++)bits|=BigInt(bytes[p+i])<<BigInt(i*8)
-      for(let i=0;i<16;i++)alpha.push(Number((bits>>BigInt(i*4))&15n)*17)
+      for(let i=0;i<16;i++){
+        const byte=bytes[p+(i>>1)]
+        alpha.push(((i&1)?(byte>>4):(byte&15))*17)
+      }
       colorOff=p+8
     }else if(kind==='bc3'){alpha=alphaBlock(bytes,p);colorOff=p+8}
     else if(kind==='bc4'){red=bc4Values(bytes,p)}
