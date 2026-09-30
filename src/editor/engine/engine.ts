@@ -801,13 +801,7 @@ export class Engine {
     this.emit()
   }
 
-  applyLayerComp(id: string) {
-    const doc = this.activeDoc
-    const comp = doc?.layerComps?.find(c => c.id === id)
-    if (!doc || !comp) return
-    // Preserve the non-comp state once, then let users cycle through comps
-    // without losing Photoshop's "Last Document State" return point.
-    if (!doc.lastLayerCompState) doc.lastLayerCompState = this.captureState(doc, 'Last Document State')
+  private applyLayerCompRecordedState(doc: PsDocument, comp: LayerComp) {
     for (const layer of doc.layers) {
       const state = comp.layers[layer.id]
       if (!state) continue
@@ -829,8 +823,39 @@ export class Engine {
     }
     doc.activeLayerCompId = comp.id
     invalidateFlat(doc)
+  }
+
+  applyLayerComp(id: string) {
+    const doc = this.activeDoc
+    const comp = doc?.layerComps?.find(c => c.id === id)
+    if (!doc || !comp) return
+    // Preserve the non-comp state once, then let users cycle through comps
+    // without losing Photoshop's "Last Document State" return point.
+    if (!doc.lastLayerCompState) doc.lastLayerCompState = this.captureState(doc, 'Last Document State')
+    this.applyLayerCompRecordedState(doc, comp)
     this.pushHistory(`Layer Comp: ${comp.name}`)
     this.emit()
+  }
+
+  /** Render one Layer Comp to a detached canvas without changing the visible
+   * document, History stack, dirty flag, active comp, or Last Document State. */
+  renderLayerComp(id: string): HTMLCanvasElement | null {
+    const doc = this.activeDoc
+    const comp = doc?.layerComps?.find(c => c.id === id)
+    if (!doc || !comp) return null
+    const saved = this.captureState(doc, 'Layer Comp Export Restore')
+    const savedActiveCompId = doc.activeLayerCompId ?? null
+    const savedLastState = doc.lastLayerCompState ?? null
+    const savedDirty = doc.dirty
+    try {
+      this.applyLayerCompRecordedState(doc, comp)
+      return cloneCanvas(compositeDocument(doc))
+    } finally {
+      this.restoreState(doc, saved)
+      doc.activeLayerCompId = savedActiveCompId
+      doc.lastLayerCompState = savedLastState
+      doc.dirty = savedDirty
+    }
   }
 
   cycleLayerComp(dir: -1 | 1) {
