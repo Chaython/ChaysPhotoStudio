@@ -178,6 +178,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage): PsDocument 
   engine.docs.push(doc)
   engine.setActiveDocument(doc.id)
   engine.pushHistory(`Open ${decoded.format.toUpperCase()}`, doc)
+  engine.maybeCreateAutomaticHistorySnapshot('open', doc)
   engine.emit()
   return doc
 }
@@ -222,6 +223,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   engine.docs.push(doc)
   engine.setActiveDocument(doc.id)
   engine.pushHistory('Open PSD', doc)
+  engine.maybeCreateAutomaticHistorySnapshot('open', doc)
   engine.emit()
   return doc
 }
@@ -283,6 +285,7 @@ interface SerializedHistorySnapshot {
   id: string
   name: string
   time: number
+  thumbnail?: string
   state: SerializedHistoryState
 }
 
@@ -428,6 +431,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       id: s.id,
       name: s.name,
       time: s.time,
+      thumbnail: typeof s.thumbnail === 'string' ? s.thumbnail : undefined,
       state: serializeHistoryState(s.state, toDataURL),
     })),
   }
@@ -709,6 +713,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
           id: raw.id || uid(),
           name: typeof raw.name === 'string' && raw.name ? raw.name : 'Snapshot',
           time: Number.isFinite(raw.time) ? raw.time : Date.now(),
+          thumbnail: typeof raw.thumbnail === 'string' && raw.thumbnail.startsWith('data:image/') ? raw.thumbnail : undefined,
           state: await deserializeHistoryState(raw.state),
         })
       } catch {
@@ -726,6 +731,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
   engine.docs.push(doc)
   engine.setActiveDocument(doc.id)
   engine.pushHistory(label, doc)
+  engine.maybeCreateAutomaticHistorySnapshot('open', doc)
   doc.dirty = false
   engine.emit()
   return doc
