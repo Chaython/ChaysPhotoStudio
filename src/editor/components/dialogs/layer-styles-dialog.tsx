@@ -158,9 +158,10 @@ function readSavedDefaults(): Partial<LayerFX> {
 }
 
 function defaultFor(key: EffectKey): Record<string, unknown> | undefined {
-  const saved = readSavedDefaults()[key]
-  const builtin = defaultFX()[key]
-  return (saved ?? builtin) as Record<string, unknown> | undefined
+  const saved = readSavedDefaults()[key] as Record<string, unknown> | undefined
+  const builtin = defaultFX()[key] as Record<string, unknown> | undefined
+  if (!builtin) return saved
+  return { ...builtin, ...(saved ?? {}) }
 }
 
 function saveEffectDefault(key: EffectKey, value: Record<string, unknown>) {
@@ -501,7 +502,7 @@ export function LayerStylesDialog({ inst, onClose }: DialogProps) {
               <ControlRenderer
                 key={control.key}
                 control={control}
-                value={current[control.key]}
+                value={current[control.key] ?? defaultFor(selected)?.[control.key]}
                 onChange={(value: unknown) => patch(selected, control.key, value)}
               />
             ))
