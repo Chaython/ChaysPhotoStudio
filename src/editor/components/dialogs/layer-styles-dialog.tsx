@@ -12,6 +12,7 @@ import { ControlRenderer } from '../toolbar/tool-options-bar'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { defaultFX } from '../../engine/layer-fx'
+import { BLEND_MODES } from '../../constants/tools'
 import { listUserPatterns } from '../../tools/patterns'
 import type { ControlDef, LayerFX, StyleContourPoint } from '../../types'
 import type { DialogProps } from './generic-dialogs'
@@ -157,9 +158,10 @@ function readSavedDefaults(): Partial<LayerFX> {
 }
 
 function defaultFor(key: EffectKey): Record<string, unknown> | undefined {
-  const saved = readSavedDefaults()[key]
-  const builtin = defaultFX()[key]
-  return (saved ?? builtin) as Record<string, unknown> | undefined
+  const saved = readSavedDefaults()[key] as Record<string, unknown> | undefined
+  const builtin = defaultFX()[key] as Record<string, unknown> | undefined
+  if (!builtin) return saved
+  return { ...builtin, ...(saved ?? {}) }
 }
 
 function saveEffectDefault(key: EffectKey, value: Record<string, unknown>) {
@@ -189,27 +191,37 @@ const EFFECTS: { key: EffectKey; label: string; hint: string }[] = [
   { key: 'dropShadow', label: 'Drop Shadow', hint: 'Offset blurred shadow beneath the layer' },
 ]
 
+const STYLE_BLEND_OPTIONS = BLEND_MODES.map(({ label, value }) => ({ label, value }))
+
 const SHADOW_CONTROLS: ControlDef[] = [
+  { key: 'blendMode', label: 'Blend Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
   { key: 'opacity', label: 'Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'angle', label: 'Angle', type: 'angle', min: 0, max: 360, step: 1, unit: '°' },
   { key: 'distance', label: 'Distance', type: 'slider', min: 0, max: 200, step: 1, unit: 'px' },
+  { key: 'spread', label: 'Spread', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'blur', label: 'Size', type: 'slider', min: 0, max: 200, step: 1, unit: 'px' },
+  { key: 'noise', label: 'Noise', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'color', label: 'Color', type: 'color' },
 ]
 
 const OUTER_GLOW_CONTROLS: ControlDef[] = [
+  { key: 'blendMode', label: 'Blend Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
   { key: 'opacity', label: 'Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
+  { key: 'spread', label: 'Spread', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'blur', label: 'Size', type: 'slider', min: 1, max: 200, step: 1, unit: 'px' },
+  { key: 'noise', label: 'Noise', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'color', label: 'Color', type: 'color' },
 ]
 
 const INNER_GLOW_CONTROLS: ControlDef[] = [
+  { key: 'blendMode', label: 'Blend Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
   { key: 'opacity', label: 'Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'source', label: 'Source', type: 'select', options: [
     { label: 'Edge', value: 'edge' }, { label: 'Center', value: 'center' },
   ] },
   { key: 'choke', label: 'Choke', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'blur', label: 'Size', type: 'slider', min: 1, max: 200, step: 1, unit: 'px' },
+  { key: 'noise', label: 'Noise', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'color', label: 'Color', type: 'color' },
 ]
 
@@ -232,27 +244,33 @@ const BEVEL_CONTROLS: ControlDef[] = [
   { key: 'soften', label: 'Soften', type: 'slider', min: 0, max: 32, step: 1, unit: 'px' },
   { key: 'angle', label: 'Angle', type: 'angle', min: 0, max: 360, step: 1, unit: '°' },
   { key: 'altitude', label: 'Altitude', type: 'slider', min: 0, max: 90, step: 1, unit: '°' },
+  { key: 'highlightBlendMode', label: 'Highlight Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
   { key: 'highlightColor', label: 'Highlight Color', type: 'color' },
   { key: 'highlightOpacity', label: 'Highlight Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
+  { key: 'shadowBlendMode', label: 'Shadow Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
   { key: 'shadowColor', label: 'Shadow Color', type: 'color' },
   { key: 'shadowOpacity', label: 'Shadow Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
 ]
 
 const SATIN_CONTROLS: ControlDef[] = [
+  { key: 'blendMode', label: 'Blend Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
   { key: 'opacity', label: 'Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'angle', label: 'Angle', type: 'angle', min: 0, max: 360, step: 1, unit: '°' },
   { key: 'distance', label: 'Distance', type: 'slider', min: 0, max: 100, step: 1, unit: 'px' },
   { key: 'size', label: 'Size', type: 'slider', min: 1, max: 100, step: 1, unit: 'px' },
   { key: 'invert', label: 'Invert', type: 'toggle' },
+  { key: 'noise', label: 'Noise', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'color', label: 'Color', type: 'color' },
 ]
 
 const COLOR_OVERLAY_CONTROLS: ControlDef[] = [
+  { key: 'blendMode', label: 'Blend Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
   { key: 'opacity', label: 'Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'color', label: 'Color', type: 'color' },
 ]
 
 const GRADIENT_CONTROLS: ControlDef[] = [
+  { key: 'blendMode', label: 'Blend Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
   { key: 'opacity', label: 'Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'style', label: 'Style', type: 'select', options: [
     { label: 'Linear', value: 'linear' }, { label: 'Radial', value: 'radial' },
@@ -296,6 +314,7 @@ function controlsFor(selected: EffectKey, current: Record<string, any> | undefin
   if (selected === 'gradientOverlay') return GRADIENT_CONTROLS
   if (selected === 'patternOverlay') {
     return [
+      { key: 'blendMode', label: 'Blend Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
       { key: 'opacity', label: 'Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
       { key: 'pattern', label: 'Pattern', type: 'select', options: patternOptions() },
       { key: 'scale', label: 'Scale', type: 'slider', min: 25, max: 400, step: 5, unit: '%' },
@@ -312,6 +331,7 @@ function controlsFor(selected: EffectKey, current: Record<string, any> | undefin
         { label: 'Outside', value: 'outside' }, { label: 'Center', value: 'center' }, { label: 'Inside', value: 'inside' },
       ] },
       { key: 'opacity', label: 'Opacity', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
+      { key: 'blendMode', label: 'Blend Mode', type: 'select', options: STYLE_BLEND_OPTIONS },
       { key: 'fillType', label: 'Fill Type', type: 'select', options: [
         { label: 'Color', value: 'color' }, { label: 'Gradient', value: 'gradient' }, { label: 'Pattern', value: 'pattern' },
       ] },
@@ -482,7 +502,7 @@ export function LayerStylesDialog({ inst, onClose }: DialogProps) {
               <ControlRenderer
                 key={control.key}
                 control={control}
-                value={current[control.key]}
+                value={current[control.key] ?? defaultFor(selected)?.[control.key]}
                 onChange={(value: unknown) => patch(selected, control.key, value)}
               />
             ))

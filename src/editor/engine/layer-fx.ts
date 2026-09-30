@@ -5,9 +5,10 @@
 // into the prepared layer canvas. The layer itself remains editable.
 // ============================================================
 import type {
-  BevelEmbossFX, GradientStyleFX, LayerFX, PatternStyleFX, StrokeFX, StyleContourPoint,
+  BevelEmbossFX, BlendMode, GradientStyleFX, LayerFX, PatternStyleFX, StrokeFX, StyleContourPoint,
 } from '../types'
 import { createCanvas, ctx2d, cloneCanvas, clamp, getImageData, putImageData } from '../utils/canvas'
+import { BLEND_GCO } from '../constants/tools'
 import { paintBuiltinPattern } from '../tools/patterns'
 
 const DIRS: [number, number][] = (() => {
@@ -114,6 +115,39 @@ function applyContour(mask: HTMLCanvasElement, points: StyleContourPoint[] | und
   return out
 }
 
+function applyNoise(mask: HTMLCanvasElement, amount: number | undefined): HTMLCanvasElement {
+  const strength = clamp((Number(amount) || 0) / 100, 0, 1)
+  if (strength <= 0) return mask
+  const out = cloneCanvas(mask)
+  const img = getImageData(out)
+  const d = img.data
+  for (let i = 3, p = 0; i < d.length; i += 4, p++) {
+    // Stable integer hash: deterministic previews/history instead of flicker.
+    let n = Math.imul(p ^ 0x9e3779b9, 0x85ebca6b)
+    n ^= n >>> 13
+    n = Math.imul(n, 0xc2b2ae35)
+    n ^= n >>> 16
+    const grain = (n >>> 0) / 0xffffffff
+    const factor = (1 - strength) + strength * grain
+    d[i] = Math.round(d[i] * factor)
+  }
+  putImageData(out, img)
+  return out
+}
+
+function drawEffect(
+  target: CanvasRenderingContext2D,
+  image: HTMLCanvasElement,
+  opacity: number,
+  blendMode: BlendMode | undefined,
+) {
+  target.save()
+  target.globalAlpha = clamp(Number(opacity) || 0, 0, 100) / 100
+  target.globalCompositeOperation = BLEND_GCO[blendMode ?? 'normal'] ?? 'source-over'
+  target.drawImage(image, 0, 0)
+  target.restore()
+}
+
 function colorize(mask: HTMLCanvasElement, color: string): HTMLCanvasElement {
   const out = cloneCanvas(mask)
   const c = ctx2d(out)
@@ -124,23 +158,24 @@ function colorize(mask: HTMLCanvasElement, color: string): HTMLCanvasElement {
 }
 
 function castShadow(
-  sil: HTMLCanvasElement,
+  source: HTMLCanvasElement,
   color: string,
   blur: number,
   dx: number,
   dy: number,
+  cutout: HTMLCanvasElement = source,
 ): HTMLCanvasElement {
-  const out = createCanvas(sil.width, sil.height)
+  const out = createCanvas(source.width, source.height)
   const c = ctx2d(out)
   c.save()
   c.shadowColor = color
   c.shadowBlur = blur
   c.shadowOffsetX = dx
   c.shadowOffsetY = dy
-  c.drawImage(sil, 0, 0)
+  c.drawImage(source, 0, 0)
   c.restore()
   c.globalCompositeOperation = 'destination-out'
-  c.drawImage(sil, 0, 0)
+  c.drawImage(cutout, 0, 0)
   return out
 }
 
@@ -315,53 +350,61 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
   const w = content.width, h = content.height
   const sil = silhouetteOf(content)
   const under = createCanvas(w, h)
-  const over = createCanvas(w, h)
   const uc = ctx2d(under)
-  const oc = ctx2d(over)
 
-  // Drop Shadow
+  // Effects behind the layer. Independent blending with lower document layers
+  // requires compositor-level FX groups; within the prepared layer these modes
+  // still control interaction between multiple under-effects.
   if (fx.dropShadow?.enabled) {
     const v = fx.dropShadow
     const [dx, dy] = angleOffset(v.angle, v.distance)
-    const sh = applyContour(castShadow(sil, v.color, v.blur, dx, dy), v.contour)
-    uc.save(); uc.globalAlpha = clamp(v.opacity, 0, 100) / 100; uc.drawImage(sh, 0, 0); uc.restore()
+    const spreadPx = Math.max(0, v.blur * clamp(Number(v.spread) || 0, 0, 100) / 100)
+    const source = spreadPx > .25 ? dilate(sil, spreadPx) : sil
+    const blur = Math.max(0, v.blur - spreadPx * .75)
+    let sh = castShadow(source, v.color, blur, dx, dy, sil)
+    sh = applyNoise(applyContour(sh, v.contour), v.noise)
+    drawEffect(uc, sh, v.opacity, v.blendMode ?? 'multiply')
   }
 
-  // Outer Glow
   if (fx.outerGlow?.enabled) {
     const v = fx.outerGlow
-    const glow = applyContour(castShadow(sil, v.color, v.blur, 0, 0), v.contour)
-    uc.save(); uc.globalAlpha = clamp(v.opacity, 0, 100) / 100; uc.drawImage(glow, 0, 0); uc.restore()
+    const spreadPx = Math.max(0, v.blur * clamp(Number(v.spread) || 0, 0, 100) / 100)
+    const source = spreadPx > .25 ? dilate(sil, spreadPx) : sil
+    const blur = Math.max(0, v.blur - spreadPx * .75)
+    let glow = castShadow(source, v.color, blur, 0, 0, sil)
+    glow = applyNoise(applyContour(glow, v.contour), v.noise)
+    drawEffect(uc, glow, v.opacity, v.blendMode ?? 'screen')
   }
 
-  // Outside / center outer half Stroke
   if (fx.stroke?.enabled && (fx.stroke.position === 'outside' || fx.stroke.position === 'center')) {
     const v = fx.stroke
     const ring = outerBand(sil, v.position === 'center' ? Math.max(.5, v.size / 2) : v.size)
-    const painted = strokePaint(ring, v)
-    uc.save(); uc.globalAlpha = clamp(v.opacity, 0, 100) / 100; uc.drawImage(painted, 0, 0); uc.restore()
+    drawEffect(uc, strokePaint(ring, v), v.opacity, v.blendMode ?? 'normal')
   }
 
-  // Content overlays
+  // Start the final prepared layer with behind-effects and the editable content.
+  // Every effect below composites directly against that content, so its blend
+  // mode is a real Canvas compositing operation rather than a UI-only setting.
+  const out = createCanvas(w, h)
+  const oc = ctx2d(out)
+  oc.drawImage(under, 0, 0)
+  oc.drawImage(content, 0, 0)
+
   if (fx.colorOverlay?.enabled) {
     const v = fx.colorOverlay
-    const fill = colorize(sil, v.color)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(fill, 0, 0); oc.restore()
+    drawEffect(oc, colorize(sil, v.color), v.opacity, v.blendMode ?? 'normal')
   }
 
   if (fx.gradientOverlay?.enabled) {
     const v: GradientStyleFX = fx.gradientOverlay
-    const fill = gradientFill(sil, v)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(fill, 0, 0); oc.restore()
+    drawEffect(oc, gradientFill(sil, v), v.opacity, v.blendMode ?? 'normal')
   }
 
   if (fx.patternOverlay?.enabled) {
     const v: PatternStyleFX = fx.patternOverlay
-    const fill = patternFill(sil, v)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(fill, 0, 0); oc.restore()
+    drawEffect(oc, patternFill(sil, v), v.opacity, v.blendMode ?? 'normal')
   }
 
-  // Satin
   if (fx.satin?.enabled) {
     const v = fx.satin
     const [dx, dy] = angleOffset(v.angle, v.distance)
@@ -373,21 +416,18 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
     sc.globalCompositeOperation = 'destination-in'
     sc.drawImage(sil, 0, 0)
     sc.globalCompositeOperation = 'source-over'
-    const soft = applyContour(blurCanvas(satin, Math.max(.5, v.size / 2)), v.contour)
+    const soft = applyNoise(applyContour(blurCanvas(satin, Math.max(.5, v.size / 2)), v.contour), v.noise)
     if (v.invert) {
       const inv = cloneCanvas(sil)
       const ic = ctx2d(inv)
       ic.globalCompositeOperation = 'destination-out'
       ic.drawImage(soft, 0, 0)
-      const colored = colorize(inv, v.color)
-      oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
+      drawEffect(oc, colorize(inv, v.color), v.opacity, v.blendMode ?? 'multiply')
     } else {
-      const colored = colorize(soft, v.color)
-      oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
+      drawEffect(oc, colorize(soft, v.color), v.opacity, v.blendMode ?? 'multiply')
     }
   }
 
-  // Inner Glow
   if (fx.innerGlow?.enabled) {
     const v = fx.innerGlow
     const chokePx = Math.max(0, (Number(v.choke) || 0) / 100 * v.blur)
@@ -398,65 +438,48 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
       mc.globalCompositeOperation = 'destination-out'
       mc.drawImage(insideBand(sil, Math.max(1, v.blur + chokePx)), 0, 0)
       mc.globalCompositeOperation = 'source-over'
-      mask = blurCanvas(mask, Math.max(.5, v.blur / 2))
+      mask = blurCanvas(mask, Math.max(.5, (v.blur - chokePx * .6) / 2))
       applyMask(mask, sil)
     } else {
       mask = insideBand(sil, Math.max(1, v.blur + chokePx))
-      mask = blurCanvas(mask, Math.max(.5, v.blur / 2))
+      mask = blurCanvas(mask, Math.max(.5, (v.blur - chokePx * .6) / 2))
       applyMask(mask, sil)
     }
-    mask = applyContour(mask, v.contour)
-    const colored = colorize(mask, v.color)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
+    mask = applyNoise(applyContour(mask, v.contour), v.noise)
+    drawEffect(oc, colorize(mask, v.color), v.opacity, v.blendMode ?? 'screen')
   }
 
-  // Inner Shadow
   if (fx.innerShadow?.enabled) {
     const v = fx.innerShadow
-    const band = insideBand(sil, v.blur + v.distance + 1)
+    const spreadPx = Math.max(0, v.blur * clamp(Number(v.spread) || 0, 0, 100) / 100)
+    const band = insideBand(sil, v.blur + v.distance + spreadPx + 1)
     const [dx, dy] = angleOffset(v.angle, v.distance)
     const shifted = createCanvas(w, h)
     const sc = ctx2d(shifted)
     sc.drawImage(band, dx, dy)
     sc.globalCompositeOperation = 'destination-in'
     sc.drawImage(sil, 0, 0)
-    const soft = applyContour(blurCanvas(shifted, v.blur / 2), v.contour)
-    const colored = colorize(soft, v.color)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
+    const blur = Math.max(.25, (v.blur - spreadPx * .75) / 2)
+    const soft = applyNoise(applyContour(blurCanvas(shifted, blur), v.contour), v.noise)
+    drawEffect(oc, colorize(soft, v.color), v.opacity, v.blendMode ?? 'multiply')
   }
 
-  // Bevel & Emboss
   if (fx.bevelEmboss?.enabled) {
     const v = fx.bevelEmboss
     const masks = bevelMasks(sil, v)
     const highlight = applyContour(masks.highlight, v.contour)
     const shadow = applyContour(masks.shadow, v.contour)
     const depth = clamp((Number(v.depth) || 100) / 100, .01, 10)
-    const hi = colorize(highlight, v.highlightColor)
-    const sh = colorize(shadow, v.shadowColor)
-    oc.save()
-    oc.globalAlpha = clamp(v.highlightOpacity * Math.min(depth, 2.5), 0, 100) / 100
-    oc.drawImage(hi, 0, 0)
-    oc.restore()
-    oc.save()
-    oc.globalAlpha = clamp(v.shadowOpacity * Math.min(depth, 2.5), 0, 100) / 100
-    oc.drawImage(sh, 0, 0)
-    oc.restore()
+    drawEffect(oc, colorize(highlight, v.highlightColor), clamp(v.highlightOpacity * Math.min(depth, 2.5), 0, 100), v.highlightBlendMode ?? 'screen')
+    drawEffect(oc, colorize(shadow, v.shadowColor), clamp(v.shadowOpacity * Math.min(depth, 2.5), 0, 100), v.shadowBlendMode ?? 'multiply')
   }
 
-  // Inside / center inner half Stroke
   if (fx.stroke?.enabled && (fx.stroke.position === 'inside' || fx.stroke.position === 'center')) {
     const v = fx.stroke
     const band = insideBand(sil, v.position === 'center' ? Math.max(.5, v.size / 2) : v.size)
-    const painted = strokePaint(band, v)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(painted, 0, 0); oc.restore()
+    drawEffect(oc, strokePaint(band, v), v.opacity, v.blendMode ?? 'normal')
   }
 
-  const out = createCanvas(w, h)
-  const c = ctx2d(out)
-  c.drawImage(under, 0, 0)
-  c.drawImage(content, 0, 0)
-  c.drawImage(over, 0, 0)
   return out
 }
 
@@ -465,28 +488,29 @@ export function defaultFX(): LayerFX {
     bevelEmboss: {
       enabled: true, style: 'inner-bevel', technique: 'smooth', depth: 100, direction: 'up',
       size: 5, soften: 0, angle: 120, altitude: 30,
-      highlightColor: '#ffffff', highlightOpacity: 75,
-      shadowColor: '#000000', shadowOpacity: 75,
+      highlightColor: '#ffffff', highlightOpacity: 75, highlightBlendMode: 'screen',
+      shadowColor: '#000000', shadowOpacity: 75, shadowBlendMode: 'multiply',
     },
     stroke: {
       enabled: true, color: '#ffffff', opacity: 100, size: 3, position: 'outside',
       fillType: 'color', gradientStart: '#ffffff', gradientEnd: '#000000',
       gradientAngle: 0, gradientScale: 100, pattern: 'checker', patternScale: 100,
       patternOffsetX: 0, patternOffsetY: 0, patternFg: '#ffffff', patternBg: '#000000',
+      blendMode: 'normal',
     },
-    innerShadow: { enabled: true, color: '#000000', opacity: 55, angle: 135, distance: 8, blur: 12 },
-    innerGlow: { enabled: true, color: '#fff4b8', opacity: 65, blur: 18, source: 'edge', choke: 0 },
-    satin: { enabled: true, color: '#000000', opacity: 50, angle: 19, distance: 11, size: 14, invert: false },
-    colorOverlay: { enabled: true, color: '#e8a33d', opacity: 100 },
+    innerShadow: { enabled: true, color: '#000000', opacity: 55, angle: 135, distance: 8, blur: 12, blendMode: 'multiply', spread: 0, noise: 0 },
+    innerGlow: { enabled: true, color: '#fff4b8', opacity: 65, blur: 18, source: 'edge', choke: 0, blendMode: 'screen', noise: 0 },
+    satin: { enabled: true, color: '#000000', opacity: 50, angle: 19, distance: 11, size: 14, invert: false, blendMode: 'multiply', noise: 0 },
+    colorOverlay: { enabled: true, color: '#e8a33d', opacity: 100, blendMode: 'normal' },
     gradientOverlay: {
       enabled: true, opacity: 100, startColor: '#ffffff', endColor: '#000000',
-      angle: 90, scale: 100, style: 'linear', reverse: false,
+      angle: 90, scale: 100, style: 'linear', reverse: false, blendMode: 'normal',
     },
     patternOverlay: {
       enabled: true, opacity: 100, pattern: 'checker', scale: 100,
-      offsetX: 0, offsetY: 0, fg: '#ffffff', bg: '#000000',
+      offsetX: 0, offsetY: 0, fg: '#ffffff', bg: '#000000', blendMode: 'normal',
     },
-    outerGlow: { enabled: true, color: '#ffd27a', opacity: 60, blur: 24 },
-    dropShadow: { enabled: true, color: '#000000', opacity: 55, angle: 135, distance: 12, blur: 16 },
+    outerGlow: { enabled: true, color: '#ffd27a', opacity: 60, blur: 24, blendMode: 'screen', spread: 0, noise: 0 },
+    dropShadow: { enabled: true, color: '#000000', opacity: 55, angle: 135, distance: 12, blur: 16, blendMode: 'multiply', spread: 0, noise: 0 },
   }
 }

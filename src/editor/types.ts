@@ -211,6 +211,9 @@ export interface ShadowFX {
   angle: number         // degrees
   distance: number      // px
   blur: number          // px
+  blendMode?: BlendMode
+  spread?: number        // 0..100; hardens Drop Shadow edge
+  noise?: number         // 0..100
   contour?: StyleContourPoint[]
 }
 export interface GlowFX {
@@ -221,6 +224,9 @@ export interface GlowFX {
   /** Inner Glow only: edge starts at the contour; center grows inward. */
   source?: 'edge' | 'center'
   choke?: number        // 0..100
+  blendMode?: BlendMode
+  spread?: number        // 0..100; Outer Glow only (Inner Glow uses choke)
+  noise?: number         // 0..100
   contour?: StyleContourPoint[]
 }
 export interface GradientStyleFX {
@@ -232,6 +238,7 @@ export interface GradientStyleFX {
   scale: number         // 10..400 %
   style: 'linear' | 'radial'
   reverse?: boolean
+  blendMode?: BlendMode
 }
 export interface PatternStyleFX {
   enabled: boolean
@@ -242,6 +249,7 @@ export interface PatternStyleFX {
   offsetY: number
   fg: string
   bg: string
+  blendMode?: BlendMode
 }
 export interface SatinFX {
   enabled: boolean
@@ -251,6 +259,8 @@ export interface SatinFX {
   distance: number
   size: number
   invert?: boolean
+  blendMode?: BlendMode
+  noise?: number         // 0..100
   contour?: StyleContourPoint[]
 }
 export interface BevelEmbossFX {
@@ -267,6 +277,8 @@ export interface BevelEmbossFX {
   highlightOpacity: number
   shadowColor: string
   shadowOpacity: number
+  highlightBlendMode?: BlendMode
+  shadowBlendMode?: BlendMode
   contour?: StyleContourPoint[]
 }
 export interface StrokeFX {
@@ -286,11 +298,13 @@ export interface StrokeFX {
   patternOffsetY?: number
   patternFg?: string
   patternBg?: string
+  blendMode?: BlendMode
 }
 export interface ColorOverlayFX {
   enabled: boolean
   color: string
   opacity: number       // 0..100
+  blendMode?: BlendMode
 }
 /** Non-destructive layer styles — rendered by prepareLayer after the layer
  *  mask (the masked silhouette is the fx shape, Photoshop semantics). */
