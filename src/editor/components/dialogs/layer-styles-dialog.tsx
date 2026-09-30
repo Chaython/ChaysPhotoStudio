@@ -12,11 +12,136 @@ import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { defaultFX } from '../../engine/layer-fx'
 import { listUserPatterns } from '../../tools/patterns'
-import type { ControlDef, LayerFX } from '../../types'
+import type { ControlDef, LayerFX, StyleContourPoint } from '../../types'
 import type { DialogProps } from './generic-dialogs'
 import { cn } from '@/lib/utils'
 
 type EffectKey = keyof LayerFX
+
+const LINEAR_CONTOUR: StyleContourPoint[] = [{ x: 0, y: 0 }, { x: 1, y: 1 }]
+const CONTOUR_EFFECTS = new Set<EffectKey>(['bevelEmboss', 'innerShadow', 'innerGlow', 'satin', 'outerGlow', 'dropShadow'])
+const CONTOUR_PRESETS: { label: string; points: StyleContourPoint[] }[] = [
+  { label: 'Linear', points: LINEAR_CONTOUR },
+  { label: 'S Curve', points: [{ x: 0, y: 0 }, { x: .25, y: .08 }, { x: .5, y: .5 }, { x: .75, y: .92 }, { x: 1, y: 1 }] },
+  { label: 'Cone', points: [{ x: 0, y: 0 }, { x: .5, y: 1 }, { x: 1, y: 0 }] },
+  { label: 'Ring', points: [{ x: 0, y: 0 }, { x: .25, y: .9 }, { x: .5, y: .15 }, { x: .75, y: .9 }, { x: 1, y: 0 }] },
+]
+
+function normalizeContour(points: StyleContourPoint[] | undefined): StyleContourPoint[] {
+  const src = points?.length ? points : LINEAR_CONTOUR
+  const sorted = src
+    .map(p => ({ x: Math.max(0, Math.min(1, Number(p.x) || 0)), y: Math.max(0, Math.min(1, Number(p.y) || 0)) }))
+    .sort((a, b) => a.x - b.x)
+  if (!sorted.length) return LINEAR_CONTOUR.map(p => ({ ...p }))
+  if (sorted[0].x > 0) sorted.unshift({ x: 0, y: sorted[0].y })
+  if (sorted[sorted.length - 1].x < 1) sorted.push({ x: 1, y: sorted[sorted.length - 1].y })
+  sorted[0].x = 0
+  sorted[sorted.length - 1].x = 1
+  return sorted
+}
+
+function ContourEditor({ value, onChange }: { value?: StyleContourPoint[]; onChange(points: StyleContourPoint[]): void }) {
+  const points = normalizeContour(value)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const dragging = useRef<number | null>(null)
+  const W = 270, H = 126, P = 10
+  const sx = (x: number) => P + x * (W - P * 2)
+  const sy = (y: number) => H - P - y * (H - P * 2)
+  const eventPoint = (e: React.PointerEvent<SVGSVGElement>): StyleContourPoint => {
+    const rect = svgRef.current!.getBoundingClientRect()
+    const px = ((e.clientX - rect.left) / rect.width) * W
+    const py = ((e.clientY - rect.top) / rect.height) * H
+    return {
+      x: Math.max(0, Math.min(1, (px - P) / (W - P * 2))),
+      y: Math.max(0, Math.min(1, (H - P - py) / (H - P * 2))),
+    }
+  }
+  const movePoint = (index: number, next: StyleContourPoint) => {
+    const copy = points.map(p => ({ ...p }))
+    const lo = index === 0 ? 0 : copy[index - 1].x + .01
+    const hi = index === copy.length - 1 ? 1 : copy[index + 1].x - .01
+    copy[index] = {
+      x: index === 0 ? 0 : index === copy.length - 1 ? 1 : Math.max(lo, Math.min(hi, next.x)),
+      y: next.y,
+    }
+    onChange(copy)
+  }
+  const addPoint = (next: StyleContourPoint) => {
+    if (points.length >= 12) return
+    const copy = [...points.map(p => ({ ...p })), next].sort((a, b) => a.x - b.x)
+    onChange(copy)
+  }
+  const removePoint = (index: number) => {
+    if (index <= 0 || index >= points.length - 1) return
+    onChange(points.filter((_, i) => i !== index).map(p => ({ ...p })))
+  }
+  const polyline = points.map(p => `${sx(p.x)},${sy(p.y)}`).join(' ')
+
+  return (
+    <div className="rounded-md border border-border/70 bg-background/30 p-2 space-y-2">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-medium">Contour</span>
+        <span className="text-[9px] text-muted-foreground">click to add · drag to shape · double-click interior point to remove</span>
+      </div>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-32 rounded border border-border bg-black/20 touch-none select-none"
+        onPointerDown={e => {
+          if (e.target !== e.currentTarget) return
+          addPoint(eventPoint(e))
+        }}
+        onPointerMove={e => {
+          if (dragging.current === null) return
+          movePoint(dragging.current, eventPoint(e))
+        }}
+        onPointerUp={e => {
+          if (dragging.current !== null) e.currentTarget.releasePointerCapture?.(e.pointerId)
+          dragging.current = null
+        }}
+        onPointerCancel={() => { dragging.current = null }}
+        aria-label="Layer style contour curve editor"
+      >
+        {[.25, .5, .75].map(v => (
+          <g key={v} opacity=".2">
+            <line x1={sx(v)} y1={P} x2={sx(v)} y2={H - P} stroke="currentColor" strokeWidth=".6" />
+            <line x1={P} y1={sy(v)} x2={W - P} y2={sy(v)} stroke="currentColor" strokeWidth=".6" />
+          </g>
+        ))}
+        <line x1={P} y1={H - P} x2={W - P} y2={P} stroke="currentColor" strokeOpacity=".18" strokeDasharray="3 3" />
+        <polyline points={polyline} fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
+        {points.map((p, i) => (
+          <circle
+            key={i}
+            cx={sx(p.x)}
+            cy={sy(p.y)}
+            r="4.5"
+            className="fill-background stroke-primary cursor-grab active:cursor-grabbing"
+            strokeWidth="2"
+            onPointerDown={e => {
+              e.stopPropagation()
+              dragging.current = i
+              e.currentTarget.ownerSVGElement?.setPointerCapture?.(e.pointerId)
+            }}
+            onDoubleClick={e => { e.stopPropagation(); removePoint(i) }}
+          />
+        ))}
+      </svg>
+      <div className="flex flex-wrap gap-1">
+        {CONTOUR_PRESETS.map(preset => (
+          <button
+            key={preset.label}
+            type="button"
+            className="h-6 px-2 rounded border text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent"
+            onClick={() => onChange(preset.points.map(p => ({ ...p })))}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const STYLE_DEFAULTS_KEY = 'chays-photo-layer-style-defaults-v1'
 
@@ -203,17 +328,18 @@ function controlsFor(selected: EffectKey, current: Record<string, any> | undefin
 }
 
 function cloneFX(fx: LayerFX | null): LayerFX {
+  const contour = (points: StyleContourPoint[] | undefined) => points?.map(p => ({ ...p }))
   return {
-    bevelEmboss: fx?.bevelEmboss ? { ...fx.bevelEmboss } : undefined,
+    bevelEmboss: fx?.bevelEmboss ? { ...fx.bevelEmboss, contour: contour(fx.bevelEmboss.contour) } : undefined,
     stroke: fx?.stroke ? { ...fx.stroke } : undefined,
-    innerShadow: fx?.innerShadow ? { ...fx.innerShadow } : undefined,
-    innerGlow: fx?.innerGlow ? { ...fx.innerGlow } : undefined,
-    satin: fx?.satin ? { ...fx.satin } : undefined,
+    innerShadow: fx?.innerShadow ? { ...fx.innerShadow, contour: contour(fx.innerShadow.contour) } : undefined,
+    innerGlow: fx?.innerGlow ? { ...fx.innerGlow, contour: contour(fx.innerGlow.contour) } : undefined,
+    satin: fx?.satin ? { ...fx.satin, contour: contour(fx.satin.contour) } : undefined,
     colorOverlay: fx?.colorOverlay ? { ...fx.colorOverlay } : undefined,
     gradientOverlay: fx?.gradientOverlay ? { ...fx.gradientOverlay } : undefined,
     patternOverlay: fx?.patternOverlay ? { ...fx.patternOverlay } : undefined,
-    outerGlow: fx?.outerGlow ? { ...fx.outerGlow } : undefined,
-    dropShadow: fx?.dropShadow ? { ...fx.dropShadow } : undefined,
+    outerGlow: fx?.outerGlow ? { ...fx.outerGlow, contour: contour(fx.outerGlow.contour) } : undefined,
+    dropShadow: fx?.dropShadow ? { ...fx.dropShadow, contour: contour(fx.dropShadow.contour) } : undefined,
   }
 }
 
@@ -361,9 +487,16 @@ export function LayerStylesDialog({ inst, onClose }: DialogProps) {
             ))
           )}
 
+          {current?.enabled && CONTOUR_EFFECTS.has(selected) && (
+            <ContourEditor
+              value={current.contour as StyleContourPoint[] | undefined}
+              onChange={points => patch(selected, 'contour', points)}
+            />
+          )}
+
           {selected === 'bevelEmboss' && current?.enabled && (
             <p className="text-[10px] text-muted-foreground pt-1">
-              Lighting uses Angle + Altitude; Direction flips the highlight and shadow. Chisel modes reduce smoothing for harder engraved edges.
+              Lighting uses Angle + Altitude; Direction flips the highlight and shadow. Chisel modes reduce smoothing for harder engraved edges; the Contour remaps edge intensity before highlight/shadow colorization.
             </p>
           )}
           {selected === 'stroke' && current?.enabled && (
