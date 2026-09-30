@@ -151,27 +151,6 @@ export async function decodeBundledRaw(bytes: Uint8Array): Promise<RawImage> {
   }
 }
 
-export async function decodeBundledPdf(bytes: Uint8Array, scale = 2): Promise<HTMLCanvasElement> {
-  // webpack.mjs is PDF.js' zero-configuration bundler entry: it wires the
-  // worker asset into the bundle rather than depending on a CDN or browser PDF viewer.
-  const pdfjs: any = await import('pdfjs-dist/webpack.mjs')
-  const task = pdfjs.getDocument({ data: exactArrayBuffer(bytes), isEvalSupported: false })
-  const pdf = await task.promise
-  try {
-    const page = await pdf.getPage(1)
-    const viewport = page.getViewport({ scale: Math.max(0.25, Math.min(8, scale)) })
-    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height), { bitDepth: 8, colorSpace: 'srgb' })
-    const context = ctx2d(canvas)
-    const renderTask = page.render({ canvasContext: context, viewport, canvas })
-    await renderTask.promise
-    page.cleanup?.()
-    return canvas
-  } finally {
-    try { await pdf.destroy?.() } catch { /* noop */ }
-    try { await task.destroy?.() } catch { /* noop */ }
-  }
-}
-
 export function decodeBundledEps(bytes: Uint8Array): HTMLCanvasElement {
   return decodeEpsPostScript(bytes)
 }
