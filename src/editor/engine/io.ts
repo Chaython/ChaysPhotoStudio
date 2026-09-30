@@ -4,22 +4,20 @@ import { useEditorStore } from '../store'
 import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
 import { newLayer } from './document'
 import type { HistoryState, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
-import { decodeFile, detectFormat, formatFromFileName } from '../formats'
+import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
 import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension } from '../formats'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
-const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim', 'heic', 'jxl', 'jp2', 'raw', 'eps']
+const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim']
 
 /** sniff the first 64 bytes — enough for every magic-byte signature we know */
 async function sniffFormat(file: File): Promise<ImportFormatId | null> {
   try {
     const head = new Uint8Array(await file.slice(0, 64).arrayBuffer())
-    const named = formatFromFileName(file.name)
-    if (named === 'raw') return 'raw'
-    return detectFormat(head) ?? named
+    return detectFormat(head)
   } catch {
     return null
   }
