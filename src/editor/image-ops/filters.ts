@@ -9,11 +9,12 @@ import { clamp } from '../utils/canvas'
 import { luma } from './color'
 import { mulberry32, smoothRamp } from './interp'
 import { blurImageData, boxBlurFloat, sobel } from './blur'
+import { createPixelImageLike, type PixelArray } from './pixel-data'
 
 // ---------------------------------------------------------------- helpers
 
 /** bilinear RGB sample from a raw RGBA buffer (clamped edges) */
-function bilinearRGB(src: Uint8ClampedArray, w: number, h: number, x: number, y: number, out: number[]): void {
+function bilinearRGB(src: PixelArray, w: number, h: number, x: number, y: number, out: number[]): void {
   if (x < 0) x = 0
   if (y < 0) y = 0
   if (x > w - 1) x = w - 1
@@ -51,7 +52,7 @@ function medianFilter(img: ImageData, radius: number): void {
   const { width: w, height: h, data } = img
   const r = Math.min(12, Math.max(1, Math.round(radius)))
   const win = 2 * r + 1
-  const src = new Uint8ClampedArray(data)
+  const src = Float32Array.from(data)
   const K = win * win
   const half = (K + 1) >> 1
   const coarse = [new Uint32Array(16), new Uint32Array(16), new Uint32Array(16)]
@@ -116,8 +117,8 @@ function minMaxFilter(img: ImageData, radius: number, isMax: boolean, round: boo
   const r = Math.min(50, Math.max(1, Math.round(radius)))
   if (!round) {
     // separable rectangular morphology: two O(r) passes per channel
-    const src = new Uint8ClampedArray(data)
-    const tmp = new Uint8ClampedArray(data)
+    const src = Float32Array.from(data)
+    const tmp = Float32Array.from(data)
     for (let c = 0; c < 3; c++) {
       // horizontal
       for (let y = 0; y < h; y++) {
@@ -148,7 +149,7 @@ function minMaxFilter(img: ImageData, radius: number, isMax: boolean, round: boo
   }
   // circular structuring element: per-pixel scan over column extents;
   // stride widens for big radii to keep it interactive
-  const src = new Uint8ClampedArray(data)
+  const src = Float32Array.from(data)
   const stride = r <= 12 ? 1 : Math.ceil(r / 12)
   const extents: number[] = []
   for (let dx = -r; dx <= r; dx += 1) extents.push(Math.floor(Math.sqrt(r * r - dx * dx)))
@@ -218,7 +219,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       const rad = ((p.angle ?? 0) * Math.PI) / 180
       const dx = Math.cos(rad), dy = -Math.sin(rad)
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       // sub-pixel taps along the segment; cap tap count for interactivity
       const taps = Math.max(4, Math.min(72, Math.round(dist)))
       const step = dist / (taps - 1)
@@ -255,7 +256,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       const zoom = p.method === 'zoom'
       const n = p.quality === 'best' ? 28 : p.quality === 'draft' ? 8 : 16
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const cx = w / 2, cy = h / 2
       const totalAng = amount * 1.7      // spin: max ~±49°
       const zoomExp = amount * 2.2       // zoom: geometric scale spread
@@ -303,8 +304,8 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       const amount = (p.amount ?? 80) / 100
       const radius = p.radius ?? 2
       const threshold = p.threshold ?? 2
-      const orig = new Uint8ClampedArray(img.data)
-      const blur = new ImageData(img.width, img.height)
+      const orig = Float32Array.from(img.data)
+      const blur = createPixelImageLike(img)
       blur.data.set(orig)
       blurImageData(blur, radius)
       const d = img.data, bd = blur.data
@@ -378,7 +379,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
     ],
     defaults: { radius: 2, threshold: 10 },
     apply(img, p) {
-      const orig = new Uint8ClampedArray(img.data)
+      const orig = Float32Array.from(img.data)
       medianFilter(img, p.radius ?? 2)
       const th = p.threshold ?? 10
       const d = img.data
@@ -428,7 +429,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
     apply(img, p) {
       const s = Math.max(3, Math.round(p.size ?? 20))
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const cols = Math.max(1, Math.ceil(w / s))
       const rows = Math.max(1, Math.ceil(h / s))
       // deterministic jittered grid — one seed per cell (Voronoi sites)
@@ -515,7 +516,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       const hF = p.height ?? 2
       const amount = (p.amount ?? 100) / 100
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const rgb = [0, 0, 0]
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
@@ -546,7 +547,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       const str = Math.round(clamp(p.strength ?? 8, 1, 40))
       const stagger = p.method === 'stagger'
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const rowLuma = new Float32Array(w)
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
@@ -586,7 +587,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       const r = Math.round(clamp(p.radius ?? 3, 1, 8))
       const sectors = Math.max(1, Math.min(4, Math.round(p.brush ?? 2))) // 1 = plain mean
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const quads = [[-1, -1], [1, -1], [-1, 1], [1, 1]]
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
@@ -641,7 +642,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
     controls: [{ key: 'radius', label: 'Radius', type: 'slider', min: 0.5, max: 100, step: 0.5, unit: 'px' }],
     defaults: { radius: 3 },
     apply(img, p) {
-      const orig = new Uint8ClampedArray(img.data)
+      const orig = Float32Array.from(img.data)
       blurImageData(img, p.radius ?? 3)
       const d = img.data
       for (let i = 0; i < d.length; i += 4) {
@@ -660,7 +661,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       const offset = p.offset ?? 0
       if (k.length < 25 || scale === 0) return
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const inv = 1 / scale
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
@@ -716,7 +717,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       const angle = ((p.angle ?? 50) * Math.PI) / 180
       const radius = p.radius ?? 300
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const cx = w / 2, cy = h / 2
       const rgb = [0, 0, 0]
       for (let y = 0; y < h; y++) {
@@ -760,7 +761,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
         return Math.sin(t * Math.PI * 2)
       }
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const rgb = [0, 0, 0]
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
@@ -783,7 +784,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
     apply(img, p) {
       const amt = (p.amount ?? 50) / 100
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const cx = w / 2, cy = h / 2
       const R = Math.min(w, h) / 2
       const rgb = [0, 0, 0]
@@ -1046,7 +1047,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       // bright-pass → blur → screen-add back (glow bloom)
       const w = img.width, h = img.height
       const d = img.data
-      const bright = new ImageData(w, h)
+      const bright = createPixelImageLike(img, w, h)
       const bd = bright.data
       for (let i = 0; i < d.length; i += 4) {
         const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
@@ -1079,7 +1080,7 @@ export const FILTERS: Partial<Record<FilterType, FilterDef>> = {
       const radial = p.radial !== false
       const w = img.width, h = img.height
       const d = img.data
-      const src = new Uint8ClampedArray(d) // copy
+      const src = Float32Array.from(d) // copy
       const cx = w / 2, cy = h / 2
       const maxR = Math.hypot(cx, cy)
       for (let y = 0; y < h; y++) {
