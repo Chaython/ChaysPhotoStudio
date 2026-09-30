@@ -416,6 +416,8 @@ export interface HistorySnapshot {
   name: string
   time: number
   state: HistoryState
+  /** Small persisted composite preview for the History panel. */
+  thumbnail?: string
 }
 
 /** Which layer properties a Photoshop-style Layer Comp records. */
