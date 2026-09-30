@@ -5,9 +5,9 @@
 // into the prepared layer canvas. The layer itself remains editable.
 // ============================================================
 import type {
-  BevelEmbossFX, GradientStyleFX, LayerFX, PatternStyleFX, StrokeFX,
+  BevelEmbossFX, GradientStyleFX, LayerFX, PatternStyleFX, StrokeFX, StyleContourPoint,
 } from '../types'
-import { createCanvas, ctx2d, cloneCanvas, clamp } from '../utils/canvas'
+import { createCanvas, ctx2d, cloneCanvas, clamp, getImageData, putImageData } from '../utils/canvas'
 import { paintBuiltinPattern } from '../tools/patterns'
 
 const DIRS: [number, number][] = (() => {
@@ -72,6 +72,45 @@ function blurCanvas(src: HTMLCanvasElement, radius: number): HTMLCanvasElement {
   try { c.filter = `blur(${Math.max(0, radius).toFixed(2)}px)` } catch { /* browser fallback = hard edge */ }
   c.drawImage(src, 0, 0)
   c.filter = 'none'
+  return out
+}
+
+function contourLut(points: StyleContourPoint[] | undefined): Uint8Array | null {
+  if (!points || points.length < 2) return null
+  const sorted = points
+    .map(p => ({ x: clamp(Number(p.x) || 0, 0, 1), y: clamp(Number(p.y) || 0, 0, 1) }))
+    .sort((a, b) => a.x - b.x)
+  const clean: StyleContourPoint[] = []
+  for (const p of sorted) {
+    const prev = clean[clean.length - 1]
+    if (prev && Math.abs(prev.x - p.x) < 1e-4) clean[clean.length - 1] = p
+    else clean.push(p)
+  }
+  if (!clean.length) return null
+  if (clean[0].x > 0) clean.unshift({ x: 0, y: clean[0].y })
+  if (clean[clean.length - 1].x < 1) clean.push({ x: 1, y: clean[clean.length - 1].y })
+  if (clean.length === 2 && clean[0].y === 0 && clean[1].y === 1) return null
+
+  const lut = new Uint8Array(256)
+  let seg = 0
+  for (let i = 0; i < 256; i++) {
+    const x = i / 255
+    while (seg < clean.length - 2 && x > clean[seg + 1].x) seg++
+    const a = clean[seg], b = clean[Math.min(clean.length - 1, seg + 1)]
+    const span = Math.max(1e-6, b.x - a.x)
+    const t = clamp((x - a.x) / span, 0, 1)
+    lut[i] = Math.round(clamp(a.y + (b.y - a.y) * t, 0, 1) * 255)
+  }
+  return lut
+}
+
+function applyContour(mask: HTMLCanvasElement, points: StyleContourPoint[] | undefined): HTMLCanvasElement {
+  const lut = contourLut(points)
+  if (!lut) return mask
+  const out = cloneCanvas(mask)
+  const img = getImageData(out)
+  for (let i = 3; i < img.data.length; i += 4) img.data[i] = lut[img.data[i]]
+  putImageData(out, img)
   return out
 }
 
@@ -284,14 +323,14 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
   if (fx.dropShadow?.enabled) {
     const v = fx.dropShadow
     const [dx, dy] = angleOffset(v.angle, v.distance)
-    const sh = castShadow(sil, v.color, v.blur, dx, dy)
+    const sh = applyContour(castShadow(sil, v.color, v.blur, dx, dy), v.contour)
     uc.save(); uc.globalAlpha = clamp(v.opacity, 0, 100) / 100; uc.drawImage(sh, 0, 0); uc.restore()
   }
 
   // Outer Glow
   if (fx.outerGlow?.enabled) {
     const v = fx.outerGlow
-    const glow = castShadow(sil, v.color, v.blur, 0, 0)
+    const glow = applyContour(castShadow(sil, v.color, v.blur, 0, 0), v.contour)
     uc.save(); uc.globalAlpha = clamp(v.opacity, 0, 100) / 100; uc.drawImage(glow, 0, 0); uc.restore()
   }
 
@@ -334,7 +373,7 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
     sc.globalCompositeOperation = 'destination-in'
     sc.drawImage(sil, 0, 0)
     sc.globalCompositeOperation = 'source-over'
-    const soft = blurCanvas(satin, Math.max(.5, v.size / 2))
+    const soft = applyContour(blurCanvas(satin, Math.max(.5, v.size / 2)), v.contour)
     if (v.invert) {
       const inv = cloneCanvas(sil)
       const ic = ctx2d(inv)
@@ -366,6 +405,7 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
       mask = blurCanvas(mask, Math.max(.5, v.blur / 2))
       applyMask(mask, sil)
     }
+    mask = applyContour(mask, v.contour)
     const colored = colorize(mask, v.color)
     oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
   }
@@ -380,7 +420,7 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
     sc.drawImage(band, dx, dy)
     sc.globalCompositeOperation = 'destination-in'
     sc.drawImage(sil, 0, 0)
-    const soft = blurCanvas(shifted, v.blur / 2)
+    const soft = applyContour(blurCanvas(shifted, v.blur / 2), v.contour)
     const colored = colorize(soft, v.color)
     oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
   }
@@ -388,7 +428,9 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
   // Bevel & Emboss
   if (fx.bevelEmboss?.enabled) {
     const v = fx.bevelEmboss
-    const { highlight, shadow } = bevelMasks(sil, v)
+    const masks = bevelMasks(sil, v)
+    const highlight = applyContour(masks.highlight, v.contour)
+    const shadow = applyContour(masks.shadow, v.contour)
     const depth = clamp((Number(v.depth) || 100) / 100, .01, 10)
     const hi = colorize(highlight, v.highlightColor)
     const sh = colorize(shadow, v.shadowColor)
