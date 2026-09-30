@@ -18,7 +18,7 @@ import {
 import { decodePsd, psdBlendKeyToMode } from './psd'
 import {
   decodeBundledHeic, decodeBundledJxl, decodeBundledJp2, decodeBundledRaw,
-  decodeBundledPdf, decodeBundledEps,
+  decodeBundledEps,
 } from './bundled-codecs'
 import type { ImportFormatId, RawImage } from './decoders'
 import type { ExportFormatId } from './encoders'
@@ -274,10 +274,6 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
     case 'jxl': return fromRaw(await decodeBundledJxl(bytes), 'jxl')
     case 'jp2': return fromRaw(await decodeBundledJp2(bytes), 'jp2')
     case 'raw': return fromRaw(await decodeBundledRaw(bytes), 'raw')
-    case 'pdf': {
-      const canvas = await decodeBundledPdf(bytes)
-      return { canvas, width: canvas.width, height: canvas.height, hasAlpha: scanAlpha(getImageData(canvas).data), format: 'pdf', sourceBitDepth: 8 }
-    }
     case 'eps': {
       const canvas = decodeBundledEps(bytes)
       return { canvas, width: canvas.width, height: canvas.height, hasAlpha: scanAlpha(getImageData(canvas).data), format: 'eps', sourceBitDepth: 8 }
