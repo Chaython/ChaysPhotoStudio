@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 import {
-  Check, ChevronLeft, ChevronRight, Copy, Layers, Pencil, Plus, RefreshCw,
+  Check, ChevronLeft, ChevronRight, Copy, Download, Layers, Pencil, Plus, RefreshCw,
   RotateCcw, Trash2, TriangleAlert,
 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
+import { encodeCanvas } from '../../formats'
+import { downloadBlob } from '../../utils/canvas'
 import { cn } from '@/lib/utils'
 
 export function LayerCompsPanel() {
@@ -19,6 +21,9 @@ export function LayerCompsPanel() {
   const [visibility, setVisibility] = useState(true)
   const [position, setPosition] = useState(true)
   const [appearance, setAppearance] = useState(true)
+  const [exportFormat, setExportFormat] = useState<'png' | 'jpeg' | 'webp'>('png')
+  const [exportQuality, setExportQuality] = useState(92)
+  const [exporting, setExporting] = useState(false)
 
   const create = () => {
     if (!doc) return
@@ -33,6 +38,63 @@ export function LayerCompsPanel() {
     const next = window.prompt('Rename Layer Comp:', current)
     if (next === null) return
     engine.renameLayerComp(id, next)
+  }
+
+  const exportAll = async () => {
+    if (!doc || !comps.length || exporting) return
+    setExporting(true)
+    const store = useEditorStore.getState()
+    const ext = exportFormat === 'jpeg' ? 'jpg' : exportFormat
+    const clean = (value: string) => value
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120) || 'Layer Comp'
+    const base = clean(doc.name.replace(/\.[^.]+$/, '') || 'Document')
+    const picker = (window as any).showDirectoryPicker as undefined | ((opts?: any) => Promise<any>)
+    let directory: any = null
+
+    try {
+      if (picker) {
+        try {
+          directory = await picker({ mode: 'readwrite' })
+        } catch (err: any) {
+          if (err?.name === 'AbortError') return
+          // Permission/API failures fall back to browser downloads.
+        }
+      }
+
+      let exported = 0
+      for (let i = 0; i < comps.length; i++) {
+        const comp = comps[i]
+        store.setProgress({ active: true, label: `Exporting Layer Comp ${i + 1}/${comps.length}: ${comp.name}`, value: i / comps.length })
+        const canvas = engine.renderLayerComp(comp.id)
+        if (!canvas) continue
+        const blob = await encodeCanvas(canvas, exportFormat, {
+          quality: exportQuality,
+          background: '#ffffff',
+        })
+        const fileName = `${base} - ${clean(comp.name)}.${ext}`
+        if (directory) {
+          const handle = await directory.getFileHandle(fileName, { create: true })
+          const writable = await handle.createWritable()
+          await writable.write(blob)
+          await writable.close()
+        } else {
+          downloadBlob(blob, fileName)
+          // Give browsers a chance to dispatch each download before the next.
+          await new Promise(resolve => setTimeout(resolve, 80))
+        }
+        exported++
+      }
+      store.pushToast(`Exported ${exported} Layer Comp${exported === 1 ? '' : 's'} as ${exportFormat.toUpperCase()}`, 'success')
+    } catch (err) {
+      const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
+      store.pushToast(`Layer Comp export failed${why}`, 'error')
+    } finally {
+      store.setProgress(null)
+      setExporting(false)
+    }
   }
 
   if (!doc) {
@@ -108,6 +170,45 @@ export function LayerCompsPanel() {
             <RotateCcw size={11} /> Last Document State
           </button>
           <span className="ml-auto text-[9px] text-muted-foreground">{comps.length} comp{comps.length === 1 ? '' : 's'}</span>
+        </div>
+
+        <div className="flex items-center gap-1.5 pt-0.5">
+          <span className="text-[9px] uppercase tracking-wide text-muted-foreground shrink-0">Export</span>
+          <select
+            value={exportFormat}
+            onChange={e => setExportFormat(e.target.value as 'png' | 'jpeg' | 'webp')}
+            className="h-7 rounded border border-border bg-background px-1.5 text-[10px] outline-none focus:border-primary/60"
+            aria-label="Layer Comp export format"
+          >
+            <option value="png">PNG</option>
+            <option value="jpeg">JPEG</option>
+            <option value="webp">WebP</option>
+          </select>
+          {exportFormat !== 'png' && (
+            <label className="flex items-center gap-1 text-[9px] text-muted-foreground min-w-0 flex-1">
+              Q
+              <input
+                type="range"
+                min={1}
+                max={100}
+                value={exportQuality}
+                onChange={e => setExportQuality(Number(e.target.value))}
+                className="min-w-12 flex-1 accent-primary"
+                aria-label="Layer Comp export quality"
+              />
+              <span className="w-6 text-right font-mono">{exportQuality}</span>
+            </label>
+          )}
+          <button
+            type="button"
+            className="ml-auto h-7 px-2 rounded border border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-40 flex items-center gap-1 text-[10px] shrink-0"
+            onClick={() => { void exportAll() }}
+            disabled={!comps.length || exporting}
+            title="Export every Layer Comp without changing the live document or History"
+          >
+            <Download size={11} />
+            {exporting ? 'Exporting…' : 'Export All'}
+          </button>
         </div>
       </div>
 
