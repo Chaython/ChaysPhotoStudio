@@ -5,9 +5,10 @@
 // into the prepared layer canvas. The layer itself remains editable.
 // ============================================================
 import type {
-  BevelEmbossFX, GradientStyleFX, LayerFX, PatternStyleFX, StrokeFX, StyleContourPoint,
+  BevelEmbossFX, BlendMode, GradientStyleFX, LayerFX, PatternStyleFX, StrokeFX, StyleContourPoint,
 } from '../types'
 import { createCanvas, ctx2d, cloneCanvas, clamp, getImageData, putImageData } from '../utils/canvas'
+import { BLEND_GCO } from '../constants/tools'
 import { paintBuiltinPattern } from '../tools/patterns'
 
 const DIRS: [number, number][] = (() => {
@@ -114,6 +115,39 @@ function applyContour(mask: HTMLCanvasElement, points: StyleContourPoint[] | und
   return out
 }
 
+function applyNoise(mask: HTMLCanvasElement, amount: number | undefined): HTMLCanvasElement {
+  const strength = clamp((Number(amount) || 0) / 100, 0, 1)
+  if (strength <= 0) return mask
+  const out = cloneCanvas(mask)
+  const img = getImageData(out)
+  const d = img.data
+  for (let i = 3, p = 0; i < d.length; i += 4, p++) {
+    // Stable integer hash: deterministic previews/history instead of flicker.
+    let n = Math.imul(p ^ 0x9e3779b9, 0x85ebca6b)
+    n ^= n >>> 13
+    n = Math.imul(n, 0xc2b2ae35)
+    n ^= n >>> 16
+    const grain = (n >>> 0) / 0xffffffff
+    const factor = (1 - strength) + strength * grain
+    d[i] = Math.round(d[i] * factor)
+  }
+  putImageData(out, img)
+  return out
+}
+
+function drawEffect(
+  target: CanvasRenderingContext2D,
+  image: HTMLCanvasElement,
+  opacity: number,
+  blendMode: BlendMode | undefined,
+) {
+  target.save()
+  target.globalAlpha = clamp(Number(opacity) || 0, 0, 100) / 100
+  target.globalCompositeOperation = BLEND_GCO[blendMode ?? 'normal'] ?? 'source-over'
+  target.drawImage(image, 0, 0)
+  target.restore()
+}
+
 function colorize(mask: HTMLCanvasElement, color: string): HTMLCanvasElement {
   const out = cloneCanvas(mask)
   const c = ctx2d(out)
@@ -124,23 +158,24 @@ function colorize(mask: HTMLCanvasElement, color: string): HTMLCanvasElement {
 }
 
 function castShadow(
-  sil: HTMLCanvasElement,
+  source: HTMLCanvasElement,
   color: string,
   blur: number,
   dx: number,
   dy: number,
+  cutout: HTMLCanvasElement = source,
 ): HTMLCanvasElement {
-  const out = createCanvas(sil.width, sil.height)
+  const out = createCanvas(source.width, source.height)
   const c = ctx2d(out)
   c.save()
   c.shadowColor = color
   c.shadowBlur = blur
   c.shadowOffsetX = dx
   c.shadowOffsetY = dy
-  c.drawImage(sil, 0, 0)
+  c.drawImage(source, 0, 0)
   c.restore()
   c.globalCompositeOperation = 'destination-out'
-  c.drawImage(sil, 0, 0)
+  c.drawImage(cutout, 0, 0)
   return out
 }
 
