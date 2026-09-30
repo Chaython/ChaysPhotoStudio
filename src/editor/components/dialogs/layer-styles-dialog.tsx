@@ -5,6 +5,7 @@
 // Cancel restores the exact original.
 // ============================================================
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ControlRenderer } from '../toolbar/tool-options-bar'
@@ -47,7 +48,7 @@ function ContourEditor({ value, onChange }: { value?: StyleContourPoint[]; onCha
   const W = 270, H = 126, P = 10
   const sx = (x: number) => P + x * (W - P * 2)
   const sy = (y: number) => H - P - y * (H - P * 2)
-  const eventPoint = (e: React.PointerEvent<SVGSVGElement>): StyleContourPoint => {
+  const eventPoint = (e: ReactPointerEvent<SVGSVGElement>): StyleContourPoint => {
     const rect = svgRef.current!.getBoundingClientRect()
     const px = ((e.clientX - rect.left) / rect.width) * W
     const py = ((e.clientY - rect.top) / rect.height) * H
