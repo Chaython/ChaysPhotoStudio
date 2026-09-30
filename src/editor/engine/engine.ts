@@ -827,7 +827,7 @@ export class Engine {
   }
 
   // ================================================== layers
-  addRasterLayer(name?: string, opts?: { canvas?: HTMLCanvasElement }): Layer | null {
+  addRasterLayer(name?: string, opts?: { canvas?: HTMLCanvasElement; hdrPixels?: Float32Array }): Layer | null {
     const doc = this.activeDoc
     if (!doc) return null
     const layer = newLayer('raster', name || this.nextLayerName(), doc.width, doc.height)
