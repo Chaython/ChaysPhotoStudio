@@ -36,6 +36,8 @@ export function HistoryPanel() {
   const renderTick = useEditorStore(s => s.renderTick)
   void renderTick
   const [confirmClear, setConfirmClear] = useState(false)
+  const [showSnapshotPrefs, setShowSnapshotPrefs] = useState(false)
+  const [snapshotPrefs, setSnapshotPrefs] = useState(() => engine.getHistorySnapshotPreferences())
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const doc = engine.activeDoc
   const snapshots = doc?.historySnapshots ?? []
@@ -55,6 +57,10 @@ export function HistoryPanel() {
     const name = window.prompt('Rename snapshot:', current)
     if (name === null) return
     engine.renameHistorySnapshot(id, name)
+  }
+
+  const setSnapshotPref = (key: 'autoNewDocument' | 'autoOpenedDocument', checked: boolean) => {
+    setSnapshotPrefs(engine.setHistorySnapshotPreferences({ [key]: checked }))
   }
 
   const clearHistory = () => {
@@ -101,6 +107,12 @@ export function HistoryPanel() {
     <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center gap-0.5 p-1 border-b bg-panel/50">
         <PanelBtn title="Create named snapshot of current state" icon="Camera" onClick={createSnapshot} />
+        <PanelBtn
+          title="Snapshot preferences"
+          icon="Settings2"
+          onClick={() => setShowSnapshotPrefs(v => !v)}
+          active={showSnapshotPrefs}
+        />
         <span className="flex-1" />
         <span className="text-[9px] text-muted-foreground pr-1">{snapshots.length} snapshot(s) · {labels.length} state(s)</span>
         <button
@@ -115,6 +127,31 @@ export function HistoryPanel() {
           {confirmClear ? 'Sure?' : 'Clear'}
         </button>
       </div>
+
+      {showSnapshotPrefs && (
+        <div className="border-b border-border/60 bg-background/20 px-2 py-2 space-y-1.5">
+          <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Automatic first snapshot</div>
+          <label className="flex items-center gap-2 text-[10px] cursor-pointer">
+            <input
+              type="checkbox"
+              className="accent-primary"
+              checked={snapshotPrefs.autoNewDocument}
+              onChange={e => setSnapshotPref('autoNewDocument', e.target.checked)}
+            />
+            New documents
+          </label>
+          <label className="flex items-center gap-2 text-[10px] cursor-pointer">
+            <input
+              type="checkbox"
+              className="accent-primary"
+              checked={snapshotPrefs.autoOpenedDocument}
+              onChange={e => setSnapshotPref('autoOpenedDocument', e.target.checked)}
+            />
+            Opened documents
+          </label>
+          <div className="text-[9px] text-muted-foreground/70">Preferences are stored locally. Automatic snapshots do not mark a freshly opened project as modified.</div>
+        </div>
+      )}
 
       {snapshots.length > 0 && (
         <div className="border-b border-border/60 bg-background/20">
@@ -139,13 +176,29 @@ export function HistoryPanel() {
                     <Icons.Brush size={11} fill={isBrush ? 'currentColor' : 'none'} />
                   </button>
                   <button
-                    className="min-w-0 flex-1 px-2 py-1.5 text-left text-[11px] hover:bg-accent/30"
+                    className="min-w-0 flex-1 px-2 py-1 text-left text-[11px] hover:bg-accent/30"
                     onClick={() => engine.applyHistorySnapshot(snap.id)}
                     onDoubleClick={() => renameSnapshot(snap.id, snap.name)}
                     title="Click to restore snapshot · double-click to rename"
                   >
-                    <span className="block truncate">{snap.name}</span>
-                    <span className="block text-[9px] text-muted-foreground/60">{new Date(snap.time).toLocaleTimeString()}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      {snap.thumbnail ? (
+                        <img
+                          src={snap.thumbnail}
+                          alt=""
+                          className="w-12 h-8 shrink-0 object-contain rounded-sm checker border border-border/40"
+                          draggable={false}
+                        />
+                      ) : (
+                        <span className="w-12 h-8 shrink-0 rounded-sm checker border border-border/40 grid place-items-center text-muted-foreground/40">
+                          <Icons.Image size={12} />
+                        </span>
+                      )}
+                      <span className="min-w-0">
+                        <span className="block truncate">{snap.name}</span>
+                        <span className="block text-[9px] text-muted-foreground/60">{new Date(snap.time).toLocaleTimeString()}</span>
+                      </span>
+                    </span>
                   </button>
                   <button
                     className="w-7 grid place-items-center text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-foreground transition-opacity"
