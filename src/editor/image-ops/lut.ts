@@ -22,6 +22,7 @@
 
 import { clamp } from '../utils/canvas'
 import { smoothRamp } from './interp'
+import type { PixelImage } from './pixel-data'
 
 export interface LutDef {
   id: string
@@ -445,7 +446,7 @@ export function parseCube(text: string, name: string): LutDef {
  * toward the original pixels. Unknown ids are a no-op (e.g. a custom
  * .cube id from a previous session).
  */
-export function applyLUT(img: ImageData, lutId: string, strength: number): void {
+export function applyLUT(img: PixelImage, lutId: string, strength: number): void {
   const lut = getLut(lutId)
   if (!lut) return
   const t = clamp(strength, 0, 100) / 100
@@ -461,7 +462,7 @@ export function applyLUT(img: ImageData, lutId: string, strength: number): void 
     }
     return
   }
-  const src = new Uint8ClampedArray(d)
+  const src = Float32Array.from(d)
   for (let i = 0; i < d.length; i += 4) {
     sampleLUT(lut, d[i] / 255, d[i + 1] / 255, d[i + 2] / 255, out)
     d[i] = src[i] + (out[0] * 255 - src[i]) * t

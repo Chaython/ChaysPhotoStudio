@@ -36,6 +36,7 @@
 import { applyFilter, applyAdjustment } from '../image-ops'
 import { autoTone, autoContrast, autoColor, matchColor } from '../image-ops/auto'
 import { perceptualWandMask } from '../image-ops/wand'
+import type { PixelImage } from '../image-ops/pixel-data'
 
 export type PixelOpKind =
   | 'filter' | 'adjustment'
@@ -55,6 +56,10 @@ interface OpRequestMessage {
   sourceHeight?: number
   buffer: ArrayBuffer
   sourceBuffer?: ArrayBuffer
+  pixelType?: 'u8' | 'f32'
+  dynamicRange?: 'sdr' | 'scene-linear'
+  sourcePixelType?: 'u8' | 'f32'
+  sourceDynamicRange?: 'sdr' | 'scene-linear'
 }
 
 /** worker-scope postMessage (DedicatedWorkerGlobalScope signature, transfer list second arg) */
@@ -68,9 +73,11 @@ self.onmessage = (ev: MessageEvent) => {
   const msg = ev.data as OpRequestMessage | { kind: string }
   if (!msg || msg.kind !== 'op') return
   const req = msg as OpRequestMessage
-  let img: ImageData | null = null
+  let img: PixelImage | null = null
   try {
-    img = new ImageData(new Uint8ClampedArray(req.buffer), req.width, req.height)
+    img = req.pixelType === 'f32'
+      ? { width: req.width, height: req.height, data: new Float32Array(req.buffer), precision: 'float32', dynamicRange: req.dynamicRange ?? 'sdr' }
+      : new ImageData(new Uint8ClampedArray(req.buffer), req.width, req.height)
     switch (req.op) {
       case 'filter':
         applyFilter(img, req.type as never, req.params ?? {})
@@ -85,7 +92,9 @@ self.onmessage = (ev: MessageEvent) => {
         if (!req.sourceBuffer || !req.sourceWidth || !req.sourceHeight) {
           throw new Error('match-color requires a source ImageData (sourceBuffer + sourceWidth + sourceHeight)')
         }
-        const source = new ImageData(new Uint8ClampedArray(req.sourceBuffer), req.sourceWidth, req.sourceHeight)
+        const source: PixelImage = req.sourcePixelType === 'f32'
+          ? { width: req.sourceWidth, height: req.sourceHeight, data: new Float32Array(req.sourceBuffer), precision: 'float32', dynamicRange: req.sourceDynamicRange ?? 'sdr' }
+          : new ImageData(new Uint8ClampedArray(req.sourceBuffer), req.sourceWidth, req.sourceHeight)
         matchColor(img, source, (req.params ?? {}) as never)
         break
       }
@@ -93,7 +102,7 @@ self.onmessage = (ev: MessageEvent) => {
         const p = req.params ?? {}
         const x = Math.max(0, Math.min(req.width - 1, Math.round(Number(p.x) || 0)))
         const y = Math.max(0, Math.min(req.height - 1, Math.round(Number(p.y) || 0)))
-        const mask = perceptualWandMask(img, x, y, p as never)
+        const mask = perceptualWandMask(img as ImageData, x, y, p as never)
         // Return through the existing ImageData transport: encode the grayscale
         // selection in alpha so no second worker protocol/buffer pool is needed.
         for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
@@ -111,7 +120,7 @@ self.onmessage = (ev: MessageEvent) => {
     // copy in the ImageData constructor) or the worker's own — both are safe
     // to transfer back; the main thread re-wraps it into a fresh ImageData.
     try {
-      post({ id: req.id, kind: 'done', buffer: img.data.buffer }, [img.data.buffer])
+      post({ id: req.id, kind: 'done', buffer: img.data.buffer, pixelType: req.pixelType ?? 'u8' }, [img.data.buffer as ArrayBuffer])
     } catch (postErr) {
       // diagnostic fallback — report WHY the transfer post failed (dev debugging)
       post({
@@ -128,7 +137,7 @@ self.onmessage = (ev: MessageEvent) => {
     try {
       post(
         { id: req.id, kind: 'error', message: err instanceof Error ? err.message : String(err), buffer: recovered },
-        [recovered],
+        [recovered as ArrayBuffer],
       )
     } catch (postErr) {
       post({

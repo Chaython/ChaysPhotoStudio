@@ -16,12 +16,13 @@ import { clamp } from '../utils/canvas'
 import { luma, hexToRgbTriple } from './color'
 import { mulberry32, smoothRamp } from './interp'
 import { blurImageData, boxBlurFloat, gaussianBlurFloat } from './blur'
+import { createPixelImageLike, type PixelArray } from './pixel-data'
 
 // ---------------------------------------------------------------- helpers
 // (module-private twins of the filters.ts helpers — they are not exported there)
 
 /** bilinear RGB sample from a raw RGBA buffer (clamped edges) */
-function bilinearRGB(src: Uint8ClampedArray, w: number, h: number, x: number, y: number, out: number[]): void {
+function bilinearRGB(src: PixelArray, w: number, h: number, x: number, y: number, out: number[]): void {
   if (x < 0) x = 0
   if (y < 0) y = 0
   if (x > w - 1) x = w - 1
@@ -40,7 +41,7 @@ function bilinearRGB(src: Uint8ClampedArray, w: number, h: number, x: number, y:
 }
 
 /** bilinear sample of a single channel from a raw RGBA buffer */
-function bilinearCh(src: Uint8ClampedArray, w: number, h: number, x: number, y: number, c: number): number {
+function bilinearCh(src: PixelArray, w: number, h: number, x: number, y: number, c: number): number {
   if (x < 0) x = 0
   if (y < 0) y = 0
   if (x > w - 1) x = w - 1
@@ -159,7 +160,7 @@ export const FILTERS2: Record<NewFilterType, FilterDef> = {
         boxBlurFloat(grainField, w, h, 1)
       }
       // bright-pass → gaussian blur → screen composite (+ grain)
-      const bright = new ImageData(w, h)
+      const bright = createPixelImageLike(img, w, h)
       const bd = bright.data
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
@@ -204,7 +205,7 @@ export const FILTERS2: Record<NewFilterType, FilterDef> = {
       const smoothness = clamp(p.smoothness ?? 4, 1, 15)
       const scaling = clamp(p.scaling ?? 100, 50, 300) / 100
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       // procedural displacement field: 2 octaves of seeded value noise per
       // axis; smoothness sets the lattice cell size (smoother = bigger cells)
       const seed = 0x51a55 ^ Math.imul(distortion, 2654435761) ^ Math.imul(smoothness, 40503) ^ Math.round(scaling * 997)
@@ -243,7 +244,7 @@ export const FILTERS2: Record<NewFilterType, FilterDef> = {
       const size = clamp(p.rippleSize ?? 6, 1, 15)
       const mag = clamp(p.rippleMagnitude ?? 9, 1, 20)
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       // two oblique wave trains phase-modulated by low-frequency noise —
       // the interference reads as a water surface
       const seed = 0x0cea4 ^ Math.imul(size, 2246822519) ^ Math.imul(mag, 3266489917)
@@ -291,7 +292,7 @@ export const FILTERS2: Record<NewFilterType, FilterDef> = {
       const ridges = clamp(p.ridges ?? 8, 1, 20)
       const style = p.style ?? 'pond'
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const cx = w / 2, cy = h / 2
       const R = Math.hypot(cx, cy)
       const k = (ridges * Math.PI * 2) / R // one full ridge per radial band
@@ -334,7 +335,7 @@ export const FILTERS2: Record<NewFilterType, FilterDef> = {
     apply(img, p) {
       const amt = clamp(p.amount ?? 25, -100, 100) / 100
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const cx = w / 2, cy = h / 2
       const Rn = Math.hypot(cx, cy) // half-diagonal: whole frame inside the field
       // inverse map: source radius = r^(1+a) — positive pulls content toward
@@ -375,7 +376,7 @@ export const FILTERS2: Record<NewFilterType, FilterDef> = {
       const bottom = clamp(p.bottomShear ?? 30, -100, 100) / 100
       if (top === 0 && bottom === 0) return
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       // horizontal shear ramp: 100% = half the image width; positive shifts
       // that edge's content to the right (sample from x − dx)
       const maxPx = w * 0.5
@@ -407,7 +408,7 @@ export const FILTERS2: Record<NewFilterType, FilterDef> = {
       // displacement map: blurred luminance of the image itself (self-
       // displace), centered at mid-gray — bright areas push one way, dark the other
       const field = gaussianBlurFloat(lumaField(img), w, h, 3)
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const kx = (hS / 100) * w * 0.25
       const ky = (vS / 100) * h * 0.25
       const rgb = [0, 0, 0]
@@ -536,7 +537,7 @@ export const FILTERS2: Record<NewFilterType, FilterDef> = {
       const scale = clamp(p.scale ?? 100, 100, 120) / 100
       if (distortion === 0 && vignette === 0 && chromatic === 0 && scale === 1) return
       const { width: w, height: h, data } = img
-      const src = new Uint8ClampedArray(data)
+      const src = Float32Array.from(data)
       const cx = w / 2, cy = h / 2
       const Rn = Math.hypot(cx, cy) // normalization radius (half-diagonal)
       // radial model: image radius r' = r·(1 + k1·r²) (source → image).

@@ -1,3 +1,4 @@
+import type { PixelImage } from '../image-ops/pixel-data'
 // Canvas / color / math helpers used across the engine
 
 export function uid(): string {
@@ -83,6 +84,45 @@ export function setCanvasWorkingProfile(profile: CanvasWorkingProfile): CanvasWo
 
 export function currentCanvasWorkingProfile(): CanvasWorkingProfile {
   return { ...defaultProfile }
+}
+
+/** IEC 61966-2-1 transfer functions. Values above 1 are intentionally kept:
+ * float16/Float32 HDR previews need to carry scene values above SDR white. */
+export function sceneLinearToSrgb(v: number): number {
+  if (!Number.isFinite(v)) return 0
+  if (v <= 0.0031308) return v * 12.92
+  return 1.055 * Math.pow(Math.max(0, v), 1 / 2.4) - 0.055
+}
+
+export function srgbToSceneLinear(v: number): number {
+  if (!Number.isFinite(v)) return 0
+  if (v <= 0.04045) return v / 12.92
+  return Math.pow((Math.max(0, v) + 0.055) / 1.055, 2.4)
+}
+
+export function hdrFloat32ToPreviewCanvas(
+  pixels: Float32Array, width: number, height: number,
+  colorSpace: CanvasColorSpace = 'srgb',
+): HTMLCanvasElement {
+  const c = createCanvas(width, height, { bitDepth: 16, colorSpace })
+  const values = new Float32Array(pixels.length)
+  for (let i = 0; i < pixels.length; i += 4) {
+    values[i] = sceneLinearToSrgb(pixels[i])
+    values[i + 1] = sceneLinearToSrgb(pixels[i + 1])
+    values[i + 2] = sceneLinearToSrgb(pixels[i + 2])
+    values[i + 3] = pixels[i + 3]
+  }
+  if (!putFloat16Pixels(c, values, colorSpace)) {
+    const out = new Uint8ClampedArray(pixels.length)
+    for (let i = 0; i < pixels.length; i += 4) {
+      out[i] = Math.max(0, Math.min(255, Math.round(values[i] * 255)))
+      out[i + 1] = Math.max(0, Math.min(255, Math.round(values[i + 1] * 255)))
+      out[i + 2] = Math.max(0, Math.min(255, Math.round(values[i + 2] * 255)))
+      out[i + 3] = Math.max(0, Math.min(255, Math.round(values[i + 3] * 255)))
+    }
+    putImageData(c, new ImageData(out, width, height))
+  }
+  return c
 }
 
 function inferCanvasProfile(c: HTMLCanvasElement): CanvasWorkingProfile {
@@ -207,6 +247,39 @@ export function putFloat16Pixels(
 
 export function putImageData(c: HTMLCanvasElement, data: ImageData) {
   ctx2d(c).putImageData(data, 0, 0)
+}
+
+/** Read a canvas into the CPU pixel-operation contract. Float16 canvases are
+ * expanded to Float32 in the historical 0..255 working scale so filters keep
+ * their existing parameter semantics without 8-bit quantization. */
+export function getProcessingPixelData(c: HTMLCanvasElement): PixelImage {
+  if (canvasProfile(c).bitDepth === 16) {
+    const hi = getFloat16ImageData(c)
+    if (hi?.data) {
+      const src = hi.data as ArrayLike<number>
+      const data = new Float32Array(src.length)
+      for (let i = 0; i < src.length; i++) data[i] = Number(src[i]) * 255
+      return { width: c.width, height: c.height, data, precision: 'float32' }
+    }
+  }
+  return getImageData(c)
+}
+
+/** Write a CPU pixel-operation result without reducing a float result to
+ * Uint8. 8-bit canvases intentionally retain legacy clamping behavior. */
+export function putProcessingPixelData(c: HTMLCanvasElement, img: PixelImage): void {
+  if (img.data instanceof Float32Array && canvasProfile(c).bitDepth === 16) {
+    const normalized = new Float32Array(img.data.length)
+    for (let i = 0; i < img.data.length; i++) normalized[i] = img.data[i] / 255
+    if (putFloat16Pixels(c, normalized, canvasProfile(c).colorSpace)) return
+  }
+  if (img instanceof ImageData) {
+    putImageData(c, img)
+    return
+  }
+  const data = new Uint8ClampedArray(img.data.length)
+  for (let i = 0; i < img.data.length; i++) data[i] = img.data[i]
+  putImageData(c, new ImageData(data, img.width, img.height))
 }
 
 export function clamp(v: number, lo: number, hi: number): number {

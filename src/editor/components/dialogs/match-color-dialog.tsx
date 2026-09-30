@@ -21,7 +21,7 @@ import { useEditorStore } from '../../store'
 import { getFlatComposite, invalidateFlat } from '../../engine/document'
 import { matchColor } from '../../image-ops/auto'
 import { downsampleImage } from '../../image-ops/core'
-import { createCanvas, ctx2d, getImageData, putImageData } from '../../utils/canvas'
+import { createCanvas, ctx2d, getImageData, putImageData, putProcessingPixelData } from '../../utils/canvas'
 import { runPixelOpFromCanvas } from '../../engine/pixel-worker'
 import type { DialogProps } from './generic-dialogs'
 import { cn } from '@/lib/utils'
@@ -181,7 +181,7 @@ export function MatchColorDialog({ onClose }: DialogProps) {
         params: { luminance, fade, neutralize, intensity },
         source: srcImg,
       })
-      putImageData(l.canvas, out)
+      putProcessingPixelData(l.canvas, out)
       invalidateFlat(doc)
       engine.pushHistory('Match Color')
       engine.emit()

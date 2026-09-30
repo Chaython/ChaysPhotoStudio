@@ -15,6 +15,7 @@
 // ============================================================
 import { computeHistogram } from './core'
 import { clamp } from '../utils/canvas'
+import { sampleLut256, type PixelArray, type PixelImage } from './pixel-data'
 
 const CLIP_LO = 0.001 // 0.1%
 const CLIP_HI = 0.999 // 99.9%
@@ -52,7 +53,7 @@ function remapLUT(lo: number, hi: number): Uint8ClampedArray | null {
 // ------------------------------------------------------------
 // Auto Tone — each channel independently (kills color casts)
 // ------------------------------------------------------------
-export function autoTone(img: ImageData): void {
+export function autoTone(img: PixelImage): void {
   const h = computeHistogram(img) // skips alpha < 8 (near-transparent)
   const d = img.data
   const luts: (Uint8ClampedArray | null)[] = [
@@ -64,7 +65,7 @@ export function autoTone(img: ImageData): void {
   for (let i = 0; i < d.length; i += 4) {
     for (let c = 0; c < 3; c++) {
       const lut = luts[c]
-      if (lut) d[i + c] = lut[d[i + c]]
+      if (lut) d[i + c] = sampleLut256(lut, d[i + c])
     }
   }
 }
@@ -72,7 +73,7 @@ export function autoTone(img: ImageData): void {
 // ------------------------------------------------------------
 // Auto Contrast — single luma histogram, same remap for R/G/B
 // ------------------------------------------------------------
-export function autoContrast(img: ImageData): void {
+export function autoContrast(img: PixelImage): void {
   const h = computeHistogram(img)
   const [lo, hi] = clipBounds(h.l, h.total)
   const lut = remapLUT(lo, hi)
@@ -80,16 +81,16 @@ export function autoContrast(img: ImageData): void {
   const d = img.data
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] < 8) continue
-    d[i] = lut[d[i]]
-    d[i + 1] = lut[d[i + 1]]
-    d[i + 2] = lut[d[i + 2]]
+    d[i] = sampleLut256(lut, d[i])
+    d[i + 1] = sampleLut256(lut, d[i + 1])
+    d[i + 2] = sampleLut256(lut, d[i + 2])
   }
 }
 
 // ------------------------------------------------------------
 // Auto Color — gentle gray-world neutralization + luma clip
 // ------------------------------------------------------------
-export function autoColor(img: ImageData): void {
+export function autoColor(img: PixelImage): void {
   const d = img.data
   // 1. gray-world: scale each channel toward the (weighted) luma mean,
   //    clamped and blended at 60% so it stays gentle
@@ -134,7 +135,7 @@ export interface MatchColorOptions {
 interface ChanStats { mean: [number, number, number]; std: [number, number, number] }
 
 /** per-channel mean + std, weighted by alpha > 0 */
-function channelStats(data: Uint8ClampedArray): ChanStats | null {
+function channelStats(data: PixelArray): ChanStats | null {
   let n = 0
   const sum = [0, 0, 0]
   const sq = [0, 0, 0]
@@ -154,7 +155,7 @@ function channelStats(data: Uint8ClampedArray): ChanStats | null {
   return { mean, std }
 }
 
-export function matchColor(img: ImageData, source: ImageData, opts: MatchColorOptions): void {
+export function matchColor(img: PixelImage, source: PixelImage, opts: MatchColorOptions): void {
   const lum = clamp((opts.luminance ?? 100) / 100, 0, 1)
   const inten = clamp((opts.intensity ?? 100) / 100, 0, 1)
   const mix = 1 - clamp((opts.fade ?? 0) / 100, 0, 1)

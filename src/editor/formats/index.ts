@@ -50,6 +50,9 @@ export interface DecodedImage {
   sourceBitDepth?: number
   /** Physical resolution metadata when available. */
   resolutionPpi?: number
+  /** Scene-linear source pixels retained for a true 32-bit HDR document. */
+  sourceFloatPixels?: Float32Array
+  sourceColorSpace?: 'srgb' | 'linear-srgb'
   /** Semantic layers supplied by dedicated non-PSD document parsers. */
   documentLayers?: ParsedDocumentLayer[]
   warnings?: string[]
@@ -159,6 +162,8 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
     hasAlpha: scanAlpha(raw.rgba),
     format,
     sourceBitDepth: raw.sourceBitDepth ?? 8,
+    sourceFloatPixels: raw.rgbaFloat,
+    sourceColorSpace: raw.sourceColorSpace,
   }
 }
 
