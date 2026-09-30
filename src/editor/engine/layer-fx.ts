@@ -350,53 +350,61 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
   const w = content.width, h = content.height
   const sil = silhouetteOf(content)
   const under = createCanvas(w, h)
-  const over = createCanvas(w, h)
   const uc = ctx2d(under)
-  const oc = ctx2d(over)
 
-  // Drop Shadow
+  // Effects behind the layer. Independent blending with lower document layers
+  // requires compositor-level FX groups; within the prepared layer these modes
+  // still control interaction between multiple under-effects.
   if (fx.dropShadow?.enabled) {
     const v = fx.dropShadow
     const [dx, dy] = angleOffset(v.angle, v.distance)
-    const sh = applyContour(castShadow(sil, v.color, v.blur, dx, dy), v.contour)
-    uc.save(); uc.globalAlpha = clamp(v.opacity, 0, 100) / 100; uc.drawImage(sh, 0, 0); uc.restore()
+    const spreadPx = Math.max(0, v.blur * clamp(Number(v.spread) || 0, 0, 100) / 100)
+    const source = spreadPx > .25 ? dilate(sil, spreadPx) : sil
+    const blur = Math.max(0, v.blur - spreadPx * .75)
+    let sh = castShadow(source, v.color, blur, dx, dy, sil)
+    sh = applyNoise(applyContour(sh, v.contour), v.noise)
+    drawEffect(uc, sh, v.opacity, v.blendMode)
   }
 
-  // Outer Glow
   if (fx.outerGlow?.enabled) {
     const v = fx.outerGlow
-    const glow = applyContour(castShadow(sil, v.color, v.blur, 0, 0), v.contour)
-    uc.save(); uc.globalAlpha = clamp(v.opacity, 0, 100) / 100; uc.drawImage(glow, 0, 0); uc.restore()
+    const spreadPx = Math.max(0, v.blur * clamp(Number(v.spread) || 0, 0, 100) / 100)
+    const source = spreadPx > .25 ? dilate(sil, spreadPx) : sil
+    const blur = Math.max(0, v.blur - spreadPx * .75)
+    let glow = castShadow(source, v.color, blur, 0, 0, sil)
+    glow = applyNoise(applyContour(glow, v.contour), v.noise)
+    drawEffect(uc, glow, v.opacity, v.blendMode)
   }
 
-  // Outside / center outer half Stroke
   if (fx.stroke?.enabled && (fx.stroke.position === 'outside' || fx.stroke.position === 'center')) {
     const v = fx.stroke
     const ring = outerBand(sil, v.position === 'center' ? Math.max(.5, v.size / 2) : v.size)
-    const painted = strokePaint(ring, v)
-    uc.save(); uc.globalAlpha = clamp(v.opacity, 0, 100) / 100; uc.drawImage(painted, 0, 0); uc.restore()
+    drawEffect(uc, strokePaint(ring, v), v.opacity, v.blendMode)
   }
 
-  // Content overlays
+  // Start the final prepared layer with behind-effects and the editable content.
+  // Every effect below composites directly against that content, so its blend
+  // mode is a real Canvas compositing operation rather than a UI-only setting.
+  const out = createCanvas(w, h)
+  const oc = ctx2d(out)
+  oc.drawImage(under, 0, 0)
+  oc.drawImage(content, 0, 0)
+
   if (fx.colorOverlay?.enabled) {
     const v = fx.colorOverlay
-    const fill = colorize(sil, v.color)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(fill, 0, 0); oc.restore()
+    drawEffect(oc, colorize(sil, v.color), v.opacity, v.blendMode)
   }
 
   if (fx.gradientOverlay?.enabled) {
     const v: GradientStyleFX = fx.gradientOverlay
-    const fill = gradientFill(sil, v)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(fill, 0, 0); oc.restore()
+    drawEffect(oc, gradientFill(sil, v), v.opacity, v.blendMode)
   }
 
   if (fx.patternOverlay?.enabled) {
     const v: PatternStyleFX = fx.patternOverlay
-    const fill = patternFill(sil, v)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(fill, 0, 0); oc.restore()
+    drawEffect(oc, patternFill(sil, v), v.opacity, v.blendMode)
   }
 
-  // Satin
   if (fx.satin?.enabled) {
     const v = fx.satin
     const [dx, dy] = angleOffset(v.angle, v.distance)
@@ -408,21 +416,18 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
     sc.globalCompositeOperation = 'destination-in'
     sc.drawImage(sil, 0, 0)
     sc.globalCompositeOperation = 'source-over'
-    const soft = applyContour(blurCanvas(satin, Math.max(.5, v.size / 2)), v.contour)
+    const soft = applyNoise(applyContour(blurCanvas(satin, Math.max(.5, v.size / 2)), v.contour), v.noise)
     if (v.invert) {
       const inv = cloneCanvas(sil)
       const ic = ctx2d(inv)
       ic.globalCompositeOperation = 'destination-out'
       ic.drawImage(soft, 0, 0)
-      const colored = colorize(inv, v.color)
-      oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
+      drawEffect(oc, colorize(inv, v.color), v.opacity, v.blendMode)
     } else {
-      const colored = colorize(soft, v.color)
-      oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
+      drawEffect(oc, colorize(soft, v.color), v.opacity, v.blendMode)
     }
   }
 
-  // Inner Glow
   if (fx.innerGlow?.enabled) {
     const v = fx.innerGlow
     const chokePx = Math.max(0, (Number(v.choke) || 0) / 100 * v.blur)
@@ -433,65 +438,48 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
       mc.globalCompositeOperation = 'destination-out'
       mc.drawImage(insideBand(sil, Math.max(1, v.blur + chokePx)), 0, 0)
       mc.globalCompositeOperation = 'source-over'
-      mask = blurCanvas(mask, Math.max(.5, v.blur / 2))
+      mask = blurCanvas(mask, Math.max(.5, (v.blur - chokePx * .6) / 2))
       applyMask(mask, sil)
     } else {
       mask = insideBand(sil, Math.max(1, v.blur + chokePx))
-      mask = blurCanvas(mask, Math.max(.5, v.blur / 2))
+      mask = blurCanvas(mask, Math.max(.5, (v.blur - chokePx * .6) / 2))
       applyMask(mask, sil)
     }
-    mask = applyContour(mask, v.contour)
-    const colored = colorize(mask, v.color)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
+    mask = applyNoise(applyContour(mask, v.contour), v.noise)
+    drawEffect(oc, colorize(mask, v.color), v.opacity, v.blendMode)
   }
 
-  // Inner Shadow
   if (fx.innerShadow?.enabled) {
     const v = fx.innerShadow
-    const band = insideBand(sil, v.blur + v.distance + 1)
+    const spreadPx = Math.max(0, v.blur * clamp(Number(v.spread) || 0, 0, 100) / 100)
+    const band = insideBand(sil, v.blur + v.distance + spreadPx + 1)
     const [dx, dy] = angleOffset(v.angle, v.distance)
     const shifted = createCanvas(w, h)
     const sc = ctx2d(shifted)
     sc.drawImage(band, dx, dy)
     sc.globalCompositeOperation = 'destination-in'
     sc.drawImage(sil, 0, 0)
-    const soft = applyContour(blurCanvas(shifted, v.blur / 2), v.contour)
-    const colored = colorize(soft, v.color)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(colored, 0, 0); oc.restore()
+    const blur = Math.max(.25, (v.blur - spreadPx * .75) / 2)
+    const soft = applyNoise(applyContour(blurCanvas(shifted, blur), v.contour), v.noise)
+    drawEffect(oc, colorize(soft, v.color), v.opacity, v.blendMode)
   }
 
-  // Bevel & Emboss
   if (fx.bevelEmboss?.enabled) {
     const v = fx.bevelEmboss
     const masks = bevelMasks(sil, v)
     const highlight = applyContour(masks.highlight, v.contour)
     const shadow = applyContour(masks.shadow, v.contour)
     const depth = clamp((Number(v.depth) || 100) / 100, .01, 10)
-    const hi = colorize(highlight, v.highlightColor)
-    const sh = colorize(shadow, v.shadowColor)
-    oc.save()
-    oc.globalAlpha = clamp(v.highlightOpacity * Math.min(depth, 2.5), 0, 100) / 100
-    oc.drawImage(hi, 0, 0)
-    oc.restore()
-    oc.save()
-    oc.globalAlpha = clamp(v.shadowOpacity * Math.min(depth, 2.5), 0, 100) / 100
-    oc.drawImage(sh, 0, 0)
-    oc.restore()
+    drawEffect(oc, colorize(highlight, v.highlightColor), clamp(v.highlightOpacity * Math.min(depth, 2.5), 0, 100), v.highlightBlendMode)
+    drawEffect(oc, colorize(shadow, v.shadowColor), clamp(v.shadowOpacity * Math.min(depth, 2.5), 0, 100), v.shadowBlendMode)
   }
 
-  // Inside / center inner half Stroke
   if (fx.stroke?.enabled && (fx.stroke.position === 'inside' || fx.stroke.position === 'center')) {
     const v = fx.stroke
     const band = insideBand(sil, v.position === 'center' ? Math.max(.5, v.size / 2) : v.size)
-    const painted = strokePaint(band, v)
-    oc.save(); oc.globalAlpha = clamp(v.opacity, 0, 100) / 100; oc.drawImage(painted, 0, 0); oc.restore()
+    drawEffect(oc, strokePaint(band, v), v.opacity, v.blendMode)
   }
 
-  const out = createCanvas(w, h)
-  const c = ctx2d(out)
-  c.drawImage(under, 0, 0)
-  c.drawImage(content, 0, 0)
-  c.drawImage(over, 0, 0)
   return out
 }
 
