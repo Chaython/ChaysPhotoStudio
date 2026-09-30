@@ -196,6 +196,12 @@ export interface BlendIfSettings {
 }
 
 // ---------- Layer styles (fx) ----------
+/** Editable Photoshop-style transfer curve for effect intensity. Both axes are normalized 0..1. */
+export interface StyleContourPoint {
+  x: number
+  y: number
+}
+
 /** Drop-shadow style (also reused for inner shadow). angle in degrees,
  *  0 = pointing right, grows clockwise (Photoshop convention). */
 export interface ShadowFX {
@@ -205,6 +211,7 @@ export interface ShadowFX {
   angle: number         // degrees
   distance: number      // px
   blur: number          // px
+  contour?: StyleContourPoint[]
 }
 export interface GlowFX {
   enabled: boolean
@@ -214,6 +221,7 @@ export interface GlowFX {
   /** Inner Glow only: edge starts at the contour; center grows inward. */
   source?: 'edge' | 'center'
   choke?: number        // 0..100
+  contour?: StyleContourPoint[]
 }
 export interface GradientStyleFX {
   enabled: boolean
@@ -243,6 +251,7 @@ export interface SatinFX {
   distance: number
   size: number
   invert?: boolean
+  contour?: StyleContourPoint[]
 }
 export interface BevelEmbossFX {
   enabled: boolean
@@ -258,6 +267,7 @@ export interface BevelEmbossFX {
   highlightOpacity: number
   shadowColor: string
   shadowOpacity: number
+  contour?: StyleContourPoint[]
 }
 export interface StrokeFX {
   enabled: boolean
