@@ -36,7 +36,8 @@
 import { applyFilter, applyAdjustment } from '../image-ops'
 import { autoTone, autoContrast, autoColor, matchColor } from '../image-ops/auto'
 import { perceptualWandMask } from '../image-ops/wand'
-import { getImageData } from '../utils/canvas'
+import { getProcessingPixelData } from '../utils/canvas'
+import { isFloatPixelImage, type PixelImage } from '../image-ops/pixel-data'
 import type { AdjustmentType, FilterType } from '../types'
 
 export type PixelOpKind =
@@ -53,7 +54,7 @@ export interface PixelOpSpec {
   /** op parameters (merged over registry defaults inside image-ops) */
   params?: Record<string, any>
   /** match-color only: source stats image. NEVER consumed — always copied (must survive fallback re-runs). */
-  source?: ImageData
+  source?: PixelImage
 }
 
 export interface PixelOpRunOptions {
@@ -114,10 +115,14 @@ interface InternalJob {
   sourceBuffer: ArrayBuffer | null
   sourceWidth: number
   sourceHeight: number
+  pixelType: 'u8' | 'f32'
+  dynamicRange: 'sdr' | 'scene-linear'
+  sourcePixelType: 'u8' | 'f32'
+  sourceDynamicRange: 'sdr' | 'scene-linear'
   /** keepInput mode: the caller's untouched input to re-run synchronously on failure */
-  original: ImageData | null
+  original: PixelImage | null
   onProgress?: (p: number) => void
-  resolve: (img: ImageData) => void
+  resolve: (img: PixelImage) => void
   reject: (err: unknown) => void
   entry: WorkerEntry | null
   timer: ReturnType<typeof setTimeout> | null
@@ -144,9 +149,37 @@ function warnOnce(reason: string): void {
   }
 }
 
+function pixelType(img: PixelImage): 'u8' | 'f32' {
+  return isFloatPixelImage(img) ? 'f32' : 'u8'
+}
+
+function pixelImageFromBuffer(
+  buffer: ArrayBuffer, width: number, height: number, type: 'u8' | 'f32',
+  dynamicRange: 'sdr' | 'scene-linear' = 'sdr',
+): PixelImage {
+  if (type === 'f32') {
+    return { width, height, data: new Float32Array(buffer), precision: 'float32', dynamicRange }
+  }
+  return new ImageData(new Uint8ClampedArray(buffer), width, height)
+}
+
+function copyPixelBuffer(img: PixelImage): ArrayBuffer {
+  return isFloatPixelImage(img)
+    ? new Float32Array(img.data).buffer
+    : new Uint8ClampedArray(img.data).buffer
+}
+
+function transferablePixelBuffer(img: PixelImage): ArrayBuffer {
+  const data = img.data
+  if (data.byteOffset === 0 && data.byteLength === data.buffer.byteLength && data.buffer instanceof ArrayBuffer) {
+    return data.buffer
+  }
+  return copyPixelBuffer(img)
+}
+
 // ------------------------------------------------------------ synchronous dispatch (identical to the worker's)
 /** Run a pixel op directly on the main thread, mutating `img` in place. Same dispatch table as the worker. */
-export function runPixelOpSync(img: ImageData, op: PixelOpSpec): ImageData {
+export function runPixelOpSync(img: PixelImage, op: PixelOpSpec): PixelImage {
   switch (op.kind) {
     case 'filter': applyFilter(img, op.type as FilterType, op.params ?? {}); break
     case 'adjustment': applyAdjustment(img, op.type as AdjustmentType, op.params ?? {}); break
@@ -154,7 +187,7 @@ export function runPixelOpSync(img: ImageData, op: PixelOpSpec): ImageData {
     case 'auto-contrast': autoContrast(img); break
     case 'auto-color': autoColor(img); break
     case 'match-color': {
-      if (!op.source) throw new Error('match-color requires a source ImageData')
+      if (!op.source) throw new Error('match-color requires a source image')
       matchColor(img, op.source, (op.params ?? {}) as never)
       break
     }
@@ -162,7 +195,7 @@ export function runPixelOpSync(img: ImageData, op: PixelOpSpec): ImageData {
       const p = op.params ?? {}
       const x = Math.max(0, Math.min(img.width - 1, Math.round(Number(p.x) || 0)))
       const y = Math.max(0, Math.min(img.height - 1, Math.round(Number(p.y) || 0)))
-      const mask = perceptualWandMask(img, x, y, p as never)
+      const mask = perceptualWandMask(img as ImageData, x, y, p as never)
       for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
         img.data[j] = 255
         img.data[j + 1] = 255
@@ -226,7 +259,7 @@ function flushPendingSync(): void {
       continue
     }
     try {
-      const img = new ImageData(new Uint8ClampedArray(job.buffer), job.width, job.height)
+      const img = pixelImageFromBuffer(job.buffer, job.width, job.height, job.pixelType, job.dynamicRange)
       job.resolve(runPixelOpSync(img, job.op))
     } catch (err) {
       job.reject(err)
@@ -278,7 +311,7 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
   entry.job = null
   job.entry = null
   if (msg.kind === 'done' && msg.buffer) {
-    job.resolve(new ImageData(new Uint8ClampedArray(msg.buffer), job.width, job.height))
+    job.resolve(pixelImageFromBuffer(msg.buffer, job.width, job.height, job.pixelType, job.dynamicRange))
     drainQueue()
     return
   }
@@ -304,7 +337,7 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
       job.reject(workerRequiredError(job.op))
     } else if (msg.buffer) {
       try {
-        const img = new ImageData(new Uint8ClampedArray(msg.buffer), job.width, job.height)
+        const img = pixelImageFromBuffer(msg.buffer, job.width, job.height, job.pixelType, job.dynamicRange)
         job.resolve(runPixelOpSync(img, job.op))
       } catch (err) {
         job.reject(err)
@@ -352,6 +385,10 @@ function dispatch(entry: WorkerEntry, job: InternalJob): void {
       sourceBuffer: job.sourceBuffer ?? undefined,
       sourceWidth: job.sourceBuffer ? job.sourceWidth : undefined,
       sourceHeight: job.sourceBuffer ? job.sourceHeight : undefined,
+      pixelType: job.pixelType,
+      dynamicRange: job.dynamicRange,
+      sourcePixelType: job.sourceBuffer ? job.sourcePixelType : undefined,
+      sourceDynamicRange: job.sourceBuffer ? job.sourceDynamicRange : undefined,
     },
     transfer,
   )
@@ -388,7 +425,7 @@ function drainQueue(): void {
  * object (mutated in place) is returned. Either way, callers write the result
  * back with putImageData.
  */
-export function runPixelOpAsync(img: ImageData, op: PixelOpSpec, opts: PixelOpRunOptions = {}): Promise<ImageData> {
+export function runPixelOpAsync(img: PixelImage, op: PixelOpSpec, opts: PixelOpRunOptions = {}): Promise<PixelImage> {
   // small images: the worker round-trip (post + transfer + spawn) costs more than the op
   if (img.width * img.height < SIZE_THRESHOLD_PX) {
     return Promise.resolve(runPixelOpSync(img, op))
@@ -403,19 +440,23 @@ export function runPixelOpAsync(img: ImageData, op: PixelOpSpec, opts: PixelOpRu
 
   const keepInput = opts.keepInput === true
   // keepInput → hand the worker a copy so the caller's buffer stays valid
-  const sendBuffer = keepInput ? new Uint8ClampedArray(img.data).buffer : (img.data.buffer as ArrayBuffer)
+  const sendBuffer = keepInput ? copyPixelBuffer(img) : transferablePixelBuffer(img)
   // the source ImageData is NEVER consumed — always a copy. It is typically a small
   // stats downsample and must stay intact for the synchronous fallback re-run.
   let sourceBuffer: ArrayBuffer | null = null
   let sourceWidth = 0
   let sourceHeight = 0
+  let sourcePixelType: 'u8' | 'f32' = 'u8'
+  let sourceDynamicRange: 'sdr' | 'scene-linear' = 'sdr'
   if (op.source) {
-    sourceBuffer = new Uint8ClampedArray(op.source.data).buffer
+    sourceBuffer = copyPixelBuffer(op.source)
     sourceWidth = op.source.width
     sourceHeight = op.source.height
+    sourcePixelType = pixelType(op.source)
+    sourceDynamicRange = isFloatPixelImage(op.source) ? (op.source.dynamicRange ?? 'sdr') : 'sdr'
   }
 
-  return new Promise<ImageData>((resolve, reject) => {
+  return new Promise<PixelImage>((resolve, reject) => {
     const job: InternalJob = {
       id: nextJobId++,
       op,
@@ -425,6 +466,10 @@ export function runPixelOpAsync(img: ImageData, op: PixelOpSpec, opts: PixelOpRu
       sourceBuffer,
       sourceWidth,
       sourceHeight,
+      pixelType: pixelType(img),
+      dynamicRange: isFloatPixelImage(img) ? (img.dynamicRange ?? 'sdr') : 'sdr',
+      sourcePixelType,
+      sourceDynamicRange,
       original: keepInput ? img : null,
       onProgress: opts.onProgress,
       resolve,
@@ -453,15 +498,15 @@ export function runPixelOpAsync(img: ImageData, op: PixelOpSpec, opts: PixelOpRu
  * unrecoverable worker failure the canvas pixels are re-fetched and the op runs
  * synchronously — the observable behavior is identical to the sync path.
  */
-export async function runPixelOpFromCanvas(canvas: HTMLCanvasElement, op: PixelOpSpec): Promise<ImageData> {
-  const img = getImageData(canvas) // fresh + disposable → zero-copy transfer
+export async function runPixelOpFromCanvas(canvas: HTMLCanvasElement, op: PixelOpSpec): Promise<PixelImage> {
+  const img = getProcessingPixelData(canvas) // fresh + disposable → zero-copy transfer
   try {
     return await runPixelOpAsync(img, op)
   } catch (err) {
     if (err instanceof PixelOpUnrecoverableError) {
       if (avoidMainThreadFallback(canvas.width, canvas.height, op)) throw err
       // the canvas was never written — re-fetch and run synchronously when safe
-      return runPixelOpSync(getImageData(canvas), op)
+      return runPixelOpSync(getProcessingPixelData(canvas), op)
     }
     throw err
   }
