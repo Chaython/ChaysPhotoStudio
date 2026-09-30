@@ -363,7 +363,7 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
     const blur = Math.max(0, v.blur - spreadPx * .75)
     let sh = castShadow(source, v.color, blur, dx, dy, sil)
     sh = applyNoise(applyContour(sh, v.contour), v.noise)
-    drawEffect(uc, sh, v.opacity, v.blendMode)
+    drawEffect(uc, sh, v.opacity, v.blendMode ?? 'multiply')
   }
 
   if (fx.outerGlow?.enabled) {
@@ -373,13 +373,13 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
     const blur = Math.max(0, v.blur - spreadPx * .75)
     let glow = castShadow(source, v.color, blur, 0, 0, sil)
     glow = applyNoise(applyContour(glow, v.contour), v.noise)
-    drawEffect(uc, glow, v.opacity, v.blendMode)
+    drawEffect(uc, glow, v.opacity, v.blendMode ?? 'screen')
   }
 
   if (fx.stroke?.enabled && (fx.stroke.position === 'outside' || fx.stroke.position === 'center')) {
     const v = fx.stroke
     const ring = outerBand(sil, v.position === 'center' ? Math.max(.5, v.size / 2) : v.size)
-    drawEffect(uc, strokePaint(ring, v), v.opacity, v.blendMode)
+    drawEffect(uc, strokePaint(ring, v), v.opacity, v.blendMode ?? 'normal')
   }
 
   // Start the final prepared layer with behind-effects and the editable content.
@@ -392,17 +392,17 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
 
   if (fx.colorOverlay?.enabled) {
     const v = fx.colorOverlay
-    drawEffect(oc, colorize(sil, v.color), v.opacity, v.blendMode)
+    drawEffect(oc, colorize(sil, v.color), v.opacity, v.blendMode ?? 'normal')
   }
 
   if (fx.gradientOverlay?.enabled) {
     const v: GradientStyleFX = fx.gradientOverlay
-    drawEffect(oc, gradientFill(sil, v), v.opacity, v.blendMode)
+    drawEffect(oc, gradientFill(sil, v), v.opacity, v.blendMode ?? 'normal')
   }
 
   if (fx.patternOverlay?.enabled) {
     const v: PatternStyleFX = fx.patternOverlay
-    drawEffect(oc, patternFill(sil, v), v.opacity, v.blendMode)
+    drawEffect(oc, patternFill(sil, v), v.opacity, v.blendMode ?? 'normal')
   }
 
   if (fx.satin?.enabled) {
@@ -422,9 +422,9 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
       const ic = ctx2d(inv)
       ic.globalCompositeOperation = 'destination-out'
       ic.drawImage(soft, 0, 0)
-      drawEffect(oc, colorize(inv, v.color), v.opacity, v.blendMode)
+      drawEffect(oc, colorize(inv, v.color), v.opacity, v.blendMode ?? 'multiply')
     } else {
-      drawEffect(oc, colorize(soft, v.color), v.opacity, v.blendMode)
+      drawEffect(oc, colorize(soft, v.color), v.opacity, v.blendMode ?? 'multiply')
     }
   }
 
@@ -446,7 +446,7 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
       applyMask(mask, sil)
     }
     mask = applyNoise(applyContour(mask, v.contour), v.noise)
-    drawEffect(oc, colorize(mask, v.color), v.opacity, v.blendMode)
+    drawEffect(oc, colorize(mask, v.color), v.opacity, v.blendMode ?? 'screen')
   }
 
   if (fx.innerShadow?.enabled) {
@@ -470,14 +470,14 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
     const highlight = applyContour(masks.highlight, v.contour)
     const shadow = applyContour(masks.shadow, v.contour)
     const depth = clamp((Number(v.depth) || 100) / 100, .01, 10)
-    drawEffect(oc, colorize(highlight, v.highlightColor), clamp(v.highlightOpacity * Math.min(depth, 2.5), 0, 100), v.highlightBlendMode)
-    drawEffect(oc, colorize(shadow, v.shadowColor), clamp(v.shadowOpacity * Math.min(depth, 2.5), 0, 100), v.shadowBlendMode)
+    drawEffect(oc, colorize(highlight, v.highlightColor), clamp(v.highlightOpacity * Math.min(depth, 2.5), 0, 100), v.highlightBlendMode ?? 'screen')
+    drawEffect(oc, colorize(shadow, v.shadowColor), clamp(v.shadowOpacity * Math.min(depth, 2.5), 0, 100), v.shadowBlendMode ?? 'multiply')
   }
 
   if (fx.stroke?.enabled && (fx.stroke.position === 'inside' || fx.stroke.position === 'center')) {
     const v = fx.stroke
     const band = insideBand(sil, v.position === 'center' ? Math.max(.5, v.size / 2) : v.size)
-    drawEffect(oc, strokePaint(band, v), v.opacity, v.blendMode)
+    drawEffect(oc, strokePaint(band, v), v.opacity, v.blendMode ?? 'normal')
   }
 
   return out
