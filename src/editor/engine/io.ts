@@ -3,14 +3,15 @@ import { engine } from './engine'
 import { useEditorStore } from '../store'
 import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile } from '../utils/canvas'
 import { newLayer } from './document'
-import type { HistoryState, Layer, PsDocument } from '../types'
+import type { HistoryState, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
 import { decodeFile, detectFormat } from '../formats'
-import type { DecodedImage, ImportFormatId } from '../formats'
+import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
+import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension } from '../formats'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
-const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico']
+const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim']
 
 /** sniff the first 64 bytes — enough for every magic-byte signature we know */
 async function sniffFormat(file: File): Promise<ImportFormatId | null> {
@@ -52,8 +53,8 @@ export async function openFiles(files: File[], asLayer = false) {
   for (const file of files) {
     if (file.name.endsWith('.zproj.json')) { await openProjectFile(file); continue }
     const format = await sniffFormat(file)
-    if (!format && !file.type.startsWith('image/')) {
-      store.pushToast(`Skipped ${file.name} — not an image`, 'error')
+    if (!format && !file.type.startsWith('image/') && !isPhotopeaPublishedExtension(file.name)) {
+      store.pushToast(`Skipped ${file.name} — unsupported file type`, 'error')
       continue
     }
     try {
@@ -62,6 +63,15 @@ export async function openFiles(files: File[], asLayer = false) {
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded); continue }
         engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, resolutionPpi: decoded.resolutionPpi })
         continue
+      }
+      if (!asLayer && hasDedicatedDocumentParser(file.name)) {
+        const decoded = await decodeFile(file)
+        if (decoded.documentLayers?.length) {
+          addStructuredDocument(file.name, decoded)
+          for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(warning, 'info')
+          if ((decoded.warnings?.length ?? 0) > 3) store.pushToast(`${decoded.warnings!.length - 3} additional import warnings`, 'info')
+          continue
+        }
       }
       const decoded = await decodeToCanvas(file)
       if (asLayer && engine.activeDoc) {
@@ -80,6 +90,80 @@ export async function openFiles(files: File[], asLayer = false) {
   }
 }
 
+const DEFAULT_TEXT: TextSpec = {
+  content: 'Type here', fontFamily: 'Arial', fontSize: 48, color: '#000000',
+  bold: false, italic: false, align: 'left', lineHeight: 1.2, tracking: 0, x: 0, y: 48,
+}
+
+const DEFAULT_SHAPE: ShapeSpec = {
+  shape: 'rect', x: 0, y: 0, w: 100, h: 100, radius: 0,
+  fill: '#000000', fillOpacity: 100, stroke: null, strokeWidth: 0, strokeOpacity: 100,
+  sides: 5, starInset: 50,
+}
+
+function layerFromParsed(parsed: ParsedDocumentLayer, width: number, height: number): Layer | null {
+  const kind = parsed.kind
+  const layer = newLayer(kind, parsed.name || 'Layer', width, height)
+  layer.visible = parsed.visible !== false
+  layer.opacity = Math.max(0, Math.min(100, Math.round(Number(parsed.opacity ?? 100))))
+  layer.blendMode = (parsed.blendMode || 'normal') as Layer['blendMode']
+
+  if (kind === 'raster') {
+    if (!parsed.canvas) return null
+    layer.canvas = parsed.canvas
+    layer.offsetX = Number(parsed.left) || 0
+    layer.offsetY = Number(parsed.top) || 0
+  } else if (kind === 'smart') {
+    if (!parsed.source && !parsed.canvas) return null
+    layer.source = parsed.source ?? parsed.canvas ?? null
+    layer.transform = parsed.transform ?? {
+      x: (Number(parsed.left) || 0) + (layer.source?.width ?? width) / 2,
+      y: (Number(parsed.top) || 0) + (layer.source?.height ?? height) / 2,
+      scale: 1, rotation: 0,
+    }
+  } else if (kind === 'text') {
+    if (!parsed.text) return null
+    layer.text = { ...DEFAULT_TEXT, ...parsed.text } as TextSpec
+  } else if (kind === 'shape') {
+    if (!parsed.shape) return null
+    layer.shape = { ...DEFAULT_SHAPE, ...parsed.shape } as ShapeSpec
+  }
+  return layer
+}
+
+function addStructuredDocument(name: string, decoded: DecodedImage): PsDocument {
+  const width = Math.max(1, decoded.width), height = Math.max(1, decoded.height)
+  const doc: PsDocument = {
+    id: uid(), name, width, height,
+    resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
+    workingBitDepth: 8,
+    sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    workingColorSpace: 'srgb',
+    layers: [], activeLayerId: null,
+    selection: null, channelView: 'rgb', savedChannels: [],
+    guides: [],
+    view: { zoom: 1, panX: 0, panY: 0 },
+    history: { states: [], index: -1 },
+    historyBrushSourceIndex: 0,
+    dirty: false, previewFilter: null, previewAdjustment: null,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+  }
+  for (const parsed of decoded.documentLayers ?? []) {
+    const layer = layerFromParsed(parsed, width, height)
+    if (layer) doc.layers.push(layer)
+  }
+  if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
+    sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    resolutionPpi: decoded.resolutionPpi,
+  })
+  doc.activeLayerId = doc.layers[doc.layers.length - 1].id
+  engine.docs.push(doc)
+  engine.setActiveDocument(doc.id)
+  engine.pushHistory(`Open ${decoded.format.toUpperCase()}`, doc)
+  engine.emit()
+  return doc
+}
+
 /** build a document from decoded PSD layers */
 function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   const { width, height } = decoded
@@ -88,6 +172,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
     workingBitDepth: 8,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
     selection: null, channelView: 'rgb', savedChannels: [],
@@ -108,6 +193,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     layer.visible = psd.visible
     layer.clipped = !!psd.clipped
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
+    if (psd.additionalInfo?.length) layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
     doc.layers.push(layer as Layer)
   }
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
@@ -191,6 +277,7 @@ export interface SerializedProject {
     sourceBitDepth?: number
     workingColorSpace?: 'srgb' | 'display-p3'
     resolutionPpi?: number
+    psdImageResources?: string[]
     colorSamplers?: { id: string; x: number; y: number }[]
     measurements?: import('../types').SavedMeasurement[]
     savedPaths?: import('../types').SavedPath[]
@@ -244,6 +331,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       transform: l.transform, smartFilters: l.smartFilters,
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
       vectorMask: cloneVectorMask(l.vectorMask),
+      psdAdditionalInfo: Array.isArray(l.psdAdditionalInfo) ? [...l.psdAdditionalInfo] : undefined,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
     },
     canvas: l.canvas ? toDataURL(l.canvas) : undefined,
@@ -284,6 +372,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       sourceBitDepth: doc.sourceBitDepth ?? doc.workingBitDepth ?? 8,
       workingColorSpace: doc.workingColorSpace ?? 'srgb',
       resolutionPpi: doc.resolutionPpi ?? 72,
+      psdImageResources: doc.psdImageResources ? [...doc.psdImageResources] : undefined,
       colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
       measurements: (doc.measurements ?? []).map(m => ({
         ...m,
@@ -381,6 +470,7 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     blendIf: sl.props.blendIf ?? null,
     fx: sl.props.fx ?? null,
     vectorMask: normalizeVectorMask(sl.props.vectorMask),
+    psdAdditionalInfo: Array.isArray(sl.props.psdAdditionalInfo) ? sl.props.psdAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
     offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
     origin: sl.props.origin ?? null,
   })
@@ -443,6 +533,9 @@ export async function openSerializedProject(project: SerializedProject, label = 
     sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth)
       ? Number(project.doc.sourceBitDepth)
       : (project.doc.workingBitDepth === 16 ? 16 : 8),
+    psdImageResources: Array.isArray(project.doc.psdImageResources)
+      ? project.doc.psdImageResources.filter((v: unknown) => typeof v === 'string')
+      : undefined,
     workingColorSpace: project.doc.workingColorSpace === 'display-p3' && canvasPixelCapabilities().displayP3 ? 'display-p3' : 'srgb',
     resolutionPpi: Math.max(1, Math.min(12000, Number(project.doc.resolutionPpi) || 72)),
     layers: [], activeLayerId: null, selection: null,

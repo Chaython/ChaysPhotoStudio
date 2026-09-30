@@ -17,6 +17,13 @@ import { TransformWarpEditor } from './transform-warp-editor'
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
+function base64Bytes(text: string): Uint8Array {
+  const raw = atob(text)
+  const out = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
+  return out
+}
+
 const PRESETS = [
   { label: 'Default 1600 × 1000', w: 1600, h: 1000 },
   { label: 'Full HD 1920 × 1080', w: 1920, h: 1080 },
@@ -309,11 +316,15 @@ export function ExportDialog({ onClose }: DialogProps) {
             visible: l.visible,
             clipped: l.clipped,
             mask: l.maskEnabled ? l.mask : null,
+            additionalInfo: l.psdAdditionalInfo?.map(base64Bytes),
           })
         }
         showProgress('Building PSD…')
         await sleep(16) // let the progress bar paint before the sync encode
-        const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), { resolutionPpi: doc.resolutionPpi ?? 72 })
+        const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), {
+          resolutionPpi: doc.resolutionPpi ?? 72,
+          imageResources: doc.psdImageResources?.map(base64Bytes),
+        })
         downloadBlob(blob, `${outName}.psd`)
         store.pushToast(`Exported ${outName}.psd — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
       } else {

@@ -8,6 +8,7 @@ import { importGimpBrushFile } from '../plugins/brush-presets'
 import { importGimpGradientFile } from '../plugins/gradient-presets'
 import type { AdjustmentType, FilterType } from '../types'
 import { commandCombo, formatCombo, type CommandId } from '../shortcuts'
+import { IMPORT_ACCEPT } from '../formats'
 
 export interface MenuItem {
   id: string
@@ -209,9 +210,9 @@ export const MENUS: MenuItem[][] = [
   [
     { id: 'file-new', label: 'New…', shortcut: sc('newDoc'), run: () => openDlg('new-doc') },
     { id: 'file-new-clipboard', label: 'New from Clipboard', run: () => { void newDocumentFromClipboard() } },
-    { id: 'file-open', label: 'Open…', shortcut: sc('open'), run: () => fileInput('image/*,.zproj.json', true, files => openFiles(Array.from(files))) },
-    { id: 'file-open-as-layer', label: 'Open as Layer…', run: () => fileInput('image/*', true, files => openFiles(Array.from(files), true)) },
-    { id: 'file-place', label: 'Place (Smart Object)…', run: () => fileInput('image/*', false, files => placeImageAsSmartLayer(files[0])) },
+    { id: 'file-open', label: 'Open…', shortcut: sc('open'), run: () => fileInput(IMPORT_ACCEPT, true, files => openFiles(Array.from(files))) },
+    { id: 'file-open-as-layer', label: 'Open as Layer…', run: () => fileInput(IMPORT_ACCEPT, true, files => openFiles(Array.from(files), true)) },
+    { id: 'file-place', label: 'Place (Smart Object)…', run: () => fileInput(IMPORT_ACCEPT, false, files => placeImageAsSmartLayer(files[0])) },
     { id: 'file-ai-generate', label: 'AI Generate Image…', run: () => openDlg('ai-generate') },
     { id: 'file-ai-tools', label: 'AI Tools & ComfyUI…', run: () => openDlg('ai-tools') },
     S(),

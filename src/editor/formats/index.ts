@@ -18,13 +18,20 @@ import {
 import { decodePsd, psdBlendKeyToMode } from './psd'
 import type { ImportFormatId, RawImage } from './decoders'
 import type { ExportFormatId } from './encoders'
+import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtension, publishedFormatKind, PHOTOPEA_IMPORT_ACCEPT } from './photopea-formats'
+import { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
+import { decodeDds, decodeIcns, decodeIff } from './legacy-raster'
+import type { ParsedDocumentLayer } from './document-parser-types'
 
 export type { ImportFormatId, RawImage } from './decoders'
 export type { ExportFormatId } from './encoders'
 export type { PsdDecoded, PsdLayer, PsdLayerInput } from './psd'
+export type { ParsedDocument, ParsedDocumentLayer } from './document-parser-types'
 export { detectFormat, rawToCanvas, scanAlpha } from './decoders'
 export { ICO_SIZE_POOL } from './encoders'
 export { decodePsd, buildPsd, psdBlendKeyToMode, blendModeToPsdKey } from './psd'
+export { PHOTOPEA_IMPORT_ACCEPT, PHOTOPEA_COMPLEX_EXTENSIONS, PHOTOPEA_RASTER_EXTENSIONS, PHOTOPEA_RAW_EXTENSIONS, PHOTOPEA_ANIMATED_EXTENSIONS, EXTRA_IMPORT_EXTENSIONS, fileExtension, publishedFormatKind, isPhotopeaPublishedExtension } from './photopea-formats'
+export { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 
 // ============================================================
 // import
@@ -43,6 +50,10 @@ export interface DecodedImage {
   sourceBitDepth?: number
   /** Physical resolution metadata when available. */
   resolutionPpi?: number
+  /** Semantic layers supplied by dedicated non-PSD document parsers. */
+  documentLayers?: ParsedDocumentLayer[]
+  warnings?: string[]
+  psdImageResources?: Uint8Array[]
   psdLayers?: {
     name: string
     canvas: HTMLCanvasElement      // pixels of the layer rect (canvas space)
@@ -56,12 +67,13 @@ export interface DecodedImage {
     clipped?: boolean
     /** full-document-size mask canvas, mask value in the alpha channel */
     mask?: HTMLCanvasElement | null
+    /** opaque Photoshop additional-layer-information blocks */
+    additionalInfo?: Uint8Array[]
   }[]
 }
 
 /** file-input `accept` value covering every decodable format */
-export const IMPORT_ACCEPT =
-  'image/*,.tif,.tiff,.psd,.psb,.tga,.icb,.vda,.qoi,.pcx,.ppm,.pgm,.pbm,.pam,.pfm,.hdr,.rgbe,.heic,.heif,.hif,.jxl,.jp2,.j2k,.j2c,.ico,.bmp'
+export const IMPORT_ACCEPT = `${PHOTOPEA_IMPORT_ACCEPT},.zproj.json`
 
 /** format sniff from MIME type when magic bytes are inconclusive */
 function formatFromMime(type: string): ImportFormatId | null {
@@ -158,9 +170,64 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
  *  TIFF, PSD, TGA, PNM, QOI, PCX, ICO-DIB) is decoded here. */
 export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
+  const sourceName = (file as File).name || ''
+  // Dedicated structured parsers keep editable objects/layers for supported
+  // document containers. A composite preview is still attached for Place,
+  // Open-as-Layer and callers that only understand a canvas.
+  if (sourceName && hasDedicatedDocumentParser(sourceName)) {
+    const parsed = await parseStructuredDocument(file, sourceName)
+    if (parsed) {
+      let canvas = parsed.composite ?? null
+      if (!canvas) {
+        try { canvas = await decodePublishedFormatPreview(file, sourceName) }
+        catch { canvas = createCanvas(parsed.width, parsed.height) }
+      }
+      return {
+        canvas,
+        width: parsed.width,
+        height: parsed.height,
+        hasAlpha: scanAlpha(getImageData(canvas).data),
+        format: fileExtension(sourceName),
+        sourceBitDepth: parsed.sourceBitDepth ?? 8,
+        resolutionPpi: parsed.resolutionPpi,
+        documentLayers: parsed.layers,
+        warnings: parsed.warnings,
+      }
+    }
+  }
+  // Most camera RAW formats are TIFF-family containers. Their magic bytes
+  // therefore look like ordinary TIFF even though the sensor payload is not a
+  // baseline RGB TIFF. Route them to the RAW/embedded-preview path before the
+  // TIFF codec gets a chance to misclassify them.
+  if (publishedFormatKind(sourceName) === 'raw') {
+    const canvas = await decodePublishedFormatPreview(file, sourceName)
+    return {
+      canvas,
+      width: canvas.width,
+      height: canvas.height,
+      hasAlpha: scanAlpha(getImageData(canvas).data),
+      format: fileExtension(sourceName),
+      sourceBitDepth: 8,
+    }
+  }
   let format = detectFormat(bytes)
   if (!format) format = formatFromMime(file.type)
   if (!format) {
+    const name = (file as File).name || ''
+    if (isPhotopeaPublishedExtension(name)) {
+      const canvas = publishedFormatKind(name) === 'video'
+        ? (await import('./photopea-formats')).decodeVideoFrame(file)
+        : decodePublishedFormatPreview(file, name)
+      const resolved = await canvas
+      return {
+        canvas: resolved,
+        width: resolved.width,
+        height: resolved.height,
+        hasAlpha: scanAlpha(getImageData(resolved).data),
+        format: fileExtension(name) || file.type || 'unknown',
+        sourceBitDepth: 8,
+      }
+    }
     if (file.type.startsWith('image/')) {
       // unknown image/* subtype — let the browser try
       const canvas = await decodeNativeCanvas(file, null)
@@ -186,6 +253,13 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
     case 'pcx': return fromRaw(decodePcx(bytes), 'pcx')
     case 'bmp': return fromRaw(decodeBmp(bytes), 'bmp')
     case 'ico': return fromRaw(await decodeIco(bytes), 'ico')
+    case 'dds': return fromRaw(decodeDds(bytes), 'dds')
+    case 'iff': return fromRaw(decodeIff(bytes), 'iff')
+    case 'anim': return fromRaw(decodeIff(bytes), 'anim')
+    case 'icns': {
+      const canvas = await decodeIcns(bytes)
+      return { canvas, width: canvas.width, height: canvas.height, hasAlpha: scanAlpha(getImageData(canvas).data), format: 'icns', sourceBitDepth: 8 }
+    }
     case 'psd': {
       const psd = await decodePsd(bytes)
       return {
@@ -196,6 +270,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
         format: 'psd',
         sourceBitDepth: psd.depth,
         resolutionPpi: psd.resolutionPpi,
+        psdImageResources: psd.imageResources.map(b => b.slice()),
         psdLayers: psd.layers.map(l => ({
           name: l.name,
           canvas: l.canvas,
@@ -207,6 +282,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
           visible: l.visible,
           clipped: l.clipped,
           mask: l.mask,
+          additionalInfo: l.additionalInfo.map(b => b.slice()),
         })),
       }
     }

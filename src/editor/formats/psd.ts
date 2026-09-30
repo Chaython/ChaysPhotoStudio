@@ -59,6 +59,9 @@ export interface PsdLayer {
   visible: boolean
   clipped: boolean
   mask: HTMLCanvasElement | null // full-document-size canvas, mask value in alpha
+  /** Opaque additional-layer-information blocks retained byte-for-byte.
+   * Known blocks that we regenerate (currently 'luni') are excluded. */
+  additionalInfo: Uint8Array[]
 }
 
 export interface PsdDecoded {
@@ -72,6 +75,9 @@ export interface PsdDecoded {
   layers: PsdLayer[]             // bottom-first (PSD storage order)
   /** ResolutionInfo image-resource metadata, pixels per inch. */
   resolutionPpi: number
+  /** Opaque non-resolution image-resource blocks retained byte-for-byte
+   * (ICC/XMP/EXIF/thumbnail/guides/slices and other Photoshop metadata). */
+  imageResources: Uint8Array[]
 }
 
 async function inflateZlib(data: Uint8Array): Promise<Uint8Array> {
@@ -94,6 +100,7 @@ interface PsdLayerRecord {
   clipped: boolean
   name: string
   maskRect: [number, number, number, number] | null // top, left, bottom, right
+  additionalInfo: Uint8Array[]
 }
 
 /** decode one channel (raw / RLE / ZIP) to an 8-bit plane of w*h */
@@ -263,10 +270,12 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const resStart = pos
   const resEnd = Math.min(bytes.length, resStart + resLen)
   let resolutionPpi = 72
+  const imageResources: Uint8Array[] = []
   // Parse Photoshop Image Resource Blocks enough to recover ResolutionInfo
   // (0x0400). The Pascal name is padded to an even byte boundary and resource
   // data is also even-padded.
   while (pos + 12 <= resEnd) {
+    const blockStart = pos
     const signature = str4(pos)
     if (signature !== '8BIM' && signature !== 'MeSa') break
     const id = view.getUint16(pos + 4)
@@ -287,6 +296,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       if (Number.isFinite(ppi) && ppi > 0) resolutionPpi = Math.max(1, Math.min(12000, ppi))
     }
     pos = dataStart + dataLen + (dataLen & 1)
+    // ResolutionInfo is regenerated from the live document. Preserve all other
+    // resources exactly, including unknown/private Adobe resources.
+    if (id !== 0x0400 && pos <= resEnd) imageResources.push(bytes.slice(blockStart, pos))
   }
   pos = resEnd
   // ---- layer & mask info ----
@@ -349,29 +361,38 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         for (let ci = 0; ci < nameLen && pos + ci < bytes.length; ci++) name += String.fromCharCode(bytes[pos + ci])
         pos += nameLen
         pos += (4 - ((1 + nameLen) & 3)) & 3
-        // additional layer info blocks ('luni' unicode names etc.)
+        // additional layer info blocks ('luni' unicode names, TySh text,
+        // SoLd/PlLd smart objects, lrFX/lfx2 styles, vmsk vector masks, etc.).
+        // Keep every unknown block byte-for-byte so a PSD can round-trip through
+        // Chay's Photo Studio without silently stripping Photoshop metadata.
+        const additionalInfo: Uint8Array[] = []
         while (pos + 8 + lenSize <= extraEnd) {
+          const blockStart = pos
           const s0 = bytes[pos]
           const s1 = bytes[pos + 1]
-          if (s0 !== 0x38 /* 8 */ || s1 !== 0x42 /* B */) break // unknown signature — bail out safely
+          if (s0 !== 0x38 /* 8 */ || s1 !== 0x42 /* B */) break
           const key = str4(pos + 4)
           pos += 8
           const blockLen = readLength(pos)
           pos += lenSize
-          if (key === 'luni' && blockLen >= 4 && pos + 4 <= bytes.length) {
-            const charCount = view.getUint32(pos)
+          const dataStart = pos
+          if (key === 'luni' && blockLen >= 4 && dataStart + 4 <= bytes.length) {
+            const charCount = view.getUint32(dataStart)
             let uni = ''
-            for (let ci = 0; ci < charCount && pos + 4 + ci * 2 + 1 < bytes.length; ci++) {
-              uni += String.fromCharCode(view.getUint16(pos + 4 + ci * 2))
+            for (let ci = 0; ci < charCount && dataStart + 4 + ci * 2 + 1 < bytes.length; ci++) {
+              uni += String.fromCharCode(view.getUint16(dataStart + 4 + ci * 2))
             }
             if (uni) name = uni
           }
-          pos += blockLen + (blockLen & 1) // blocks are padded to even
+          const blockEnd = Math.min(extraEnd, dataStart + blockLen + (blockLen & 1))
+          // Unicode names are regenerated from the live layer name on export.
+          if (key !== 'luni' && blockEnd > blockStart) additionalInfo.push(bytes.slice(blockStart, blockEnd))
+          pos = blockEnd
         }
         pos = extraEnd
         records.push({
           top, left, bottom, right, channels, blendKey,
-          opacity, visible: (flags & 2) !== 0, clipped: clipping === 1, name, maskRect,
+          opacity, visible: (flags & 2) !== 0, clipped: clipping === 1, name, maskRect, additionalInfo,
         })
       }
 
@@ -450,6 +471,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       visible: rec.visible,
       clipped: rec.clipped,
       mask,
+      additionalInfo: rec.additionalInfo.map(b => b.slice()),
     })
   }
 
@@ -515,7 +537,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
   }
 
-  return { canvas: composite, width, height, depth: depth as 8 | 16, hasAlpha, layers, resolutionPpi }
+  return { canvas: composite, width, height, depth: depth as 8 | 16, hasAlpha, layers, resolutionPpi, imageResources }
 }
 
 // ============================================================
@@ -533,6 +555,8 @@ export interface PsdLayerInput {
   clipped?: boolean
   /** full-document-size mask canvas — mask value lives in the ALPHA channel */
   mask?: HTMLCanvasElement | null
+  /** Opaque PSD additional-layer-information blocks to preserve. */
+  additionalInfo?: Uint8Array[]
 }
 
 /** PackBits-encode one row; returns the packed bytes */
@@ -627,11 +651,34 @@ function i32(v: number): Uint8Array {
   return out
 }
 
+function unicodeLayerNameBlock(name: string): Uint8Array {
+  const text = name || 'Layer'
+  // PSD stores the Unicode layer name as UTF-16BE code units. Use JS string
+  // length/codeUnitAt semantics so surrogate pairs remain intact.
+  const data = new Uint8Array(4 + text.length * 2)
+  const dv = new DataView(data.buffer)
+  dv.setUint32(0, text.length)
+  for (let i = 0; i < text.length; i++) dv.setUint16(4 + i * 2, text.charCodeAt(i))
+  const padded = data.length + (data.length & 1)
+  const out = new Uint8Array(8 + 4 + padded)
+  out.set(asciiBytes('8BIM'), 0)
+  out.set(asciiBytes('luni'), 4)
+  new DataView(out.buffer).setUint32(8, data.length)
+  out.set(data, 12)
+  return out
+}
+
+function saneAdditionalInfoBlock(block: Uint8Array): boolean {
+  if (!(block instanceof Uint8Array) || block.length < 12) return false
+  const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
+  return sig === '8BIM' || sig === '8B64'
+}
+
 export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number } = {},
+  options: { resolutionPpi?: number; imageResources?: Uint8Array[] } = {},
 ): Blob {
   // normalize: composite must be doc-size
   let flat = composite
@@ -707,7 +754,10 @@ export function buildPsd(
     const nameBytes = asciiBytes(name)
     const pascalTotal = 1 + nameBytes.length
     const pascalPad = (4 - (pascalTotal & 3)) & 3
-    const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + pascalTotal + pascalPad
+    const preservedInfo = (p.input.additionalInfo ?? []).filter(saneAdditionalInfoBlock)
+    const unicodeName = unicodeLayerNameBlock(p.input.name || 'Layer')
+    const additionalInfoBytes = preservedInfo.reduce((n, b) => n + b.length, unicodeName.length)
+    const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + pascalTotal + pascalPad + additionalInfoBytes
     recordParts.push(u32(extraLen))
     if (p.maskDoc) {
       // layer mask data: length 20 = rect(16) + default color + flags + pad
@@ -721,6 +771,7 @@ export function buildPsd(
     }
     recordParts.push(u32(0)) // layer blending ranges: none
     recordParts.push(new Uint8Array([nameBytes.length]), nameBytes, new Uint8Array(pascalPad))
+    recordParts.push(unicodeName, ...preservedInfo)
     // channel image data blocks follow all records — store for later
     for (const ch of allChannels) channelDataParts.push(ch.block)
   }
@@ -746,7 +797,13 @@ export function buildPsd(
   resView.setUint32(8, fixedPpi)    // vRes
   resView.setUint16(12, 1)          // vResUnit
   resView.setUint16(14, 1)          // heightUnit
-  const resources = concatUint8([asciiBytes('8BIM'), u16(0x0400), new Uint8Array([0, 0]), u32(resData.length), resData])
+  const resolutionResource = concatUint8([asciiBytes('8BIM'), u16(0x0400), new Uint8Array([0, 0]), u32(resData.length), resData])
+  const preservedResources = (options.imageResources ?? []).filter(block => {
+    if (!(block instanceof Uint8Array) || block.length < 12) return false
+    const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
+    return sig === '8BIM' || sig === 'MeSa'
+  })
+  const resources = concatUint8([resolutionResource, ...preservedResources])
 
   // ---- merged composite: RLE with a shared channels × height row table ----
   const compImg = getImageData(flat)

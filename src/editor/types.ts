@@ -341,6 +341,12 @@ export interface Layer {
   blendIf: BlendIfSettings | null
   /** non-destructive layer styles (drop shadow / glow / stroke / overlay) */
   fx: LayerFX | null
+  /** Opaque Photoshop additional-layer-information blocks retained from an
+   * imported PSD/PSB. They are encoded as base64 so project JSON and history
+   * snapshots can preserve unsupported Photoshop metadata losslessly. Blocks
+   * that Chay's Photo Studio writes itself (e.g. the Unicode layer name) are
+   * regenerated on export rather than stored here. */
+  psdAdditionalInfo?: string[]
   /** provenance marker — 'detect' = lifted from an AI-detected object box
    *  (Detect Objects dialog → "Layer"); lets the Layers panel badge it */
   origin?: 'detect'
@@ -497,6 +503,8 @@ export interface PsDocument {
   /** Original decoded component depth when known (for example 16-bit TIFF/PSD
    * imported into today's 8-bit working raster). */
   sourceBitDepth?: number
+  /** Opaque Photoshop image-resource blocks retained from imported PSD/PSB. */
+  psdImageResources?: string[]
   /** Working canvas color space. The current default is sRGB; Display-P3 is
    * capability-probed separately before any future wide-gamut migration. */
   workingColorSpace?: 'srgb' | 'display-p3'
