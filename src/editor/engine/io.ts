@@ -1,23 +1,25 @@
 // File IO: open images, place layers, project save/load, export
 import { engine } from './engine'
 import { useEditorStore } from '../store'
-import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile } from '../utils/canvas'
+import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
 import { newLayer } from './document'
 import type { HistoryState, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
-import { decodeFile, detectFormat } from '../formats'
+import { decodeFile, detectFormat, formatFromFileName } from '../formats'
 import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
 import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension } from '../formats'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
-const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim']
+const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim', 'heic', 'jxl', 'jp2', 'raw', 'pdf', 'eps']
 
 /** sniff the first 64 bytes — enough for every magic-byte signature we know */
 async function sniffFormat(file: File): Promise<ImportFormatId | null> {
   try {
     const head = new Uint8Array(await file.slice(0, 64).arrayBuffer())
-    return detectFormat(head)
+    const named = formatFromFileName(file.name)
+    if (named === 'raw') return 'raw'
+    return detectFormat(head) ?? named
   } catch {
     return null
   }
@@ -26,8 +28,9 @@ async function sniffFormat(file: File): Promise<ImportFormatId | null> {
 interface DecodedCanvas {
   canvas: HTMLCanvasElement
   sourceBitDepth: number
-  workingBitDepth: 8 | 16
+  workingBitDepth: 8 | 16 | 32
   resolutionPpi?: number
+  hdrPixels?: Float32Array
 }
 
 /** Decode while retaining source precision. Custom high-depth codecs create
@@ -37,14 +40,30 @@ async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
   const format = await sniffFormat(file)
   if (format && CODEC_FORMATS.includes(format)) {
     const decoded = await decodeFile(file)
-    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi }
+    return {
+      canvas: decoded.canvas,
+      sourceBitDepth: decoded.sourceBitDepth ?? 8,
+      workingBitDepth: decoded.sourceFloatPixels && decoded.sourceColorSpace === 'linear-srgb' ? 32 : canvasProfile(decoded.canvas).bitDepth,
+      resolutionPpi: decoded.resolutionPpi,
+      hdrPixels: decoded.sourceFloatPixels && decoded.sourceColorSpace === 'linear-srgb'
+        ? new Float32Array(decoded.sourceFloatPixels)
+        : undefined,
+    }
   }
   try {
     const canvas = await fileToCanvas(file)
     return { canvas, sourceBitDepth: 8, workingBitDepth: canvasProfile(canvas).bitDepth }
   } catch {
     const decoded = await decodeFile(file)
-    return { canvas: decoded.canvas, sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi }
+    return {
+      canvas: decoded.canvas,
+      sourceBitDepth: decoded.sourceBitDepth ?? 8,
+      workingBitDepth: decoded.sourceFloatPixels && decoded.sourceColorSpace === 'linear-srgb' ? 32 : canvasProfile(decoded.canvas).bitDepth,
+      resolutionPpi: decoded.resolutionPpi,
+      hdrPixels: decoded.sourceFloatPixels && decoded.sourceColorSpace === 'linear-srgb'
+        ? new Float32Array(decoded.sourceFloatPixels)
+        : undefined,
+    }
   }
 }
 
@@ -61,7 +80,7 @@ export async function openFiles(files: File[], asLayer = false) {
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded); continue }
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, resolutionPpi: decoded.resolutionPpi })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi })
         continue
       }
       if (!asLayer && hasDedicatedDocumentParser(file.name)) {
@@ -75,13 +94,13 @@ export async function openFiles(files: File[], asLayer = false) {
       }
       const decoded = await decodeToCanvas(file)
       if (asLayer && engine.activeDoc) {
-        engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
+        engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''), { hdrPixels: engine.activeDoc?.workingBitDepth === 32 ? decoded.hdrPixels : undefined })
         if (decoded.sourceBitDepth > 8) {
           const targetDepth = engine.activeDoc?.workingBitDepth ?? 8
           store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed into the ${targetDepth}-bit document`, 'info')
         }
       } else {
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi, hdrPixels: decoded.hdrPixels })
       }
     } catch (err) {
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
@@ -154,6 +173,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage): PsDocument 
   }
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
     resolutionPpi: decoded.resolutionPpi,
   })
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
@@ -170,7 +190,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   const doc: PsDocument = {
     id: uid(), name, width, height,
     resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
-    workingBitDepth: 8,
+    workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
     workingColorSpace: 'srgb',
