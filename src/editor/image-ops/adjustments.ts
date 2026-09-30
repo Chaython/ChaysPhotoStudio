@@ -15,15 +15,16 @@ import {
 import { buildCurveLUT, smoothRamp } from './interp'
 import { blurImageData } from './blur'
 import { applyLUT as applyColorLUT } from './lut'
+import { createPixelImageLike, sampleLut256 } from './pixel-data'
 
 const D = (img: ImageData) => img.data
 
 function applyLUT(img: ImageData, lut: Uint8ClampedArray): void {
   const d = D(img)
   for (let i = 0; i < d.length; i += 4) {
-    d[i] = lut[d[i]]
-    d[i + 1] = lut[d[i + 1]]
-    d[i + 2] = lut[d[i + 2]]
+    d[i] = sampleLut256(lut, d[i])
+    d[i + 1] = sampleLut256(lut, d[i + 1])
+    d[i + 2] = sampleLut256(lut, d[i + 2])
   }
 }
 
@@ -31,9 +32,9 @@ function applyLUT3(img: ImageData, rl: Uint8ClampedArray | null, gl: Uint8Clampe
   if (!rl && !gl && !bl) return
   const d = D(img)
   for (let i = 0; i < d.length; i += 4) {
-    if (rl) d[i] = rl[d[i]]
-    if (gl) d[i + 1] = gl[d[i + 1]]
-    if (bl) d[i + 2] = bl[d[i + 2]]
+    if (rl) d[i] = sampleLut256(rl, d[i])
+    if (gl) d[i + 1] = sampleLut256(gl, d[i + 1])
+    if (bl) d[i + 2] = sampleLut256(bl, d[i + 2])
   }
 }
 
@@ -114,9 +115,9 @@ const levelsAdj: AdjustmentDef = {
     const bL = pc?.b ? mk(pc.b.inBlack, pc.b.gamma, pc.b.inWhite, p.outBlack ?? 0, p.outWhite ?? 255) : null
     const d = D(img)
     for (let i = 0; i < d.length; i += 4) {
-      d[i] = rL ? rL[d[i]] : base[d[i]]
-      d[i + 1] = gL ? gL[d[i + 1]] : base[d[i + 1]]
-      d[i + 2] = bL ? bL[d[i + 2]] : base[d[i + 2]]
+      d[i] = sampleLut256(rL ?? base, d[i])
+      d[i + 1] = sampleLut256(gL ?? base, d[i + 1])
+      d[i + 2] = sampleLut256(bL ?? base, d[i + 2])
     }
   },
 }
@@ -659,7 +660,7 @@ const cameraRaw: AdjustmentDef = {
 
     // ---- pass 2: clarity (local contrast) + vibrance / saturation ----
     if (clarity !== 0) {
-      const blurred = new ImageData(img.width, img.height)
+      const blurred = createPixelImageLike(img)
       blurred.data.set(d)
       const sigma = clamp(Math.min(img.width, img.height) / 40, 3, 40)
       blurImageData(blurred, sigma)
@@ -737,7 +738,7 @@ const shadowHighlight: AdjustmentDef = {
     for (let i = 0, j = 0; i < d.length; i += 4, j++) lum[j] = luma(d[i], d[i + 1], d[i + 2]) / 255
 
     const blurLuma = (radius: number): Float32Array => {
-      const copy = new ImageData(w, h)
+      const copy = createPixelImageLike(img, w, h)
       copy.data.set(d)
       blurImageData(copy, radius)
       const out = new Float32Array(w * h)
@@ -839,7 +840,7 @@ const equalizeAdj: AdjustmentDef = {
           total++
         }
         const lut = equalizeLUT(hist, total)
-        for (let i = c; i < d.length; i += 4) d[i] = lut[d[i]]
+        for (let i = c; i < d.length; i += 4) d[i] = sampleLut256(lut, d[i])
       }
       return
     }
@@ -855,7 +856,7 @@ const equalizeAdj: AdjustmentDef = {
     const lut = equalizeLUT(hist, total)
     for (let i = 0; i < d.length; i += 4) {
       const l = luma(d[i], d[i + 1], d[i + 2])
-      const nl = lut[Math.round(l)]
+      const nl = sampleLut256(lut, l)
       if (l >= 8) {
         const k = nl / l
         d[i] = clamp(d[i] * k, 0, 255)
