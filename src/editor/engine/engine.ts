@@ -39,6 +39,25 @@ import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 
 export const MAX_HISTORY = 50
 
+const HISTORY_SNAPSHOT_PREFS_KEY = 'zphoto-history-snapshot-prefs'
+export interface HistorySnapshotPreferences {
+  autoNewDocument: boolean
+  autoOpenedDocument: boolean
+}
+
+function loadHistorySnapshotPreferences(): HistorySnapshotPreferences {
+  const fallback = { autoNewDocument: true, autoOpenedDocument: true }
+  if (typeof window === 'undefined') return fallback
+  try {
+    const raw = JSON.parse(localStorage.getItem(HISTORY_SNAPSHOT_PREFS_KEY) || '{}')
+    return {
+      autoNewDocument: raw?.autoNewDocument !== false,
+      autoOpenedDocument: raw?.autoOpenedDocument !== false,
+    }
+  } catch {
+    return fallback
+  }
+}
 
 function canvasDepthForDocument(depth: 8 | 16 | 32 | undefined): 8 | 16 {
   return depth === 8 ? 8 : 16
@@ -391,6 +410,7 @@ export class Engine {
     this._activeId = doc.id
     setCanvasWorkingProfile({ bitDepth: canvasDepthForDocument(doc.workingBitDepth), colorSpace: doc.workingColorSpace ?? 'srgb' })
     this.pushHistory('New Document', doc)
+    this.maybeCreateAutomaticHistorySnapshot('new', doc)
     this.emit()
     return doc
   }
@@ -438,6 +458,7 @@ export class Engine {
     this._activeId = doc.id
     setCanvasWorkingProfile({ bitDepth: canvasDepthForDocument(doc.workingBitDepth), colorSpace: doc.workingColorSpace ?? 'srgb' })
     this.pushHistory('Open', doc)
+    this.maybeCreateAutomaticHistorySnapshot('open', doc)
     this.emit()
     return doc
   }
@@ -578,8 +599,42 @@ export class Engine {
     this.emit()
   }
 
-  createHistorySnapshot(name?: string): HistorySnapshot | null {
-    const doc = this.activeDoc
+  getHistorySnapshotPreferences(): HistorySnapshotPreferences {
+    return loadHistorySnapshotPreferences()
+  }
+
+  setHistorySnapshotPreferences(next: Partial<HistorySnapshotPreferences>): HistorySnapshotPreferences {
+    const prefs = { ...loadHistorySnapshotPreferences(), ...next }
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.setItem(HISTORY_SNAPSHOT_PREFS_KEY, JSON.stringify(prefs)) } catch { /* noop */ }
+    }
+    this.emit()
+    return prefs
+  }
+
+  private historySnapshotThumbnail(doc: PsDocument): string | undefined {
+    try {
+      const src = getFlatComposite(doc)
+      const maxW = 96, maxH = 64
+      const scale = Math.min(maxW / Math.max(1, src.width), maxH / Math.max(1, src.height), 1)
+      const drawW = Math.max(1, Math.round(src.width * scale))
+      const drawH = Math.max(1, Math.round(src.height * scale))
+      const thumb = createCanvas(maxW, maxH, { bitDepth: 8, colorSpace: 'srgb' })
+      const c = ctx2d(thumb)
+      c.clearRect(0, 0, maxW, maxH)
+      c.imageSmoothingQuality = 'high'
+      c.drawImage(src, Math.round((maxW - drawW) / 2), Math.round((maxH - drawH) / 2), drawW, drawH)
+      return thumb.toDataURL('image/webp', 0.78)
+    } catch {
+      return undefined
+    }
+  }
+
+  createHistorySnapshot(
+    name?: string,
+    doc: PsDocument | null = this.activeDoc,
+    opts: { markDirty?: boolean } = {},
+  ): HistorySnapshot | null {
     if (!doc) return null
     const snapshots = doc.historySnapshots ?? (doc.historySnapshots = [])
     const fallback = `Snapshot ${snapshots.length + 1}`
@@ -589,13 +644,24 @@ export class Engine {
       name: label,
       time: Date.now(),
       state: this.captureState(doc, label),
+      thumbnail: this.historySnapshotThumbnail(doc),
     }
     snapshots.push(snap)
     // Photoshop snapshots are durable within the document but should not grow
     // without bound in a browser session/project file.
     while (snapshots.length > 20) snapshots.shift()
-    doc.dirty = true
+    if (opts.markDirty !== false) doc.dirty = true
     this.emit()
+    return snap
+  }
+
+  maybeCreateAutomaticHistorySnapshot(kind: 'new' | 'open', doc: PsDocument | null = this.activeDoc): HistorySnapshot | null {
+    if (!doc || (doc.historySnapshots?.length ?? 0) > 0) return null
+    const prefs = loadHistorySnapshotPreferences()
+    if (kind === 'new' ? !prefs.autoNewDocument : !prefs.autoOpenedDocument) return null
+    const wasDirty = doc.dirty
+    const snap = this.createHistorySnapshot(kind === 'new' ? 'New Document' : doc.name, doc, { markDirty: false })
+    doc.dirty = wasDirty
     return snap
   }
 
