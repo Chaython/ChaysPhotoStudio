@@ -28,10 +28,10 @@ export function createPixelImage(width: number, height: number, float = false): 
   return new ImageData(width, height)
 }
 
-export function createPixelImageLike(img: PixelImage, width = img.width, height = img.height): PixelImage {
+export function createPixelImageLike<T extends PixelImage>(img: T, width = img.width, height = img.height): T {
   const out = createPixelImage(width, height, isFloatPixelImage(img))
   if (isFloatPixelImage(out) && isFloatPixelImage(img)) out.dynamicRange = img.dynamicRange
-  return out
+  return out as T
 }
 
 export function clonePixelImage<T extends PixelImage>(img: T): T {
