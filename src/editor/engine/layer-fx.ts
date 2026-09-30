@@ -461,7 +461,7 @@ export function applyLayerFX(content: HTMLCanvasElement, fx: LayerFX): HTMLCanva
     sc.drawImage(sil, 0, 0)
     const blur = Math.max(.25, (v.blur - spreadPx * .75) / 2)
     const soft = applyNoise(applyContour(blurCanvas(shifted, blur), v.contour), v.noise)
-    drawEffect(oc, colorize(soft, v.color), v.opacity, v.blendMode)
+    drawEffect(oc, colorize(soft, v.color), v.opacity, v.blendMode ?? 'multiply')
   }
 
   if (fx.bevelEmboss?.enabled) {
