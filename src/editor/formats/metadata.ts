@@ -270,6 +270,7 @@ function xmpGroup(nodeName: string): string {
     iptccore: 'XMP IPTC Core',
     iptc4xmpcore: 'XMP IPTC Core',
     iptcext: 'XMP IPTC Extension',
+    iptc4xmpext: 'XMP IPTC Extension',
     plus: 'XMP PLUS',
     stref: 'XMP Resource Reference',
     stEvt: 'XMP Event',
