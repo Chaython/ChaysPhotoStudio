@@ -721,7 +721,7 @@ export const moveTool: Tool = {
     }
     movingIds = []
     smartGuideX = smartGuideY = null
-      smartSpacingX = smartSpacingY = false
+    smartSpacingX = smartSpacingY = false
   },
 
   onKeyDown(e: KeyboardEvent) {
@@ -780,7 +780,7 @@ export const moveTool: Tool = {
 
   onDeactivate() {
     smartGuideX = smartGuideY = null
-      smartSpacingX = smartSpacingY = false
+    smartSpacingX = smartSpacingY = false
   },
 }
 
