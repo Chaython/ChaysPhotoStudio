@@ -36,6 +36,7 @@ import {
   validateWarpMesh, warpCanvasToMesh, warpCanvasToQuad, warpMeshDestinationPoints,
 } from '../image-ops/transform'
 import { mapVectorMask, type VectorMaskOp } from './vector-mask'
+import { embedRasterMetadata } from '../formats/metadata-write'
 
 export const MAX_HISTORY = 50
 
@@ -4441,7 +4442,17 @@ export class Engine {
       c.drawImage(flat, 0, 0, w, h)
     }
     const type = opts.format === 'jpeg' ? 'image/jpeg' : opts.format === 'webp' ? 'image/webp' : 'image/png'
-    const blob = await canvasToBlob(out, type, opts.format === 'png' ? undefined : opts.quality / 100)
+    const encoded = await canvasToBlob(out, type, opts.format === 'png' ? undefined : opts.quality / 100)
+    const blob = await embedRasterMetadata(
+      encoded,
+      opts.format,
+      opts.includeMetadata === false ? undefined : doc.metadata,
+      {
+        resolutionPpi: doc.resolutionPpi ?? 72,
+        width: out.width,
+        height: out.height,
+      },
+    )
     downloadBlob(blob, `${opts.fileName || doc.name}.${opts.format}`)
   }
 
