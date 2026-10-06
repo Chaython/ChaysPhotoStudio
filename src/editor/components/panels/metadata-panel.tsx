@@ -141,27 +141,35 @@ function FileInfoEditor({ doc }: { doc: PsDocument }) {
   const metadata = documentMetadata(doc)
   const edit = metadata.editable ?? {}
 
+  const liveDocument = () => engine.docs.find(candidate => candidate.id === doc.id) ?? null
+
   const update = <K extends keyof EditableImageMetadata,>(key: K, value: EditableImageMetadata[K]) => {
-    const live = ensureDocumentMetadata(doc)
+    const target = liveDocument()
+    if (!target) return
+    const live = ensureDocumentMetadata(target)
     live.editable = { ...live.editable, [key]: value }
     live.edited = true
-    doc.dirty = true
+    target.dirty = true
     engine.emit()
   }
 
   const resetFromSource = () => {
-    const live = ensureDocumentMetadata(doc)
+    const target = liveDocument()
+    if (!target) return
+    const live = ensureDocumentMetadata(target)
     live.editable = editableMetadataFromFields(live.fields ?? [])
     live.edited = false
-    doc.dirty = true
+    target.dirty = true
     engine.emit()
   }
 
   const clearFileInfo = () => {
-    const live = ensureDocumentMetadata(doc)
+    const target = liveDocument()
+    if (!target) return
+    const live = ensureDocumentMetadata(target)
     live.editable = {}
     live.edited = true
-    doc.dirty = true
+    target.dirty = true
     engine.emit()
   }
 
