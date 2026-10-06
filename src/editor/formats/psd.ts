@@ -903,6 +903,9 @@ export interface PsdLayerInput {
   clipped?: boolean
   /** full-document-size mask canvas — mask value lives in the ALPHA channel */
   mask?: HTMLCanvasElement | null
+  /** Native editable layer style stack. Photoshop-readable legacy effects
+   * are regenerated; the complete stack is retained in chFX for Chay's Studio. */
+  fx?: LayerFX | null
   /** Opaque PSD additional-layer-information blocks to preserve. */
   additionalInfo?: Uint8Array[]
 }
@@ -1142,9 +1145,24 @@ export function buildPsd(
     const nameBytes = asciiBytes(name)
     const pascalTotal = 1 + nameBytes.length
     const pascalPad = (4 - (pascalTotal & 3)) & 3
-    const preservedInfo = (p.input.additionalInfo ?? []).filter(saneAdditionalInfoBlock)
+    const replacingFx = !!p.input.fx
+    const preservedInfo = (p.input.additionalInfo ?? [])
+      .filter(saneAdditionalInfoBlock)
+      .filter(block => {
+        if (!replacingFx) return true
+        const key = fxBlockKey(block)
+        return key !== 'lrFX' && key !== 'chFX' && key !== 'lfx2' && key !== 'lmfx' && key !== 'lfxs'
+      })
+    const generatedFx: Uint8Array[] = []
+    if (p.input.fx) {
+      // chFX is an app-private, ignored-by-Photoshop copy of the complete
+      // native stack. lrFX provides interoperable shadows/glows/bevel/fill.
+      generatedFx.push(chaysLayerFxBlock(p.input.fx))
+      const legacy = legacyLayerFxBlock(p.input.fx)
+      if (legacy) generatedFx.push(legacy)
+    }
     const unicodeName = unicodeLayerNameBlock(p.input.name || 'Layer')
-    const additionalInfoBytes = preservedInfo.reduce((n, b) => n + b.length, unicodeName.length)
+    const additionalInfoBytes = [...preservedInfo, ...generatedFx].reduce((n, b) => n + b.length, unicodeName.length)
     const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + pascalTotal + pascalPad + additionalInfoBytes
     recordParts.push(u32(extraLen))
     if (p.maskDoc) {
@@ -1159,7 +1177,7 @@ export function buildPsd(
     }
     recordParts.push(u32(0)) // layer blending ranges: none
     recordParts.push(new Uint8Array([nameBytes.length]), nameBytes, new Uint8Array(pascalPad))
-    recordParts.push(unicodeName, ...preservedInfo)
+    recordParts.push(unicodeName, ...preservedInfo, ...generatedFx)
     // channel image data blocks follow all records — store for later
     for (const ch of allChannels) channelDataParts.push(ch.block)
   }
