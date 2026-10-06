@@ -31,10 +31,9 @@ function calculationChannel(
   height: number,
 ): HTMLCanvasElement {
   const registered = createCanvas(width, height, canvasProfile(source.canvas))
-  const rc = ctx2d(registered)
-  rc.fillStyle = '#000'
-  rc.fillRect(0, 0, width, height)
-  rc.drawImage(source.canvas, 0, 0)
+  // Keep transparent areas transparent until after channel extraction so the
+  // Alpha source reads the real source alpha instead of an opaque matte.
+  ctx2d(registered).drawImage(source.canvas, 0, 0)
 
   const out = extractSourceChannel(registered, source.channel, !!source.invert)
   const img = getProcessingPixelData(out)
