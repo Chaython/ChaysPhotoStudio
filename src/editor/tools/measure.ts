@@ -31,7 +31,8 @@ function pixelsPerUnit(unit: string, opts = getOptions(TOOL_ID)): number {
     if (unit === 'cm') return ppi / 2.54
     if (unit === 'mm') return ppi / 25.4
   }
-  return pixelsPerUnit(unit, opts)
+  const custom = Number(opts.pixelsPerUnit)
+  return Number.isFinite(custom) && custom > 0 ? Math.max(.001, custom) : 1
 }
 
 // ---------- state ----------
@@ -101,6 +102,12 @@ export function saveCurrentMeasurement(name?: string): string | null {
 
 export function hasCurrentMeasurement(): boolean {
   return segments.length > 0 || !!(start && end)
+}
+
+/** Re-publish the current ruler readout after units/calibration change. */
+export function refreshMeasurementReadout(): void {
+  publish()
+  engine.pokeOverlay()
 }
 
 /** Shift constrains to the selected angular increment, preserving length. */
