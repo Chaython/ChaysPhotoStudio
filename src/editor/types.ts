@@ -776,4 +776,6 @@ export interface ExportOptions {
   quality: number       // 0..100
   scale: number
   fileName: string
+  /** False strips editable File Info fields from the exported raster. */
+  includeMetadata?: boolean
 }
