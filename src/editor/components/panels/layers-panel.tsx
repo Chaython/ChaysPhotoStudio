@@ -4,7 +4,7 @@ import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { BLEND_MODES } from '../../constants/tools'
 import { useEditorStore, type LayerMeta } from '../../store'
 import { engine } from '../../engine/engine'
@@ -395,6 +395,19 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
         <ContextMenuItem disabled={!meta.hasFx} onClick={() => engine.copyLayerStyle(meta.id)}><Icons.Copy /> Copy Layer Style</ContextMenuItem>
         <ContextMenuItem disabled={meta.kind === 'adjustment' || !engine.canPasteLayerStyle} onClick={() => engine.pasteLayerStyle(meta.id)}><Icons.ClipboardPaste /> Paste Layer Style</ContextMenuItem>
         <ContextMenuItem disabled={!meta.hasFx} onClick={() => engine.clearLayerStyle(meta.id)}><Icons.Eraser /> Clear Layer Style</ContextMenuItem>
+        <ContextMenuSub>
+          <ContextMenuSubTrigger disabled={meta.kind === 'adjustment' || meta.locked}><Icons.Sparkles /> Matting</ContextMenuSubTrigger>
+          <ContextMenuSubContent className="z-50">
+            <ContextMenuItem onClick={() => {
+              const raw = prompt('Defringe width (pixels):', '1')
+              if (raw === null) return
+              const px = Math.max(1, Math.min(64, Math.round(Number(raw) || 1)))
+              engine.defringeLayer(meta.id, px)
+            }}>Defringe…</ContextMenuItem>
+            <ContextMenuItem onClick={() => engine.removeLayerMatte(meta.id, 'black')}>Remove Black Matte</ContextMenuItem>
+            <ContextMenuItem onClick={() => engine.removeLayerMatte(meta.id, 'white')}>Remove White Matte</ContextMenuItem>
+          </ContextMenuSubContent>
+        </ContextMenuSub>
         <ContextMenuItem onClick={() => engine.duplicateLayer(meta.id)}><Icons.CopyPlus /> Duplicate Layer</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, true)}><Icons.SquareDashed /> Add Mask from Selection</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, false)}><Icons.Square /> Add Mask (Reveal All)</ContextMenuItem>

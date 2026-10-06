@@ -83,6 +83,22 @@ export function CanvasLayerMenuContent({ layerId }: { layerId: string }) {
         <Trash2 />
         Clear Layer Style
       </ContextMenuItem>
+      <ContextMenuSub>
+        <ContextMenuSubTrigger disabled={!canEdit}>
+          <Sparkles />
+          Matting
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent className="text-xs">
+          <ContextMenuItem onClick={act(() => {
+            const raw = prompt('Defringe width (pixels):', '1')
+            if (raw === null) return
+            const px = Math.max(1, Math.min(64, Math.round(Number(raw) || 1)))
+            engine.defringeLayer(layer.id, px)
+          })}>Defringe…</ContextMenuItem>
+          <ContextMenuItem onClick={act(() => engine.removeLayerMatte(layer.id, 'black'))}>Remove Black Matte</ContextMenuItem>
+          <ContextMenuItem onClick={act(() => engine.removeLayerMatte(layer.id, 'white'))}>Remove White Matte</ContextMenuItem>
+        </ContextMenuSubContent>
+      </ContextMenuSub>
       <ContextMenuSeparator />
       <ContextMenuItem onClick={act(() => engine.duplicateLayer(layer.id))}>
         <Copy />

@@ -325,6 +325,18 @@ export const MENUS: MenuItem[][] = [
     { id: 'layer-style-clear', label: 'Clear Layer Style', enabled: () => !!engine.activeLayer?.fx, run: () => { const l = engine.activeLayer; if (l) engine.clearLayerStyle(l.id) } },
     { id: 'layer-expand-frame', label: 'Expand to Fill Frame', run: () => { const l = engine.activeLayer; if (l) engine.expandLayerToFrame(l.id) } },
     { id: 'layer-trim-content', label: 'Trim Layer to Content', run: () => { const l = engine.activeLayer; if (l) engine.trimLayerToContent(l.id) } },
+    { id: 'layer-matting', label: 'Matting', enabled: () => !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment' && !engine.activeLayer.locked, submenu: [
+      { id: 'layer-matting-defringe', label: 'Defringe…', run: () => {
+        const l = engine.activeLayer
+        if (!l) return
+        const raw = prompt('Defringe width (pixels):', '1')
+        if (raw === null) return
+        const px = Math.max(1, Math.min(64, Math.round(Number(raw) || 0)))
+        if (px > 0) engine.defringeLayer(l.id, px)
+      } },
+      { id: 'layer-matting-remove-black', label: 'Remove Black Matte', run: () => { const l = engine.activeLayer; if (l) engine.removeLayerMatte(l.id, 'black') } },
+      { id: 'layer-matting-remove-white', label: 'Remove White Matte', run: () => { const l = engine.activeLayer; if (l) engine.removeLayerMatte(l.id, 'white') } },
+    ] },
     S(),
     { id: 'layer-rasterize', label: 'Rasterize Layer', run: () => engine.rasterizeLayer() },
     { id: 'layer-merge-down', label: 'Merge Down', shortcut: sc('mergeDown'), run: () => engine.mergeDown() },
