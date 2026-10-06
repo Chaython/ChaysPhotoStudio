@@ -4,6 +4,7 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Expanded File Info with IPTC Core creator contact, sublocation and rights-usage fields plus IPTC Extension event/people and scene/subject metadata; added XMP sidecar import/export for transferring editable metadata between documents.
 - Move Smart Guides now infer equal spacing when a dragged layer or layer group is nearly centered between two neighboring layers; grid snapping respects per-axis Smart Guide/guide snaps instead of overriding them.
 - Move now shows Photoshop-style live pixel distance measurements to the nearest overlapping layers or canvas edges while dragging, with magenta measurement ticks/badges and a separate Distance Labels toggle.
 - History Snapshots now support project-persistent notes and a per-document automatic-first-snapshot policy (Use Global / Always / Never); the History panel shows notes inline and can edit them without changing the captured image state.
