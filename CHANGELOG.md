@@ -4,6 +4,7 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added **Layer > Matting** with selection-aware **Defringe**, **Remove Black Matte**, and **Remove White Matte**, plus matching canvas/Layers-panel context commands; matte cleanup preserves alpha and offset-layer pixels while guarding 32-bit HDR.
 - Added **Image > Calculations…** with two independent document/layer/channel sources including saved alpha channels, inversion, blend modes plus Subtract, opacity, optional selection masking, and Selection/New Channel/New Document outputs; new alpha channels can be created without replacing the active selection.
 - Fixed **Linear Dodge (Add)** CPU/Canvas compositing to use the standards-compliant `lighter` operation instead of the invalid `add` globalCompositeOperation value.
 - Added **Image > Apply Image…** with same/cross-document sources, merged or individual layers, RGB/R/G/B/Alpha channels, invert, opacity, blend modes, preserve-transparency and automatic selection masking; 32-bit HDR is guarded until scene-linear Apply Image blending is available.
