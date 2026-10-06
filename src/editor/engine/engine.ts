@@ -1165,7 +1165,7 @@ export class Engine {
   /** Photoshop-style Layer > Duplicate Layer… destination workflow.
    * Preserves editable pixels, masks, vector masks, Smart Object source and
    * transforms, smart filters, Blend-If and Layer FX rather than flattening. */
-  duplicateLayerToDocument(layerId: string, targetDocumentId: string): Layer | null {
+  duplicateLayerToDocument(layerId: string, targetDocumentId: string, name?: string): Layer | null {
     const sourceDoc = this.activeDoc
     const source = sourceDoc?.layers.find(layer => layer.id === layerId)
     const target = this.docs.find(doc => doc.id === targetDocumentId)
@@ -1173,6 +1173,8 @@ export class Engine {
     if (target.id === sourceDoc.id) return this.duplicateLayer(layerId)
 
     const copy = this.cloneLayerForDuplicate(source)
+    const cleanName = name?.trim()
+    if (cleanName) copy.name = cleanName.slice(0, 255)
     // A clipped layer cannot retain clipping semantics if its base was not
     // duplicated with it. Export the layer as independent editable artwork.
     copy.clipped = false
