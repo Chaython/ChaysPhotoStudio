@@ -31,12 +31,12 @@ function CheckRow(props:{label:string;checked:boolean;onChange:(v:boolean)=>void
 
 export function ProofSetupDialog({ onClose }: DialogProps) {
   const doc=engine.activeDoc
-  const original=useRef<ProofSettings>({
+  const [original]=useState<ProofSettings>(()=>({
     ...DEFAULT_PROOF_SETTINGS,
     ...(doc?.proof ?? {}),
-  })
+  }))
   const committed=useRef(false)
-  const [settings,setSettings]=useState<ProofSettings>(()=>structuredClone(original.current))
+  const [settings,setSettings]=useState<ProofSettings>(()=>structuredClone(original))
   const [iccMessage,setIccMessage]=useState('')
   const initialDocId=doc?.id
 
@@ -46,7 +46,7 @@ export function ProofSetupDialog({ onClose }: DialogProps) {
 
   useEffect(()=>()=>{
     if(!committed.current && engine.activeDoc?.id===initialDocId) {
-      engine.setProofSettings(original.current)
+      engine.setProofSettings(original)
     }
   },[initialDocId])
 
@@ -88,7 +88,7 @@ export function ProofSetupDialog({ onClose }: DialogProps) {
   }
 
   const cancel=()=>{
-    if(engine.activeDoc?.id===initialDocId) engine.setProofSettings(original.current)
+    if(engine.activeDoc?.id===initialDocId) engine.setProofSettings(original)
     onClose()
   }
 
