@@ -510,6 +510,27 @@ export interface ImageMetadataField {
   value: string
 }
 
+export interface EditableImageMetadata {
+  title?: string
+  description?: string
+  author?: string
+  authorTitle?: string
+  keywords?: string[]
+  headline?: string
+  credit?: string
+  source?: string
+  instructions?: string
+  copyright?: string
+  copyrightStatus?: 'unknown' | 'copyrighted' | 'public-domain'
+  copyrightUrl?: string
+  city?: string
+  state?: string
+  country?: string
+  countryCode?: string
+  jobIdentifier?: string
+  rating?: number
+}
+
 export interface ImageMetadata {
   fileName: string
   mimeType: string
@@ -518,6 +539,10 @@ export interface ImageMetadata {
   format: string
   fields: ImageMetadataField[]
   rawXmp?: string
+  /** Photoshop-style File Info fields that can be edited and written back to exports. */
+  editable?: EditableImageMetadata
+  /** True after File Info has been changed inside the editor. */
+  edited?: boolean
   warnings?: string[]
 }
 
