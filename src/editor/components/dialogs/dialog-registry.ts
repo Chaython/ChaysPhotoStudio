@@ -20,6 +20,7 @@ import { ApplyImageDialog } from './apply-image-dialog'
 import { CalculationsDialog } from './calculations-dialog'
 import { ExportLayersDialog } from './export-layers-dialog'
 import { DuplicateLayerDialog } from './duplicate-layer-dialog'
+import { ProofSetupDialog } from './proof-setup-dialog'
 import {
   ColorRangeDialog, SelectMaskDialog, ContentAwareFillDialog, BatchDialog,
   ScriptConsoleDialog, AboutDialog,
@@ -66,6 +67,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'export': ExportDialog,
   'export-layers': ExportLayersDialog,
   'duplicate-layer': DuplicateLayerDialog,
+  'proof-setup': ProofSetupDialog,
   'transform': TransformDialog,
   'color-range': ColorRangeDialog,
   'select-mask': SelectMaskDialog,
