@@ -307,7 +307,9 @@ export const MENUS: MenuItem[][] = [
   // ================= LAYER =================
   [
     { id: 'layer-new', label: 'New Layer', shortcut: sc('newLayer'), run: () => engine.addRasterLayer() },
-    { id: 'layer-duplicate', label: 'Duplicate Layer', shortcut: sc('duplicateLayer'), run: () => { const l = engine.activeLayer; if (l) engine.duplicateLayer(l.id) } },
+    { id: 'layer-via-copy', label: 'Layer via Copy', shortcut: sc('duplicateLayer'), enabled: () => !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment', run: () => engine.layerViaCopy() },
+    { id: 'layer-via-cut', label: 'Layer via Cut', shortcut: sc('layerViaCut'), enabled: () => !!engine.activeDoc?.selection && !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment' && !engine.activeLayer.locked, run: () => engine.layerViaCut() },
+    { id: 'layer-duplicate', label: 'Duplicate Layer', run: () => { const l = engine.activeLayer; if (l) engine.duplicateLayer(l.id) } },
     { id: 'layer-delete', label: 'Delete Layer', run: () => engine.deleteLayer() },
     S(),
     { id: 'layer-new-adj', label: 'New Adjustment Layer', submenu: newAdjLayerItems },
