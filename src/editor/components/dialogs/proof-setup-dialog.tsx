@@ -35,6 +35,7 @@ export function ProofSetupDialog({ onClose }: DialogProps) {
     ...DEFAULT_PROOF_SETTINGS,
     ...(doc?.proof ?? {}),
   })
+  const committed=useRef(false)
   const [settings,setSettings]=useState<ProofSettings>(()=>structuredClone(original.current))
   const [iccMessage,setIccMessage]=useState('')
   const initialDocId=doc?.id
@@ -42,6 +43,12 @@ export function ProofSetupDialog({ onClose }: DialogProps) {
   useEffect(()=>{
     if(engine.activeDoc?.id===initialDocId) engine.setProofSettings(settings)
   },[settings,initialDocId])
+
+  useEffect(()=>()=>{
+    if(!committed.current && engine.activeDoc?.id===initialDocId) {
+      engine.setProofSettings(original.current)
+    }
+  },[initialDocId])
 
   const profileLabel=useMemo(()=>{
     if(settings.profile==='custom-rgb') return settings.customProfileName || PROFILE_LABELS['custom-rgb']
@@ -86,6 +93,7 @@ export function ProofSetupDialog({ onClose }: DialogProps) {
   }
 
   const apply=()=>{
+    committed.current=true
     if(engine.activeDoc?.id===initialDocId) engine.setProofSettings(settings)
     useEditorStore.getState().pushToast('Proof setup: '+profileLabel,'success')
     onClose()
