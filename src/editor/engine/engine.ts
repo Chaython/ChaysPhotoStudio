@@ -330,6 +330,27 @@ export class Engine {
     return null
   }
 
+  /** Source surface matching Transform Warp's normalized 0..1 coordinate space.
+   * Used by the Puppet Warp editor for a faithful preview without mutating the layer. */
+  warpSourceCanvas(layerId: string): HTMLCanvasElement | null {
+    const doc = this.activeDoc
+    const layer = this.layerById(layerId)
+    if (!doc || !layer || layer.kind === 'adjustment') return null
+    if (layer.kind === 'raster' && layer.canvas) return cloneCanvas(layer.canvas)
+    if (layer.kind === 'smart' && layer.source) return cloneCanvas(layer.source)
+    const r = this.layerContentRect(layerId)
+    if (!r || r.w < 1 || r.h < 1) return null
+    const full = layer.kind === 'text' && layer.text
+      ? renderTextCanvas(doc, layer.text)
+      : layer.kind === 'shape' && layer.shape
+        ? renderShapeCanvas(doc, layer.shape)
+        : null
+    if (!full) return null
+    const out = createCanvas(Math.max(1, Math.ceil(r.w)), Math.max(1, Math.ceil(r.h)))
+    ctx2d(out).drawImage(full, -r.x, -r.y)
+    return out
+  }
+
   /** layer pixels registered in DOC space (for sampling at doc coordinates):
    *  smart/text/shape render doc-space; a raster layer with an offset gets a
    *  doc-space COPY (non-destructive — the layer keeps its off-canvas pixels). */
