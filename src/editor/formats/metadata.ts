@@ -783,6 +783,31 @@ function firstField(fields: ImageMetadataField[], tags: string[], labels: string
   return fields.find(f => fieldMatches(f, tags, labels))?.value?.trim() || undefined
 }
 
+export function metadataResolutionPpi(metadata?: Pick<ImageMetadata, 'fields'>): number | undefined {
+  const fields = metadata?.fields ?? []
+  const derived = fields.find(f => f.tag === 'PPI' || (f.group === 'Derived' && /resolution/i.test(f.label)))
+  if (derived) {
+    const n = Number.parseFloat(derived.value)
+    if (Number.isFinite(n) && n > 0) return Math.max(1, Math.min(12000, n))
+  }
+
+  const read = (tag: string, label: string) => {
+    const field = fields.find(f => f.tag.toLowerCase() === tag.toLowerCase() || f.label.toLowerCase() === label.toLowerCase())
+    const n = field ? Number.parseFloat(field.value) : NaN
+    return Number.isFinite(n) && n > 0 ? n : undefined
+  }
+  const x = read('0x011A', 'X Resolution')
+  const y = read('0x011B', 'Y Resolution')
+  const unit = read('0x0128', 'Resolution Unit')
+  if (x || y) {
+    let value = x && y ? (x + y) / 2 : (x ?? y)!
+    // TIFF/EXIF ResolutionUnit: 2 = inch, 3 = centimetre.
+    if (unit === 3) value *= 2.54
+    return Math.max(1, Math.min(12000, value))
+  }
+  return undefined
+}
+
 export function editableMetadataFromFields(fields: ImageMetadataField[]): EditableImageMetadata {
   const keywordValues = fields
     .filter(f => fieldMatches(f, ['dc:subject', '2:25'], ['Keywords']))
