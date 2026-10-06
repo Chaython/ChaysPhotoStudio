@@ -14,6 +14,7 @@ import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd } from '../../format
 import type { PsdLayerInput } from '../../formats'
 import type { DialogProps } from './generic-dialogs'
 import { TransformWarpEditor } from './transform-warp-editor'
+import { buildPhotoshopMetadataResources } from '../../formats/metadata-write'
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
@@ -22,6 +23,13 @@ function base64Bytes(text: string): Uint8Array {
   const out = new Uint8Array(raw.length)
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
   return out
+}
+
+function photoshopResourceId(block: Uint8Array): number | null {
+  if (block.length < 6) return null
+  const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
+  if (sig !== '8BIM' && sig !== 'MeSa') return null
+  return (block[4] << 8) | block[5]
 }
 
 const PRESETS = [
@@ -280,6 +288,7 @@ export function ExportDialog({ onClose }: DialogProps) {
   const [tiffBitDepth, setTiffBitDepth] = useState<8 | 16>((doc?.workingBitDepth ?? 8) >= 16 ? 16 : 8)
   const [icoSizes, setIcoSizes] = useState<number[]>([16, 32, 48, 256])
   const [name, setName] = useState(doc?.name ?? 'export')
+  const [includeMetadata, setIncludeMetadata] = useState(true)
   const [busy, setBusy] = useState(false)
 
   const info = FORMAT_INFO.find(f => f.id === format) ?? FORMAT_INFO[0]
@@ -329,10 +338,17 @@ export function ExportDialog({ onClose }: DialogProps) {
         }
         showProgress('Building PSD…')
         await sleep(16) // let the progress bar paint before the sync encode
+        const preservedResources = (doc.psdImageResources ?? [])
+          .map(base64Bytes)
+          .filter(block => {
+            const id = photoshopResourceId(block)
+            return id !== 0x0404 && id !== 0x0424
+          })
+        const metadataResources = includeMetadata ? buildPhotoshopMetadataResources(doc.metadata) : []
         const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), {
           resolutionPpi: doc.resolutionPpi ?? 72,
           depth: doc.workingBitDepth === 32 ? 16 : doc.workingBitDepth === 16 ? 16 : 8,
-          imageResources: doc.psdImageResources?.map(base64Bytes),
+          imageResources: [...preservedResources, ...metadataResources],
         })
         downloadBlob(blob, `${outName}.psd`)
         store.pushToast(`Exported ${outName}.psd — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
@@ -354,6 +370,9 @@ export function ExportDialog({ onClose }: DialogProps) {
           icoSizes: effectiveIcoSizes.length ? effectiveIcoSizes : undefined,
           tiffCompression,
           tiffBitDepth,
+          metadata: doc.metadata,
+          includeMetadata,
+          resolutionPpi: doc.resolutionPpi ?? 72,
         })
         downloadBlob(blob, `${outName}.${info.ext}`)
         store.pushToast(`Exported ${outName}.${info.ext}`, 'success')
@@ -395,6 +414,23 @@ export function ExportDialog({ onClose }: DialogProps) {
           </div>
         </div>
         <div className="text-[10px] text-muted-foreground -mt-1.5">{info.hint}</div>
+
+        {['png', 'jpeg', 'webp', 'tiff', 'psd'].includes(info.id) && (
+          <div className="rounded border border-border/60 p-2 space-y-1">
+            <label className="flex items-center gap-2 text-[11px] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeMetadata}
+                onChange={e => setIncludeMetadata(e.target.checked)}
+                className="accent-primary"
+              />
+              Include File Info metadata
+            </label>
+            <div className="text-[9px] text-muted-foreground pl-5">
+              Writes editable XMP/IPTC plus document resolution. Source GPS/camera EXIF stays view-only after editing.
+            </div>
+          </div>
+        )}
 
         {opts.includes('quality') && (
           <div className="space-y-1">
