@@ -1772,6 +1772,10 @@ export class Engine {
       if (!this.copiedLayerStyle) this.ui?.toast('Copy a layer style first', 'info')
       return false
     }
+    if (layer.kind === 'adjustment') {
+      this.ui?.toast('Adjustment layers cannot use layer styles', 'info')
+      return false
+    }
     this.setLayerFX(id, structuredClone(this.copiedLayerStyle), { label: 'Paste Layer Style' })
     return true
   }
