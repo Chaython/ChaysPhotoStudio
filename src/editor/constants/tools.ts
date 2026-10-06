@@ -321,7 +321,7 @@ export const BLEND_MODES: { value: BlendMode; label: string; gco: GlobalComposit
   { value: 'lighten', label: 'Lighten', gco: 'lighten' },
   { value: 'color-dodge', label: 'Color Dodge', gco: 'color-dodge' },
   { value: 'color-burn', label: 'Color Burn', gco: 'color-burn' },
-  { value: 'linear-dodge', label: 'Linear Dodge (Add)', gco: 'add' as GlobalCompositeOperation },
+  { value: 'linear-dodge', label: 'Linear Dodge (Add)', gco: 'lighter' },
   { value: 'hard-light', label: 'Hard Light', gco: 'hard-light' },
   { value: 'soft-light', label: 'Soft Light', gco: 'soft-light' },
   { value: 'difference', label: 'Difference', gco: 'difference' },
