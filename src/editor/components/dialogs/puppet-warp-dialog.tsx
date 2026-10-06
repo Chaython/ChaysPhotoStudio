@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { engine } from '../../engine/engine'
 import { puppetWarpMesh, warpCanvasToMesh, type PuppetWarpPin } from '../../image-ops/transform'
-import { clamp, ctx2d, uid } from '../../utils/canvas'
+import { clamp, createCanvas, ctx2d, uid } from '../../utils/canvas'
 import { useEditorStore } from '../../store'
 import type { DialogProps } from './generic-dialogs'
 
@@ -39,7 +39,19 @@ export function PuppetWarpDialog({ inst,onClose }:DialogProps){
   const layerId=String(inst.props?.layerId??engine.activeLayer?.id??'')
   const layer=layerId?engine.layerById(layerId):null
   const doc=engine.activeDoc
-  const [source]=useState(()=>layerId?engine.warpSourceCanvas(layerId):null)
+  const [source]=useState(()=>{
+    const raw=layerId?engine.warpSourceCanvas(layerId):null
+    if(!raw)return null
+    const maxDim=720
+    const scale=Math.min(1,maxDim/Math.max(raw.width,raw.height))
+    if(scale>=1)return raw
+    const out=createCanvas(Math.max(1,Math.round(raw.width*scale)),Math.max(1,Math.round(raw.height*scale)))
+    const ctx=ctx2d(out)
+    ctx.imageSmoothingEnabled=true
+    ctx.imageSmoothingQuality='high'
+    ctx.drawImage(raw,0,0,out.width,out.height)
+    return out
+  })
   const [pins,setPins]=useState<PuppetWarpPin[]>([])
   const [selected,setSelected]=useState<string|null>(null)
   const [density,setDensity]=useState(6)
