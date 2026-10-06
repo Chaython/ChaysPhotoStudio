@@ -2117,6 +2117,46 @@ export class Engine {
 
   private _clip: { canvas: HTMLCanvasElement; offsetX: number; offsetY: number; name: string } | null = null
 
+  private selectionClipForLayer(layer: Layer): { canvas: HTMLCanvasElement; offsetX: number; offsetY: number } | null {
+    const doc = this.activeDoc
+    if (!doc?.selection || layer.kind === 'adjustment') return null
+    const b = doc.selection.bounds
+    const x0 = clamp(Math.floor(b.x), 0, doc.width)
+    const y0 = clamp(Math.floor(b.y), 0, doc.height)
+    const x1 = clamp(Math.ceil(b.x + b.w), 0, doc.width)
+    const y1 = clamp(Math.ceil(b.y + b.h), 0, doc.height)
+    if (x1 - x0 < 1 || y1 - y0 < 1) return null
+    const src = this.layerCanvasDocSpace(layer.id)
+    if (!src) return null
+
+    const canvas = createCanvas(x1 - x0, y1 - y0, {
+      bitDepth: canvasDepthForDocument(doc.workingBitDepth),
+      colorSpace: doc.workingColorSpace ?? 'srgb',
+    })
+    const cc = ctx2d(canvas)
+    cc.drawImage(src, -x0, -y0)
+    // Crop by the actual grayscale selection, not just its rectangular bounds.
+    cc.save()
+    cc.globalCompositeOperation = 'destination-in'
+    cc.drawImage(doc.selection.mask, -x0, -y0)
+    cc.restore()
+    return { canvas, offsetX: x0, offsetY: y0 }
+  }
+
+  private eraseSelectionFromRaster(layer: Layer): boolean {
+    const doc = this.activeDoc
+    if (!doc?.selection || layer.kind !== 'raster' || !layer.canvas) return false
+    const cc = ctx2d(layer.canvas)
+    cc.save()
+    cc.globalCompositeOperation = 'destination-out'
+    cc.translate(-(layer.offsetX ?? 0), -(layer.offsetY ?? 0))
+    cc.drawImage(doc.selection.mask, 0, 0)
+    cc.restore()
+    layer._v++
+    invalidateFlat(doc)
+    return true
+  }
+
   /** Copy the active layer (or the merged composite with merged=true) to the
    *  internal clipboard AND the system clipboard (PNG). With an active
    *  selection, copies the selection region position-preserving so a paste
@@ -2134,15 +2174,11 @@ export class Engine {
       const l = this.activeLayer
       if (!l || l.kind === 'adjustment') { this.ui?.toast('No pixel layer to copy — use Copy Merged (Ctrl+Shift+C)', 'error'); return false }
       if (doc.selection) {
-        const b = doc.selection.bounds
-        const x0 = clamp(Math.floor(b.x), 0, doc.width), y0 = clamp(Math.floor(b.y), 0, doc.height)
-        const x1 = clamp(Math.ceil(b.x + b.w), 0, doc.width), y1 = clamp(Math.ceil(b.y + b.h), 0, doc.height)
-        if (x1 - x0 < 1 || y1 - y0 < 1) { this.ui?.toast('The selection is empty', 'error'); return false }
-        const src = this.layerCanvasDocSpace(l.id)
-        if (!src) return false
-        canvas = createCanvas(x1 - x0, y1 - y0)
-        ctx2d(canvas).drawImage(src, -x0, -y0)
-        ox = x0; oy = y0
+        const clip = this.selectionClipForLayer(l)
+        if (!clip) { this.ui?.toast('The selection is empty', 'error'); return false }
+        canvas = clip.canvas
+        ox = clip.offsetX
+        oy = clip.offsetY
         name = l.name
       } else if (l.kind === 'raster' && l.canvas) {
         canvas = cloneCanvas(l.canvas)
@@ -2181,9 +2217,12 @@ export class Engine {
     if (l.kind === 'raster' && l.canvas) {
       const m = this.mutateLayerPixels(l.id)
       if (m?.canvas) {
-        ctx2d(m.canvas).clearRect(0, 0, m.canvas.width, m.canvas.height)
-        m._v++
-        invalidateFlat(doc)
+        if (doc.selection) this.eraseSelectionFromRaster(m)
+        else {
+          ctx2d(m.canvas).clearRect(0, 0, m.canvas.width, m.canvas.height)
+          m._v++
+          invalidateFlat(doc)
+        }
         this.pushHistory('Cut')
         this.emit()
       }
