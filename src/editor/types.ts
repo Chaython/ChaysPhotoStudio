@@ -566,6 +566,20 @@ export interface ImageMetadata {
 }
 
 // ---------- Document ----------
+export type ProofProfileId = 'srgb' | 'display-p3' | 'adobe-rgb' | 'cmyk-swop' | 'gray-20' | 'custom-rgb'
+
+export interface ProofSettings {
+  enabled: boolean
+  gamutWarning: boolean
+  profile: ProofProfileId
+  intent: 'relative' | 'perceptual' | 'saturation' | 'absolute'
+  blackPointCompensation: boolean
+  simulatePaperColor: boolean
+  /** Matrix-shaper RGB ICC primaries, row-major XYZ PCS matrix. */
+  customMatrix?: [number, number, number, number, number, number, number, number, number]
+  customProfileName?: string
+}
+
 export interface ViewportState {
   zoom: number; panX: number; panY: number
   /** true/undefined = never explicitly viewed (auto fit on first display);
@@ -606,6 +620,8 @@ export interface PsDocument {
   /** Working canvas color space. The current default is sRGB; Display-P3 is
    * capability-probed separately before any future wide-gamut migration. */
   workingColorSpace?: 'srgb' | 'display-p3'
+  /** View-only soft-proof configuration; never baked into pixels or exports. */
+  proof?: ProofSettings
   layers: Layer[]            // index 0 = bottom
   activeLayerId: string | null
   /** Multi-layer selection. activeLayerId is the primary/anchor layer. */
@@ -744,7 +760,7 @@ export interface ToolDef {
 
 // ---------- Dialogs ----------
 export type DialogType =
-  | 'new-doc' | 'image-size' | 'canvas-size' | 'export' | 'export-layers' | 'duplicate-layer' | 'transform' | 'apply-image' | 'calculations'
+  | 'new-doc' | 'image-size' | 'canvas-size' | 'export' | 'export-layers' | 'duplicate-layer' | 'transform' | 'apply-image' | 'calculations' | 'proof-setup'
   | 'curves' | 'levels' | 'brightness-contrast' | 'exposure' | 'vibrance'
   | 'hue-saturation' | 'color-balance' | 'black-white' | 'photo-filter'
   | 'channel-mixer' | 'selective-color' | 'gradient-map' | 'posterize'
