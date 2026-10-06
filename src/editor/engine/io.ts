@@ -313,6 +313,7 @@ export interface SerializedProject {
     workingBitDepth?: 8 | 16 | 32
     sourceBitDepth?: number
     workingColorSpace?: 'srgb' | 'display-p3'
+    proof?: import('../types').ProofSettings
     resolutionPpi?: number
     psdImageResources?: string[]
     metadata?: ImageMetadata
@@ -422,6 +423,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       workingBitDepth: doc.workingBitDepth ?? 8,
       sourceBitDepth: doc.sourceBitDepth ?? doc.workingBitDepth ?? 8,
       workingColorSpace: doc.workingColorSpace ?? 'srgb',
+      proof: doc.proof ? structuredClone(doc.proof) : undefined,
       resolutionPpi: doc.resolutionPpi ?? 72,
       psdImageResources: doc.psdImageResources ? [...doc.psdImageResources] : undefined,
       metadata: doc.metadata ? structuredClone(doc.metadata) : undefined,
@@ -608,6 +610,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
       ? structuredClone(project.doc.metadata)
       : undefined,
     workingColorSpace: requestedDepth === 32 ? 'srgb' : (project.doc.workingColorSpace === 'display-p3' && canvasPixelCapabilities().displayP3 ? 'display-p3' : 'srgb'),
+    proof: project.doc.proof && typeof project.doc.proof === 'object' ? structuredClone(project.doc.proof) : undefined,
     resolutionPpi: Math.max(1, Math.min(12000, Number(project.doc.resolutionPpi) || 72)),
     layers: [], activeLayerId: null, selection: null,
     channelView: (channelView ?? 'rgb') as PsDocument['channelView'], savedChannels: [],
