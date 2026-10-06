@@ -392,6 +392,9 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
       <ContextMenuContent className="z-50">
         <ContextMenuItem onClick={() => onStartRename()}><Icons.Pencil /> Rename…</ContextMenuItem>
         <ContextMenuItem onClick={() => useEditorStore.getState().openDialog('layer-styles', { layerId: meta.id })}><Icons.Sparkles /> Layer Style…</ContextMenuItem>
+        <ContextMenuItem disabled={!meta.hasFx} onClick={() => engine.copyLayerStyle(meta.id)}><Icons.Copy /> Copy Layer Style</ContextMenuItem>
+        <ContextMenuItem disabled={!engine.canPasteLayerStyle} onClick={() => engine.pasteLayerStyle(meta.id)}><Icons.ClipboardPaste /> Paste Layer Style</ContextMenuItem>
+        <ContextMenuItem disabled={!meta.hasFx} onClick={() => engine.clearLayerStyle(meta.id)}><Icons.Eraser /> Clear Layer Style</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.duplicateLayer(meta.id)}><Icons.CopyPlus /> Duplicate Layer</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, true)}><Icons.SquareDashed /> Add Mask from Selection</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, false)}><Icons.Square /> Add Mask (Reveal All)</ContextMenuItem>
