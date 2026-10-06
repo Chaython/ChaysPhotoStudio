@@ -9,6 +9,7 @@
 import type { PointerInfo, PsDocument, Tool, ToolId, SavedPath } from '../types'
 import { ctx2d, clamp } from '../utils/canvas'
 import { compositeDocument } from './document'
+import { proofDisplayCanvas } from './color-proof'
 import { drawAnts } from './selection'
 import { getTool } from '../tools/registry'
 import { engine } from './engine'
@@ -311,9 +312,11 @@ export class Viewport {
           }
         }
       }
-      // doc content
+      // doc content — proofing is a display-only final transform. The cached
+      // unproofed composite remains authoritative for tools, exports and sampling.
       ctx.imageSmoothingEnabled = v.zoom < 3
-      ctx.drawImage(this.composite, dx, dy, dw, dh)
+      const displayComposite = proofDisplayCanvas(doc, this.composite)
+      ctx.drawImage(displayComposite, dx, dy, dw, dh)
       ctx.restore()
     }
     // live-drag ghost: the moving layer's pixels that hang OUTSIDE the
