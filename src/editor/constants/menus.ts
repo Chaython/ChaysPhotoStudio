@@ -385,8 +385,8 @@ export const MENUS: MenuItem[][] = [
     { id: 'view-100', label: 'Actual Pixels (100%)', shortcut: sc('zoom100'), run: () => engine.setZoom(1) },
     S(),
     { id: 'view-proof-setup', label: 'Proof Setup…', enabled: () => !!engine.activeDoc, run: () => openDlg('proof-setup') },
-    { id: 'view-proof-colors', label: 'Proof Colors', checked: () => !!engine.activeDoc?.proof?.enabled, enabled: () => !!engine.activeDoc, run: () => engine.toggleProofColors() },
-    { id: 'view-gamut-warning', label: 'Gamut Warning', checked: () => !!engine.activeDoc?.proof?.gamutWarning, enabled: () => !!engine.activeDoc, run: () => engine.toggleGamutWarning() },
+    { id: 'view-proof-colors', label: 'Proof Colors', shortcut: sc('proofColors'), checked: () => !!engine.activeDoc?.proof?.enabled, enabled: () => !!engine.activeDoc, run: () => engine.toggleProofColors() },
+    { id: 'view-gamut-warning', label: 'Gamut Warning', shortcut: sc('gamutWarning'), checked: () => !!engine.activeDoc?.proof?.gamutWarning, enabled: () => !!engine.activeDoc, run: () => engine.toggleGamutWarning() },
     S(),
     { id: 'view-rulers', label: 'Rulers', shortcut: sc('toggleRulers'), checked: () => store().view.showRulers, run: () => store().setViewPref('showRulers', !store().view.showRulers) },
     { id: 'view-ruler-units', label: 'Ruler Units', submenu: [
