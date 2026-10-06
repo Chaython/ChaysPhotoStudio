@@ -687,8 +687,11 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos += nameLen
         pos += (4 - ((1 + nameLen) & 3)) & 3
         // additional layer info blocks: retain unsupported Photoshop metadata
-        // byte-for-byte while regenerating the live Unicode layer name.
+        // byte-for-byte while regenerating names and any style blocks we can edit.
         const additionalInfo: Uint8Array[] = []
+        let fx: LayerFX | null = null
+        let legacyFx: LayerFX | null = null
+        let hasDescriptorFx = false
         while (pos + 8 + lenSize <= extraEnd) {
           const blockStart = pos
           const s0 = bytes[pos]
@@ -708,13 +711,31 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
             if (uni) name = uni
           }
           const blockEnd = Math.min(extraEnd, dataStart + blockLen + (blockLen & 1))
-          if (key !== 'luni' && blockEnd > blockStart) additionalInfo.push(bytes.slice(blockStart, blockEnd))
+          if (blockEnd > blockStart && key !== 'luni') {
+            const raw = bytes.slice(blockStart, blockEnd)
+            if (key === 'chFX') {
+              const parsed = parseChaysLayerFxBlock(raw)
+              if (parsed) fx = parsed
+              else additionalInfo.push(raw)
+            } else if (key === 'lrFX') {
+              const parsed = parseLegacyLayerFxBlock(raw)
+              if (parsed) legacyFx = parsed
+              else additionalInfo.push(raw)
+            } else {
+              if (key === 'lfx2' || key === 'lmfx' || key === 'lfxs') hasDescriptorFx = true
+              additionalInfo.push(raw)
+            }
+          }
           pos = blockEnd
         }
+        // Photoshop ignores lrFX when a modern object-effects descriptor exists.
+        // Our own chFX remains authoritative because it represents a prior native
+        // Chay's Studio style stack and is intentionally ignored by Photoshop.
+        if (!fx && !hasDescriptorFx) fx = legacyFx
         pos = extraEnd
         records.push({
           top, left, bottom, right, channels, blendKey,
-          opacity, visible: (flags & 2) !== 0, clipped: clipping === 1, name, maskRect, additionalInfo,
+          opacity, visible: (flags & 2) !== 0, clipped: clipping === 1, name, maskRect, fx, additionalInfo,
         })
       }
 
@@ -793,6 +814,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       visible: rec.visible,
       clipped: rec.clipped,
       mask,
+      fx: rec.fx ? structuredClone(rec.fx) : null,
       additionalInfo: rec.additionalInfo.map(b => b.slice()),
     })
   }
