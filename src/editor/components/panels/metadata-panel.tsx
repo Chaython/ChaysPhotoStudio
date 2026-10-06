@@ -141,7 +141,7 @@ function FileInfoEditor({ doc }: { doc: PsDocument }) {
   const metadata = documentMetadata(doc)
   const edit = metadata.editable ?? {}
 
-  const update = <K extends keyof EditableImageMetadata>(key: K, value: EditableImageMetadata[K]) => {
+  const update = <K extends keyof EditableImageMetadata,>(key: K, value: EditableImageMetadata[K]) => {
     const live = ensureDocumentMetadata(doc)
     live.editable = { ...live.editable, [key]: value }
     live.edited = true
