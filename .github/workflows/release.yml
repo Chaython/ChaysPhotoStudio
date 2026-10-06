@@ -324,7 +324,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bunx @tauri-apps/cli build --config tauri.conf.release.json --bundles ${{ matrix.bundles }} 2>&1 | tee webview-build.log
+          : > webview-build.log
+          max_attempts=3
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "=== Tauri build attempt ${attempt}/${max_attempts} ===" | tee -a webview-build.log
+            set +e
+            bunx @tauri-apps/cli build --config tauri.conf.release.json --bundles ${{ matrix.bundles }} 2>&1 | tee -a webview-build.log
+            status=${PIPESTATUS[0]}
+            set -e
+            if [[ "$status" -eq 0 ]]; then
+              exit 0
+            fi
+
+            # Tauri downloads platform bundling helpers (for example Linux
+            # AppRun) during this step. Retry only transport/server failures;
+            # compiler/configuration errors must still fail immediately.
+            if [[ "$attempt" -ge "$max_attempts" ]] || ! tail -160 webview-build.log | grep -Eqi               'connection reset|connection refused|timed? out|temporary failure|network is unreachable|error sending request|failed to download|http (429|5[0-9]{2})|status code (429|5[0-9]{2})|tls|unexpected eof'; then
+              exit "$status"
+            fi
+
+            delay=$((attempt * 15))
+            echo "::warning::Transient Tauri bundle download failure; retrying in ${delay}s (attempt ${attempt}/${max_attempts})."
+            sleep "$delay"
+          done
+          exit 1
         env:
           RUST_BACKTRACE: '1'
 
