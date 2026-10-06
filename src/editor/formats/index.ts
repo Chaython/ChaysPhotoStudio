@@ -22,7 +22,7 @@ import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtensi
 import { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 import { decodeDds, decodeIcns, decodeIff } from './legacy-raster'
 import type { ParsedDocumentLayer } from './document-parser-types'
-import type { ImageMetadata } from '../types'
+import type { ImageMetadata, LayerFX } from '../types'
 import { buildWritableXmp, embedRasterMetadata } from './metadata-write'
 
 export type { ImportFormatId, RawImage } from './decoders'
@@ -72,6 +72,8 @@ export interface DecodedImage {
     clipped?: boolean
     /** full-document-size mask canvas, mask value in the alpha channel */
     mask?: HTMLCanvasElement | null
+    /** editable layer style decoded from PSD effect metadata when supported */
+    fx?: LayerFX | null
     /** opaque Photoshop additional-layer-information blocks */
     additionalInfo?: Uint8Array[]
   }[]
