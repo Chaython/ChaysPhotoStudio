@@ -1160,6 +1160,76 @@ export class Engine {
     return copy
   }
 
+  /** Photoshop Ctrl+J behavior: lift the active selection to a new raster
+   * layer, or duplicate the whole layer when there is no active selection. */
+  layerViaCopy(): Layer | null {
+    const doc = this.activeDoc
+    const source = this.activeLayer
+    if (!doc || !source) return null
+    if (source.kind === 'adjustment') {
+      this.ui?.toast('Layer via Copy needs a pixel-capable layer', 'error')
+      return null
+    }
+    if (!doc.selection) return this.duplicateLayer(source.id)
+    if (doc.workingBitDepth === 32) {
+      this.ui?.toast('Selection-based Layer via Copy is disabled for 32-bit HDR until Float32 region extraction is available', 'info')
+      return null
+    }
+
+    const clip = this.selectionClipForLayer(source)
+    if (!clip) { this.ui?.toast('The selection is empty', 'error'); return null }
+    const layer = newLayer('raster', `${source.name} copy`, doc.width, doc.height)
+    layer.canvas = clip.canvas
+    layer.offsetX = clip.offsetX
+    layer.offsetY = clip.offsetY
+    const index = doc.layers.findIndex(item => item.id === source.id)
+    doc.layers.splice(index + 1, 0, layer)
+    doc.activeLayerId = layer.id
+    invalidateFlat(doc)
+    this.pushHistory('Layer via Copy')
+    this.emit()
+    return layer
+  }
+
+  /** Photoshop Ctrl+Shift+J behavior: lift the active selection to a new
+   * layer and remove exactly that feathered selection from the source. */
+  layerViaCut(): Layer | null {
+    const doc = this.activeDoc
+    const source = this.activeLayer
+    if (!doc || !source) return null
+    if (!doc.selection) { this.ui?.toast('Layer via Cut requires an active selection', 'info'); return null }
+    if (source.locked) { this.ui?.toast('Layer is locked', 'error'); return null }
+    if (source.kind === 'adjustment') {
+      this.ui?.toast('Layer via Cut needs a pixel-capable layer', 'error')
+      return null
+    }
+    if (doc.workingBitDepth === 32) {
+      this.ui?.toast('Layer via Cut is disabled for 32-bit HDR until Float32 region extraction is available', 'info')
+      return null
+    }
+
+    // Capture before destructive mutation; source and destination must contain
+    // complementary pixels from the exact same selection mask.
+    const clip = this.selectionClipForLayer(source)
+    if (!clip) { this.ui?.toast('The selection is empty', 'error'); return null }
+    const sourceName = source.name
+    const writable = this.mutateLayerPixels(source.id)
+    if (!writable?.canvas) return null
+    this.eraseSelectionFromRaster(writable)
+
+    const layer = newLayer('raster', `${sourceName} copy`, doc.width, doc.height)
+    layer.canvas = clip.canvas
+    layer.offsetX = clip.offsetX
+    layer.offsetY = clip.offsetY
+    const index = doc.layers.findIndex(item => item.id === writable.id)
+    doc.layers.splice(index + 1, 0, layer)
+    doc.activeLayerId = layer.id
+    invalidateFlat(doc)
+    this.pushHistory('Layer via Cut')
+    this.emit()
+    return layer
+  }
+
   deleteLayer(id?: string) {
     const doc = this.activeDoc
     const layer = id ? this.layerById(id) : this.activeLayer
