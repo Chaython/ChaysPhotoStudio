@@ -560,7 +560,9 @@ export function PropertiesPanel() {
       <div>
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Document</div>
         <div className="font-medium">{doc.name}</div>
-        <div className="text-muted-foreground">{doc.width} × {doc.height} px · RGB/8 · {doc.layers.length} layers</div>
+        <div className="text-muted-foreground">
+          {doc.width} × {doc.height} px · {doc.workingColorSpace === 'display-p3' ? 'Display-P3' : 'RGB'}/{doc.workingBitDepth ?? 8} · {doc.layers.length} layers · {Math.round((doc.resolutionPpi ?? 72) * 100) / 100} PPI
+        </div>
       </div>
 
       <div className="border-t pt-2">

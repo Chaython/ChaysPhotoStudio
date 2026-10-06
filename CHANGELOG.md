@@ -4,6 +4,9 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added an ExifGlass-style dockable **Metadata / File Info** inspector that reads original source bytes before decoding and exposes searchable EXIF/TIFF, GPS, XMP, IPTC, ICC, JPEG/PNG/WebP/PSD and Photoshop resource metadata, with raw XMP, copy tools and JSON export.
+- Source metadata now persists with project files (project format v5) and duplicated documents; **File > File Info / Metadata…** and **Window > Metadata** expose the inspector while older v1-v4 projects remain compatible.
+- Fixed the Properties panel incorrectly reporting every document as RGB/8; it now reports actual working color space, 8/16/32-bit depth and PPI.
 - Rebuilt Magic Wand around a perceptual Lab region-grower with sample averaging, adaptive region color, edge protection, global/non-contiguous matching, anti-aliased grayscale output, smoothing/feathering, transparency matching, diagonal connectivity, composite/layer sampling, and a new Pixel Exact RGBA mode for sprites/icons.
 - Selection workflows now share the grayscale mask/refinement pipeline across Magic Wand, Quick Selection, Object Selection, Color Range and Select & Mask.
 - Added local AI-assist tools that always output editable layers: Depth Map, Denoise Assist, Depth Relight, and Vector Trace Guide, alongside Select Subject, Remove Background, Smart Remove and Smart Upscale.

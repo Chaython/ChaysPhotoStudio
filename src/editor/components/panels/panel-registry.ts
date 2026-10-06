@@ -6,7 +6,7 @@
 import { createElement, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders, Wrench, Files, LayoutList,
+  Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders, Wrench, Files, LayoutList, Tags,
 } from 'lucide-react'
 import { LayersPanel } from './layers-panel'
 import { HistoryPanel, NavigatorPanel, HistogramPanel } from './history-navigator-histogram'
@@ -15,6 +15,7 @@ import { ChannelsPanel, AdjustmentsPanel, ActionsPanel, PropertiesPanel } from '
 import { TimelinePanel } from './timeline-panel'
 import { CloneSourcePanel } from './clone-source-panel'
 import { InfoPanel } from './info-panel'
+import { MetadataPanel } from './metadata-panel'
 import { PathsPanel } from './paths-panel'
 import { PatternsPanel } from './patterns-panel'
 import { ToolPresetsPanel } from './tool-presets-panel'
@@ -25,7 +26,7 @@ import { DocumentTabs } from '../workspace/document-tabs'
 
 export type PanelId =
   | 'color' | 'layers' | 'channels' | 'history' | 'actions'
-  | 'adjustments' | 'properties' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns' | 'tool-presets' | 'layer-comps'
+  | 'adjustments' | 'properties' | 'metadata' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns' | 'tool-presets' | 'layer-comps'
   | 'tools' | 'tool-options' | 'documents'
 
 export interface PanelDef {
@@ -76,6 +77,10 @@ export const PANELS: PanelDef[] = [
   {
     id: 'properties', label: 'Props', icon: Settings, render: PropertiesPanel,
     defaultFloat: { w: 288, h: 470 }, minFloat: { w: 230, h: 300 },
+  },
+  {
+    id: 'metadata', label: 'Metadata', icon: Tags, render: MetadataPanel,
+    defaultFloat: { w: 420, h: 620 }, minFloat: { w: 300, h: 340 },
   },
   {
     id: 'navigator', label: 'Nav', icon: Compass, render: NavigatorPanel,

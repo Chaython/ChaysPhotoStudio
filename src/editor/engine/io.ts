@@ -3,10 +3,11 @@ import { engine } from './engine'
 import { useEditorStore } from '../store'
 import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
 import { newLayer } from './document'
-import type { HistoryState, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
+import type { HistoryState, ImageMetadata, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
 import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
 import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension } from '../formats'
+import { readImageMetadata } from '../formats/metadata'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
@@ -75,16 +76,17 @@ export async function openFiles(files: File[], asLayer = false) {
       continue
     }
     try {
+      const metadata = !asLayer ? await readImageMetadata(file).catch(() => undefined) : undefined
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
-        if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded); continue }
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi })
+        if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded, metadata); continue }
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi, metadata })
         continue
       }
       if (!asLayer && hasDedicatedDocumentParser(file.name)) {
         const decoded = await decodeFile(file)
         if (decoded.documentLayers?.length) {
-          addStructuredDocument(file.name, decoded)
+          addStructuredDocument(file.name, decoded, metadata)
           for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(warning, 'info')
           if ((decoded.warnings?.length ?? 0) > 3) store.pushToast(`${decoded.warnings!.length - 3} additional import warnings`, 'info')
           continue
@@ -98,7 +100,7 @@ export async function openFiles(files: File[], asLayer = false) {
           store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed into the ${targetDepth}-bit document`, 'info')
         }
       } else {
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi, hdrPixels: decoded.hdrPixels })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi, hdrPixels: decoded.hdrPixels, metadata })
       }
     } catch (err) {
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
@@ -148,7 +150,7 @@ function layerFromParsed(parsed: ParsedDocumentLayer, width: number, height: num
   return layer
 }
 
-function addStructuredDocument(name: string, decoded: DecodedImage): PsDocument {
+function addStructuredDocument(name: string, decoded: DecodedImage, metadata?: ImageMetadata): PsDocument {
   const width = Math.max(1, decoded.width), height = Math.max(1, decoded.height)
   const doc: PsDocument = {
     id: uid(), name, width, height,
@@ -156,6 +158,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage): PsDocument 
     workingBitDepth: 8,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     workingColorSpace: 'srgb',
+    metadata: metadata ? structuredClone(metadata) : undefined,
     layers: [], activeLayerId: null,
     selection: null, channelView: 'rgb', savedChannels: [],
     guides: [],
@@ -173,6 +176,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage): PsDocument 
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
     resolutionPpi: decoded.resolutionPpi,
+    metadata,
   })
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
   engine.docs.push(doc)
@@ -184,7 +188,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage): PsDocument 
 }
 
 /** build a document from decoded PSD layers */
-function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
+function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMetadata): PsDocument {
   const { width, height } = decoded
   const doc: PsDocument = {
     id: uid(), name, width, height,
@@ -192,6 +196,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
     workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
+    metadata: metadata ? structuredClone(metadata) : undefined,
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
     selection: null, channelView: 'rgb', savedChannels: [],
@@ -218,6 +223,7 @@ function addPsdDocument(name: string, decoded: DecodedImage): PsDocument {
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     resolutionPpi: decoded.resolutionPpi,
+    metadata,
   })
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
   engine.docs.push(doc)
@@ -291,7 +297,7 @@ interface SerializedHistorySnapshot {
 
 export interface SerializedProject {
   format: 'z-photo-project'
-  version: 1 | 2 | 3 | 4
+  version: 1 | 2 | 3 | 4 | 5
   doc: {
     name: string
     width: number
@@ -307,6 +313,7 @@ export interface SerializedProject {
     workingColorSpace?: 'srgb' | 'display-p3'
     resolutionPpi?: number
     psdImageResources?: string[]
+    metadata?: ImageMetadata
     colorSamplers?: { id: string; x: number; y: number }[]
     measurements?: import('../types').SavedMeasurement[]
     savedPaths?: import('../types').SavedPath[]
@@ -403,7 +410,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
   const toDataURL = (c: HTMLCanvasElement) => c.toDataURL('image/png')
   const layers: SerializedLayer[] = doc.layers.map(l => serializeLayer(l, toDataURL))
   return {
-    format: 'z-photo-project', version: 4,
+    format: 'z-photo-project', version: 5,
     doc: {
       name: doc.name, width: doc.width, height: doc.height,
       channelView: doc.channelView, guides: doc.guides ?? [], view: { ...doc.view },
@@ -414,6 +421,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       workingColorSpace: doc.workingColorSpace ?? 'srgb',
       resolutionPpi: doc.resolutionPpi ?? 72,
       psdImageResources: doc.psdImageResources ? [...doc.psdImageResources] : undefined,
+      metadata: doc.metadata ? structuredClone(doc.metadata) : undefined,
       colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
       measurements: (doc.measurements ?? []).map(m => ({
         ...m,
@@ -590,6 +598,9 @@ export async function openSerializedProject(project: SerializedProject, label = 
       : (project.doc.workingBitDepth === 32 ? 32 : project.doc.workingBitDepth === 16 ? 16 : 8),
     psdImageResources: Array.isArray(project.doc.psdImageResources)
       ? project.doc.psdImageResources.filter((v: unknown) => typeof v === 'string')
+      : undefined,
+    metadata: project.doc.metadata && typeof project.doc.metadata === 'object'
+      ? structuredClone(project.doc.metadata)
       : undefined,
     workingColorSpace: requestedDepth === 32 ? 'srgb' : (project.doc.workingColorSpace === 'display-p3' && canvasPixelCapabilities().displayP3 ? 'display-p3' : 'srgb'),
     resolutionPpi: Math.max(1, Math.min(12000, Number(project.doc.resolutionPpi) || 72)),

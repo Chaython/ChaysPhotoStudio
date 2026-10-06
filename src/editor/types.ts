@@ -503,6 +503,24 @@ export interface SavedMeasurement {
   createdAt: number
 }
 
+export interface ImageMetadataField {
+  group: string
+  tag: string
+  label: string
+  value: string
+}
+
+export interface ImageMetadata {
+  fileName: string
+  mimeType: string
+  fileSize: number
+  lastModified?: number
+  format: string
+  fields: ImageMetadataField[]
+  rawXmp?: string
+  warnings?: string[]
+}
+
 // ---------- Document ----------
 export interface ViewportState {
   zoom: number; panX: number; panY: number
@@ -539,6 +557,8 @@ export interface PsDocument {
   sourceBitDepth?: number
   /** Opaque Photoshop image-resource blocks retained from imported PSD/PSB. */
   psdImageResources?: string[]
+  /** Source-file EXIF/XMP/IPTC/ICC/container metadata captured before decoding. */
+  metadata?: ImageMetadata
   /** Working canvas color space. The current default is sRGB; Display-P3 is
    * capability-probed separately before any future wide-gamut migration. */
   workingColorSpace?: 'srgb' | 'display-p3'

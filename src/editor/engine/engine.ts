@@ -4,7 +4,7 @@
 // ============================================================
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
-  PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec,
+  PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec, ImageMetadata,
   ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, TransformWarpSpec,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
@@ -418,7 +418,7 @@ export class Engine {
   addCanvasDocument(
     canvas: HTMLCanvasElement,
     name: string,
-    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16 | 32; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number; hdrPixels?: Float32Array } = {},
+    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16 | 32; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number; hdrPixels?: Float32Array; metadata?: ImageMetadata } = {},
   ): PsDocument {
     const incoming = canvasProfile(canvas)
     const requestedDepth = meta.workingBitDepth ?? incoming.bitDepth
@@ -435,6 +435,7 @@ export class Engine {
       workingBitDepth,
       sourceBitDepth: meta.sourceBitDepth ?? workingBitDepth,
       workingColorSpace: profile.colorSpace,
+      metadata: meta.metadata ? structuredClone(meta.metadata) : undefined,
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0 },
@@ -496,6 +497,7 @@ export class Engine {
       sourceBitDepth: src.sourceBitDepth ?? src.workingBitDepth ?? 8,
       workingColorSpace: src.workingColorSpace ?? 'srgb',
       resolutionPpi: src.resolutionPpi ?? 72,
+      metadata: src.metadata ? structuredClone(src.metadata) : undefined,
     })
     return doc
   }
