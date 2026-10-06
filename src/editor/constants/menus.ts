@@ -308,6 +308,7 @@ export const MENUS: MenuItem[][] = [
   [
     { id: 'layer-new', label: 'New Layer', shortcut: sc('newLayer'), run: () => engine.addRasterLayer() },
     { id: 'layer-duplicate', label: 'Duplicate Layer', shortcut: sc('duplicateLayer'), run: () => { const l = engine.activeLayer; if (l) engine.duplicateLayer(l.id) } },
+    { id: 'layer-duplicate-into', label: 'Duplicate Into…', enabled: () => !!engine.activeLayer && engine.docs.length > 1, run: () => openDlg('duplicate-layer', { layerId: engine.activeLayer?.id }) },
     { id: 'layer-delete', label: 'Delete Layer', run: () => engine.deleteLayer() },
     S(),
     { id: 'layer-new-adj', label: 'New Adjustment Layer', submenu: newAdjLayerItems },

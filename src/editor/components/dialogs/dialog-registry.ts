@@ -19,6 +19,7 @@ import { RecoveryDialog } from './recovery-dialog'
 import { ApplyImageDialog } from './apply-image-dialog'
 import { CalculationsDialog } from './calculations-dialog'
 import { ExportLayersDialog } from './export-layers-dialog'
+import { DuplicateLayerDialog } from './duplicate-layer-dialog'
 import {
   ColorRangeDialog, SelectMaskDialog, ContentAwareFillDialog, BatchDialog,
   ScriptConsoleDialog, AboutDialog,
@@ -64,6 +65,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'canvas-size': CanvasSizeDialog,
   'export': ExportDialog,
   'export-layers': ExportLayersDialog,
+  'duplicate-layer': DuplicateLayerDialog,
   'transform': TransformDialog,
   'color-range': ColorRangeDialog,
   'select-mask': SelectMaskDialog,

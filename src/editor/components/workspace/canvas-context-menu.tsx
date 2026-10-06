@@ -105,6 +105,10 @@ export function CanvasLayerMenuContent({ layerId }: { layerId: string }) {
         Duplicate Layer
         <ContextMenuShortcut>Ctrl+J</ContextMenuShortcut>
       </ContextMenuItem>
+      <ContextMenuItem disabled={engine.docs.length < 2} onClick={act(() => openDialog('duplicate-layer', { layerId: layer.id }))}>
+        <Copy />
+        Duplicate Into…
+      </ContextMenuItem>
       <ContextMenuItem disabled={!pixelLayer} onClick={act(() => engine.copyLayer(false))}>
         <ClipboardPaste />
         Copy Layer Pixels
