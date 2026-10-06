@@ -1123,26 +1123,65 @@ export class Engine {
     return layer
   }
 
+  private cloneLayerForDuplicate(src: Layer): Layer {
+    return {
+      ...src,
+      id: uid(),
+      name: `${src.name} copy`,
+      canvas: src.canvas ? cloneCanvas(src.canvas) : null,
+      hdrPixels: src.hdrPixels ? new Float32Array(src.hdrPixels) : src.hdrPixels,
+      _hdrPreviewBefore: src._hdrPreviewBefore ? new Float32Array(src._hdrPreviewBefore) : src._hdrPreviewBefore,
+      source: src.source ? cloneCanvas(src.source) : null,
+      transform: src.transform ? structuredClone(src.transform) : null,
+      smartFilters: src.smartFilters.map(filter => ({ ...structuredClone(filter), id: uid() })),
+      mask: src.mask ? cloneCanvas(src.mask) : null,
+      vectorMask: src.vectorMask ? structuredClone(src.vectorMask) : src.vectorMask,
+      adjustment: src.adjustment ? structuredClone(src.adjustment) : null,
+      text: src.text ? structuredClone(src.text) : null,
+      shape: src.shape ? structuredClone(src.shape) : null,
+      blendIf: src.blendIf ? structuredClone(src.blendIf) : null,
+      fx: src.fx ? structuredClone(src.fx) : null,
+      psdAdditionalInfo: src.psdAdditionalInfo ? [...src.psdAdditionalInfo] : src.psdAdditionalInfo,
+      _v: src._v + 1,
+      _mv: src._mv + 1,
+    }
+  }
+
   duplicateLayer(id?: string): Layer | null {
     const doc = this.activeDoc
     const src = id ? this.layerById(id) : this.activeLayer
     if (!doc || !src) return null
-    const copy: Layer = { ...src, id: uid(), name: `${src.name} copy`, _v: src._v + 1 }
-    if (src.transform) copy.transform = structuredClone(src.transform)
-    if (src.canvas) copy.canvas = cloneCanvas(src.canvas)
-    if (src.mask) copy.mask = cloneCanvas(src.mask)
-    if (src.source) copy.source = cloneCanvas(src.source)
-    copy.smartFilters = src.smartFilters.map(f => ({ ...f, id: uid() }))
-    if (src.adjustment) copy.adjustment = { ...src.adjustment, params: { ...src.adjustment.params } }
-    if (src.text) copy.text = { ...src.text }
-    if (src.shape) copy.shape = {
-      ...src.shape,
-      pathAnchors: src.shape.pathAnchors?.map(a => ({ ...a })),
-    }
+    const copy = this.cloneLayerForDuplicate(src)
     const idx = doc.layers.findIndex(l => l.id === src.id)
     doc.layers.splice(idx + 1, 0, copy)
     doc.activeLayerId = copy.id
+    doc.selectedLayerIds = [copy.id]
+    invalidateFlat(doc)
     this.pushHistory('Duplicate Layer')
+    this.emit()
+    return copy
+  }
+
+  /** Photoshop-style Layer > Duplicate Layer… destination workflow.
+   * Preserves editable pixels, masks, vector masks, Smart Object source and
+   * transforms, smart filters, Blend-If and Layer FX rather than flattening. */
+  duplicateLayerToDocument(layerId: string, targetDocumentId: string): Layer | null {
+    const sourceDoc = this.activeDoc
+    const source = sourceDoc?.layers.find(layer => layer.id === layerId)
+    const target = this.docs.find(doc => doc.id === targetDocumentId)
+    if (!sourceDoc || !source || !target) return null
+    if (target.id === sourceDoc.id) return this.duplicateLayer(layerId)
+
+    const copy = this.cloneLayerForDuplicate(source)
+    // A clipped layer cannot retain clipping semantics if its base was not
+    // duplicated with it. Export the layer as independent editable artwork.
+    copy.clipped = false
+    target.layers.push(copy)
+    target.activeLayerId = copy.id
+    target.selectedLayerIds = [copy.id]
+    invalidateFlat(target)
+    this.pushHistory(`Duplicate “${source.name}” Into Document`, target)
+    target.dirty = true
     this.emit()
     return copy
   }
