@@ -4,6 +4,7 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added Photoshop-style **Copy Layer Style**, **Paste Layer Style**, and **Clear Layer Style** commands to the Layer menu plus Layers-panel and canvas right-click menus, using a deep-copied non-destructive FX clipboard with proper undo history.
 - Expanded File Info with IPTC Core creator contact, sublocation and rights-usage fields plus IPTC Extension event/people and scene/subject metadata; added XMP sidecar import/export for transferring editable metadata between documents.
 - Move Smart Guides now infer equal spacing when a dragged layer or layer group is nearly centered between two neighboring layers; grid snapping respects per-axis Smart Guide/guide snaps instead of overriding them.
 - Move now shows Photoshop-style live pixel distance measurements to the nearest overlapping layers or canvas edges while dragging, with magenta measurement ticks/badges and a separate Distance Labels toggle.
