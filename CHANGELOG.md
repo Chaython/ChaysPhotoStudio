@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added **Image > Calculations…** with two independent document/layer/channel sources, inversion, blend modes plus Subtract, opacity, optional selection masking, and Selection/New Channel/New Document outputs; new alpha channels can be created without replacing the active selection.
+- Fixed **Linear Dodge (Add)** CPU/Canvas compositing to use the standards-compliant `lighter` operation instead of the invalid `add` globalCompositeOperation value.
 - Added **Image > Apply Image…** with same/cross-document sources, merged or individual layers, RGB/R/G/B/Alpha channels, invert, opacity, blend modes, preserve-transparency and automatic selection masking; 32-bit HDR is guarded until scene-linear Apply Image blending is available.
 - Added **File > Export Layers to Files…** with PNG/JPEG/WebP output, visible-only filtering, transparent-bound trimming, File Info metadata control, quality/prefix options, folder-picker support and browser download fallback; isolated rendering preserves masks, Blend-If and Layer Styles without mutating the document.
 - Added Photoshop-style **Copy Layer Style**, **Paste Layer Style**, and **Clear Layer Style** commands to the Layer menu plus Layers-panel and canvas right-click menus, using a deep-copied non-destructive FX clipboard with proper undo history.
