@@ -22,11 +22,12 @@ import type { PsDocument } from '../../types'
 import type { DialogProps } from './generic-dialogs'
 
 type ResultTarget = 'selection' | 'channel' | 'document'
+type SourceChannelChoice = CalculationChannel | `saved:${string}`
 
 interface SourceState {
   docId: string
   layerId: string
-  channel: CalculationChannel
+  channel: SourceChannelChoice
   invert: boolean
 }
 
@@ -38,10 +39,15 @@ const CHANNELS: { value: CalculationChannel; label: string }[] = [
   { value: 'alpha', label: 'Transparency / Alpha' },
 ]
 
-function resolveCanvas(doc: PsDocument, layerId: string): HTMLCanvasElement | null {
-  if (layerId === 'merged') return getFlatComposite(doc)
-  const layer = doc.layers.find(item => item.id === layerId)
-  return layer ? prepareLayer(doc, layer) : null
+function resolveSource(doc: PsDocument, source: SourceState): { canvas: HTMLCanvasElement; channel: CalculationChannel } | null {
+  if (source.channel.startsWith('saved:')) {
+    const saved = doc.savedChannels.find(item => item.id === source.channel.slice(6))
+    return saved ? { canvas: saved.mask, channel: 'alpha' } : null
+  }
+  if (source.layerId === 'merged') return { canvas: getFlatComposite(doc), channel: source.channel }
+  const layer = doc.layers.find(item => item.id === source.layerId)
+  const canvas = layer ? prepareLayer(doc, layer) : null
+  return canvas ? { canvas, channel: source.channel } : null
 }
 
 function SourceEditor(props: {
@@ -56,13 +62,6 @@ function SourceEditor(props: {
     [doc],
   )
 
-  useEffect(() => {
-    if (!doc) return
-    if (props.source.layerId !== 'merged' && !layers.some(layer => layer.id === props.source.layerId)) {
-      props.onChange({ ...props.source, docId: doc.id, layerId: 'merged' })
-    }
-  }, [doc, layers, props])
-
   if (!doc) return null
 
   return (
@@ -73,7 +72,12 @@ function SourceEditor(props: {
           <Label className="text-[10px]">Document</Label>
           <Select
             value={doc.id}
-            onValueChange={docId => props.onChange({ ...props.source, docId, layerId: 'merged' })}
+            onValueChange={docId => props.onChange({
+              ...props.source,
+              docId,
+              layerId: 'merged',
+              channel: props.source.channel.startsWith('saved:') ? 'gray' : props.source.channel,
+            })}
           >
             <SelectTrigger className="h-8 text-[11px]"><SelectValue /></SelectTrigger>
             <SelectContent className="z-50">
@@ -112,6 +116,11 @@ function SourceEditor(props: {
             <SelectContent className="z-50">
               {CHANNELS.map(item => (
                 <SelectItem key={item.value} value={item.value} className="text-[11px]">{item.label}</SelectItem>
+              ))}
+              {doc.savedChannels.map(item => (
+                <SelectItem key={item.id} value={'saved:' + item.id} className="text-[11px]">
+                  Alpha: {item.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -168,18 +177,18 @@ export function CalculationsDialog({ onClose }: DialogProps) {
 
   const calculate = () => {
     if (!doc || !doc1 || !doc2 || busy || hdrBlocked) return
-    const canvas1 = resolveCanvas(doc1, source1.layerId)
-    const canvas2 = resolveCanvas(doc2, source2.layerId)
-    if (!canvas1 || !canvas2) {
-      useEditorStore.getState().pushToast('A Calculations source has no renderable pixels', 'error')
+    const resolved1 = resolveSource(doc1, source1)
+    const resolved2 = resolveSource(doc2, source2)
+    if (!resolved1 || !resolved2) {
+      useEditorStore.getState().pushToast('A Calculations source has no renderable pixels or channel', 'error')
       return
     }
 
     setBusy(true)
     try {
       const mask = calculateChannelMask(
-        { canvas: canvas1, channel: source1.channel, invert: source1.invert },
-        { canvas: canvas2, channel: source2.channel, invert: source2.invert },
+        { canvas: resolved1.canvas, channel: resolved1.channel, invert: source1.invert },
+        { canvas: resolved2.canvas, channel: resolved2.channel, invert: source2.invert },
         {
           width: doc.width,
           height: doc.height,
@@ -242,7 +251,7 @@ export function CalculationsDialog({ onClose }: DialogProps) {
 
       <div className="space-y-3 py-1">
         <div className="text-[10px] text-muted-foreground">
-          Combine two document/layer channels into a selection, saved alpha channel, or new grayscale result document.
+          Combine two document/layer channels—including saved alpha channels—into a selection, saved alpha channel, or new grayscale result document.
         </div>
 
         <div className="grid grid-cols-2 gap-2">
