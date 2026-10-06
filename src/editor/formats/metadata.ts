@@ -631,7 +631,7 @@ function parseJpeg(bytes: Uint8Array, add: AddField, setRawXmp: (v: string) => v
 async function inflateDeflate(bytes: Uint8Array): Promise<Uint8Array | null> {
   try {
     if (typeof DecompressionStream === 'undefined') return null
-    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'))
+    const stream = new Blob([bytes as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate'))
     return new Uint8Array(await new Response(stream).arrayBuffer())
   } catch {
     return null
