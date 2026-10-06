@@ -300,6 +300,7 @@ export const MENUS: MenuItem[][] = [
     } },
     S(),
     { id: 'img-apply-image', label: 'Apply Image…', enabled: () => !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment', run: () => openDlg('apply-image') },
+    { id: 'img-calculations', label: 'Calculations…', enabled: () => !!engine.activeDoc, run: () => openDlg('calculations') },
     S(),
     { id: 'img-adjustments', label: 'Adjustments', submenu: adjustmentItems },
   ],
