@@ -402,18 +402,28 @@ async function embedWebp(
   const exif = buildExportExif(metadata, resolutionPpi)
   const chunks: Uint8Array[] = []
   let existingFlags = 0
+  let detectedAlpha = false
   let p = 12
   while (p + 8 <= bytes.length) {
     const type = String.fromCharCode(bytes[p], bytes[p + 1], bytes[p + 2], bytes[p + 3])
     const size = new DataView(bytes.buffer, bytes.byteOffset + p + 4, 4).getUint32(0, true)
     const end = p + 8 + size + (size & 1)
     if (end > bytes.length) break
-    if (type === 'VP8X' && size >= 10) existingFlags = bytes[p + 8]
-    else if (type !== 'EXIF' && type !== 'XMP ') chunks.push(bytes.subarray(p, end))
+    if (type === 'VP8X' && size >= 10) {
+      existingFlags = bytes[p + 8]
+      detectedAlpha ||= (existingFlags & 0x10) !== 0
+    } else {
+      if (type === 'ALPH') detectedAlpha = true
+      if (type === 'VP8L' && size >= 5 && bytes[p + 8] === 0x2f) {
+        const packed = (bytes[p + 9] | (bytes[p + 10] << 8) | (bytes[p + 11] << 16) | (bytes[p + 12] << 24)) >>> 0
+        detectedAlpha ||= (packed & 0x10000000) !== 0
+      }
+      if (type !== 'EXIF' && type !== 'XMP ') chunks.push(bytes.subarray(p, end))
+    }
     p = end
   }
 
-  const flags = existingFlags | (hasAlpha ? 0x10 : 0) | 0x08 | (xmp ? 0x04 : 0)
+  const flags = existingFlags | ((hasAlpha || detectedAlpha) ? 0x10 : 0) | 0x08 | (xmp ? 0x04 : 0)
   const body: Uint8Array[] = [vp8xChunk(width, height, flags), ...chunks, riffChunk('EXIF', exif)]
   if (xmp) body.push(riffChunk('XMP ', utf8(xmp)))
   const bodyBytes = concat(body)
