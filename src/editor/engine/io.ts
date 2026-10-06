@@ -7,7 +7,7 @@ import type { HistoryState, ImageMetadata, Layer, PsDocument, ShapeSpec, TextSpe
 import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
 import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension } from '../formats'
-import { readImageMetadata } from '../formats/metadata'
+import { metadataResolutionPpi, readImageMetadata } from '../formats/metadata'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
@@ -80,7 +80,7 @@ export async function openFiles(files: File[], asLayer = false) {
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded, metadata); continue }
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi, metadata })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata })
         continue
       }
       if (!asLayer && hasDedicatedDocumentParser(file.name)) {
@@ -100,7 +100,7 @@ export async function openFiles(files: File[], asLayer = false) {
           store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed into the ${targetDepth}-bit document`, 'info')
         }
       } else {
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi, hdrPixels: decoded.hdrPixels, metadata })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), hdrPixels: decoded.hdrPixels, metadata })
       }
     } catch (err) {
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
@@ -154,7 +154,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage, metadata?: I
   const width = Math.max(1, decoded.width), height = Math.max(1, decoded.height)
   const doc: PsDocument = {
     id: uid(), name, width, height,
-    resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
+    resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi ?? metadataResolutionPpi(metadata)) || 72)),
     workingBitDepth: 8,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     workingColorSpace: 'srgb',
@@ -175,7 +175,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage, metadata?: I
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
-    resolutionPpi: decoded.resolutionPpi,
+    resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata),
     metadata,
   })
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id

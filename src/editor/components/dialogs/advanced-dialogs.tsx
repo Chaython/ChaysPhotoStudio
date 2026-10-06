@@ -27,13 +27,14 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { IMPORT_ACCEPT } from '../../formats'
+import { IMPORT_ACCEPT, encodeCanvas } from '../../formats'
+import { metadataResolutionPpi, readImageMetadata } from '../../formats/metadata'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { getFlatComposite, compositeDocument, invalidateFlat } from '../../engine/document'
 import {
   createCanvas, ctx2d, cloneCanvas, getImageData, putImageData,
-  fileToCanvas, canvasToBlob, downloadBlob, formatBytes, clamp,
+  fileToCanvas, downloadBlob, formatBytes, clamp,
 } from '../../utils/canvas'
 import { gaussianBlurChannel } from '../../image-ops/core'
 import * as imageOps from '../../image-ops'
@@ -1266,6 +1267,7 @@ export function BatchDialog({ onClose }: DialogProps) {
   const [resizeFit, setResizeFit] = useState(false)
   const [fitW, setFitW] = useState(2048)
   const [fitH, setFitH] = useState(2048)
+  const [includeMetadata, setIncludeMetadata] = useState(true)
   const [running, setRunning] = useState(false)
   const [idx, setIdx] = useState(0)
   const [current, setCurrent] = useState('')
@@ -1296,8 +1298,12 @@ export function BatchDialog({ onClose }: DialogProps) {
       await new Promise(r => setTimeout(r, 30)) // let the UI update
       try {
         const canvas = await fileToCanvas(file)
+        const sourceMetadata = await readImageMetadata(file).catch(() => undefined)
         const base = file.name.replace(/\.[^.]+$/, '')
-        const doc = engine.addCanvasDocument(canvas, base)
+        const doc = engine.addCanvasDocument(canvas, base, {
+          metadata: sourceMetadata,
+          resolutionPpi: metadataResolutionPpi(sourceMetadata) ?? 72,
+        })
         const action = actions.find(a => a.id === actionId)
         if (action) engine.playAction(action, doc)
         if (resizeFit && fitW > 0 && fitH > 0 && (doc.width > fitW || doc.height > fitH)) {
@@ -1315,8 +1321,12 @@ export function BatchDialog({ onClose }: DialogProps) {
           c.imageSmoothingQuality = 'high'
           c.drawImage(flat, 0, 0, out.width, out.height)
         }
-        const mime = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png'
-        const blob = await canvasToBlob(out, mime, format === 'png' ? undefined : quality / 100)
+        const blob = await encodeCanvas(out, format, {
+          quality,
+          metadata: doc.metadata,
+          includeMetadata,
+          resolutionPpi: doc.resolutionPpi ?? 72,
+        })
         const fileName = `${prefix}${doc.name}.${format}`
         downloadBlob(blob, fileName)
         engine.closeDocument(doc.id)
@@ -1418,6 +1428,12 @@ export function BatchDialog({ onClose }: DialogProps) {
           )}
         </div>
         <div className="space-y-1.5 border-t border-border/60 pt-2.5">
+          <CheckRow
+            label="Include File Info metadata"
+            checked={includeMetadata}
+            onChange={setIncludeMetadata}
+            hint="Writes editable XMP/IPTC and source-derived File Info; GPS/camera EXIF is not re-embedded."
+          />
           <CheckRow label="Resize to fit" checked={resizeFit} onChange={setResizeFit}
             hint="Shrink oversized images to fit the max bounds before export (preserves aspect ratio)" />
           {resizeFit && (

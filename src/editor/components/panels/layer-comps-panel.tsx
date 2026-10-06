@@ -23,6 +23,7 @@ export function LayerCompsPanel() {
   const [appearance, setAppearance] = useState(true)
   const [exportFormat, setExportFormat] = useState<'png' | 'jpeg' | 'webp'>('png')
   const [exportQuality, setExportQuality] = useState(92)
+  const [includeMetadata, setIncludeMetadata] = useState(true)
   const [exporting, setExporting] = useState(false)
 
   const create = () => {
@@ -73,6 +74,9 @@ export function LayerCompsPanel() {
         const blob = await encodeCanvas(canvas, exportFormat, {
           quality: exportQuality,
           background: '#ffffff',
+          metadata: doc.metadata,
+          includeMetadata,
+          resolutionPpi: doc.resolutionPpi ?? 72,
         })
         const fileName = `${base} - ${clean(comp.name)}.${ext}`
         if (directory) {
@@ -210,6 +214,15 @@ export function LayerCompsPanel() {
             {exporting ? 'Exporting…' : 'Export All'}
           </button>
         </div>
+        <label className="flex items-center gap-1.5 text-[9px] text-muted-foreground cursor-pointer pl-[45px]">
+          <input
+            type="checkbox"
+            checked={includeMetadata}
+            onChange={e => setIncludeMetadata(e.target.checked)}
+            className="accent-primary"
+          />
+          Include File Info metadata + PPI
+        </label>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto zphoto-scroll">

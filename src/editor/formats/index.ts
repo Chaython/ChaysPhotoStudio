@@ -22,6 +22,8 @@ import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtensi
 import { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 import { decodeDds, decodeIcns, decodeIff } from './legacy-raster'
 import type { ParsedDocumentLayer } from './document-parser-types'
+import type { ImageMetadata } from '../types'
+import { buildWritableXmp, embedRasterMetadata } from './metadata-write'
 
 export type { ImportFormatId, RawImage } from './decoders'
 export type { ExportFormatId } from './encoders'
@@ -337,6 +339,12 @@ export const FORMAT_INFO: ExportFormatInfo[] = [
 export interface EncodeCanvasOptions {
   /** 1..100 (jpeg / webp) */
   quality?: number
+  /** Document File Info metadata written as XMP/IPTC/EXIF when supported. */
+  metadata?: ImageMetadata
+  /** False strips editable File Info while still retaining non-personal print resolution. */
+  includeMetadata?: boolean
+  /** Physical document resolution embedded into PNG/JPEG/WebP/TIFF. */
+  resolutionPpi?: number
   /** flatten color (#rrggbb) for formats without alpha — default #ffffff */
   background?: string
   /** ICO entry sizes, constrained to ICO_SIZE_POOL */
@@ -381,23 +389,48 @@ export async function encodeCanvas(
   const w = canvas.width
   const h = canvas.height
   switch (format) {
-    case 'png':
-      return canvasToBlob(canvas, 'image/png')
+    case 'png': {
+      const blob = await canvasToBlob(canvas, 'image/png')
+      return embedRasterMetadata(blob, 'png', opts.includeMetadata === false ? undefined : opts.metadata, {
+        resolutionPpi: opts.resolutionPpi ?? 72,
+        width: w,
+        height: h,
+        hasAlpha: hasAnyAlpha(canvas),
+      })
+    }
     case 'jpeg': {
       // JPEG has no alpha — flatten onto the chosen background first
       const src = hasAnyAlpha(canvas) ? flattenOn(canvas, bg) : canvas
-      return canvasToBlob(src, 'image/jpeg', Math.min(1, Math.max(0.01, (opts.quality ?? 92) / 100)))
+      const blob = await canvasToBlob(src, 'image/jpeg', Math.min(1, Math.max(0.01, (opts.quality ?? 92) / 100)))
+      return embedRasterMetadata(blob, 'jpeg', opts.includeMetadata === false ? undefined : opts.metadata, {
+        resolutionPpi: opts.resolutionPpi ?? 72,
+        width: w,
+        height: h,
+        hasAlpha: false,
+      })
     }
-    case 'webp':
-      return canvasToBlob(canvas, 'image/webp', Math.min(1, Math.max(0.01, (opts.quality ?? 92) / 100)))
+    case 'webp': {
+      const blob = await canvasToBlob(canvas, 'image/webp', Math.min(1, Math.max(0.01, (opts.quality ?? 92) / 100)))
+      return embedRasterMetadata(blob, 'webp', opts.includeMetadata === false ? undefined : opts.metadata, {
+        resolutionPpi: opts.resolutionPpi ?? 72,
+        width: w,
+        height: h,
+        hasAlpha: hasAnyAlpha(canvas),
+      })
+    }
     case 'tiff': {
       const lzw = (opts.tiffCompression ?? 'lzw') === 'lzw'
+      const xmp = opts.includeMetadata === false ? undefined : buildWritableXmp(opts.metadata)
+      const tiffMeta = {
+        resolutionPpi: opts.resolutionPpi ?? 72,
+        xmp: xmp ? new TextEncoder().encode(xmp) : undefined,
+      }
       if (opts.tiffBitDepth === 16) {
         const hi = getFloat16ImageData(canvas)
-        if (hi?.data) return u8Blob(encodeTiff16(hi.data, w, h, lzw), 'image/tiff')
+        if (hi?.data) return u8Blob(encodeTiff16(hi.data, w, h, lzw, tiffMeta), 'image/tiff')
       }
       const img = getImageData(canvas)
-      return u8Blob(encodeTiff(img.data, w, h, lzw), 'image/tiff')
+      return u8Blob(encodeTiff(img.data, w, h, lzw, tiffMeta), 'image/tiff')
     }
     case 'bmp': {
       const img = getImageData(canvas)

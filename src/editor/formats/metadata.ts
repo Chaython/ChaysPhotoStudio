@@ -1,4 +1,4 @@
-import type { ImageMetadata, ImageMetadataField } from '../types'
+import type { EditableImageMetadata, ImageMetadata, ImageMetadataField } from '../types'
 
 const MAX_SCAN_BYTES = 64 * 1024 * 1024
 const MAX_XMP_CHARS = 256 * 1024
@@ -773,6 +773,76 @@ function genericEmbeddedExif(bytes: Uint8Array, add: AddField, warnings: string[
   if (exif >= 0) parseTiff(bytes, exif + 6, add, warnings)
 }
 
+function fieldMatches(field: ImageMetadataField, tags: string[], labels: string[] = []): boolean {
+  const tag = field.tag.toLowerCase()
+  const label = field.label.toLowerCase()
+  return tags.some(v => tag === v.toLowerCase()) || labels.some(v => label === v.toLowerCase())
+}
+
+function firstField(fields: ImageMetadataField[], tags: string[], labels: string[] = []): string | undefined {
+  return fields.find(f => fieldMatches(f, tags, labels))?.value?.trim() || undefined
+}
+
+export function metadataResolutionPpi(metadata?: Pick<ImageMetadata, 'fields'>): number | undefined {
+  const fields = metadata?.fields ?? []
+  const derived = fields.find(f => f.tag === 'PPI' || (f.group === 'Derived' && /resolution/i.test(f.label)))
+  if (derived) {
+    const n = Number.parseFloat(derived.value)
+    if (Number.isFinite(n) && n > 0) return Math.max(1, Math.min(12000, n))
+  }
+
+  const read = (tag: string, label: string) => {
+    const field = fields.find(f => f.tag.toLowerCase() === tag.toLowerCase() || f.label.toLowerCase() === label.toLowerCase())
+    const n = field ? Number.parseFloat(field.value) : NaN
+    return Number.isFinite(n) && n > 0 ? n : undefined
+  }
+  const x = read('0x011A', 'X Resolution')
+  const y = read('0x011B', 'Y Resolution')
+  const unit = read('0x0128', 'Resolution Unit')
+  if (x || y) {
+    let value = x && y ? (x + y) / 2 : (x ?? y)!
+    // TIFF/EXIF ResolutionUnit: 2 = inch, 3 = centimetre.
+    if (unit === 3) value *= 2.54
+    return Math.max(1, Math.min(12000, value))
+  }
+  return undefined
+}
+
+export function editableMetadataFromFields(fields: ImageMetadataField[]): EditableImageMetadata {
+  const keywordValues = fields
+    .filter(f => fieldMatches(f, ['dc:subject', '2:25'], ['Keywords']))
+    .flatMap(f => f.value.split(/[;,]/g))
+    .map(v => v.trim())
+    .filter(Boolean)
+  const keywords = Array.from(new Set(keywordValues))
+  const ratingRaw = firstField(fields, ['xmp:Rating'], ['Rating'])
+  const rating = ratingRaw === undefined ? undefined : Math.max(0, Math.min(5, Math.round(Number(ratingRaw) || 0)))
+  const marked = firstField(fields, ['xmpRights:Marked'], ['Marked'])
+  const copyrightStatus: EditableImageMetadata['copyrightStatus'] =
+    marked === undefined ? 'unknown' : /^(true|1)$/i.test(marked) ? 'copyrighted' : 'public-domain'
+
+  return {
+    title: firstField(fields, ['dc:title', '2:5'], ['Object Name', 'Title']),
+    description: firstField(fields, ['dc:description', '2:120', '0x010E'], ['Caption/Abstract', 'Image Description', 'Description']),
+    author: firstField(fields, ['dc:creator', '2:80', '0x013B'], ['By-line', 'Artist', 'Creator']),
+    authorTitle: firstField(fields, ['photoshop:AuthorsPosition', '2:85'], ['By-line Title', 'Authors Position']),
+    keywords: keywords.length ? keywords : undefined,
+    headline: firstField(fields, ['photoshop:Headline', '2:105'], ['Headline']),
+    credit: firstField(fields, ['photoshop:Credit', '2:110'], ['Credit']),
+    source: firstField(fields, ['photoshop:Source', '2:115'], ['Source']),
+    instructions: firstField(fields, ['photoshop:Instructions', '2:40'], ['Special Instructions', 'Instructions']),
+    copyright: firstField(fields, ['dc:rights', '2:116', '0x8298'], ['Copyright Notice', 'Copyright']),
+    copyrightStatus,
+    copyrightUrl: firstField(fields, ['xmpRights:WebStatement'], ['Web Statement', 'Copyright URL']),
+    city: firstField(fields, ['photoshop:City', '2:90'], ['City']),
+    state: firstField(fields, ['photoshop:State', '2:95'], ['Province/State', 'State']),
+    country: firstField(fields, ['photoshop:Country', '2:101'], ['Country/Primary Location Name', 'Country']),
+    countryCode: firstField(fields, ['Iptc4xmpCore:CountryCode', 'iptcCore:CountryCode', '2:100'], ['Country/Primary Location Code', 'Country Code']),
+    jobIdentifier: firstField(fields, ['photoshop:TransmissionReference', '2:103', '2:184'], ['Original Transmission Reference', 'Job ID']),
+    rating,
+  }
+}
+
 export async function readImageMetadata(file: File): Promise<ImageMetadata> {
   const fields: ImageMetadataField[] = []
   const warnings: string[] = []
@@ -833,6 +903,7 @@ export async function readImageMetadata(file: File): Promise<ImageMetadata> {
     format,
     fields,
     rawXmp,
+    editable: editableMetadataFromFields(fields),
     warnings: warnings.length ? Array.from(new Set(warnings)) : undefined,
   }
 }

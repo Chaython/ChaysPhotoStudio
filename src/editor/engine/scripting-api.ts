@@ -117,11 +117,11 @@ export function getScriptApi(engine: Engine) {
       rotate(deg: number) { const prev = engine.activeDoc?.id; engine.setActiveDocument(docId); engine.rotateCanvas(deg); if (prev) engine.setActiveDocument(prev) },
       flip(dir: 'horizontal' | 'vertical') { const prev = engine.activeDoc?.id; engine.setActiveDocument(docId); engine.flipCanvas(dir); if (prev) engine.setActiveDocument(prev) },
       flatten() { const prev = engine.activeDoc?.id; engine.setActiveDocument(docId); engine.flatten(); if (prev) engine.setActiveDocument(prev) },
-      async export(opts: { format?: 'png' | 'jpeg' | 'webp'; quality?: number; fileName?: string } = {}) {
+      async export(opts: { format?: 'png' | 'jpeg' | 'webp'; quality?: number; fileName?: string; includeMetadata?: boolean } = {}) {
         const prev = engine.activeDoc?.id
         engine.setActiveDocument(docId)
         const doc = engine.activeDoc!
-        await engine.exportActive({ format: opts.format ?? 'png', quality: opts.quality ?? 92, scale: 1, fileName: opts.fileName ?? doc.name }, doc)
+        await engine.exportActive({ format: opts.format ?? 'png', quality: opts.quality ?? 92, scale: 1, fileName: opts.fileName ?? doc.name, includeMetadata: opts.includeMetadata }, doc)
         if (prev) engine.setActiveDocument(prev)
       },
     }
