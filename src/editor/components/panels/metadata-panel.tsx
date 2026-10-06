@@ -3,12 +3,13 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import {
   AlertTriangle, Check, ChevronDown, ChevronRight, Clipboard, Copy, Download,
-  FileImage, Pencil, RotateCcw, Search, Tags, Trash2, X,
+  FileImage, Pencil, RotateCcw, Search, Tags, Trash2, Upload, X,
 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { downloadBlob } from '../../utils/canvas'
-import { editableMetadataFromFields } from '../../formats/metadata'
+import { editableMetadataFromFields, readImageMetadata } from '../../formats/metadata'
+import { buildWritableXmp } from '../../formats/metadata-write'
 import type { EditableImageMetadata, ImageMetadata, ImageMetadataField, PsDocument } from '../../types'
 
 type Family = 'all' | 'exif' | 'xmp' | 'iptc' | 'icc' | 'gps' | 'file'
@@ -173,6 +174,42 @@ function FileInfoEditor({ doc }: { doc: PsDocument }) {
     engine.emit()
   }
 
+  const exportXmp = () => {
+    const target = liveDocument()
+    if (!target) return
+    const xmp = buildWritableXmp(ensureDocumentMetadata(target))
+    if (!xmp) {
+      useEditorStore.getState().pushToast('No editable File Info to export', 'info')
+      return
+    }
+    downloadBlob(new Blob([xmp], { type: 'application/rdf+xml' }), cleanFileStem(target.name) + '.xmp')
+  }
+
+  const importXmp = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xmp,application/rdf+xml,application/xml,text/xml'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      const target = liveDocument()
+      if (!file || !target) return
+      try {
+        const parsed = await readImageMetadata(file)
+        const imported = editableMetadataFromFields(parsed.fields)
+        const live = ensureDocumentMetadata(target)
+        live.editable = imported
+        live.edited = true
+        target.dirty = true
+        engine.emit()
+        useEditorStore.getState().pushToast('Imported File Info from ' + file.name, 'success')
+      } catch (err) {
+        const why = err instanceof Error && err.message ? ' — ' + err.message : ''
+        useEditorStore.getState().pushToast('XMP import failed' + why, 'error')
+      }
+    }
+    input.click()
+  }
+
   return (
     <section className="border-b border-border">
       <button
@@ -286,6 +323,20 @@ function FileInfoEditor({ doc }: { doc: PsDocument }) {
           </div>
 
           <div className="flex flex-wrap gap-1.5 pt-1">
+            <button
+              type="button"
+              onClick={importXmp}
+              className="h-7 px-2 rounded border border-border hover:bg-accent inline-flex items-center gap-1 text-[10px]"
+            >
+              <Upload size={11} /> Import XMP
+            </button>
+            <button
+              type="button"
+              onClick={exportXmp}
+              className="h-7 px-2 rounded border border-border hover:bg-accent inline-flex items-center gap-1 text-[10px]"
+            >
+              <Download size={11} /> Export XMP
+            </button>
             <button
               type="button"
               onClick={resetFromSource}
