@@ -19,6 +19,7 @@ import {
   renderShapeCanvas, renderTextCanvas, prepareLayer,
 } from './document'
 import { gaussianBlurChannel } from '../image-ops/core'
+import { defringe, removeMatte } from '../image-ops/matting'
 import { autoTone, autoContrast, autoColor } from '../image-ops/auto'
 import { runPixelOpAsync, runPixelOpFromCanvas, type PixelOpSpec } from './pixel-worker'
 import { isGlEnabled, setGlEnabled, glInfo, glAvailable } from './gl/gl-core'
@@ -1649,6 +1650,68 @@ export class Engine {
     this.pushHistory('Trim Layer to Content')
     this.emit()
     return true
+  }
+
+  private selectionAlphaForLayer(layer: Layer): Uint8ClampedArray | null {
+    const doc = this.activeDoc
+    if (!doc?.selection || !layer.canvas) return null
+    const source = getMaskAlpha(doc.selection.mask)
+    const out = new Uint8ClampedArray(layer.canvas.width * layer.canvas.height)
+    const ox = Math.round(layer.offsetX ?? 0)
+    const oy = Math.round(layer.offsetY ?? 0)
+    for (let y = 0; y < layer.canvas.height; y++) {
+      const dy = y + oy
+      if (dy < 0 || dy >= doc.height) continue
+      for (let x = 0; x < layer.canvas.width; x++) {
+        const dx = x + ox
+        if (dx < 0 || dx >= doc.width) continue
+        out[y * layer.canvas.width + x] = source[dy * doc.width + dx]
+      }
+    }
+    return out
+  }
+
+  private applyLayerMatting(
+    id: string,
+    operation: 'white' | 'black' | 'defringe',
+    width = 1,
+  ): boolean {
+    const doc = this.activeDoc
+    const target = this.layerById(id)
+    if (!doc || !target) return false
+    if (target.locked) { this.ui?.toast('Layer is locked', 'error'); return false }
+    if (target.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels to matte', 'error'); return false }
+    if (doc.workingBitDepth === 32) {
+      this.ui?.toast('Layer Matting is disabled for 32-bit HDR until it can edit scene-linear Float32 pixels directly', 'info')
+      return false
+    }
+
+    const wasRaster = target.kind === 'raster'
+    const layer = this.mutateLayerPixels(target.id)
+    if (!layer?.canvas) return false
+    const selection = this.selectionAlphaForLayer(layer)
+    const image = getProcessingPixelData(layer.canvas)
+    if (operation === 'defringe') defringe(image, width, selection)
+    else removeMatte(image, operation, selection)
+    putProcessingPixelData(layer.canvas, image)
+    layer._v++
+    invalidateFlat(doc)
+    const label =
+      operation === 'white' ? 'Remove White Matte' :
+      operation === 'black' ? 'Remove Black Matte' :
+      `Defringe ${Math.max(1, Math.round(width))} px`
+    this.pushHistory(label)
+    this.emit()
+    if (!wasRaster) this.ui?.toast('Layer rasterized for Matting', 'info')
+    return true
+  }
+
+  removeLayerMatte(id: string, matte: 'white' | 'black'): boolean {
+    return this.applyLayerMatting(id, matte)
+  }
+
+  defringeLayer(id: string, width = 1): boolean {
+    return this.applyLayerMatting(id, 'defringe', Math.max(1, Math.min(64, Math.round(width) || 1)))
   }
 
   /** "Expand to Fill Frame" / smart-fill the empty space around a layer:
