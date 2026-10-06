@@ -254,6 +254,7 @@ export const MENUS: MenuItem[][] = [
     S(),
     { id: 'edit-transform', label: 'Free Transform…', shortcut: sc('transform'), run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'free' }) },
     { id: 'edit-transform-submenu', label: 'Transform', submenu: transformItems },
+    { id: 'edit-puppet-warp', label: 'Puppet Warp…', enabled: () => !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment', run: () => openDlg('puppet-warp', { layerId: engine.activeLayer?.id }) },
     S(),
     { id: 'edit-caf', label: 'Content-Aware Fill…', run: () => openDlg('content-aware-fill') },
     S(),
