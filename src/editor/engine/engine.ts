@@ -4280,6 +4280,10 @@ export class Engine {
     if (!base) { this.ui?.toast('This layer has no transformable content', 'error'); return }
 
     if (cmd.mode === 'warp') {
+      if (layer.kind === 'raster' && layer.hdrPixels) {
+        this.ui?.toast('Warp is disabled for raster layers with 32-bit HDR pixels until mesh rasterization can preserve scene-linear Float32 data', 'info')
+        return
+      }
       const mesh = validateWarpMesh(cmd.warp)
       if (!mesh) { this.ui?.toast('Warp mesh is invalid', 'error'); return }
 
