@@ -531,6 +531,21 @@ export interface EditableImageMetadata {
   state?: string
   country?: string
   countryCode?: string
+  sublocation?: string
+  creatorAddress?: string
+  creatorCity?: string
+  creatorState?: string
+  creatorPostalCode?: string
+  creatorCountry?: string
+  creatorPhone?: string
+  creatorEmail?: string
+  creatorWebsite?: string
+  rightsUsageTerms?: string
+  event?: string
+  peopleShown?: string[]
+  intellectualGenre?: string
+  sceneCodes?: string[]
+  subjectCodes?: string[]
   jobIdentifier?: string
   rating?: number
 }

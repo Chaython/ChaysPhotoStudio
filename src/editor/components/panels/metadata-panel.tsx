@@ -3,12 +3,13 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import {
   AlertTriangle, Check, ChevronDown, ChevronRight, Clipboard, Copy, Download,
-  FileImage, Pencil, RotateCcw, Search, Tags, Trash2, X,
+  FileImage, Pencil, RotateCcw, Search, Tags, Trash2, Upload, X,
 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { downloadBlob } from '../../utils/canvas'
-import { editableMetadataFromFields } from '../../formats/metadata'
+import { editableMetadataFromFields, readImageMetadata } from '../../formats/metadata'
+import { buildWritableXmp } from '../../formats/metadata-write'
 import type { EditableImageMetadata, ImageMetadata, ImageMetadataField, PsDocument } from '../../types'
 
 type Family = 'all' | 'exif' | 'xmp' | 'iptc' | 'icc' | 'gps' | 'file'
@@ -173,6 +174,42 @@ function FileInfoEditor({ doc }: { doc: PsDocument }) {
     engine.emit()
   }
 
+  const exportXmp = () => {
+    const target = liveDocument()
+    if (!target) return
+    const xmp = buildWritableXmp(ensureDocumentMetadata(target))
+    if (!xmp) {
+      useEditorStore.getState().pushToast('No editable File Info to export', 'info')
+      return
+    }
+    downloadBlob(new Blob([xmp], { type: 'application/rdf+xml' }), cleanFileStem(target.name) + '.xmp')
+  }
+
+  const importXmp = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xmp,application/rdf+xml,application/xml,text/xml'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      const target = liveDocument()
+      if (!file || !target) return
+      try {
+        const parsed = await readImageMetadata(file)
+        const imported = editableMetadataFromFields(parsed.fields)
+        const live = ensureDocumentMetadata(target)
+        live.editable = imported
+        live.edited = true
+        target.dirty = true
+        engine.emit()
+        useEditorStore.getState().pushToast('Imported File Info from ' + file.name, 'success')
+      } catch (err) {
+        const why = err instanceof Error && err.message ? ' — ' + err.message : ''
+        useEditorStore.getState().pushToast('XMP import failed' + why, 'error')
+      }
+    }
+    input.click()
+  }
+
   return (
     <section className="border-b border-border">
       <button
@@ -223,6 +260,7 @@ function FileInfoEditor({ doc }: { doc: PsDocument }) {
           <FieldInput label="Copyright URL" value={edit.copyrightUrl} onChange={v => update('copyrightUrl', v)} placeholder="https://…" />
           <div className="grid grid-cols-2 gap-2">
             <FieldInput label="City" value={edit.city} onChange={v => update('city', v)} />
+            <FieldInput label="Sublocation" value={edit.sublocation} onChange={v => update('sublocation', v)} />
             <FieldInput label="State / Province" value={edit.state} onChange={v => update('state', v)} />
             <FieldInput label="Country" value={edit.country} onChange={v => update('country', v)} />
             <FieldInput label="Country Code" value={edit.countryCode} onChange={v => update('countryCode', v.slice(0, 3).toUpperCase())} placeholder="CAN" />
@@ -243,7 +281,62 @@ function FileInfoEditor({ doc }: { doc: PsDocument }) {
               </select>
             </label>
           </div>
+          <div className="pt-1 border-t border-border/60">
+            <div className="text-[9px] uppercase tracking-wide text-muted-foreground mb-2">Creator Contact</div>
+            <div className="grid grid-cols-2 gap-2">
+              <FieldInput label="Address" value={edit.creatorAddress} onChange={v => update('creatorAddress', v)} />
+              <FieldInput label="City" value={edit.creatorCity} onChange={v => update('creatorCity', v)} />
+              <FieldInput label="State / Province" value={edit.creatorState} onChange={v => update('creatorState', v)} />
+              <FieldInput label="Postal Code" value={edit.creatorPostalCode} onChange={v => update('creatorPostalCode', v)} />
+              <FieldInput label="Country" value={edit.creatorCountry} onChange={v => update('creatorCountry', v)} />
+              <FieldInput label="Phone" value={edit.creatorPhone} onChange={v => update('creatorPhone', v)} />
+              <FieldInput label="Email" value={edit.creatorEmail} onChange={v => update('creatorEmail', v)} placeholder="name@example.com" />
+              <FieldInput label="Website" value={edit.creatorWebsite} onChange={v => update('creatorWebsite', v)} placeholder="https://…" />
+            </div>
+          </div>
+
+          <div className="pt-1 border-t border-border/60 space-y-2">
+            <div className="text-[9px] uppercase tracking-wide text-muted-foreground">IPTC Rights & Extension</div>
+            <FieldInput label="Rights Usage Terms" value={edit.rightsUsageTerms} onChange={v => update('rightsUsageTerms', v)} multiline />
+            <div className="grid grid-cols-2 gap-2">
+              <FieldInput label="Event" value={edit.event} onChange={v => update('event', v)} />
+              <FieldInput label="Intellectual Genre" value={edit.intellectualGenre} onChange={v => update('intellectualGenre', v)} />
+            </div>
+            <FieldInput
+              label="People Shown"
+              value={(edit.peopleShown ?? []).join(', ')}
+              onChange={v => update('peopleShown', v.split(',').map(x => x.trim()).filter(Boolean))}
+              placeholder="Person One, Person Two"
+            />
+            <FieldInput
+              label="Scene Codes"
+              value={(edit.sceneCodes ?? []).join(', ')}
+              onChange={v => update('sceneCodes', v.split(',').map(x => x.trim()).filter(Boolean))}
+              placeholder="IPTC scene codes"
+            />
+            <FieldInput
+              label="Subject Codes"
+              value={(edit.subjectCodes ?? []).join(', ')}
+              onChange={v => update('subjectCodes', v.split(',').map(x => x.trim()).filter(Boolean))}
+              placeholder="IPTC subject codes"
+            />
+          </div>
+
           <div className="flex flex-wrap gap-1.5 pt-1">
+            <button
+              type="button"
+              onClick={importXmp}
+              className="h-7 px-2 rounded border border-border hover:bg-accent inline-flex items-center gap-1 text-[10px]"
+            >
+              <Upload size={11} /> Import XMP
+            </button>
+            <button
+              type="button"
+              onClick={exportXmp}
+              className="h-7 px-2 rounded border border-border hover:bg-accent inline-flex items-center gap-1 text-[10px]"
+            >
+              <Download size={11} /> Export XMP
+            </button>
             <button
               type="button"
               onClick={resetFromSource}
@@ -260,7 +353,7 @@ function FileInfoEditor({ doc }: { doc: PsDocument }) {
             </button>
           </div>
           <div className="text-[9px] text-muted-foreground">
-            Export writes these fields as XMP/IPTC where supported. Source camera/GPS EXIF remains view-only so edited files do not silently retain location/capture metadata.
+            Export writes File Info as XMP plus compatible IPTC-IIM fields where a standards mapping exists. Creator Contact, modern rights, event and people data use IPTC Core/Extension XMP; source camera/GPS EXIF remains view-only so edited files do not silently retain capture/location metadata.
           </div>
         </div>
       )}
