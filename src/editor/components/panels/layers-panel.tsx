@@ -409,6 +409,7 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
           </ContextMenuSubContent>
         </ContextMenuSub>
         <ContextMenuItem onClick={() => engine.duplicateLayer(meta.id)}><Icons.CopyPlus /> Duplicate Layer</ContextMenuItem>
+        <ContextMenuItem disabled={engine.docs.length < 2} onClick={() => useEditorStore.getState().openDialog('duplicate-layer', { layerId: meta.id })}><Icons.Copy /> Duplicate Into…</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, true)}><Icons.SquareDashed /> Add Mask from Selection</ContextMenuItem>
         <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, false)}><Icons.Square /> Add Mask (Reveal All)</ContextMenuItem>
         {meta.hasMask && <ContextMenuItem onClick={() => engine.deleteLayerMask(meta.id, true)}><Icons.Stamp /> Apply Mask</ContextMenuItem>}
