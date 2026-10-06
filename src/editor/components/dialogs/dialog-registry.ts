@@ -21,6 +21,7 @@ import { CalculationsDialog } from './calculations-dialog'
 import { ExportLayersDialog } from './export-layers-dialog'
 import { DuplicateLayerDialog } from './duplicate-layer-dialog'
 import { ProofSetupDialog } from './proof-setup-dialog'
+import { PuppetWarpDialog } from './puppet-warp-dialog'
 import {
   ColorRangeDialog, SelectMaskDialog, ContentAwareFillDialog, BatchDialog,
   ScriptConsoleDialog, AboutDialog,
@@ -68,6 +69,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'export-layers': ExportLayersDialog,
   'duplicate-layer': DuplicateLayerDialog,
   'proof-setup': ProofSetupDialog,
+  'puppet-warp': PuppetWarpDialog,
   'transform': TransformDialog,
   'color-range': ColorRangeDialog,
   'select-mask': SelectMaskDialog,
