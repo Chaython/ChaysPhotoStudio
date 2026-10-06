@@ -2607,10 +2607,24 @@ export class Engine {
     const doc = this.activeDoc
     if (!doc) return
     if (!doc.selection) { this.ui?.toast('No selection to save', 'error'); return }
-    const chan = { id: uid(), name: name || `Alpha ${doc.savedChannels.length + 1}`, mask: cloneCanvas(doc.selection.mask), _v: 1 }
+    this.saveAlphaChannel(getMaskAlpha(doc.selection.mask), name, 'Save Selection as Channel')
+  }
+
+  /** Save an arbitrary document-size 0..255 alpha mask without replacing the
+   * active selection. Used by Photoshop-style Calculations and channel tools. */
+  saveAlphaChannel(alpha: Uint8ClampedArray, name?: string, historyLabel = 'New Channel'): string | null {
+    const doc = this.activeDoc
+    if (!doc || alpha.length !== doc.width * doc.height) return null
+    const chan = {
+      id: uid(),
+      name: name?.trim() || `Alpha ${doc.savedChannels.length + 1}`,
+      mask: maskCanvasFromAlpha(alpha, doc.width, doc.height),
+      _v: 1,
+    }
     doc.savedChannels.push(chan)
-    this.pushHistory('Save Selection as Channel')
+    this.pushHistory(historyLabel)
     this.emit()
+    return chan.id
   }
 
   deleteSavedChannel(id: string) {

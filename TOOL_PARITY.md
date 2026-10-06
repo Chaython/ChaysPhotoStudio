@@ -54,9 +54,11 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 
 **Export Layers to Files** renders each exportable raster, Smart Object, text, or shape layer through the normal compositor, preserving masks, vector masks, opacity, Blend-If and Layer Styles. It can export visible layers only, trim transparent bounds, include or strip File Info metadata, choose PNG/JPEG/WebP quality, and use a folder picker where supported with multi-download fallback elsewhere. Adjustment layers are skipped because they have no standalone pixels; isolated clipped layers are exported as independent artwork rather than disappearing without their clipping base.
 
-## Apply Image
+## Apply Image & Calculations
 
-**Image → Apply Image…** can blend the merged result or an individual pixel-capable layer from any open document into the active layer. It supports RGB, Red, Green, Blue and Alpha source channels, invert, the editor's full blend-mode set, opacity, exact target-transparency preservation, different-size source clipping, and automatic active-selection masking. Raster offsets are respected and non-raster targets are rasterized through the normal mutation path. 32-bit HDR documents are intentionally blocked until Apply Image has scene-linear Float32 blend math instead of degrading HDR through Canvas compositing.
+**Image → Apply Image…** can blend the merged result or an individual pixel-capable layer from any open document into the active layer. It supports RGB, Red, Green, Blue and Alpha source channels, invert, the editor's full blend-mode set, opacity, exact target-transparency preservation, different-size source clipping, and automatic active-selection masking. Raster offsets are respected and non-raster targets are rasterized through the normal mutation path.
+
+**Image → Calculations…** combines two independent open-document sources, each selecting Merged or an individual layer plus Gray/Red/Green/Blue/Transparency, any saved alpha channel, and optional inversion. Results support the editor's blend modes plus Subtract, opacity, optional active-selection limiting, and destinations of Selection, New Channel, or New Document. New Channel uses a direct alpha-channel API and does not replace the active selection. Different-sized documents align at document origin and clip to the active document. Apply Image and Calculations both guard 32-bit HDR until their blend math can operate directly on authoritative scene-linear Float32 pixels. Linear Dodge (Add) now maps to Canvas2D's standards-compliant `lighter` operation instead of the invalid `add` keyword.
 
 ## Photoshop workflow features
 

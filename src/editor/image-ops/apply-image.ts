@@ -6,6 +6,43 @@ import {
 } from '../utils/canvas'
 
 export type ApplyImageChannel = 'rgb' | 'red' | 'green' | 'blue' | 'alpha'
+export type SourceChannel = ApplyImageChannel | 'gray'
+
+/** Return a detached channel representation while preserving the canvas working
+ * profile. Single channels become grayscale; Alpha becomes opaque grayscale. */
+export function extractSourceChannel(
+  input: HTMLCanvasElement,
+  channel: SourceChannel,
+  invert = false,
+): HTMLCanvasElement {
+  const out = cloneCanvas(input)
+  if (channel === 'rgb' && !invert) return out
+  const img = getProcessingPixelData(out)
+  const d = img.data
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], g = d[i + 1], b = d[i + 2]
+    if (channel === 'red') g = b = r
+    else if (channel === 'green') r = b = g
+    else if (channel === 'blue') r = g = b
+    else if (channel === 'gray') {
+      const y = r * 0.2126 + g * 0.7152 + b * 0.0722
+      r = g = b = y
+    } else if (channel === 'alpha') {
+      r = g = b = d[i + 3]
+      d[i + 3] = 255
+    }
+    if (invert) {
+      r = 255 - r
+      g = 255 - g
+      b = 255 - b
+    }
+    d[i] = r
+    d[i + 1] = g
+    d[i + 2] = b
+  }
+  putProcessingPixelData(out, img)
+  return out
+}
 
 export interface ApplyImageOptions {
   channel: ApplyImageChannel
@@ -31,34 +68,12 @@ export function applyImageToCanvas(
   const ox = Math.round(opts.targetOffsetX ?? 0)
   const oy = Math.round(opts.targetOffsetY ?? 0)
 
-  // Re-register the source into target-layer coordinates without scaling.
-  const source = createCanvas(target.width, target.height, canvasProfile(target))
+  // Re-register the source into target-layer coordinates without scaling,
+  // then reuse the same channel extractor as Calculations.
+  const registered = createCanvas(target.width, target.height, canvasProfile(target))
+  ctx2d(registered).drawImage(sourceDocSpace, -ox, -oy)
+  const source = extractSourceChannel(registered, opts.channel, !!opts.invert)
   const sc = ctx2d(source)
-  sc.drawImage(sourceDocSpace, -ox, -oy)
-
-  if (opts.channel !== 'rgb' || opts.invert) {
-    const img = getProcessingPixelData(source)
-    const d = img.data
-    for (let i = 0; i < d.length; i += 4) {
-      let r = d[i], g = d[i + 1], b = d[i + 2]
-      if (opts.channel === 'red') g = b = r
-      else if (opts.channel === 'green') r = b = g
-      else if (opts.channel === 'blue') r = g = b
-      else if (opts.channel === 'alpha') {
-        r = g = b = d[i + 3]
-        d[i + 3] = 255
-      }
-      if (opts.invert) {
-        r = 255 - r
-        g = 255 - g
-        b = 255 - b
-      }
-      d[i] = r
-      d[i + 1] = g
-      d[i + 2] = b
-    }
-    putProcessingPixelData(source, img)
-  }
 
   // Apply the document selection to the incoming source only, matching normal
   // destructive edit semantics: pixels outside the selection remain unchanged.
