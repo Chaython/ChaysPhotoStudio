@@ -81,7 +81,7 @@ export const TOOL_DEFS: ToolDef[] = [
   { id: 'move', label: 'Move', group: 0, shortcut: 'V', icon: 'Move', defaults: { autoSelect: true, showTransformControls: true, smartGuides: true, showDistances: true, alignTo: 'selection' } as any, options: [
     { key: 'autoSelect', label: 'Auto-select layer', type: 'toggle' },
     { key: 'showTransformControls', label: 'Show Transform Controls', type: 'toggle' },
-    { key: 'smartGuides', label: 'Smart Guides', type: 'toggle', hint: 'Snap layer edges and centers to other layers and the canvas' },
+    { key: 'smartGuides', label: 'Smart Guides', type: 'toggle', hint: 'Snap layer edges/centers and infer equal gaps between neighboring layers' },
     { key: 'showDistances', label: 'Distance Labels', type: 'toggle', hint: 'Show live pixel gaps to the nearest overlapping layers or canvas edges while dragging' },
     { key: 'alignTo', label: 'Align To', type: 'select', options: [{ label: 'Selected Layers', value: 'selection' }, { label: 'Primary Layer', value: 'primary' }, { label: 'Canvas', value: 'canvas' }] },
   ]},
