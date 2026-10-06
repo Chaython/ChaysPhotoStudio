@@ -687,6 +687,7 @@ export const moveTool: Tool = {
   renderOverlay(ctx, view, w, h, mouse) {
     drawCross(ctx, mouse)
     drawLayerHighlight(ctx, view, w, h, mouse)
+    drawMoveDistanceLabels(ctx, view, w, h)
     if (smartGuideX !== null || smartGuideY !== null) {
       ctx.save()
       ctx.strokeStyle = 'rgba(255,55,180,.95)'
@@ -707,6 +708,215 @@ export const moveTool: Tool = {
   onDeactivate() {
     smartGuideX = smartGuideY = null
   },
+}
+
+interface MoveDistanceMeasurement {
+  axis: 'x' | 'y'
+  from: number
+  to: number
+  cross: number
+  value: number
+  source: 'layer' | 'canvas'
+}
+
+function currentMoveBounds(): { rect: Rect; ids: string[] } | null {
+  if (!drag.active || tdrag) return null
+  if (groupMove) {
+    const r = groupMove.startBounds
+    return {
+      rect: {
+        x: r.x + groupMove.lastDx,
+        y: r.y + groupMove.lastDy,
+        w: r.w,
+        h: r.h,
+      },
+      ids: groupMove.ids,
+    }
+  }
+  if (!live || !movingIds.length) return null
+  const base = unionRects(
+    movingIds
+      .map(id => engine.layerContentRect(id))
+      .filter((r): r is Rect => !!r),
+  )
+  if (!base) return null
+  return {
+    rect: { x: base.x + live.dx, y: base.y + live.dy, w: base.w, h: base.h },
+    ids: movingIds,
+  }
+}
+
+function overlapMid(a0: number, a1: number, b0: number, b1: number): number | null {
+  const lo = Math.max(a0, b0)
+  const hi = Math.min(a1, b1)
+  return hi > lo ? (lo + hi) / 2 : null
+}
+
+function nearestMoveDistances(rect: Rect, moving: string[]): MoveDistanceMeasurement[] {
+  const doc = engine.activeDoc
+  if (!doc || getOptions('move').showDistances === false) return []
+
+  type Side = 'left' | 'right' | 'top' | 'bottom'
+  const best: Partial<Record<Side, MoveDistanceMeasurement>> = {}
+  const accept = (side: Side, next: MoveDistanceMeasurement) => {
+    const current = best[side]
+    if (!current || next.value < current.value || (next.value === current.value && next.source === 'layer' && current.source === 'canvas')) {
+      best[side] = next
+    }
+  }
+
+  // Canvas-edge distances are useful fallbacks when there is no nearer layer.
+  if (rect.x >= 0) {
+    accept('left', {
+      axis: 'x', from: 0, to: rect.x,
+      cross: clamp(rect.y + rect.h / 2, 0, doc.height),
+      value: rect.x, source: 'canvas',
+    })
+  }
+  const rightCanvas = doc.width - (rect.x + rect.w)
+  if (rightCanvas >= 0) {
+    accept('right', {
+      axis: 'x', from: rect.x + rect.w, to: doc.width,
+      cross: clamp(rect.y + rect.h / 2, 0, doc.height),
+      value: rightCanvas, source: 'canvas',
+    })
+  }
+  if (rect.y >= 0) {
+    accept('top', {
+      axis: 'y', from: 0, to: rect.y,
+      cross: clamp(rect.x + rect.w / 2, 0, doc.width),
+      value: rect.y, source: 'canvas',
+    })
+  }
+  const bottomCanvas = doc.height - (rect.y + rect.h)
+  if (bottomCanvas >= 0) {
+    accept('bottom', {
+      axis: 'y', from: rect.y + rect.h, to: doc.height,
+      cross: clamp(rect.x + rect.w / 2, 0, doc.width),
+      value: bottomCanvas, source: 'canvas',
+    })
+  }
+
+  for (const layer of doc.layers) {
+    if (!layer.visible || layer.kind === 'adjustment' || moving.includes(layer.id)) continue
+    const other = engine.layerContentRect(layer.id)
+    if (!other || other.w <= 0 || other.h <= 0) continue
+
+    const verticalCross = overlapMid(rect.y, rect.y + rect.h, other.y, other.y + other.h)
+    if (verticalCross !== null) {
+      const otherRight = other.x + other.w
+      if (otherRight <= rect.x) {
+        accept('left', {
+          axis: 'x', from: otherRight, to: rect.x, cross: verticalCross,
+          value: rect.x - otherRight, source: 'layer',
+        })
+      }
+      const rectRight = rect.x + rect.w
+      if (other.x >= rectRight) {
+        accept('right', {
+          axis: 'x', from: rectRight, to: other.x, cross: verticalCross,
+          value: other.x - rectRight, source: 'layer',
+        })
+      }
+    }
+
+    const horizontalCross = overlapMid(rect.x, rect.x + rect.w, other.x, other.x + other.w)
+    if (horizontalCross !== null) {
+      const otherBottom = other.y + other.h
+      if (otherBottom <= rect.y) {
+        accept('top', {
+          axis: 'y', from: otherBottom, to: rect.y, cross: horizontalCross,
+          value: rect.y - otherBottom, source: 'layer',
+        })
+      }
+      const rectBottom = rect.y + rect.h
+      if (other.y >= rectBottom) {
+        accept('bottom', {
+          axis: 'y', from: rectBottom, to: other.y, cross: horizontalCross,
+          value: other.y - rectBottom, source: 'layer',
+        })
+      }
+    }
+  }
+
+  // A zero-gap measurement is visually redundant with the smart-guide line.
+  return (['left', 'right', 'top', 'bottom'] as const)
+    .map(side => best[side])
+    .filter((m): m is MoveDistanceMeasurement => !!m && m.value > 0.01)
+}
+
+function distanceText(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + ' px'
+}
+
+function drawDistanceBadge(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  ctx.font = '10px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif'
+  const padX = 4
+  const boxH = 16
+  const boxW = Math.ceil(ctx.measureText(text).width) + padX * 2
+  const bx = clamp(Math.round(x - boxW / 2), 2, Math.max(2, w - boxW - 2))
+  const by = clamp(Math.round(y - boxH / 2), 2, Math.max(2, h - boxH - 2))
+  ctx.setLineDash([])
+  ctx.fillStyle = 'rgba(20,20,24,.94)'
+  ctx.strokeStyle = 'rgba(255,55,180,.95)'
+  ctx.lineWidth = 1
+  ctx.fillRect(bx, by, boxW, boxH)
+  ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1)
+  ctx.fillStyle = 'rgba(255,255,255,.96)'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(text, bx + boxW / 2, by + boxH / 2 + 0.5)
+}
+
+function drawMoveDistanceLabels(
+  ctx: CanvasRenderingContext2D,
+  view: ViewportState,
+  w: number,
+  h: number,
+) {
+  const moving = currentMoveBounds()
+  if (!moving) return
+  const measurements = nearestMoveDistances(moving.rect, moving.ids)
+  if (!measurements.length) return
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(255,55,180,.95)'
+  ctx.lineWidth = 1
+  ctx.setLineDash([])
+  const tick = 4
+
+  for (const m of measurements) {
+    if (m.axis === 'x') {
+      const x1 = view.panX + m.from * view.zoom
+      const x2 = view.panX + m.to * view.zoom
+      const y = view.panY + m.cross * view.zoom
+      ctx.beginPath()
+      ctx.moveTo(x1, y); ctx.lineTo(x2, y)
+      ctx.moveTo(x1, y - tick); ctx.lineTo(x1, y + tick)
+      ctx.moveTo(x2, y - tick); ctx.lineTo(x2, y + tick)
+      ctx.stroke()
+      drawDistanceBadge(ctx, distanceText(m.value), (x1 + x2) / 2, y - 11, w, h)
+    } else {
+      const y1 = view.panY + m.from * view.zoom
+      const y2 = view.panY + m.to * view.zoom
+      const x = view.panX + m.cross * view.zoom
+      ctx.beginPath()
+      ctx.moveTo(x, y1); ctx.lineTo(x, y2)
+      ctx.moveTo(x - tick, y1); ctx.lineTo(x + tick, y1)
+      ctx.moveTo(x - tick, y2); ctx.lineTo(x + tick, y2)
+      ctx.stroke()
+      drawDistanceBadge(ctx, distanceText(m.value), x + 26, (y1 + y2) / 2, w, h)
+    }
+  }
+  ctx.restore()
 }
 
 /** Active-layer bounds highlight (the move-tool "transform box"): frame +
