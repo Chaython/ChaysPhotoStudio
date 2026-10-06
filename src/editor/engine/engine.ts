@@ -4,7 +4,7 @@
 // ============================================================
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
-  PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec, ImageMetadata,
+  PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec, ImageMetadata, ProofSettings,
   ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, HistorySnapshotAutoPolicy, TransformWarpSpec,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
@@ -252,6 +252,36 @@ export class Engine {
   pokeOverlay() { (this.renderer as any)?.pokeOverlay?.() }
   /** view-only repaint (pan/zoom re-blit of the cached composite) — no composite */
   viewChanged() { (this.renderer as any)?.viewChanged?.() }
+
+  setProofSettings(settings: Partial<ProofSettings>) {
+    const doc = this.activeDoc
+    if (!doc) return
+    const current: ProofSettings = {
+      enabled: false,
+      gamutWarning: false,
+      profile: 'cmyk-swop',
+      intent: 'relative',
+      blackPointCompensation: true,
+      simulatePaperColor: false,
+      ...doc.proof,
+    }
+    doc.proof = { ...current, ...structuredClone(settings) }
+    // Proof setup is view state: do not dirty the document or add History.
+    this.emitView()
+  }
+
+  toggleProofColors() {
+    const doc = this.activeDoc
+    if (!doc) return
+    this.setProofSettings({ enabled: !(doc.proof?.enabled ?? false) })
+  }
+
+  toggleGamutWarning() {
+    const doc = this.activeDoc
+    if (!doc) return
+    this.setProofSettings({ gamutWarning: !(doc.proof?.gamutWarning ?? false) })
+  }
+
   emit() {
     // Keep multi-layer selection coherent no matter which subsystem changed
     // activeLayerId. The active layer is always the primary member.
