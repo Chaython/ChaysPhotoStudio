@@ -64,6 +64,10 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 
 **Layer → Matting** now includes Photoshop-style **Defringe**, **Remove Black Matte**, and **Remove White Matte**, also available from the canvas and Layers-panel context menus. Matte removal analytically reverses compositing against the known black/white matte while preserving alpha. Defringe grows trusted near-opaque interior colors outward into the requested anti-aliased fringe width without changing transparency. All three commands preserve native raster offsets, respect the active selection, use the 8/16-bit processing path, rasterize pixel-capable vector/text/Smart Object targets through the normal mutation flow, and explicitly guard 32-bit HDR until scene-linear Float32 matting is available.
 
+## Layer duplication workflows
+
+**Duplicate Into…** can now send the active editable layer into any other open document without flattening it. Raster/HDR pixels, masks, compound vector masks, Smart Object source/transform, Smart Filters, text/shape data, Blend-If, Layer Styles, PSD passthrough blocks, opacity and blend mode are deep-copied so the source and destination remain independently editable. Clipping is released when duplicating a lone clipped layer because its original clipping base is not transferred.
+
 ## Photoshop workflow features
 
 | Feature | Current Photoshop-style behavior | Remaining deeper work |
