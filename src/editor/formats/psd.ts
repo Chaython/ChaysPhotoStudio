@@ -203,7 +203,7 @@ function parseLegacyLayerFxBlock(block: Uint8Array): LayerFX | null {
           enabled: block[data + 55] !== 0,
           style: styleByte === 0 ? 'outer-bevel' : styleByte === 1 ? 'inner-bevel' : 'emboss',
           technique: 'smooth',
-          depth: Math.max(1, fixed16ToNumber(dv.getUint32(data + 8))),
+          depth: 100,
           direction: block[data + 57] === 0 ? 'up' : 'down',
           size: Math.max(0, fixed16ToNumber(dv.getUint32(data + 8))),
           soften: Math.max(0, fixed16ToNumber(dv.getUint32(data + 12))),
