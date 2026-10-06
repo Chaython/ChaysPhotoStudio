@@ -42,6 +42,7 @@ export function HistoryPanel() {
   const doc = engine.activeDoc
   const snapshots = doc?.historySnapshots ?? []
   const markedSnapshotId = doc?.historyBrushSnapshotId ?? null
+  const documentSnapshotPolicy = doc?.historySnapshotAutoPolicy ?? 'inherit'
 
   useEffect(() => () => { if (clearTimer.current) clearTimeout(clearTimer.current) }, [])
 
@@ -57,6 +58,12 @@ export function HistoryPanel() {
     const name = window.prompt('Rename snapshot:', current)
     if (name === null) return
     engine.renameHistorySnapshot(id, name)
+  }
+
+  const editSnapshotNote = (id: string, current = '') => {
+    const note = window.prompt('Snapshot note:', current)
+    if (note === null) return
+    engine.setHistorySnapshotNote(id, note)
   }
 
   const setSnapshotPref = (key: 'autoNewDocument' | 'autoOpenedDocument', checked: boolean) => {
@@ -149,7 +156,23 @@ export function HistoryPanel() {
             />
             Opened documents
           </label>
-          <div className="text-[9px] text-muted-foreground/70">Preferences are stored locally. Automatic snapshots do not mark a freshly opened project as modified.</div>
+          <div className="pt-1 border-t border-border/40 space-y-1">
+            <label className="block text-[9px] uppercase tracking-wide text-muted-foreground">This document</label>
+            <select
+              value={documentSnapshotPolicy}
+              onChange={e => engine.setDocumentHistorySnapshotPolicy(e.target.value as 'inherit' | 'always' | 'never')}
+              disabled={!doc}
+              className="w-full h-7 rounded border border-border bg-background px-2 text-[10px] outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+              aria-label="Automatic snapshot policy for this document"
+            >
+              <option value="inherit">Use global preference</option>
+              <option value="always">Always create first snapshot</option>
+              <option value="never">Never create automatically</option>
+            </select>
+          </div>
+          <div className="text-[9px] text-muted-foreground/70">
+            Global preferences are stored locally. The document override is saved with the project; choosing Always creates a snapshot immediately when none exists.
+          </div>
         </div>
       )}
 
@@ -159,7 +182,7 @@ export function HistoryPanel() {
             <Icons.Camera size={10} className="text-primary" />
             Named Snapshots
           </div>
-          <div className="max-h-32 overflow-y-auto zphoto-scroll">
+          <div className="max-h-44 overflow-y-auto zphoto-scroll">
             {snapshots.map(snap => {
               const isBrush = markedSnapshotId === snap.id
               return (
@@ -196,9 +219,25 @@ export function HistoryPanel() {
                       )}
                       <span className="min-w-0">
                         <span className="block truncate">{snap.name}</span>
+                        {snap.note && (
+                          <span className="block truncate text-[9px] text-muted-foreground/80" title={snap.note}>
+                            {snap.note}
+                          </span>
+                        )}
                         <span className="block text-[9px] text-muted-foreground/60">{new Date(snap.time).toLocaleTimeString()}</span>
                       </span>
                     </span>
+                  </button>
+                  <button
+                    className={cn(
+                      'w-7 grid place-items-center transition-opacity hover:text-foreground',
+                      snap.note ? 'text-primary/70' : 'text-muted-foreground/40 opacity-0 group-hover:opacity-100'
+                    )}
+                    onClick={() => editSnapshotNote(snap.id, snap.note ?? '')}
+                    title={snap.note ? 'Edit snapshot note' : 'Add snapshot note'}
+                    aria-label={snap.note ? `Edit note for ${snap.name}` : `Add note to ${snap.name}`}
+                  >
+                    <Icons.MessageSquare size={10} fill={snap.note ? 'currentColor' : 'none'} />
                   </button>
                   <button
                     className="w-7 grid place-items-center text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-foreground transition-opacity"
