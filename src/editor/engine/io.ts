@@ -290,6 +290,7 @@ interface SerializedHistoryState {
 interface SerializedHistorySnapshot {
   id: string
   name: string
+  note?: string
   time: number
   thumbnail?: string
   state: SerializedHistoryState
@@ -320,6 +321,7 @@ export interface SerializedProject {
     layerComps?: import('../types').LayerComp[]
     activeLayerCompId?: string | null
     historyBrushSnapshotId?: string | null
+    historySnapshotAutoPolicy?: 'inherit' | 'always' | 'never'
   }
   layers: SerializedLayer[]
   selection?: { bounds: any; mask: string } | null
@@ -431,6 +433,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       layerComps: (doc.layerComps ?? []).map(comp => structuredClone(comp)),
       activeLayerCompId: doc.activeLayerCompId ?? null,
       historyBrushSnapshotId: doc.historyBrushSnapshotId ?? null,
+      historySnapshotAutoPolicy: doc.historySnapshotAutoPolicy ?? 'inherit',
     },
     layers,
     selection: doc.selection ? { bounds: { ...doc.selection.bounds }, mask: toDataURL(doc.selection.mask) } : null,
@@ -438,6 +441,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
     historySnapshots: (doc.historySnapshots ?? []).map(s => ({
       id: s.id,
       name: s.name,
+      note: typeof s.note === 'string' && s.note ? s.note : undefined,
       time: s.time,
       thumbnail: typeof s.thumbnail === 'string' ? s.thumbnail : undefined,
       state: serializeHistoryState(s.state, toDataURL),
@@ -613,6 +617,10 @@ export async function openSerializedProject(project: SerializedProject, label = 
     history: { states: [], index: -1 },
     historyBrushSourceIndex: Number.isFinite(project.doc.historyBrushSourceIndex) ? Math.max(0, Math.round(project.doc.historyBrushSourceIndex!)) : 0,
     historySnapshots: [],
+    historySnapshotAutoPolicy:
+      project.doc.historySnapshotAutoPolicy === 'always' || project.doc.historySnapshotAutoPolicy === 'never'
+        ? project.doc.historySnapshotAutoPolicy
+        : 'inherit',
     historyBrushSnapshotId: typeof project.doc.historyBrushSnapshotId === 'string' ? project.doc.historyBrushSnapshotId : null,
     layerComps: Array.isArray(project.doc.layerComps)
       ? project.doc.layerComps
@@ -723,6 +731,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
         doc.historySnapshots!.push({
           id: raw.id || uid(),
           name: typeof raw.name === 'string' && raw.name ? raw.name : 'Snapshot',
+          note: typeof raw.note === 'string' && raw.note.trim() ? raw.note.trim().slice(0, 2000) : undefined,
           time: Number.isFinite(raw.time) ? raw.time : Date.now(),
           thumbnail: typeof raw.thumbnail === 'string' && raw.thumbnail.startsWith('data:image/') ? raw.thumbnail : undefined,
           state: await deserializeHistoryState(raw.state),
