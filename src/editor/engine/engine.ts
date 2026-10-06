@@ -1751,6 +1751,42 @@ export class Engine {
     this.setLayerProps(id, { fx }, { history: opts?.history, silent: opts?.silent, label: opts?.label ?? 'Layer Style' })
   }
 
+  private copiedLayerStyle: LayerFX | null = null
+
+  get canPasteLayerStyle(): boolean { return !!this.copiedLayerStyle }
+
+  copyLayerStyle(id: string): boolean {
+    const layer = this.layerById(id)
+    if (!layer?.fx) {
+      this.ui?.toast('Layer has no style to copy', 'info')
+      return false
+    }
+    this.copiedLayerStyle = structuredClone(layer.fx)
+    this.ui?.toast('Layer style copied', 'success')
+    return true
+  }
+
+  pasteLayerStyle(id: string): boolean {
+    const layer = this.layerById(id)
+    if (!layer || !this.copiedLayerStyle) {
+      if (!this.copiedLayerStyle) this.ui?.toast('Copy a layer style first', 'info')
+      return false
+    }
+    if (layer.kind === 'adjustment') {
+      this.ui?.toast('Adjustment layers cannot use layer styles', 'info')
+      return false
+    }
+    this.setLayerFX(id, structuredClone(this.copiedLayerStyle), { label: 'Paste Layer Style' })
+    return true
+  }
+
+  clearLayerStyle(id: string): boolean {
+    const layer = this.layerById(id)
+    if (!layer?.fx) return false
+    this.setLayerFX(id, null, { label: 'Clear Layer Style' })
+    return true
+  }
+
   // ================================================== direct on-canvas transform
 
   /** shift a layer's registration by (dx, dy) — pure metadata, lossless for

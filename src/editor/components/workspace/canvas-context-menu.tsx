@@ -71,6 +71,18 @@ export function CanvasLayerMenuContent({ layerId }: { layerId: string }) {
         <Sparkles />
         Layer Style{layer.fx ? ' (edit)' : '…'}
       </ContextMenuItem>
+      <ContextMenuItem disabled={!layer.fx} onClick={act(() => engine.copyLayerStyle(layer.id))}>
+        <Copy />
+        Copy Layer Style
+      </ContextMenuItem>
+      <ContextMenuItem disabled={!pixelLayer || !engine.canPasteLayerStyle} onClick={act(() => engine.pasteLayerStyle(layer.id))}>
+        <ClipboardPaste />
+        Paste Layer Style
+      </ContextMenuItem>
+      <ContextMenuItem disabled={!layer.fx} onClick={act(() => engine.clearLayerStyle(layer.id))}>
+        <Trash2 />
+        Clear Layer Style
+      </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onClick={act(() => engine.duplicateLayer(layer.id))}>
         <Copy />
