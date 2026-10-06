@@ -12,7 +12,7 @@
 // ============================================================
 
 import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels } from '../utils/canvas'
-import type { BlendMode } from '../types'
+import type { BlendMode, LayerFX } from '../types'
 
 // ---------- blend mode mapping ----------
 const PSD_TO_APP: Record<string, BlendMode> = {
@@ -42,6 +42,320 @@ export function blendModeToPsdKey(mode: string): string {
   return APP_TO_PSD[mode as BlendMode] ?? 'norm'
 }
 
+
+function clampFx(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, Number.isFinite(n) ? n : lo))
+}
+
+function fxBlockKey(block: Uint8Array): string {
+  if (block.length < 8) return ''
+  return String.fromCharCode(block[4], block[5], block[6], block[7])
+}
+
+function fixed16ToNumber(raw: number, signed = false): number {
+  const v = signed && raw > 0x7fffffff ? raw - 0x100000000 : raw
+  return v / 65536
+}
+
+function numberToFixed16(value: number, signed = false): number {
+  const v = Math.round(value * 65536)
+  return signed ? v | 0 : Math.max(0, Math.min(0xffffffff, v)) >>> 0
+}
+
+function psdColorToHex(bytes: Uint8Array, offset: number): string {
+  if (offset < 0 || offset + 10 > bytes.length) return '#000000'
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const space = dv.getUint16(offset)
+  const a = dv.getUint16(offset + 2)
+  const b = dv.getUint16(offset + 4)
+  const cc = dv.getUint16(offset + 6)
+  const d = dv.getUint16(offset + 8)
+  let r = 0, g = 0, bl = 0
+  if (space === 0) {
+    r = a / 257; g = b / 257; bl = cc / 257
+  } else if (space === 8) {
+    r = g = bl = clampFx(a / 10000 * 255, 0, 255)
+  } else if (space === 2) {
+    // Legacy PSD stores CMYK components inverted (0xffff = 0% ink).
+    const cyan = 1 - a / 65535
+    const magenta = 1 - b / 65535
+    const yellow = 1 - cc / 65535
+    const black = 1 - d / 65535
+    r = 255 * (1 - cyan) * (1 - black)
+    g = 255 * (1 - magenta) * (1 - black)
+    bl = 255 * (1 - yellow) * (1 - black)
+  }
+  const hex = (n: number) => Math.round(clampFx(n, 0, 255)).toString(16).padStart(2, '0')
+  return '#' + hex(r) + hex(g) + hex(bl)
+}
+
+function hexToPsdRgbColor(hex: string): Uint8Array {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '')
+  const value = m?.[1] ?? '000000'
+  const out = new Uint8Array(10)
+  const dv = new DataView(out.buffer)
+  dv.setUint16(0, 0) // RGB
+  dv.setUint16(2, parseInt(value.slice(0, 2), 16) * 257)
+  dv.setUint16(4, parseInt(value.slice(2, 4), 16) * 257)
+  dv.setUint16(6, parseInt(value.slice(4, 6), 16) * 257)
+  dv.setUint16(8, 0)
+  return out
+}
+
+function readAscii4(bytes: Uint8Array, offset: number): string {
+  if (offset < 0 || offset + 4 > bytes.length) return ''
+  return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3])
+}
+
+function opacityByteToPercent(v: number): number {
+  return Math.round(clampFx(v, 0, 255) * 10000 / 255) / 100
+}
+
+function percentToOpacityByte(v: number): number {
+  return Math.round(clampFx(v, 0, 100) * 255 / 100)
+}
+
+function parseChaysLayerFxBlock(block: Uint8Array): LayerFX | null {
+  if (fxBlockKey(block) !== 'chFX' || block.length < 12) return null
+  try {
+    const len = new DataView(block.buffer, block.byteOffset, block.byteLength).getUint32(8)
+    const end = Math.min(block.length, 12 + len)
+    const json = new TextDecoder().decode(block.subarray(12, end))
+    const parsed = JSON.parse(json)
+    return parsed && typeof parsed === 'object' ? parsed as LayerFX : null
+  } catch {
+    return null
+  }
+}
+
+function parseLegacyLayerFxBlock(block: Uint8Array): LayerFX | null {
+  if (fxBlockKey(block) !== 'lrFX' || block.length < 16) return null
+  const dv = new DataView(block.buffer, block.byteOffset, block.byteLength)
+  const payloadLen = Math.min(dv.getUint32(8), block.length - 12)
+  const end = 12 + payloadLen
+  let p = 12
+  if (p + 4 > end) return null
+  const version = dv.getUint16(p); p += 2
+  const count = dv.getUint16(p); p += 2
+  if (version !== 0 || count > 64) return null
+
+  const fx: LayerFX = {}
+  let recognized = 0
+  for (let i = 0; i < count && p + 12 <= end; i++) {
+    if (readAscii4(block, p) !== '8BIM') break
+    const key = readAscii4(block, p + 4)
+    const size = dv.getUint32(p + 8)
+    const data = p + 12
+    const next = data + size
+    if (size > end - data || next > end) break
+
+    try {
+      if ((key === 'dsdw' || key === 'isdw') && size >= 41) {
+        const effectVersion = dv.getUint32(data)
+        const colorOffset = effectVersion >= 2 && size >= 51 ? data + 41 : data + 20
+        const effect = {
+          enabled: block[data + 38] !== 0,
+          color: psdColorToHex(block, colorOffset),
+          opacity: opacityByteToPercent(block[data + 40]),
+          angle: fixed16ToNumber(dv.getUint32(data + 12), true),
+          distance: fixed16ToNumber(dv.getUint32(data + 16)),
+          blur: fixed16ToNumber(dv.getUint32(data + 4)),
+          blendMode: psdBlendKeyToMode(readAscii4(block, data + 34)),
+          spread: 0,
+          noise: 0,
+        }
+        if (key === 'dsdw') fx.dropShadow = effect
+        else fx.innerShadow = effect
+        recognized++
+      } else if (key === 'oglw' && size >= 32) {
+        const effectVersion = dv.getUint32(data)
+        const colorOffset = effectVersion >= 2 && size >= 42 ? data + 32 : data + 12
+        fx.outerGlow = {
+          enabled: block[data + 30] !== 0,
+          color: psdColorToHex(block, colorOffset),
+          opacity: opacityByteToPercent(block[data + 31]),
+          blur: fixed16ToNumber(dv.getUint32(data + 4)),
+          blendMode: psdBlendKeyToMode(readAscii4(block, data + 26)),
+          spread: 0,
+          noise: 0,
+        }
+        recognized++
+      } else if (key === 'iglw' && size >= 32) {
+        const effectVersion = dv.getUint32(data)
+        const colorOffset = effectVersion >= 2 && size >= 43 ? data + 33 : data + 12
+        fx.innerGlow = {
+          enabled: block[data + 30] !== 0,
+          color: psdColorToHex(block, colorOffset),
+          opacity: opacityByteToPercent(block[data + 31]),
+          blur: fixed16ToNumber(dv.getUint32(data + 4)),
+          blendMode: psdBlendKeyToMode(readAscii4(block, data + 26)),
+          source: effectVersion >= 2 && block[data + 32] !== 0 ? 'center' : 'edge',
+          choke: 0,
+          noise: 0,
+        }
+        recognized++
+      } else if (key === 'bevl' && size >= 58) {
+        const effectVersion = dv.getUint32(data)
+        const highColor = effectVersion >= 2 && size >= 78 ? data + 58 : data + 32
+        const shadowColor = effectVersion >= 2 && size >= 78 ? data + 68 : data + 42
+        const styleByte = block[data + 52]
+        fx.bevelEmboss = {
+          enabled: block[data + 55] !== 0,
+          style: styleByte === 0 ? 'outer-bevel' : styleByte === 1 ? 'inner-bevel' : 'emboss',
+          technique: 'smooth',
+          depth: 100,
+          direction: block[data + 57] === 0 ? 'up' : 'down',
+          size: Math.max(0, fixed16ToNumber(dv.getUint32(data + 8))),
+          soften: Math.max(0, fixed16ToNumber(dv.getUint32(data + 12))),
+          angle: fixed16ToNumber(dv.getUint32(data + 4), true),
+          altitude: 30,
+          highlightColor: psdColorToHex(block, highColor),
+          highlightOpacity: opacityByteToPercent(block[data + 53]),
+          shadowColor: psdColorToHex(block, shadowColor),
+          shadowOpacity: opacityByteToPercent(block[data + 54]),
+          highlightBlendMode: psdBlendKeyToMode(readAscii4(block, data + 20)),
+          shadowBlendMode: psdBlendKeyToMode(readAscii4(block, data + 28)),
+        }
+        recognized++
+      } else if (key === 'sofi' && size >= 34) {
+        const effectVersion = dv.getUint32(data)
+        if (effectVersion >= 2) {
+          fx.colorOverlay = {
+            enabled: block[data + 23] !== 0,
+            color: psdColorToHex(block, data + 24),
+            opacity: opacityByteToPercent(block[data + 22]),
+            blendMode: psdBlendKeyToMode(readAscii4(block, data + 8)),
+          }
+          recognized++
+        }
+      }
+    } catch {
+      // Preserve malformed/unsupported blocks through the opaque path.
+    }
+    p = next
+  }
+  return recognized ? fx : null
+}
+
+function additionalInfoBlock(key: string, data: Uint8Array): Uint8Array {
+  const padded = data.length + (data.length & 1)
+  const out = new Uint8Array(12 + padded)
+  out.set(asciiBytes('8BIM'), 0)
+  out.set(asciiBytes(key.slice(0, 4).padEnd(4, ' ')), 4)
+  new DataView(out.buffer).setUint32(8, data.length)
+  out.set(data, 12)
+  return out
+}
+
+function chaysLayerFxBlock(fx: LayerFX): Uint8Array {
+  return additionalInfoBlock('chFX', new TextEncoder().encode(JSON.stringify(fx)))
+}
+
+function fxU32(value: number, signed = false): Uint8Array {
+  const out = new Uint8Array(4)
+  const dv = new DataView(out.buffer)
+  if (signed) dv.setInt32(0, numberToFixed16(value, true))
+  else dv.setUint32(0, numberToFixed16(value))
+  return out
+}
+
+function fxEffectRecord(key: string, payload: Uint8Array): Uint8Array {
+  return concatUint8([asciiBytes('8BIM'), asciiBytes(key), u32(payload.length), payload])
+}
+
+function legacyShadowRecord(key: 'dsdw' | 'isdw', effect: NonNullable<LayerFX['dropShadow']>): Uint8Array {
+  const payload = concatUint8([
+    u32(2),
+    fxU32(effect.blur),
+    fxU32(0), // legacy Intensity is a contour parameter, not Spread
+    fxU32(effect.angle, true),
+    fxU32(effect.distance),
+    hexToPsdRgbColor(effect.color),
+    asciiBytes('8BIM'),
+    asciiBytes(blendModeToPsdKey(effect.blendMode ?? 'multiply')),
+    new Uint8Array([effect.enabled ? 1 : 0, 0, percentToOpacityByte(effect.opacity)]),
+    hexToPsdRgbColor(effect.color),
+  ])
+  return fxEffectRecord(key, payload)
+}
+
+function legacyGlowRecord(key: 'oglw' | 'iglw', effect: NonNullable<LayerFX['outerGlow']>): Uint8Array {
+  const inner = key === 'iglw'
+  const payload = concatUint8([
+    u32(2),
+    fxU32(effect.blur),
+    fxU32(0), // legacy Intensity is not Spread/Choke
+    hexToPsdRgbColor(effect.color),
+    asciiBytes('8BIM'),
+    asciiBytes(blendModeToPsdKey(effect.blendMode ?? 'screen')),
+    new Uint8Array([effect.enabled ? 1 : 0, percentToOpacityByte(effect.opacity)]),
+    ...(inner ? [new Uint8Array([(effect as NonNullable<LayerFX['innerGlow']>).source === 'center' ? 1 : 0])] : []),
+    hexToPsdRgbColor(effect.color),
+  ])
+  return fxEffectRecord(key, payload)
+}
+
+function legacyBevelRecord(effect: NonNullable<LayerFX['bevelEmboss']>): Uint8Array {
+  const style = effect.style === 'outer-bevel' ? 0 : effect.style === 'inner-bevel' ? 1 : 2
+  // The legacy block has one "depth/size" slot and no separate soften/altitude.
+  const size = Math.max(0, effect.size)
+  const payload = concatUint8([
+    u32(2),
+    fxU32(effect.angle, true),
+    fxU32(size),
+    fxU32(effect.soften),
+    asciiBytes('8BIM'),
+    asciiBytes(blendModeToPsdKey(effect.highlightBlendMode ?? 'screen')),
+    asciiBytes('8BIM'),
+    asciiBytes(blendModeToPsdKey(effect.shadowBlendMode ?? 'multiply')),
+    hexToPsdRgbColor(effect.highlightColor),
+    hexToPsdRgbColor(effect.shadowColor),
+    new Uint8Array([
+      style,
+      percentToOpacityByte(effect.highlightOpacity),
+      percentToOpacityByte(effect.shadowOpacity),
+      effect.enabled ? 1 : 0,
+      0,
+      effect.direction === 'up' ? 0 : 1,
+    ]),
+    hexToPsdRgbColor(effect.highlightColor),
+    hexToPsdRgbColor(effect.shadowColor),
+  ])
+  return fxEffectRecord('bevl', payload)
+}
+
+function legacyColorOverlayRecord(effect: NonNullable<LayerFX['colorOverlay']>): Uint8Array {
+  const payload = concatUint8([
+    u32(2),
+    asciiBytes('8BIM'),
+    asciiBytes(blendModeToPsdKey(effect.blendMode ?? 'normal')),
+    hexToPsdRgbColor(effect.color),
+    new Uint8Array([percentToOpacityByte(effect.opacity), effect.enabled ? 1 : 0]),
+    hexToPsdRgbColor(effect.color),
+  ])
+  return fxEffectRecord('sofi', payload)
+}
+
+function legacyLayerFxBlock(fx: LayerFX): Uint8Array | null {
+  const records: Uint8Array[] = []
+  const supported = [
+    fx.dropShadow, fx.innerShadow, fx.outerGlow, fx.innerGlow, fx.bevelEmboss, fx.colorOverlay,
+  ].some(Boolean)
+  if (!supported) return null
+
+  const common = fxEffectRecord('cmnS', concatUint8([u32(0), new Uint8Array([1, 0, 0])]))
+  records.push(common)
+  if (fx.dropShadow) records.push(legacyShadowRecord('dsdw', fx.dropShadow))
+  if (fx.innerShadow) records.push(legacyShadowRecord('isdw', fx.innerShadow))
+  if (fx.outerGlow) records.push(legacyGlowRecord('oglw', fx.outerGlow))
+  if (fx.innerGlow) records.push(legacyGlowRecord('iglw', fx.innerGlow))
+  if (fx.bevelEmboss) records.push(legacyBevelRecord(fx.bevelEmboss))
+  if (fx.colorOverlay) records.push(legacyColorOverlayRecord(fx.colorOverlay))
+
+  const data = concatUint8([u16(0), u16(records.length), ...records])
+  return additionalInfoBlock('lrFX', data)
+}
+
 // ============================================================
 // reading
 // ============================================================
@@ -59,8 +373,11 @@ export interface PsdLayer {
   visible: boolean
   clipped: boolean
   mask: HTMLCanvasElement | null // full-document-size canvas, mask value in alpha
+  /** Editable layer styles decoded from Chay's native style block or
+   * Photoshop's legacy lrFX block when available. */
+  fx: LayerFX | null
   /** Opaque additional-layer-information blocks retained byte-for-byte.
-   * Known blocks that we regenerate (currently 'luni') are excluded. */
+   * Known blocks that we regenerate ('luni', parsed 'lrFX', 'chFX') are excluded. */
   additionalInfo: Uint8Array[]
 }
 
@@ -99,6 +416,7 @@ interface PsdLayerRecord {
   clipped: boolean
   name: string
   maskRect: [number, number, number, number] | null // top, left, bottom, right
+  fx: LayerFX | null
   additionalInfo: Uint8Array[]
 }
 
@@ -369,8 +687,11 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos += nameLen
         pos += (4 - ((1 + nameLen) & 3)) & 3
         // additional layer info blocks: retain unsupported Photoshop metadata
-        // byte-for-byte while regenerating the live Unicode layer name.
+        // byte-for-byte while regenerating names and any style blocks we can edit.
         const additionalInfo: Uint8Array[] = []
+        let fx: LayerFX | null = null
+        let legacyFx: LayerFX | null = null
+        let hasDescriptorFx = false
         while (pos + 8 + lenSize <= extraEnd) {
           const blockStart = pos
           const s0 = bytes[pos]
@@ -390,13 +711,31 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
             if (uni) name = uni
           }
           const blockEnd = Math.min(extraEnd, dataStart + blockLen + (blockLen & 1))
-          if (key !== 'luni' && blockEnd > blockStart) additionalInfo.push(bytes.slice(blockStart, blockEnd))
+          if (blockEnd > blockStart && key !== 'luni') {
+            const raw = bytes.slice(blockStart, blockEnd)
+            if (key === 'chFX') {
+              const parsed = parseChaysLayerFxBlock(raw)
+              if (parsed) fx = parsed
+              else additionalInfo.push(raw)
+            } else if (key === 'lrFX') {
+              const parsed = parseLegacyLayerFxBlock(raw)
+              if (parsed) legacyFx = parsed
+              else additionalInfo.push(raw)
+            } else {
+              if (key === 'lfx2' || key === 'lmfx' || key === 'lfxs') hasDescriptorFx = true
+              additionalInfo.push(raw)
+            }
+          }
           pos = blockEnd
         }
+        // Photoshop ignores lrFX when a modern object-effects descriptor exists.
+        // Our own chFX remains authoritative because it represents a prior native
+        // Chay's Studio style stack and is intentionally ignored by Photoshop.
+        if (!fx && !hasDescriptorFx) fx = legacyFx
         pos = extraEnd
         records.push({
           top, left, bottom, right, channels, blendKey,
-          opacity, visible: (flags & 2) !== 0, clipped: clipping === 1, name, maskRect, additionalInfo,
+          opacity, visible: (flags & 2) !== 0, clipped: clipping === 1, name, maskRect, fx, additionalInfo,
         })
       }
 
@@ -475,6 +814,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       visible: rec.visible,
       clipped: rec.clipped,
       mask,
+      fx: rec.fx ? structuredClone(rec.fx) : null,
       additionalInfo: rec.additionalInfo.map(b => b.slice()),
     })
   }
@@ -563,6 +903,9 @@ export interface PsdLayerInput {
   clipped?: boolean
   /** full-document-size mask canvas — mask value lives in the ALPHA channel */
   mask?: HTMLCanvasElement | null
+  /** Native editable layer style stack. Photoshop-readable legacy effects
+   * are regenerated; the complete stack is retained in chFX for Chay's Studio. */
+  fx?: LayerFX | null
   /** Opaque PSD additional-layer-information blocks to preserve. */
   additionalInfo?: Uint8Array[]
 }
@@ -802,9 +1145,24 @@ export function buildPsd(
     const nameBytes = asciiBytes(name)
     const pascalTotal = 1 + nameBytes.length
     const pascalPad = (4 - (pascalTotal & 3)) & 3
-    const preservedInfo = (p.input.additionalInfo ?? []).filter(saneAdditionalInfoBlock)
+    const replacingFx = !!p.input.fx
+    const preservedInfo = (p.input.additionalInfo ?? [])
+      .filter(saneAdditionalInfoBlock)
+      .filter(block => {
+        if (!replacingFx) return true
+        const key = fxBlockKey(block)
+        return key !== 'lrFX' && key !== 'chFX' && key !== 'lfx2' && key !== 'lmfx' && key !== 'lfxs'
+      })
+    const generatedFx: Uint8Array[] = []
+    if (p.input.fx) {
+      // chFX is an app-private, ignored-by-Photoshop copy of the complete
+      // native stack. lrFX provides interoperable shadows/glows/bevel/fill.
+      generatedFx.push(chaysLayerFxBlock(p.input.fx))
+      const legacy = legacyLayerFxBlock(p.input.fx)
+      if (legacy) generatedFx.push(legacy)
+    }
     const unicodeName = unicodeLayerNameBlock(p.input.name || 'Layer')
-    const additionalInfoBytes = preservedInfo.reduce((n, b) => n + b.length, unicodeName.length)
+    const additionalInfoBytes = [...preservedInfo, ...generatedFx].reduce((n, b) => n + b.length, unicodeName.length)
     const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + pascalTotal + pascalPad + additionalInfoBytes
     recordParts.push(u32(extraLen))
     if (p.maskDoc) {
@@ -819,7 +1177,7 @@ export function buildPsd(
     }
     recordParts.push(u32(0)) // layer blending ranges: none
     recordParts.push(new Uint8Array([nameBytes.length]), nameBytes, new Uint8Array(pascalPad))
-    recordParts.push(unicodeName, ...preservedInfo)
+    recordParts.push(unicodeName, ...preservedInfo, ...generatedFx)
     // channel image data blocks follow all records — store for later
     for (const ch of allChannels) channelDataParts.push(ch.block)
   }

@@ -217,6 +217,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     layer.visible = psd.visible
     layer.clipped = !!psd.clipped
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
+    if (psd.fx) layer.fx = structuredClone(psd.fx)
     if (psd.additionalInfo?.length) layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
     doc.layers.push(layer as Layer)
   }

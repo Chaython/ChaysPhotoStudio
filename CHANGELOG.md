@@ -4,6 +4,7 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added PSD Layer Style round-trip support: legacy Photoshop `lrFX` shadows/glows/bevel/color-overlay import as editable native effects, PSD export regenerates compatible `lrFX`, and a Photoshop-ignored `chFX` block preserves Chay's complete native FX stack including stroke, gradient, pattern and satin while untouched modern `lfx2/lmfx/lfxs` blocks remain losslessly preserved.
 - Added **Layer > Duplicate Into…** with destination-document and rename controls, plus Layers-panel/canvas context-menu access; duplication now deep-copies masks, vector masks, HDR data, Smart Object state, Smart Filters, Blend-If, Layer Styles and retained PSD metadata instead of sharing nested layer state.
 - Added **Layer > Matting** with selection-aware **Defringe**, **Remove Black Matte**, and **Remove White Matte**, plus matching canvas/Layers-panel context commands; matte cleanup preserves alpha and offset-layer pixels while guarding 32-bit HDR.
 - Added **Image > Calculations…** with two independent document/layer/channel sources including saved alpha channels, inversion, blend modes plus Subtract, opacity, optional selection masking, and Selection/New Channel/New Document outputs; new alpha channels can be created without replacing the active selection.

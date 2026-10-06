@@ -333,6 +333,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             visible: l.visible,
             clipped: l.clipped,
             mask: l.maskEnabled ? l.mask : null,
+            fx: l.fx ? structuredClone(l.fx) : null,
             additionalInfo: l.psdAdditionalInfo?.map(base64Bytes),
           })
         }
