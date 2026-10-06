@@ -44,10 +44,13 @@ function resolveSource(doc: PsDocument, source: SourceState): { canvas: HTMLCanv
     const saved = doc.savedChannels.find(item => item.id === source.channel.slice(6))
     return saved ? { canvas: saved.mask, channel: 'alpha' } : null
   }
-  if (source.layerId === 'merged') return { canvas: getFlatComposite(doc), channel: source.channel }
+  // startsWith() does not narrow a template-literal union for TypeScript, so
+  // make the now-known built-in channel explicit at this boundary.
+  const channel = source.channel as CalculationChannel
+  if (source.layerId === 'merged') return { canvas: getFlatComposite(doc), channel }
   const layer = doc.layers.find(item => item.id === source.layerId)
   const canvas = layer ? prepareLayer(doc, layer) : null
-  return canvas ? { canvas, channel: source.channel } : null
+  return canvas ? { canvas, channel } : null
 }
 
 function SourceEditor(props: {
