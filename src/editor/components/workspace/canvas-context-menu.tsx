@@ -100,10 +100,19 @@ export function CanvasLayerMenuContent({ layerId }: { layerId: string }) {
         </ContextMenuSubContent>
       </ContextMenuSub>
       <ContextMenuSeparator />
+      <ContextMenuItem disabled={!pixelLayer} onClick={act(() => engine.layerViaCopy())}>
+        <Copy />
+        Layer via Copy
+        <ContextMenuShortcut>Ctrl+J</ContextMenuShortcut>
+      </ContextMenuItem>
+      <ContextMenuItem disabled={!canEdit || !doc.selection} onClick={act(() => engine.layerViaCut())}>
+        <SquareDashed />
+        Layer via Cut
+        <ContextMenuShortcut>Ctrl+Shift+J</ContextMenuShortcut>
+      </ContextMenuItem>
       <ContextMenuItem onClick={act(() => engine.duplicateLayer(layer.id))}>
         <Copy />
         Duplicate Layer
-        <ContextMenuShortcut>Ctrl+J</ContextMenuShortcut>
       </ContextMenuItem>
       <ContextMenuItem disabled={!pixelLayer} onClick={act(() => engine.copyLayer(false))}>
         <ClipboardPaste />
