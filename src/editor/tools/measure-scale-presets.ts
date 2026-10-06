@@ -99,7 +99,7 @@ export function matchingMeasurementScalePreset(
   const ppu = Number(values.pixelsPerUnit)
   return presets.find(p =>
     p.unit === unit &&
-    p.useDocResolution === useDocResolution &&
+    (unit === 'px' || p.useDocResolution === useDocResolution) &&
     (unit === 'px' || useDocResolution || Math.abs(p.pixelsPerUnit - ppu) < 0.0005)
   ) ?? null
 }
