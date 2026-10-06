@@ -821,6 +821,18 @@ export function editableMetadataFromFields(fields: ImageMetadataField[]): Editab
   const copyrightStatus: EditableImageMetadata['copyrightStatus'] =
     marked === undefined ? 'unknown' : /^(true|1)$/i.test(marked) ? 'copyrighted' : 'public-domain'
 
+  const listValues = (tags: string[], labels: string[] = []) => Array.from(new Set(
+    fields
+      .filter(f => fieldMatches(f, tags, labels))
+      .flatMap(f => f.value.split(/[;,]/g))
+      .map(v => v.trim())
+      .filter(Boolean),
+  ))
+
+  const peopleShown = listValues(['Iptc4xmpExt:PersonInImage'], ['Person In Image', 'People Shown'])
+  const sceneCodes = listValues(['Iptc4xmpCore:Scene'], ['Scene'])
+  const subjectCodes = listValues(['Iptc4xmpCore:SubjectCode', '2:12'], ['Subject Reference', 'Subject Code'])
+
   return {
     title: firstField(fields, ['dc:title', '2:5'], ['Object Name', 'Title']),
     description: firstField(fields, ['dc:description', '2:120', '0x010E'], ['Caption/Abstract', 'Image Description', 'Description']),
@@ -834,10 +846,25 @@ export function editableMetadataFromFields(fields: ImageMetadataField[]): Editab
     copyright: firstField(fields, ['dc:rights', '2:116', '0x8298'], ['Copyright Notice', 'Copyright']),
     copyrightStatus,
     copyrightUrl: firstField(fields, ['xmpRights:WebStatement'], ['Web Statement', 'Copyright URL']),
+    rightsUsageTerms: firstField(fields, ['xmpRights:UsageTerms'], ['Usage Terms', 'Rights Usage Terms']),
     city: firstField(fields, ['photoshop:City', '2:90'], ['City']),
     state: firstField(fields, ['photoshop:State', '2:95'], ['Province/State', 'State']),
     country: firstField(fields, ['photoshop:Country', '2:101'], ['Country/Primary Location Name', 'Country']),
     countryCode: firstField(fields, ['Iptc4xmpCore:CountryCode', 'iptcCore:CountryCode', '2:100'], ['Country/Primary Location Code', 'Country Code']),
+    sublocation: firstField(fields, ['Iptc4xmpCore:Location', '2:92'], ['Sublocation', 'Location']),
+    creatorAddress: firstField(fields, ['Iptc4xmpCore:CiAdrExtadr', 'iptcCore:CiAdrExtadr'], ['Address']),
+    creatorCity: firstField(fields, ['Iptc4xmpCore:CiAdrCity', 'iptcCore:CiAdrCity'], ['Creator City']),
+    creatorState: firstField(fields, ['Iptc4xmpCore:CiAdrRegion', 'iptcCore:CiAdrRegion'], ['Creator State/Province']),
+    creatorPostalCode: firstField(fields, ['Iptc4xmpCore:CiAdrPcode', 'iptcCore:CiAdrPcode'], ['Postal Code']),
+    creatorCountry: firstField(fields, ['Iptc4xmpCore:CiAdrCtry', 'iptcCore:CiAdrCtry'], ['Creator Country']),
+    creatorPhone: firstField(fields, ['Iptc4xmpCore:CiTelWork', 'iptcCore:CiTelWork'], ['Phone']),
+    creatorEmail: firstField(fields, ['Iptc4xmpCore:CiEmailWork', 'iptcCore:CiEmailWork'], ['Email']),
+    creatorWebsite: firstField(fields, ['Iptc4xmpCore:CiUrlWork', 'iptcCore:CiUrlWork'], ['Website', 'URL']),
+    event: firstField(fields, ['Iptc4xmpExt:Event'], ['Event']),
+    peopleShown: peopleShown.length ? peopleShown : undefined,
+    intellectualGenre: firstField(fields, ['Iptc4xmpCore:IntellectualGenre'], ['Intellectual Genre']),
+    sceneCodes: sceneCodes.length ? sceneCodes : undefined,
+    subjectCodes: subjectCodes.length ? subjectCodes : undefined,
     jobIdentifier: firstField(fields, ['photoshop:TransmissionReference', '2:103', '2:184'], ['Original Transmission Reference', 'Job ID']),
     rating,
   }
