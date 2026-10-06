@@ -83,6 +83,88 @@ export function mapRectPointToQuad(
 }
 
 
+export interface PuppetWarpPin {
+  id: string
+  /** Original/source pin position, normalized 0..1. */
+  x: number
+  y: number
+  /** Current destination pin position, normalized source coordinates. */
+  targetX: number
+  targetY: number
+  /** Local pin rotation in degrees. */
+  rotation: number
+  /** Higher values win more strongly where pin influences overlap. */
+  depth: number
+}
+
+function puppetAxis(divisions: number, pinValues: number[]): number[] {
+  const fixed = Array.from(new Set([0, 1, ...pinValues.map(v => clamp(v, 0, 1))]))
+    .sort((a,b)=>a-b)
+  const max = 13
+  if (fixed.length >= max) return fixed.slice(0,max-1).concat(1)
+  const regular = Array.from({length:Math.max(1,Math.min(12,Math.round(divisions)))+1},(_,i)=>i/Math.max(1,Math.min(12,Math.round(divisions))))
+  const candidates = regular
+    .filter(v=>!fixed.some(f=>Math.abs(f-v)<1e-5))
+    .sort((a,b)=>{
+      const da=Math.min(...fixed.map(f=>Math.abs(f-a)))
+      const db=Math.min(...fixed.map(f=>Math.abs(f-b)))
+      return db-da
+    })
+  const out=[...fixed]
+  for(const v of candidates){
+    if(out.length>=max)break
+    out.push(v)
+  }
+  return out.sort((a,b)=>a-b)
+}
+
+/** Build a Photoshop-style Puppet Warp deformation mesh from pins.
+ * Pin coordinates are inserted as real split intersections so dragged pins
+ * land exactly on their targets instead of only approximately influencing a
+ * coarse regular grid. Rigidity controls how broadly each pin moves the mesh. */
+export function puppetWarpMesh(
+  pins: PuppetWarpPin[],
+  divisions = 6,
+  rigidity = 50,
+  aspect = 1,
+): TransformWarpSpec {
+  const safePins=pins.slice(0,10).map(pin=>({
+    ...pin,
+    x:clamp(Number(pin.x)||0,0,1),
+    y:clamp(Number(pin.y)||0,0,1),
+    targetX:Number.isFinite(pin.targetX)?pin.targetX:pin.x,
+    targetY:Number.isFinite(pin.targetY)?pin.targetY:pin.y,
+    rotation:clamp(Number(pin.rotation)||0,-180,180),
+    depth:clamp(Math.round(Number(pin.depth)||0),-20,20),
+  }))
+  const u=puppetAxis(divisions,safePins.map(p=>p.x))
+  const v=puppetAxis(divisions,safePins.map(p=>p.y))
+  const a=Math.max(.05,Math.min(20,aspect||1))
+  const power=4.5-3*clamp(rigidity,0,100)/100
+  const points=v.flatMap(y=>u.map(x=>{
+    const exact=safePins.find(p=>Math.abs(p.x-x)<1e-6&&Math.abs(p.y-y)<1e-6)
+    if(exact)return {x:exact.targetX,y:exact.targetY}
+    if(!safePins.length)return {x,y}
+    let sx=0,sy=0,sw=0
+    for(const pin of safePins){
+      const dx=(x-pin.x)*a
+      const dy=y-pin.y
+      const dist=Math.max(1e-4,Math.hypot(dx,dy))
+      const priority=Math.pow(1.18,pin.depth)
+      const w=priority/Math.pow(dist,power)
+      const rad=pin.rotation*Math.PI/180
+      const lx=x-pin.x,ly=y-pin.y
+      const rx=lx*Math.cos(rad)-ly*Math.sin(rad)
+      const ry=lx*Math.sin(rad)+ly*Math.cos(rad)
+      const ddx=(pin.targetX-pin.x)+(rx-lx)
+      const ddy=(pin.targetY-pin.y)+(ry-ly)
+      sx+=ddx*w;sy+=ddy*w;sw+=w
+    }
+    return {x:x+sx/Math.max(1e-9,sw),y:y+sy/Math.max(1e-9,sw)}
+  }))
+  return {u,v,points}
+}
+
 export function regularWarpMesh(cols: number, rows: number): TransformWarpSpec {
   const c = Math.max(1, Math.min(12, Math.round(cols)))
   const r = Math.max(1, Math.min(12, Math.round(rows)))
