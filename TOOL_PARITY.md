@@ -54,6 +54,10 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 
 **Export Layers to Files** renders each exportable raster, Smart Object, text, or shape layer through the normal compositor, preserving masks, vector masks, opacity, Blend-If and Layer Styles. It can export visible layers only, trim transparent bounds, include or strip File Info metadata, choose PNG/JPEG/WebP quality, and use a folder picker where supported with multi-download fallback elsewhere. Adjustment layers are skipped because they have no standalone pixels; isolated clipped layers are exported as independent artwork rather than disappearing without their clipping base.
 
+## Apply Image
+
+**Image → Apply Image…** can blend the merged result or an individual pixel-capable layer from any open document into the active layer. It supports RGB, Red, Green, Blue and Alpha source channels, invert, the editor's full blend-mode set, opacity, exact target-transparency preservation, different-size source clipping, and automatic active-selection masking. Raster offsets are respected and non-raster targets are rasterized through the normal mutation path. 32-bit HDR documents are intentionally blocked until Apply Image has scene-linear Float32 blend math instead of degrading HDR through Canvas compositing.
+
 ## Photoshop workflow features
 
 | Feature | Current Photoshop-style behavior | Remaining deeper work |
