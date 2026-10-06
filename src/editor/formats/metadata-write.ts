@@ -244,18 +244,31 @@ function jpegSegment(marker: number, payload: Uint8Array): Uint8Array {
   return out
 }
 
-function photoshopIptcResource(iptc: Uint8Array): Uint8Array {
-  const header = utf8('Photoshop 3.0\u0000')
-  const resource = new Uint8Array(4 + 2 + 2 + 4 + iptc.length + (iptc.length & 1))
+function photoshopResource(id: number, data: Uint8Array): Uint8Array {
+  const resource = new Uint8Array(4 + 2 + 2 + 4 + data.length + (data.length & 1))
   resource.set(utf8('8BIM'), 0)
-  resource[4] = 0x04
-  resource[5] = 0x04
+  resource[4] = (id >>> 8) & 0xff
+  resource[5] = id & 0xff
   // Empty Pascal name: length byte + pad byte are already zero.
   const sizeOffset = 8
   const view = new DataView(resource.buffer)
-  view.setUint32(sizeOffset, iptc.length, false)
-  resource.set(iptc, 12)
-  return concat([header, resource])
+  view.setUint32(sizeOffset, data.length, false)
+  resource.set(data, 12)
+  return resource
+}
+
+function photoshopIptcResource(iptc: Uint8Array): Uint8Array {
+  return concat([utf8('Photoshop 3.0\u0000'), photoshopResource(0x0404, iptc)])
+}
+
+/** Native Photoshop image-resource blocks for layered PSD export. */
+export function buildPhotoshopMetadataResources(metadata?: ImageMetadata): Uint8Array[] {
+  const out: Uint8Array[] = []
+  const iptc = buildWritableIptc(metadata)
+  if (iptc?.length) out.push(photoshopResource(0x0404, iptc))
+  const xmp = buildWritableXmp(metadata)
+  if (xmp) out.push(photoshopResource(0x0424, utf8(xmp)))
+  return out
 }
 
 async function embedJpeg(blob: Blob, metadata: ImageMetadata | undefined, resolutionPpi: number): Promise<Blob> {
