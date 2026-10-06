@@ -1127,17 +1127,30 @@ export class Engine {
     const doc = this.activeDoc
     const src = id ? this.layerById(id) : this.activeLayer
     if (!doc || !src) return null
-    const copy: Layer = { ...src, id: uid(), name: `${src.name} copy`, _v: src._v + 1 }
-    if (src.transform) copy.transform = structuredClone(src.transform)
-    if (src.canvas) copy.canvas = cloneCanvas(src.canvas)
-    if (src.mask) copy.mask = cloneCanvas(src.mask)
-    if (src.source) copy.source = cloneCanvas(src.source)
-    copy.smartFilters = src.smartFilters.map(f => ({ ...f, id: uid() }))
-    if (src.adjustment) copy.adjustment = { ...src.adjustment, params: { ...src.adjustment.params } }
-    if (src.text) copy.text = { ...src.text }
-    if (src.shape) copy.shape = {
-      ...src.shape,
-      pathAnchors: src.shape.pathAnchors?.map(a => ({ ...a })),
+    const copy: Layer = {
+      ...src,
+      id: uid(),
+      name: `${src.name} copy`,
+      _v: src._v + 1,
+      canvas: src.canvas ? cloneCanvas(src.canvas) : null,
+      source: src.source ? cloneCanvas(src.source) : null,
+      mask: src.mask ? cloneCanvas(src.mask) : null,
+      hdrPixels: src.hdrPixels ? new Float32Array(src.hdrPixels) : src.hdrPixels ?? null,
+      // A duplicate starts with no pending Canvas→HDR merge transaction.
+      _hdrPreviewBefore: null,
+      transform: src.transform ? structuredClone(src.transform) : null,
+      smartFilters: src.smartFilters.map(filter => ({
+        ...filter,
+        id: uid(),
+        params: structuredClone(filter.params),
+      })),
+      vectorMask: src.vectorMask ? structuredClone(src.vectorMask) : null,
+      adjustment: src.adjustment ? structuredClone(src.adjustment) : null,
+      text: src.text ? structuredClone(src.text) : null,
+      shape: src.shape ? structuredClone(src.shape) : null,
+      blendIf: src.blendIf ? structuredClone(src.blendIf) : null,
+      fx: src.fx ? structuredClone(src.fx) : null,
+      psdAdditionalInfo: src.psdAdditionalInfo ? [...src.psdAdditionalInfo] : undefined,
     }
     const idx = doc.layers.findIndex(l => l.id === src.id)
     doc.layers.splice(idx + 1, 0, copy)
