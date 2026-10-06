@@ -1,11 +1,15 @@
 'use client'
 
-import { useMemo } from 'react'
-import { Crosshair, Download, Info, Ruler, Save, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { BookmarkPlus, Crosshair, Download, Info, Ruler, Save, Trash2 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { readColor } from '../../tools/color-readout'
-import { saveCurrentMeasurement } from '../../tools/measure'
+import { refreshMeasurementReadout, saveCurrentMeasurement } from '../../tools/measure'
+import {
+  allMeasurementScalePresets, deleteMeasurementScalePreset, loadMeasurementScalePresets,
+  matchingMeasurementScalePreset, saveMeasurementScalePreset, type MeasurementScalePreset, type MeasurementUnit,
+} from '../../tools/measure-scale-presets'
 
 function measurementValue(totalPx: number, unit: string, pixelsPerUnit: number) {
   return unit === 'px' ? `${totalPx.toFixed(1)} px` : `${(totalPx / Math.max(.001, pixelsPerUnit)).toFixed(3)} ${unit}`
@@ -40,8 +44,10 @@ function exportMeasurementsCsv() {
 export function InfoPanel() {
   const tick = useEditorStore(s => s.renderTick)
   const opts = useEditorStore(s => s.toolOptions['color-sampler'] ?? {})
+  const measureOpts = useEditorStore(s => s.toolOptions['measure'] ?? {})
   const setOpt = useEditorStore(s => s.setToolOption)
   const setTool = useEditorStore(s => s.setTool)
+  const [customScalePresets, setCustomScalePresets] = useState(() => loadMeasurementScalePresets())
   void tick
 
   const doc = engine.activeDoc
@@ -50,6 +56,44 @@ export function InfoPanel() {
   const scope = opts.sample === 'layer' ? 'layer' : 'composite'
   const sampleSize = Math.max(1, Number(opts.radius) || 1)
   const radius = Math.max(0, Math.floor((sampleSize - 1) / 2))
+  const measureUnit = (measureOpts.unit === 'mm' || measureOpts.unit === 'cm' || measureOpts.unit === 'in'
+    ? measureOpts.unit
+    : 'px') as MeasurementUnit
+  const measureUsesDocResolution = measureOpts.useDocResolution !== false
+  const measurePixelsPerUnit = Math.max(.001, Number(measureOpts.pixelsPerUnit) || 1)
+  const scalePresets = useMemo(() => allMeasurementScalePresets(customScalePresets), [customScalePresets])
+  const matchingScalePreset = matchingMeasurementScalePreset(scalePresets, {
+    unit: measureUnit,
+    useDocResolution: measureUsesDocResolution,
+    pixelsPerUnit: measurePixelsPerUnit,
+  })
+  const scaleSummary = measureUnit === 'px'
+    ? 'Pixel scale · 1 px = 1 px'
+    : measureUsesDocResolution
+      ? `Document resolution · ${Math.round((doc?.resolutionPpi ?? 72) * 100) / 100} PPI · ${measureUnit}`
+      : `Custom scale · ${measurePixelsPerUnit.toFixed(4)} px / ${measureUnit}`
+
+  const applyScalePreset = (preset: MeasurementScalePreset) => {
+    setOpt('measure', 'unit', preset.unit)
+    setOpt('measure', 'useDocResolution', preset.useDocResolution)
+    setOpt('measure', 'pixelsPerUnit', preset.pixelsPerUnit)
+    refreshMeasurementReadout()
+  }
+
+  const saveScalePreset = () => {
+    const name = prompt('Measurement scale preset name:', `Scale ${customScalePresets.length + 1}`)?.trim()
+    if (!name) return
+    setCustomScalePresets(saveMeasurementScalePreset(name, {
+      unit: measureUnit,
+      useDocResolution: measureUsesDocResolution,
+      pixelsPerUnit: measurePixelsPerUnit,
+    }))
+  }
+
+  const deleteScalePreset = () => {
+    if (!matchingScalePreset || matchingScalePreset.builtin) return
+    setCustomScalePresets(deleteMeasurementScalePreset(matchingScalePreset.id))
+  }
 
   const rows = useMemo(() => samplers.map((p, index) => {
     const hex = engine.sampleColor(p.x, p.y, scope, radius) ?? '#000000'
@@ -174,6 +218,49 @@ export function InfoPanel() {
           >
             <Download size={12} /> CSV
           </button>
+        </div>
+
+        <div className="p-2 border-t border-border/60 space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <select
+              value={matchingScalePreset?.id ?? ''}
+              onChange={e => {
+                const preset = scalePresets.find(p => p.id === e.target.value)
+                if (preset) applyScalePreset(preset)
+              }}
+              className="min-w-0 flex-1 h-7 rounded border border-border bg-background px-1.5 text-[10px]"
+              aria-label="Measurement scale preset"
+            >
+              <option value="">Current / custom scale</option>
+              <optgroup label="Built-in">
+                {scalePresets.filter(p => p.builtin).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </optgroup>
+              {!!customScalePresets.length && (
+                <optgroup label="Saved">
+                  {customScalePresets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </optgroup>
+              )}
+            </select>
+            <button
+              className="h-7 px-2 rounded border border-border hover:bg-accent flex items-center gap-1 text-[10px]"
+              onClick={saveScalePreset}
+              title="Save current measurement scale as a named preset"
+            >
+              <BookmarkPlus size={11} /> Scale
+            </button>
+            <button
+              className="h-7 w-7 rounded border border-border hover:bg-destructive/10 hover:text-destructive grid place-items-center disabled:opacity-35 disabled:pointer-events-none"
+              disabled={!matchingScalePreset || !!matchingScalePreset.builtin}
+              onClick={deleteScalePreset}
+              title="Delete selected custom scale preset"
+              aria-label="Delete measurement scale preset"
+            >
+              <Trash2 size={11} />
+            </button>
+          </div>
+          <div className="text-[9px] text-muted-foreground tabular-nums">
+            {scaleSummary}
+          </div>
         </div>
 
         <div className="max-h-48 overflow-auto border-t border-border/60">
