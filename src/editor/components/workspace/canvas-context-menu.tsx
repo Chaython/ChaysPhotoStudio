@@ -75,7 +75,7 @@ export function CanvasLayerMenuContent({ layerId }: { layerId: string }) {
         <Copy />
         Copy Layer Style
       </ContextMenuItem>
-      <ContextMenuItem disabled={!engine.canPasteLayerStyle} onClick={act(() => engine.pasteLayerStyle(layer.id))}>
+      <ContextMenuItem disabled={!pixelLayer || !engine.canPasteLayerStyle} onClick={act(() => engine.pasteLayerStyle(layer.id))}>
         <ClipboardPaste />
         Paste Layer Style
       </ContextMenuItem>
