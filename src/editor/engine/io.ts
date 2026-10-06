@@ -223,6 +223,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     resolutionPpi: decoded.resolutionPpi,
+    metadata,
   })
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
   engine.docs.push(doc)
