@@ -744,7 +744,7 @@ export interface ToolDef {
 
 // ---------- Dialogs ----------
 export type DialogType =
-  | 'new-doc' | 'image-size' | 'canvas-size' | 'export' | 'export-layers' | 'transform' | 'apply-image' | 'calculations'
+  | 'new-doc' | 'image-size' | 'canvas-size' | 'export' | 'export-layers' | 'duplicate-layer' | 'transform' | 'apply-image' | 'calculations'
   | 'curves' | 'levels' | 'brightness-contrast' | 'exposure' | 'vibrance'
   | 'hue-saturation' | 'color-balance' | 'black-white' | 'photo-filter'
   | 'channel-mixer' | 'selective-color' | 'gradient-map' | 'posterize'
