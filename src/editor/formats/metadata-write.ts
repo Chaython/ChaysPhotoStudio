@@ -36,7 +36,11 @@ export function hasWritableMetadata(metadata?: ImageMetadata): boolean {
     (e.keywords?.some(v => clean(v))) || clean(e.headline) || clean(e.credit) ||
     clean(e.source) || clean(e.instructions) || clean(e.copyright) ||
     (e.copyrightStatus && e.copyrightStatus !== 'unknown') || clean(e.copyrightUrl) ||
-    clean(e.city) || clean(e.state) || clean(e.country) || clean(e.countryCode) ||
+    clean(e.city) || clean(e.state) || clean(e.country) || clean(e.countryCode) || clean(e.sublocation) ||
+    clean(e.creatorAddress) || clean(e.creatorCity) || clean(e.creatorState) || clean(e.creatorPostalCode) ||
+    clean(e.creatorCountry) || clean(e.creatorPhone) || clean(e.creatorEmail) || clean(e.creatorWebsite) ||
+    clean(e.rightsUsageTerms) || clean(e.event) || (e.peopleShown?.some(v => clean(v))) ||
+    clean(e.intellectualGenre) || (e.sceneCodes?.some(v => clean(v))) || (e.subjectCodes?.some(v => clean(v))) ||
     clean(e.jobIdentifier) || Number.isFinite(e.rating)
   )
 }
@@ -62,6 +66,21 @@ function bag(name: string, values: string[]): string {
   return '<' + name + '><rdf:Bag>' + values.map(v => '<rdf:li>' + xml(v) + '</rdf:li>').join('') + '</rdf:Bag></' + name + '>'
 }
 
+function creatorContactInfo(e: EditableImageMetadata): string {
+  const values: [string, string][] = [
+    ['Iptc4xmpCore:CiAdrExtadr', clean(e.creatorAddress)],
+    ['Iptc4xmpCore:CiAdrCity', clean(e.creatorCity)],
+    ['Iptc4xmpCore:CiAdrRegion', clean(e.creatorState)],
+    ['Iptc4xmpCore:CiAdrPcode', clean(e.creatorPostalCode)],
+    ['Iptc4xmpCore:CiAdrCtry', clean(e.creatorCountry)],
+    ['Iptc4xmpCore:CiTelWork', clean(e.creatorPhone)],
+    ['Iptc4xmpCore:CiEmailWork', clean(e.creatorEmail)],
+    ['Iptc4xmpCore:CiUrlWork', clean(e.creatorWebsite)],
+  ]
+  const body = values.filter(([, value]) => value).map(([name, value]) => '<' + name + '>' + xml(value) + '</' + name + '>').join('')
+  return body ? '<Iptc4xmpCore:CreatorContactInfo rdf:parseType="Resource">' + body + '</Iptc4xmpCore:CreatorContactInfo>' : ''
+}
+
 /** Build a clean XMP packet from the editable File Info model.
  * Source camera/GPS EXIF is intentionally not copied into new exports. */
 export function buildWritableXmp(metadata?: ImageMetadata): string | undefined {
@@ -76,6 +95,15 @@ export function buildWritableXmp(metadata?: ImageMetadata): string | undefined {
   const keywords = Array.from(new Set((e.keywords ?? []).map(clean).filter(Boolean)))
   if (keywords.length) body.push(bag('dc:subject', keywords))
   if (clean(e.copyright)) body.push(alt('dc:rights', clean(e.copyright)))
+  if (clean(e.rightsUsageTerms)) body.push(alt('xmpRights:UsageTerms', clean(e.rightsUsageTerms)))
+  const contact = creatorContactInfo(e)
+  if (contact) body.push(contact)
+  const peopleShown = Array.from(new Set((e.peopleShown ?? []).map(clean).filter(Boolean)))
+  if (peopleShown.length) body.push(bag('Iptc4xmpExt:PersonInImage', peopleShown))
+  const sceneCodes = Array.from(new Set((e.sceneCodes ?? []).map(clean).filter(Boolean)))
+  if (sceneCodes.length) body.push(bag('Iptc4xmpCore:Scene', sceneCodes))
+  const subjectCodes = Array.from(new Set((e.subjectCodes ?? []).map(clean).filter(Boolean)))
+  if (subjectCodes.length) body.push(bag('Iptc4xmpCore:SubjectCode', subjectCodes))
 
   if (clean(e.authorTitle)) attrs.push('photoshop:AuthorsPosition="' + xml(clean(e.authorTitle)) + '"')
   if (clean(e.headline)) attrs.push('photoshop:Headline="' + xml(clean(e.headline)) + '"')
@@ -87,6 +115,9 @@ export function buildWritableXmp(metadata?: ImageMetadata): string | undefined {
   if (clean(e.country)) attrs.push('photoshop:Country="' + xml(clean(e.country)) + '"')
   if (clean(e.jobIdentifier)) attrs.push('photoshop:TransmissionReference="' + xml(clean(e.jobIdentifier)) + '"')
   if (clean(e.countryCode)) attrs.push('Iptc4xmpCore:CountryCode="' + xml(clean(e.countryCode).toUpperCase()) + '"')
+  if (clean(e.sublocation)) attrs.push('Iptc4xmpCore:Location="' + xml(clean(e.sublocation)) + '"')
+  if (clean(e.intellectualGenre)) attrs.push('Iptc4xmpCore:IntellectualGenre="' + xml(clean(e.intellectualGenre)) + '"')
+  if (clean(e.event)) attrs.push('Iptc4xmpExt:Event="' + xml(clean(e.event)) + '"')
   if (clean(e.copyrightUrl)) attrs.push('xmpRights:WebStatement="' + xml(clean(e.copyrightUrl)) + '"')
   if (e.copyrightStatus === 'copyrighted') attrs.push('xmpRights:Marked="True"')
   if (e.copyrightStatus === 'public-domain') attrs.push('xmpRights:Marked="False"')
@@ -102,6 +133,7 @@ export function buildWritableXmp(metadata?: ImageMetadata): string | undefined {
     ' xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"',
     ' xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/"',
     ' xmlns:Iptc4xmpCore="http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/"',
+    ' xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/"',
     attrs.length ? ' ' + attrs.join(' ') : '',
     '>',
     body.join(''),
@@ -133,11 +165,13 @@ export function buildWritableIptc(metadata?: ImageMetadata): Uint8Array | undefi
     if (v) parts.push(iptcDataset(2, dataset, v))
   }
   add(5, e.title)
+  for (const subject of Array.from(new Set((e.subjectCodes ?? []).map(clean).filter(Boolean)))) add(12, subject)
   for (const keyword of Array.from(new Set((e.keywords ?? []).map(clean).filter(Boolean)))) add(25, keyword)
   add(40, e.instructions)
   add(80, e.author)
   add(85, e.authorTitle)
   add(90, e.city)
+  add(92, e.sublocation)
   add(95, e.state)
   add(100, clean(e.countryCode).toUpperCase())
   add(101, e.country)
