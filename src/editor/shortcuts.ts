@@ -45,7 +45,7 @@ export type CommandId =
   // Select
   | 'selectAll' | 'deselect' | 'invertSelection' | 'selectMask'
   // View
-  | 'toggleRulers' | 'toggleGuides' | 'toggleGrid' | 'toggleSnapGrid'
+  | 'toggleRulers' | 'toggleGuides' | 'toggleGrid' | 'toggleSnapGrid' | 'proofColors' | 'gamutWarning'
   | 'zoomIn' | 'zoomOut' | 'zoomFit' | 'zoomFitContent' | 'zoom100'
 
 export interface CommandDef {
@@ -81,7 +81,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'export', label: 'Export As…', section: 'File', defaultCombo: 'ctrl+shift+alt+e', run: () => openDlg('export') },
   // ---- Edit ----
   { id: 'undo', label: 'Undo', section: 'Edit', defaultCombo: 'ctrl+z', run: () => engine.undo() },
-  { id: 'redo', label: 'Redo', section: 'Edit', defaultCombo: 'ctrl+shift+z', aliases: ['ctrl+y'], run: () => engine.redo() },
+  { id: 'redo', label: 'Redo', section: 'Edit', defaultCombo: 'ctrl+shift+z', run: () => engine.redo() },
   { id: 'copy', label: 'Copy Layer', section: 'Edit', defaultCombo: 'ctrl+c', run: () => engine.copyLayer(false) },
   { id: 'copyMerged', label: 'Copy Merged', section: 'Edit', defaultCombo: 'ctrl+shift+c', run: () => engine.copyLayer(true) },
   { id: 'cut', label: 'Cut', section: 'Edit', defaultCombo: 'ctrl+x', run: () => engine.cutLayer() },
@@ -115,6 +115,8 @@ export const COMMANDS: CommandDef[] = [
   { id: 'toggleGuides', label: 'Toggle Guides', section: 'View', defaultCombo: 'ctrl+;', run: () => store().setViewPref('showGuides', !store().view.showGuides) },
   { id: 'toggleGrid', label: 'Toggle Grid', section: 'View', defaultCombo: "ctrl+'", run: () => store().setViewPref('showGrid', !store().view.showGrid) },
   { id: 'toggleSnapGrid', label: 'Snap to Grid', section: 'View', defaultCombo: "ctrl+shift+'", run: () => store().setViewPref('snapGrid', !store().view.snapGrid) },
+  { id: 'proofColors', label: 'Proof Colors', section: 'View', defaultCombo: 'ctrl+y', run: () => engine.toggleProofColors() },
+  { id: 'gamutWarning', label: 'Gamut Warning', section: 'View', defaultCombo: 'ctrl+shift+y', run: () => engine.toggleGamutWarning() },
   { id: 'zoomIn', label: 'Zoom In', section: 'View', defaultCombo: 'ctrl+=', aliases: ['ctrl+shift+='], run: () => engine.zoomBy(1.25) },
   { id: 'zoomOut', label: 'Zoom Out', section: 'View', defaultCombo: 'ctrl+-', run: () => engine.zoomBy(1 / 1.25) },
   { id: 'zoomFit', label: 'Fit on Screen', section: 'View', defaultCombo: 'ctrl+0', run: () => viewport()?.fit() },
