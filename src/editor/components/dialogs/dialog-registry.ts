@@ -16,6 +16,7 @@ import { ObjectDetectDialog } from './object-detect-dialog'
 import { ShortcutsDialog } from './shortcuts-dialog'
 import { ToolbarCustomizeDialog } from './toolbar-dialog'
 import { RecoveryDialog } from './recovery-dialog'
+import { ExportLayersDialog } from './export-layers-dialog'
 import {
   ColorRangeDialog, SelectMaskDialog, ContentAwareFillDialog, BatchDialog,
   ScriptConsoleDialog, AboutDialog,
@@ -58,6 +59,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'detect-objects': ObjectDetectDialog,
   'canvas-size': CanvasSizeDialog,
   'export': ExportDialog,
+  'export-layers': ExportLayersDialog,
   'transform': TransformDialog,
   'color-range': ColorRangeDialog,
   'select-mask': SelectMaskDialog,

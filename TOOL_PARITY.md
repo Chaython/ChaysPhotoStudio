@@ -50,6 +50,10 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 | Hand | Space-drag temporary pan, dedicated Hand tool, double-click Fit on Screen, optional flick/inertial panning with configurable friction | Additional touch/trackpad gesture preferences |
 | Zoom | Click zoom, Alt zoom-out, scrubby zoom, cursor-centered zoom, drag-rectangle zoom when Scrubby is off, double-click 100%, optional desktop Resize Window to Fit | More platform-specific trackpad/gesture tuning |
 
+## Export workflows
+
+**Export Layers to Files** renders each exportable raster, Smart Object, text, or shape layer through the normal compositor, preserving masks, vector masks, opacity, Blend-If and Layer Styles. It can export visible layers only, trim transparent bounds, include or strip File Info metadata, choose PNG/JPEG/WebP quality, and use a folder picker where supported with multi-download fallback elsewhere. Adjustment layers are skipped because they have no standalone pixels; isolated clipped layers are exported as independent artwork rather than disappearing without their clipping base.
+
 ## Photoshop workflow features
 
 | Feature | Current Photoshop-style behavior | Remaining deeper work |

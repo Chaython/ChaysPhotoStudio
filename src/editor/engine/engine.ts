@@ -868,6 +868,33 @@ export class Engine {
     this.emit()
   }
 
+  /** Render one layer in isolation to a detached document-size canvas.
+   * Uses the normal compositor so masks, vector masks, opacity, Blend-If and
+   * Layer FX match the document renderer. The live document is restored exactly. */
+  renderIsolatedLayer(id: string): HTMLCanvasElement | null {
+    const doc = this.activeDoc
+    const target = doc?.layers.find(layer => layer.id === id)
+    if (!doc || !target || target.kind === 'adjustment') return null
+    const saved = this.captureState(doc, 'Layer Export Restore')
+    const savedActiveCompId = doc.activeLayerCompId ?? null
+    const savedLastState = doc.lastLayerCompState ?? null
+    const savedDirty = doc.dirty
+    try {
+      for (const layer of doc.layers) {
+        layer.visible = layer.id === id
+        if (layer.id === id) layer.clipped = false
+        layer._v++
+      }
+      invalidateFlat(doc)
+      return cloneCanvas(compositeDocument(doc))
+    } finally {
+      this.restoreState(doc, saved)
+      doc.activeLayerCompId = savedActiveCompId
+      doc.lastLayerCompState = savedLastState
+      doc.dirty = savedDirty
+    }
+  }
+
   /** Render one Layer Comp to a detached canvas without changing the visible
    * document, History stack, dirty flag, active comp, or Last Document State. */
   renderLayerComp(id: string): HTMLCanvasElement | null {
