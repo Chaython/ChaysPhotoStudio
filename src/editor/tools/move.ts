@@ -16,6 +16,8 @@ let movingIds: string[] = []
 let groupMove: { ids: string[]; lastDx: number; lastDy: number; startBounds: Rect } | null = null
 let smartGuideX: number | null = null
 let smartGuideY: number | null = null
+let smartSpacingX = false
+let smartSpacingY = false
 
 function unionRects(rects: Rect[]): Rect | null {
   if (!rects.length) return null
@@ -28,8 +30,10 @@ function unionRects(rects: Rect[]): Rect | null {
 
 function smartSnapRect(rect: Rect, dx: number, dy: number, moving: string[], zoom: number): { dx: number; dy: number } {
   const doc = engine.activeDoc
+  smartSpacingX = smartSpacingY = false
   if (!doc || getOptions('move').smartGuides === false) {
     smartGuideX = smartGuideY = null
+    smartSpacingX = smartSpacingY = false
     return { dx, dy }
   }
   const tol = 8 / Math.max(.02, zoom)
@@ -38,10 +42,12 @@ function smartSnapRect(rect: Rect, dx: number, dy: number, moving: string[], zoo
   const my = [moved.y, moved.y + moved.h / 2, moved.y + moved.h]
   const xs: number[] = [0, doc.width / 2, doc.width]
   const ys: number[] = [0, doc.height / 2, doc.height]
+  const others: Rect[] = []
   for (const l of doc.layers) {
     if (!l.visible || moving.includes(l.id) || l.kind === 'adjustment') continue
     const r = engine.layerContentRect(l.id)
-    if (!r) continue
+    if (!r || r.w <= 0 || r.h <= 0) continue
+    others.push(r)
     xs.push(r.x, r.x + r.w / 2, r.x + r.w)
     ys.push(r.y, r.y + r.h / 2, r.y + r.h)
   }
@@ -56,6 +62,64 @@ function smartSnapRect(rect: Rect, dx: number, dy: number, moving: string[], zoo
   }
   if (snapX !== null) dx += bestX
   if (snapY !== null) dy += bestY
+
+  // Photoshop-style equal-spacing inference: when the moving bounds are
+  // already between two visible neighbors, snap to the midpoint that makes
+  // the two gaps identical. Edge/center alignment remains higher priority.
+  if (snapX === null) {
+    const mx0 = rect.x + dx
+    const mx1 = mx0 + rect.w
+    const my0 = rect.y + dy
+    const my1 = my0 + rect.h
+    let left: Rect | null = null
+    let right: Rect | null = null
+    for (const other of others) {
+      if (Math.min(my1, other.y + other.h) <= Math.max(my0, other.y)) continue
+      const otherRight = other.x + other.w
+      if (otherRight <= mx0 && (!left || otherRight > left.x + left.w)) left = other
+      if (other.x >= mx1 && (!right || other.x < right.x)) right = other
+    }
+    if (left && right) {
+      const leftEdge = left.x + left.w
+      const available = right.x - leftEdge
+      if (available >= rect.w) {
+        const targetX = leftEdge + (available - rect.w) / 2
+        const correction = targetX - mx0
+        if (Math.abs(correction) <= tol) {
+          dx += correction
+          smartSpacingX = true
+        }
+      }
+    }
+  }
+
+  if (snapY === null) {
+    const mx0 = rect.x + dx
+    const mx1 = mx0 + rect.w
+    const my0 = rect.y + dy
+    const my1 = my0 + rect.h
+    let above: Rect | null = null
+    let below: Rect | null = null
+    for (const other of others) {
+      if (Math.min(mx1, other.x + other.w) <= Math.max(mx0, other.x)) continue
+      const otherBottom = other.y + other.h
+      if (otherBottom <= my0 && (!above || otherBottom > above.y + above.h)) above = other
+      if (other.y >= my1 && (!below || other.y < below.y)) below = other
+    }
+    if (above && below) {
+      const topEdge = above.y + above.h
+      const available = below.y - topEdge
+      if (available >= rect.h) {
+        const targetY = topEdge + (available - rect.h) / 2
+        const correction = targetY - my0
+        if (Math.abs(correction) <= tol) {
+          dy += correction
+          smartSpacingY = true
+        }
+      }
+    }
+  }
+
   smartGuideX = snapX
   smartGuideY = snapY
   return { dx, dy }
@@ -448,15 +512,19 @@ export const moveTool: Tool = {
       }
       ;({ dx, dy } = smartSnapRect(groupMove.startBounds, dx, dy, groupMove.ids, doc.view.zoom))
       const prefs = useEditorStore.getState().view
+      let snappedX = smartGuideX !== null || smartSpacingX
+      let snappedY = smartGuideY !== null || smartSpacingY
       if (prefs.snapGuides && doc.guides?.length) {
         const s = snapToGuides(doc, doc.view, drag.startX + dx, drag.startY + dy, 8)
         dx = Math.round(s.x - drag.startX)
         dy = Math.round(s.y - drag.startY)
+        snappedX ||= s.snappedX
+        snappedY ||= s.snappedY
       }
       if (prefs.snapGrid && (prefs.gridSize ?? 0) > 0) {
         const gs = prefs.gridSize as number
-        dx = Math.round(dx / gs) * gs
-        dy = Math.round(dy / gs) * gs
+        if (!snappedX) dx = Math.round(dx / gs) * gs
+        if (!snappedY) dy = Math.round(dy / gs) * gs
       }
       const incX = dx - groupMove.lastDx
       const incY = dy - groupMove.lastDy
@@ -493,10 +561,10 @@ export const moveTool: Tool = {
     if (movingRect) {
       const s = smartSnapRect(movingRect, dx, dy, movingIds, doc.view.zoom)
       dx = Math.round(s.dx); dy = Math.round(s.dy)
-      if (smartGuideX !== null) snappedX = true
-      if (smartGuideY !== null) snappedY = true
+      if (smartGuideX !== null || smartSpacingX) snappedX = true
+      if (smartGuideY !== null || smartSpacingY) snappedY = true
     }
-    if (prefs.snapGrid && (prefs.gridSize ?? 0) > 0 && !snappedX && !snappedY) {
+    if (prefs.snapGrid && (prefs.gridSize ?? 0) > 0) {
       const gs = prefs.gridSize as number
       const t = 8 / doc.view.zoom // 8 screen px → doc px
       const base = engine.layerById(movingIds[0])
@@ -511,8 +579,8 @@ export const moveTool: Tool = {
       else if (base?.shape) { ex = base.shape.x; ey = base.shape.y }
       const nx = Math.round((ex + dx) / gs) * gs
       const ny = Math.round((ey + dy) / gs) * gs
-      if (Math.abs(ex + dx - nx) <= t) dx += nx - (ex + dx)
-      if (Math.abs(ey + dy - ny) <= t) dy += ny - (ey + dy)
+      if (!snappedX && Math.abs(ex + dx - nx) <= t) dx += nx - (ex + dx)
+      if (!snappedY && Math.abs(ey + dy - ny) <= t) dy += ny - (ey + dy)
     }
     if (dx === live.dx && dy === live.dy) return // no change → no recomposite
     live.dx = dx
@@ -562,6 +630,7 @@ export const moveTool: Tool = {
 
       movingIds = []
       smartGuideX = smartGuideY = null
+      smartSpacingX = smartSpacingY = false
       return
     }
 
@@ -572,6 +641,7 @@ export const moveTool: Tool = {
       groupMove = null
       movingIds = []
       smartGuideX = smartGuideY = null
+      smartSpacingX = smartSpacingY = false
       if (moved) {
         engine.pushHistory(ids.length > 1 ? 'Move Layers' : 'Move')
         engine.emit()
@@ -651,6 +721,7 @@ export const moveTool: Tool = {
     }
     movingIds = []
     smartGuideX = smartGuideY = null
+      smartSpacingX = smartSpacingY = false
   },
 
   onKeyDown(e: KeyboardEvent) {
@@ -664,6 +735,7 @@ export const moveTool: Tool = {
       groupMove = null
       movingIds = []
       smartGuideX = smartGuideY = null
+      smartSpacingX = smartSpacingY = false
       engine.requestRender()
       return true
     }
@@ -678,6 +750,7 @@ export const moveTool: Tool = {
       tdrag = null
       movingIds = []
       smartGuideX = smartGuideY = null
+      smartSpacingX = smartSpacingY = false
       engine.requestRender()
       return true
     }
@@ -707,6 +780,7 @@ export const moveTool: Tool = {
 
   onDeactivate() {
     smartGuideX = smartGuideY = null
+      smartSpacingX = smartSpacingY = false
   },
 }
 
