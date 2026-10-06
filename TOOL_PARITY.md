@@ -60,6 +60,10 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 
 **Image → Calculations…** combines two independent open-document sources, each selecting Merged or an individual layer plus Gray/Red/Green/Blue/Transparency, any saved alpha channel, and optional inversion. Results support the editor's blend modes plus Subtract, opacity, optional active-selection limiting, and destinations of Selection, New Channel, or New Document. New Channel uses a direct alpha-channel API and does not replace the active selection. Different-sized documents align at document origin and clip to the active document. Apply Image and Calculations both guard 32-bit HDR until their blend math can operate directly on authoritative scene-linear Float32 pixels. Linear Dodge (Add) now maps to Canvas2D's standards-compliant `lighter` operation instead of the invalid `add` keyword.
 
+## Layer Matting
+
+**Layer → Matting** now includes Photoshop-style **Defringe**, **Remove Black Matte**, and **Remove White Matte**, also available from the canvas and Layers-panel context menus. Matte removal analytically reverses compositing against the known black/white matte while preserving alpha. Defringe grows trusted near-opaque interior colors outward into the requested anti-aliased fringe width without changing transparency. All three commands preserve native raster offsets, respect the active selection, use the 8/16-bit processing path, rasterize pixel-capable vector/text/Smart Object targets through the normal mutation flow, and explicitly guard 32-bit HDR until scene-linear Float32 matting is available.
+
 ## Photoshop workflow features
 
 | Feature | Current Photoshop-style behavior | Remaining deeper work |
