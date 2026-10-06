@@ -4,6 +4,9 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- File Info is now editable for imported and new documents, with Photoshop-style title/caption, author, keywords, credit/source, copyright, location, job ID and rating fields that persist in project files.
+- PNG, JPEG, WebP, TIFF and layered PSD exports can write edited XMP/IPTC metadata and document PPI; Export As, Batch/Image Processor and Layer Comp export include explicit metadata controls, while Quick Export and scripting preserve File Info by default.
+- Browser-native image imports now derive document resolution from EXIF/PNG physical-resolution metadata instead of silently falling back to 72 PPI. Source camera/GPS EXIF remains view-only and is not automatically copied into edited exports.
 - Added an ExifGlass-style dockable **Metadata / File Info** inspector that reads original source bytes before decoding and exposes searchable EXIF/TIFF, GPS, XMP, IPTC, ICC, JPEG/PNG/WebP/PSD and Photoshop resource metadata, with raw XMP, copy tools and JSON export.
 - Source metadata now persists with project files (project format v5) and duplicated documents; **File > File Info / Metadata…** and **Window > Metadata** expose the inspector while older v1-v4 projects remain compatible.
 - Fixed the Properties panel incorrectly reporting every document as RGB/8; it now reports actual working color space, 8/16/32-bit depth and PPI.
