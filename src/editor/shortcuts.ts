@@ -41,7 +41,7 @@ export type CommandId =
   | 'imageSize' | 'canvasSize' | 'aiUpscale' | 'liquify'
   | 'autoTone' | 'autoContrast' | 'autoColor'
   // Layer
-  | 'toggleClipping'
+  | 'toggleClipping' | 'layerViaCut'
   // Select
   | 'selectAll' | 'deselect' | 'invertSelection' | 'selectMask'
   // View
@@ -90,7 +90,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'fillBg', label: 'Fill with Background', section: 'Edit', defaultCombo: 'ctrl+backspace', run: () => engine.fillSelection(store().bgColor) },
   { id: 'clearSelection', label: 'Clear Selection Pixels', section: 'Edit', defaultCombo: 'delete', aliases: ['backspace'], run: () => { if (engine.activeDoc) engine.deleteSelectionPixels() } },
   { id: 'invert', label: 'Invert (Adjustment)', section: 'Edit', defaultCombo: 'ctrl+i', run: () => { const l = engine.activeLayer; if (l) engine.applyAdjustmentToLayer(l.id, 'invert', {}) } },
-  { id: 'duplicateLayer', label: 'Duplicate Layer', section: 'Edit', defaultCombo: 'ctrl+j', run: () => { const l = engine.activeLayer; if (l) engine.duplicateLayer(l.id) } },
+  { id: 'duplicateLayer', label: 'Layer via Copy / Duplicate Layer', section: 'Edit', defaultCombo: 'ctrl+j', run: () => { if (engine.activeLayer) engine.layerViaCopy() } },
   { id: 'newLayer', label: 'New Layer', section: 'Edit', defaultCombo: 'ctrl+shift+n', run: () => engine.addRasterLayer() },
   { id: 'transform', label: 'Free Transform…', section: 'Edit', defaultCombo: 'ctrl+t', run: () => openDlg('transform', { layerId: engine.activeLayer?.id }) },
   { id: 'mergeDown', label: 'Merge Down', section: 'Edit', defaultCombo: 'ctrl+e', run: () => engine.mergeDown() },
@@ -105,6 +105,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'autoColor', label: 'Auto Color', section: 'Image', defaultCombo: 'ctrl+shift+b', run: () => void engine.autoCorrectAsync('color') },
   // ---- Layer ----
   { id: 'toggleClipping', label: 'Create / Release Clipping Mask', section: 'Layer', defaultCombo: 'ctrl+alt+g', run: () => { const l = engine.activeLayer; if (l) engine.toggleClipping(l.id) } },
+  { id: 'layerViaCut', label: 'Layer via Cut', section: 'Layer', defaultCombo: 'ctrl+shift+j', run: () => { if (engine.activeLayer) engine.layerViaCut() } },
   // ---- Select ----
   { id: 'selectAll', label: 'Select All', section: 'Select', defaultCombo: 'ctrl+a', run: () => engine.selectAll() },
   { id: 'deselect', label: 'Deselect', section: 'Select', defaultCombo: 'ctrl+d', run: () => engine.deselect() },
