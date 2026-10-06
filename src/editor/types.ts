@@ -435,9 +435,13 @@ export interface HistoryState {
 
 /** Named, durable copy of a history state. Unlike the rolling History list,
  * snapshots are not discarded when old undo states are trimmed. */
+export type HistorySnapshotAutoPolicy = 'inherit' | 'always' | 'never'
+
 export interface HistorySnapshot {
   id: string
   name: string
+  /** Optional document-persistent note describing why this snapshot matters. */
+  note?: string
   time: number
   state: HistoryState
   /** Small persisted composite preview for the History panel. */
@@ -600,6 +604,8 @@ export interface PsDocument {
   historyBrushSourceIndex?: number
   /** Named durable History snapshots. */
   historySnapshots?: HistorySnapshot[]
+  /** Per-document override for the global automatic-first-snapshot preferences. */
+  historySnapshotAutoPolicy?: HistorySnapshotAutoPolicy
   /** When set, History/Art History Brush marked-source mode reads this snapshot instead of the rolling history index. */
   historyBrushSnapshotId?: string | null
   /** Photoshop-style Layer Comps stored with the document. */
