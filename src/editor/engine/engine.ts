@@ -5,7 +5,7 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec, ImageMetadata,
-  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, TransformWarpSpec,
+  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, HistorySnapshotAutoPolicy, TransformWarpSpec,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
@@ -636,15 +636,17 @@ export class Engine {
   createHistorySnapshot(
     name?: string,
     doc: PsDocument | null = this.activeDoc,
-    opts: { markDirty?: boolean } = {},
+    opts: { markDirty?: boolean; note?: string } = {},
   ): HistorySnapshot | null {
     if (!doc) return null
     const snapshots = doc.historySnapshots ?? (doc.historySnapshots = [])
     const fallback = `Snapshot ${snapshots.length + 1}`
     const label = (name ?? fallback).trim().slice(0, 80) || fallback
+    const note = typeof opts.note === 'string' ? opts.note.trim().slice(0, 2000) : ''
     const snap: HistorySnapshot = {
       id: uid(),
       name: label,
+      note: note || undefined,
       time: Date.now(),
       state: this.captureState(doc, label),
       thumbnail: this.historySnapshotThumbnail(doc),
@@ -660,12 +662,27 @@ export class Engine {
 
   maybeCreateAutomaticHistorySnapshot(kind: 'new' | 'open', doc: PsDocument | null = this.activeDoc): HistorySnapshot | null {
     if (!doc || (doc.historySnapshots?.length ?? 0) > 0) return null
+    const policy = doc.historySnapshotAutoPolicy ?? 'inherit'
     const prefs = loadHistorySnapshotPreferences()
-    if (kind === 'new' ? !prefs.autoNewDocument : !prefs.autoOpenedDocument) return null
+    const globalEnabled = kind === 'new' ? prefs.autoNewDocument : prefs.autoOpenedDocument
+    const enabled = policy === 'always' ? true : policy === 'never' ? false : globalEnabled
+    if (!enabled) return null
     const wasDirty = doc.dirty
     const snap = this.createHistorySnapshot(kind === 'new' ? 'New Document' : doc.name, doc, { markDirty: false })
     doc.dirty = wasDirty
     return snap
+  }
+
+  setDocumentHistorySnapshotPolicy(policy: HistorySnapshotAutoPolicy) {
+    const doc = this.activeDoc
+    if (!doc || !['inherit', 'always', 'never'].includes(policy)) return
+    if ((doc.historySnapshotAutoPolicy ?? 'inherit') === policy) return
+    doc.historySnapshotAutoPolicy = policy
+    doc.dirty = true
+    if (policy === 'always' && !(doc.historySnapshots?.length ?? 0)) {
+      this.createHistorySnapshot(doc.name || 'Current Document', doc, { markDirty: false })
+    }
+    this.emit()
   }
 
   renameHistorySnapshot(id: string, name: string) {
@@ -675,6 +692,17 @@ export class Engine {
     const next = name.trim().slice(0, 80)
     if (!next || next === snap.name) return
     snap.name = next
+    doc.dirty = true
+    this.emit()
+  }
+
+  setHistorySnapshotNote(id: string, note: string) {
+    const doc = this.activeDoc
+    const snap = doc?.historySnapshots?.find(s => s.id === id)
+    if (!doc || !snap) return
+    const next = note.trim().slice(0, 2000)
+    if ((snap.note ?? '') === next) return
+    snap.note = next || undefined
     doc.dirty = true
     this.emit()
   }

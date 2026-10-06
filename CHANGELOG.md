@@ -4,6 +4,7 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- History Snapshots now support project-persistent notes and a per-document automatic-first-snapshot policy (Use Global / Always / Never); the History panel shows notes inline and can edit them without changing the captured image state.
 - File Info is now editable for imported and new documents, with Photoshop-style title/caption, author, keywords, credit/source, copyright, location, job ID and rating fields that persist in project files.
 - PNG, JPEG, WebP, TIFF and layered PSD exports can write edited XMP/IPTC metadata and document PPI; Export As, Batch/Image Processor and Layer Comp export include explicit metadata controls, while Quick Export and scripting preserve File Info by default.
 - Browser-native image imports now derive document resolution from EXIF/PNG physical-resolution metadata instead of silently falling back to 72 PPI. Source camera/GPS EXIF remains view-only and is not automatically copied into edited exports.
