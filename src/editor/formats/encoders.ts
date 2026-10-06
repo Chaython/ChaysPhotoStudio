@@ -78,8 +78,29 @@ export function lzwEncodeTiff(src: Uint8Array | Uint8ClampedArray): Uint8Array {
   return out.subarray(0, op)
 }
 
+export interface TiffMetadataOptions {
+  resolutionPpi?: number
+  xmp?: Uint8Array
+}
+
+function writeTiffResolution(out: Uint8Array, offset: number, ppi: number) {
+  const view = new DataView(out.buffer, out.byteOffset, out.byteLength)
+  const denominator = 1000
+  const numerator = Math.max(1, Math.round(Math.max(1, ppi || 72) * denominator))
+  view.setUint32(offset, numerator, true)
+  view.setUint32(offset + 4, denominator, true)
+  view.setUint32(offset + 8, numerator, true)
+  view.setUint32(offset + 12, denominator, true)
+}
+
 /** baseline little-endian RGBA 8-bit strip TIFF (compression None or LZW) */
-export function encodeTiff(rgba: Uint8ClampedArray, width: number, height: number, lzw: boolean): Uint8Array {
+export function encodeTiff(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  lzw: boolean,
+  meta: TiffMetadataOptions = {},
+): Uint8Array {
   const bytesPerRow = width * 4
   const rowsPerStrip = Math.max(1, Math.min(height, Math.floor((1 << 20) / bytesPerRow) || 1))
   const numStrips = Math.ceil(height / rowsPerStrip)
@@ -91,49 +112,56 @@ export function encodeTiff(rgba: Uint8ClampedArray, width: number, height: numbe
     strips.push(lzw ? lzwEncodeTiff(raw) : raw)
   }
 
-  // tag set (ascending order, required by the spec)
-  const TAGS = [
-    { tag: 256, type: 4, count: 1 }, // ImageWidth
-    { tag: 257, type: 4, count: 1 }, // ImageLength
-    { tag: 258, type: 3, count: 4 }, // BitsPerSample = 8,8,8,8
-    { tag: 259, type: 3, count: 1 }, // Compression (1 | 5)
-    { tag: 262, type: 3, count: 1 }, // Photometric = 2 (RGB)
-    { tag: 273, type: 4, count: numStrips }, // StripOffsets
-    { tag: 277, type: 3, count: 1 }, // SamplesPerPixel = 4
-    { tag: 278, type: 4, count: 1 }, // RowsPerStrip
-    { tag: 279, type: 4, count: numStrips }, // StripByteCounts
-    { tag: 284, type: 3, count: 1 }, // PlanarConfiguration = 1
-    { tag: 338, type: 3, count: 1 }, // ExtraSamples = 2 (unassociated alpha)
-  ] as const
+  const tags: { tag: number; type: number; count: number }[] = [
+    { tag: 256, type: 4, count: 1 },
+    { tag: 257, type: 4, count: 1 },
+    { tag: 258, type: 3, count: 4 },
+    { tag: 259, type: 3, count: 1 },
+    { tag: 262, type: 3, count: 1 },
+    { tag: 273, type: 4, count: numStrips },
+    { tag: 277, type: 3, count: 1 },
+    { tag: 278, type: 4, count: 1 },
+    { tag: 279, type: 4, count: numStrips },
+    { tag: 284, type: 3, count: 1 },
+    { tag: 338, type: 3, count: 1 },
+  ]
+  const hasResolution = Number.isFinite(meta.resolutionPpi) && Number(meta.resolutionPpi) > 0
+  if (hasResolution) {
+    tags.push({ tag: 282, type: 5, count: 1 }, { tag: 283, type: 5, count: 1 }, { tag: 296, type: 3, count: 1 })
+  }
+  if (meta.xmp?.length) tags.push({ tag: 700, type: 1, count: meta.xmp.length })
+  tags.sort((a, b) => a.tag - b.tag)
 
   const ifdOff = 8
-  const ifdSize = 2 + TAGS.length * 12 + 4
-  const bitsOff = ifdOff + ifdSize                       // 8 bytes (4 × SHORT)
-  const stripOffArr = bitsOff + 8                        // 4 × numStrips
-  const countArr = stripOffArr + 4 * numStrips           // 4 × numStrips
-  const dataStart = (countArr + 4 * numStrips + 3) & ~3  // strip data (4-aligned)
+  const ifdSize = 2 + tags.length * 12 + 4
+  const bitsOff = ifdOff + ifdSize
+  const stripOffArr = bitsOff + 8
+  const countArr = stripOffArr + 4 * numStrips
+  let extra = countArr + 4 * numStrips
+  const resolutionOff = hasResolution ? ((extra + 3) & ~3) : 0
+  if (hasResolution) extra = resolutionOff + 16
+  const xmpOff = meta.xmp?.length ? ((extra + 3) & ~3) : 0
+  if (meta.xmp?.length) extra = xmpOff + meta.xmp.length
+  const dataStart = (extra + 3) & ~3
 
   const stripOffsets: number[] = []
   let acc = dataStart
   for (const s of strips) { stripOffsets.push(acc); acc += s.length }
-  const total = acc
-
-  const out = new Uint8Array(total)
+  const out = new Uint8Array(acc)
   const view = new DataView(out.buffer)
-  // (TIFF is little-endian — every DataView write needs the LE flag)
-  out.set([0x49, 0x49], 0)        // 'II' little-endian
+
+  out.set([0x49, 0x49], 0)
   view.setUint16(2, 42, true)
   view.setUint32(4, ifdOff, true)
-
-  // external value arrays
   for (let i = 0; i < 4; i++) view.setUint16(bitsOff + i * 2, 8, true)
   for (let s = 0; s < numStrips; s++) view.setUint32(stripOffArr + s * 4, stripOffsets[s], true)
   for (let s = 0; s < numStrips; s++) view.setUint32(countArr + s * 4, strips[s].length, true)
+  if (hasResolution) writeTiffResolution(out, resolutionOff, Number(meta.resolutionPpi))
+  if (meta.xmp?.length) out.set(meta.xmp, xmpOff)
 
-  // IFD
-  view.setUint16(ifdOff, TAGS.length, true)
+  view.setUint16(ifdOff, tags.length, true)
   let e = ifdOff + 2
-  for (const t of TAGS) {
+  for (const t of tags) {
     view.setUint16(e, t.tag, true)
     view.setUint16(e + 2, t.type, true)
     view.setUint32(e + 4, t.count, true)
@@ -148,14 +176,17 @@ export function encodeTiff(rgba: Uint8ClampedArray, width: number, height: numbe
       case 277: view.setUint16(field, 4, true); break
       case 278: view.setUint32(field, rowsPerStrip, true); break
       case 279: view.setUint32(field, numStrips > 1 ? countArr : strips[0]?.length ?? 0, true); break
+      case 282: view.setUint32(field, resolutionOff, true); break
+      case 283: view.setUint32(field, resolutionOff + 8, true); break
       case 284: view.setUint16(field, 1, true); break
+      case 296: view.setUint16(field, 2, true); break
       case 338: view.setUint16(field, 2, true); break
+      case 700: view.setUint32(field, xmpOff, true); break
     }
     e += 12
   }
-  view.setUint32(e, 0, true) // next IFD: none
+  view.setUint32(e, 0, true)
 
-  // strip data
   let o = dataStart
   for (const s of strips) { out.set(s, o); o += s.length }
   return out
@@ -164,7 +195,13 @@ export function encodeTiff(rgba: Uint8ClampedArray, width: number, height: numbe
 
 /** 16-bit/channel RGBA TIFF. Input samples are normalized floats (0..1),
  * typically from rgba-float16 Canvas ImageData. */
-export function encodeTiff16(rgba: ArrayLike<number>, width: number, height: number, lzw: boolean): Uint8Array {
+export function encodeTiff16(
+  rgba: ArrayLike<number>,
+  width: number,
+  height: number,
+  lzw: boolean,
+  meta: TiffMetadataOptions = {},
+): Uint8Array {
   const samplesPerPixel = 4
   const bytesPerRow = width * samplesPerPixel * 2
   const rowsPerStrip = Math.max(1, Math.min(height, Math.floor((1 << 20) / bytesPerRow) || 1))
@@ -186,7 +223,7 @@ export function encodeTiff16(rgba: ArrayLike<number>, width: number, height: num
     strips.push(lzw ? lzwEncodeTiff(raw) : raw)
   }
 
-  const TAGS = [
+  const tags: { tag: number; type: number; count: number }[] = [
     { tag: 256, type: 4, count: 1 },
     { tag: 257, type: 4, count: 1 },
     { tag: 258, type: 3, count: 4 },
@@ -198,14 +235,25 @@ export function encodeTiff16(rgba: ArrayLike<number>, width: number, height: num
     { tag: 279, type: 4, count: numStrips },
     { tag: 284, type: 3, count: 1 },
     { tag: 338, type: 3, count: 1 },
-  ] as const
+  ]
+  const hasResolution = Number.isFinite(meta.resolutionPpi) && Number(meta.resolutionPpi) > 0
+  if (hasResolution) {
+    tags.push({ tag: 282, type: 5, count: 1 }, { tag: 283, type: 5, count: 1 }, { tag: 296, type: 3, count: 1 })
+  }
+  if (meta.xmp?.length) tags.push({ tag: 700, type: 1, count: meta.xmp.length })
+  tags.sort((a, b) => a.tag - b.tag)
 
   const ifdOff = 8
-  const ifdSize = 2 + TAGS.length * 12 + 4
+  const ifdSize = 2 + tags.length * 12 + 4
   const bitsOff = ifdOff + ifdSize
   const stripOffArr = bitsOff + 8
   const countArr = stripOffArr + 4 * numStrips
-  const dataStart = (countArr + 4 * numStrips + 3) & ~3
+  let extra = countArr + 4 * numStrips
+  const resolutionOff = hasResolution ? ((extra + 3) & ~3) : 0
+  if (hasResolution) extra = resolutionOff + 16
+  const xmpOff = meta.xmp?.length ? ((extra + 3) & ~3) : 0
+  if (meta.xmp?.length) extra = xmpOff + meta.xmp.length
+  const dataStart = (extra + 3) & ~3
   const stripOffsets: number[] = []
   let acc = dataStart
   for (const strip of strips) { stripOffsets.push(acc); acc += strip.length }
@@ -220,9 +268,12 @@ export function encodeTiff16(rgba: ArrayLike<number>, width: number, height: num
     view.setUint32(stripOffArr + s * 4, stripOffsets[s], true)
     view.setUint32(countArr + s * 4, strips[s].length, true)
   }
-  view.setUint16(ifdOff, TAGS.length, true)
+  if (hasResolution) writeTiffResolution(out, resolutionOff, Number(meta.resolutionPpi))
+  if (meta.xmp?.length) out.set(meta.xmp, xmpOff)
+
+  view.setUint16(ifdOff, tags.length, true)
   let e = ifdOff + 2
-  for (const t of TAGS) {
+  for (const t of tags) {
     view.setUint16(e, t.tag, true)
     view.setUint16(e + 2, t.type, true)
     view.setUint32(e + 4, t.count, true)
@@ -237,8 +288,12 @@ export function encodeTiff16(rgba: ArrayLike<number>, width: number, height: num
       case 277: view.setUint16(field, 4, true); break
       case 278: view.setUint32(field, rowsPerStrip, true); break
       case 279: view.setUint32(field, numStrips > 1 ? countArr : strips[0]?.length ?? 0, true); break
+      case 282: view.setUint32(field, resolutionOff, true); break
+      case 283: view.setUint32(field, resolutionOff + 8, true); break
       case 284: view.setUint16(field, 1, true); break
+      case 296: view.setUint16(field, 2, true); break
       case 338: view.setUint16(field, 2, true); break
+      case 700: view.setUint32(field, xmpOff, true); break
     }
     e += 12
   }
