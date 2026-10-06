@@ -299,6 +299,8 @@ export const MENUS: MenuItem[][] = [
       engine.cropTo({ x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 })
     } },
     S(),
+    { id: 'img-apply-image', label: 'Apply Image…', enabled: () => !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment', run: () => openDlg('apply-image') },
+    S(),
     { id: 'img-adjustments', label: 'Adjustments', submenu: adjustmentItems },
   ],
   // ================= LAYER =================
