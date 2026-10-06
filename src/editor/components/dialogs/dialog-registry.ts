@@ -17,6 +17,7 @@ import { ShortcutsDialog } from './shortcuts-dialog'
 import { ToolbarCustomizeDialog } from './toolbar-dialog'
 import { RecoveryDialog } from './recovery-dialog'
 import { ApplyImageDialog } from './apply-image-dialog'
+import { CalculationsDialog } from './calculations-dialog'
 import { ExportLayersDialog } from './export-layers-dialog'
 import {
   ColorRangeDialog, SelectMaskDialog, ContentAwareFillDialog, BatchDialog,
@@ -56,6 +57,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'content-aware-scale': ContentAwareScaleDialog,
   'match-color': MatchColorDialog,
   'apply-image': ApplyImageDialog,
+  'calculations': CalculationsDialog,
   'plugin-manager': PluginManagerDialog,
   'layer-styles': LayerStylesDialog,
   'detect-objects': ObjectDetectDialog,
