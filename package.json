@@ -42,6 +42,7 @@
     "selection-races:validate": "bun scripts/validate-selection-races.ts",
     "autosave:validate": "bun scripts/validate-autosave.ts",
     "worker:validate": "bun scripts/validate-worker-error.ts",
+    "worker-timeout:validate": "bun scripts/validate-worker-timeout.ts",
     "hdr:validate": "bun scripts/validate-hdr-geometry.ts",
     "selection-pixels:validate": "bun scripts/validate-selection-pixels.ts",
     "selection-color:validate": "bun scripts/validate-selection-color.ts",

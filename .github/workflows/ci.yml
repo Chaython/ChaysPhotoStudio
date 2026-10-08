@@ -57,6 +57,9 @@ jobs:
       - name: Validate worker error recovery
         run: bun run worker:validate
 
+      - name: Validate worker timeout isolation
+        run: bun run worker-timeout:validate
+
       - name: Validate HDR raster geometry
         run: bun run hdr:validate
 

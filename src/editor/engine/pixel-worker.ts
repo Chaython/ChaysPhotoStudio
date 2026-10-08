@@ -153,6 +153,7 @@ let nextJobId = 1
 /** session latch — once any worker path fails, everything runs sync until page reload */
 let broken = false
 let warned = false
+let timedOutWarned = false
 
 function warnOnce(reason: string): void {
   broken = true
@@ -370,11 +371,17 @@ function dispatch(entry: WorkerEntry, job: InternalJob): void {
   job.entry = entry
   const timeoutMs = timeoutForJob(job)
   job.timer = setTimeout(() => {
-    warnOnce(`op timed out after ${Math.round(timeoutMs / 1000)}s`)
+    // A hung filter does not imply that other workers are broken. Killing the
+    // entire pool and synchronously flushing queued filters can freeze the UI.
+    // Retire only the timed-out worker and let the pool replace it.
+    if (!timedOutWarned) {
+      timedOutWarned = true
+      console.warn(`[zphoto] pixel worker job timed out after ${Math.round(timeoutMs / 1000)}s; restarting only that worker`)
+    }
     try { entry.worker.terminate() } catch { /* already dead */ }
     pool = pool.filter(e => e !== entry)
     recoverJob(job, 'timeout')
-    flushPendingSync()
+    drainQueue()
   }, timeoutMs)
   const transfer: ArrayBuffer[] = [job.buffer]
   if (job.sourceBuffer) transfer.push(job.sourceBuffer)
