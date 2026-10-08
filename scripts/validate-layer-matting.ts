@@ -3,6 +3,16 @@ import assert from 'node:assert/strict'
 import { Engine } from '../src/editor/engine/engine'
 import type { PsDocument } from '../src/editor/types'
 
+class FakeImageData {
+  data: Uint8ClampedArray
+  width: number
+  height: number
+  constructor(data: Uint8ClampedArray, width: number, height: number) {
+    this.data = data
+    this.width = width
+    this.height = height
+  }
+}
 class Canvas {
   width = 3; height = 1
   pixels = new Uint8ClampedArray(12)
@@ -17,13 +27,15 @@ class Canvas {
   getContext() {
     return {
       getContextAttributes: () => ({ colorType: 'unorm8', colorSpace: 'srgb' }),
-      getImageData: () => ({ width: this.width, height: this.height, data: this.pixels.slice() }),
+      getImageData: () => new FakeImageData(this.pixels.slice(), this.width, this.height),
       putImageData: (img: { data: Uint8ClampedArray }) => { this.pixels = img.data.slice() },
       drawImage: (src: Canvas) => { this.pixels = src.pixels.slice() },
     }
   }
 }
 const oldDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
+const oldImageData = Object.getOwnPropertyDescriptor(globalThis, 'ImageData')
+Object.defineProperty(globalThis, 'ImageData', { configurable: true, value: FakeImageData })
 Object.defineProperty(globalThis, 'document', { configurable: true, value: {
   createElement: () => new Canvas(),
 }})
@@ -62,4 +74,6 @@ try {
 } finally {
   if (oldDocument) Object.defineProperty(globalThis, 'document', oldDocument)
   else Reflect.deleteProperty(globalThis, 'document')
+  if (oldImageData) Object.defineProperty(globalThis, 'ImageData', oldImageData)
+  else Reflect.deleteProperty(globalThis, 'ImageData')
 }
