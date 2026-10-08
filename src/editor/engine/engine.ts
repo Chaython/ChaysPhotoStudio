@@ -542,16 +542,90 @@ export class Engine {
     this.emit()
   }
 
+  /** Photoshop-style Image > Duplicate. Make a fully editable document with
+   * independent pixel buffers and fresh identities, rather than flattening the
+   * source into a single 8-bit raster. The new document starts its own History. */
   duplicateDocument(): PsDocument | null {
     const src = this.activeDoc
     if (!src) return null
-    const flat = compositeDocument(src)
-    const doc = this.addCanvasDocument(flat, `${src.name} copy`, {
-      sourceBitDepth: src.sourceBitDepth ?? src.workingBitDepth ?? 8,
-      workingColorSpace: src.workingColorSpace ?? 'srgb',
-      resolutionPpi: src.resolutionPpi ?? 72,
-      metadata: src.metadata ? structuredClone(src.metadata) : undefined,
+    this.syncPendingHdrCanvasEdits(src)
+
+    const layerIds = new Map<string, string>()
+    const layers = src.layers.map(layer => {
+      const copy = this.cloneLayerForDuplicate(layer)
+      // Keep the source name when duplicating the entire document.
+      copy.name = layer.name
+      layerIds.set(layer.id, copy.id)
+      return copy
     })
+    const remapLayerId = (id: string | null) => id ? layerIds.get(id) ?? null : null
+
+    const compIds = new Map<string, string>()
+    const layerComps = src.layerComps?.map(comp => {
+      const copy = structuredClone(comp)
+      copy.id = uid()
+      compIds.set(comp.id, copy.id)
+      copy.layers = Object.fromEntries(
+        Object.entries(comp.layers)
+          .filter(([id]) => layerIds.has(id))
+          .map(([id, state]) => [layerIds.get(id)!, state]),
+      )
+      return copy
+    })
+    const frames = src.frames?.map(frame => ({
+      ...structuredClone(frame),
+      id: uid(),
+      layers: Object.fromEntries(
+        Object.entries(frame.layers)
+          .filter(([id]) => layerIds.has(id))
+          .map(([id, state]) => [layerIds.get(id)!, structuredClone(state)]),
+      ),
+    }))
+    const doc: PsDocument = {
+      id: uid(), name: `${src.name} copy`,
+      width: src.width, height: src.height,
+      resolutionPpi: src.resolutionPpi,
+      workingBitDepth: src.workingBitDepth,
+      sourceBitDepth: src.sourceBitDepth,
+      workingColorSpace: src.workingColorSpace,
+      psdImageResources: src.psdImageResources ? [...src.psdImageResources] : undefined,
+      metadata: src.metadata ? structuredClone(src.metadata) : undefined,
+      proof: src.proof ? structuredClone(src.proof) : undefined,
+      layers,
+      activeLayerId: remapLayerId(src.activeLayerId),
+      selectedLayerIds: (src.selectedLayerIds ?? []).map(id => layerIds.get(id)).filter((id): id is string => !!id),
+      selection: this.cloneHistorySelection(src.selection),
+      channelView: src.channelView,
+      savedChannels: this.cloneHistoryChannels(src.savedChannels).map(c => ({ ...c, id: uid() })),
+      savedPaths: src.savedPaths?.map(path => ({ ...structuredClone(path), id: uid() })),
+      guides: src.guides.map(guide => ({ ...guide, id: uid() })),
+      colorSamplers: src.colorSamplers?.map(sampler => ({ ...sampler, id: uid() })),
+      measurements: src.measurements?.map(measurement => ({ ...structuredClone(measurement), id: uid() })),
+      frames,
+      layerComps,
+      activeLayerCompId: src.activeLayerCompId ? compIds.get(src.activeLayerCompId) ?? null : null,
+      lastLayerCompState: null,
+      view: structuredClone(src.view),
+      history: { states: [], index: -1 },
+      historyBrushSourceIndex: 0,
+      historyBrushSnapshotId: null,
+      historySnapshots: [],
+      historySnapshotAutoPolicy: src.historySnapshotAutoPolicy ?? 'inherit',
+      dirty: false,
+      previewFilter: null, previewAdjustment: null,
+      _epoch: 1, _stroke: null, _strokeLayerId: null,
+      _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal',
+      _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+    }
+    this.docs.push(doc)
+    this._activeId = doc.id
+    setCanvasWorkingProfile({
+      bitDepth: canvasDepthForDocument(doc.workingBitDepth),
+      colorSpace: doc.workingColorSpace ?? 'srgb',
+    })
+    this.pushHistory('Duplicate Document', doc)
+    this.maybeCreateAutomaticHistorySnapshot('new', doc)
+    this.emit()
     return doc
   }
 

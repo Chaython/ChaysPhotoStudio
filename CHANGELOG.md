@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Fixed **Image > Duplicate** flattening the document. Copies now retain independent raster/Smart Object canvases, masks, HDR Float32 layers, editable layer metadata, active and selected layers, saved channels/paths, guides, metadata, proof settings, animation frames and Layer Comps with regenerated layer references. Duplicates start their own undo History and include regression coverage.
+
 - Added a headless History regression test covering immutable undo snapshots, restored live canvas isolation, saved selection/channel masks, nested editable layer settings, HDR pixels, and version-aware sharing of unchanged frozen pixels.
 
 - Fixed Puppet Warp pin rotation on non-square layers by applying rotation in aspect-correct physical coordinates; blocked stale/locked layer application and prevented false success notices when the transform is rejected. Added CPU-only geometry regression tests to CI.

@@ -59,7 +59,8 @@ const doc = {
 
 // These helpers are intentionally private in production, but their buffer
 // isolation is a correctness contract shared by Undo, Redo and Snapshots.
-const engine = new Engine() as unknown as {
+const rawEngine = new Engine()
+const engine = rawEngine as unknown as {
   captureState: (doc: PsDocument, label: string, previous?: HistoryState) => HistoryState
   restoreState: (doc: PsDocument, state: HistoryState) => void
 }
@@ -103,3 +104,55 @@ assert.equal(unchanged.layers[0].canvas, changed.layers[0].canvas)
 assert.equal(unchanged.savedChannels[0].mask, changed.savedChannels[0].mask)
 
 console.log('History snapshot isolation, restored buffers and unchanged-pixel sharing passed')
+
+
+// Photoshop Duplicate Image retains editable document structure; never flatten.
+const originalDoc: PsDocument = {
+  ...doc,
+  name: 'Multi-layer HDR',
+  workingBitDepth: 32,
+  sourceBitDepth: 32,
+  workingColorSpace: 'srgb',
+  metadata: { fileName: 'source.psd', format: 'PSD/PSB', fileSize: 100, mimeType: 'image/vnd.adobe.photoshop', fields: [], editable: { title: 'Source' } },
+  psdImageResources: ['original-payload'],
+  guides: [{ id: 'guide1', orientation: 'h', pos: 10 }],
+  view: { zoom: 1, panX: 0, panY: 0 },
+  selectedLayerIds: ['l1'],
+  history: { states: [], index: -1 },
+  proof: { enabled: true, gamutWarning: false, profile: 'srgb', intent: 'relative', blackPointCompensation: true, simulatePaperColor: false },
+  layerComps: [{
+    id: 'comp1', name: 'Before', createdAt: 1, updatedAt: 1,
+    options: { visibility: true, position: false, appearance: false },
+    layers: { l1: { visible: true } },
+  }],
+  activeLayerCompId: 'comp1',
+  frames: [{ id: 'frame1', name: 'Frame', delayMs: 100, layers: { l1: { visible: false } } }],
+  _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1,
+  _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+  dirty: false,
+}
+rawEngine.docs.push(originalDoc)
+rawEngine.setActiveDocument(originalDoc.id)
+const duplicated = rawEngine.duplicateDocument()
+assert.ok(duplicated)
+assert.equal(duplicated!.layers.length, originalDoc.layers.length)
+assert.equal(duplicated!.workingBitDepth, 32)
+assert.notEqual(duplicated!.layers[0].id, originalDoc.layers[0].id)
+assert.notEqual(duplicated!.layers[0].canvas, originalDoc.layers[0].canvas)
+assert.notEqual(duplicated!.layers[0].hdrPixels, originalDoc.layers[0].hdrPixels)
+assert.equal(duplicated!.layers[0].hdrPixels?.[0], 2)
+assert.notEqual(duplicated!.savedChannels[0].mask, originalDoc.savedChannels[0].mask)
+assert.equal(duplicated!.metadata?.editable?.title, 'Source')
+assert.notEqual(duplicated!.metadata, originalDoc.metadata)
+assert.notEqual(duplicated!.activeLayerId, originalDoc.activeLayerId)
+assert.equal(duplicated!.selectedLayerIds?.[0], duplicated!.activeLayerId)
+assert.notEqual(duplicated!.activeLayerCompId, originalDoc.activeLayerCompId)
+assert.equal(duplicated!.layerComps?.[0].layers[duplicated!.layers[0].id]?.visible, true)
+assert.equal(duplicated!.frames?.[0].layers[duplicated!.layers[0].id]?.visible, false)
+assert.equal(duplicated!.history.index, 0)
+assert.equal(duplicated!.history.states.length, 1)
+assert.equal(originalDoc.history.index, -1)
+
+draw(duplicated!.layers[0].canvas, 201)
+assert.notEqual(value(originalDoc.layers[0].canvas), 201)
+console.log('Duplicate Document preserves layers, HDR, selections, metadata, layer comps and animation without shared buffers')
