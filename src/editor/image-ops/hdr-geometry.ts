@@ -86,3 +86,58 @@ export function resampleHdrPixels(src: Float32Array, sw: number, sh: number, w: 
   }
   return out
 }
+
+/** Canvas2D-compatible affine resampling directly in scene-linear Float32 RGBA.
+ * Centers are measured in source pixel EDGE coordinates (0..width). Positive
+ * rotation is clockwise in the editor's y-down coordinate system. Destination
+ * is centered in its own dimensions. Sampling occurs at pixel centers.
+ * Out-of-image pixels are transparent (NOT edge-clamped), and interpolation
+ * is premultiplied-alpha to prevent halos around rotated transparent edges.
+ */
+export function affineHdrPixels(
+  src: Float32Array, sw: number, sh: number, dw: number, dh: number,
+  opts: { sourceCenterX: number; sourceCenterY: number; rotationRadians: number; scale: number },
+): Float32Array {
+  check(src, sw, sh)
+  if (!Number.isSafeInteger(dw) || dw < 1 || !Number.isSafeInteger(dh) || dh < 1 ||
+      !Number.isFinite(opts.sourceCenterX) || !Number.isFinite(opts.sourceCenterY) ||
+      !Number.isFinite(opts.rotationRadians) || !Number.isFinite(opts.scale) || opts.scale <= 0) {
+    throw new Error('Invalid HDR affine transform')
+  }
+  const dst = new Float32Array(dw * dh * 4)
+  const cos = Math.cos(opts.rotationRadians), sin = Math.sin(opts.rotationRadians)
+  const inv = 1 / opts.scale
+  for (let y = 0; y < dh; y++) {
+    const cy = y + .5 - dh / 2
+    for (let x = 0; x < dw; x++) {
+      const cx = x + .5 - dw / 2
+      // Back-project the CENTER of the destination pixel into source index space.
+      const sx = opts.sourceCenterX + (cx * cos + cy * sin) * inv - .5
+      const sy = opts.sourceCenterY + (-cx * sin + cy * cos) * inv - .5
+      const x0 = Math.floor(sx), y0 = Math.floor(sy)
+      const tx = sx - x0, ty = sy - y0
+      const weights = [(1-tx)*(1-ty), tx*(1-ty), (1-tx)*ty, tx*ty]
+      const indices = [x0, x0+1, x0, x0+1]
+      const ys = [y0, y0, y0+1, y0+1]
+      const di = (y * dw + x) * 4
+      let alpha = 0, r = 0, g = 0, b = 0
+      for (let k = 0; k < 4; k++) {
+        const ix = indices[k], iy = ys[k]
+        if (ix < 0 || ix >= sw || iy < 0 || iy >= sh) continue
+        const si = (iy * sw + ix) * 4
+        const a = src[si + 3] * weights[k]
+        alpha += a
+        r += src[si] * a
+        g += src[si + 1] * a
+        b += src[si + 2] * a
+      }
+      dst[di + 3] = alpha
+      if (alpha > 1e-12) {
+        dst[di] = r / alpha
+        dst[di + 1] = g / alpha
+        dst[di + 2] = b / alpha
+      }
+    }
+  }
+  return dst
+}

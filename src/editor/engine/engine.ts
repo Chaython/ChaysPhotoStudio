@@ -38,7 +38,7 @@ import {
 } from '../image-ops/transform'
 import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 import { embedRasterMetadata } from '../formats/metadata-write'
-import { cropHdrPixels, flipHdrPixels, resampleHdrPixels, rotateHdrPixels } from '../image-ops/hdr-geometry'
+import { affineHdrPixels, cropHdrPixels, flipHdrPixels, resampleHdrPixels, rotateHdrPixels } from '../image-ops/hdr-geometry'
 
 export const MAX_HISTORY = 50
 
@@ -4165,25 +4165,26 @@ export class Engine {
   rotateCanvas(deg: number) {
     const doc = this.activeDoc
     if (!doc) return
+    if (!Number.isFinite(deg)) return
     this.syncPendingHdrCanvasEdits(doc)
-    // Arbitrary angles need full Float32 interpolation. Do not silently apply
-    // an 8-bit display transform to the authoritative HDR backing store.
-    if (doc.layers.some(l => l.kind === 'raster' && l.hdrPixels) && Math.abs(deg / 90 - Math.round(deg / 90)) > 1e-6) {
-      this.ui?.toast('32-bit HDR canvas rotation currently supports 90° increments only', 'info')
-      return
-    }
+    const rad = (deg * Math.PI) / 180
+    const rc = Math.cos(rad), rs = Math.sin(rad)
+    const cos = Math.abs(rc), sin = Math.abs(rs)
+    const w = Math.max(1, Math.round(doc.width * cos + doc.height * sin))
+    const h = Math.max(1, Math.round(doc.width * sin + doc.height * cos))
+    const exactTurn = Math.abs(deg / 90 - Math.round(deg / 90)) < 1e-8
     const hdrRotated = new Map<string, Float32Array>()
     for (const layer of doc.layers) {
       if (layer.kind !== 'raster' || !layer.canvas || !layer.hdrPixels) continue
       const source = cropHdrPixels(layer.hdrPixels, layer.canvas.width, layer.canvas.height,
         doc.width, doc.height, -(layer.offsetX ?? 0), -(layer.offsetY ?? 0))
-      hdrRotated.set(layer.id, rotateHdrPixels(source, doc.width, doc.height, deg))
+      hdrRotated.set(layer.id, exactTurn
+        ? rotateHdrPixels(source, doc.width, doc.height, Math.round(deg / 90) * 90)
+        : affineHdrPixels(source, doc.width, doc.height, w, h, {
+            sourceCenterX: doc.width / 2, sourceCenterY: doc.height / 2,
+            rotationRadians: rad, scale: 1,
+          }))
     }
-    const rad = (deg * Math.PI) / 180
-    const rc = Math.cos(rad), rs = Math.sin(rad)
-    const cos = Math.abs(rc), sin = Math.abs(rs)
-    const w = Math.round(doc.width * cos + doc.height * sin)
-    const h = Math.round(doc.width * sin + doc.height * cos)
     const rotateCanvasPixels = (src: HTMLCanvasElement): HTMLCanvasElement => {
       const c = createCanvas(w, h)
       const ctx = ctx2d(c)
@@ -4344,10 +4345,9 @@ export class Engine {
     if (!doc || !layer) return
     if (layer.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels to transform', 'error'); return }
     if (layer.locked) { this.ui?.toast('Layer is locked', 'error'); return }
-    if (layer.kind === 'raster' && layer.hdrPixels) {
-      this.ui?.toast('Raster Free Transform is disabled for 32-bit HDR until scene-linear Float32 resampling is supported', 'info')
-      return
-    }
+    // Merge pending Canvas2D painting edits before reading the authoritative
+    // scene-linear Float32 pixels for a direct high-precision transform.
+    if (layer.kind === 'raster' && layer.hdrPixels) this.syncPendingHdrCanvasEdits(doc)
     const s = Math.max(0.01, opts.scale ?? 1)
     const rot = ((opts.rotation ?? 0) * Math.PI) / 180
     const tx = opts.x ?? 0, ty = opts.y ?? 0
@@ -4406,12 +4406,13 @@ export class Engine {
     const src = layer.canvas
     // FULL content-bounds scan (the old early-exit scan found only the first
     // opaque row — everything below was discarded)
-    const d = getImageData(src).data
+    const hd = layer.kind === 'raster' ? layer.hdrPixels : null
+    const d = hd ? null : getImageData(src).data
     let minX = src.width, minY = src.height, maxX = -1, maxY = -1
     for (let y = 0; y < src.height; y++) {
       const row = y * src.width
       for (let x = 0; x < src.width; x++) {
-        if (d[(row + x) * 4 + 3] > 0) {
+        if ((hd ? hd[(row + x) * 4 + 3] : d![(row + x) * 4 + 3]) > 0) {
           if (x < minX) minX = x; if (x > maxX) maxX = x
           if (y < minY) minY = y; if (y > maxY) maxY = y
         }
@@ -4423,18 +4424,29 @@ export class Engine {
     const cos = Math.abs(Math.cos(rot)), sin = Math.abs(Math.sin(rot))
     const nw = Math.max(1, Math.ceil(bw * s * cos + bh * s * sin) + 2)
     const nh = Math.max(1, Math.ceil(bw * s * sin + bh * s * cos) + 2)
-    const out = createCanvas(nw, nh)
-    const c = ctx2d(out)
-    c.imageSmoothingEnabled = true
-    c.imageSmoothingQuality = 'high'
-    c.translate(nw / 2, nh / 2)
-    c.rotate(rot)
-    c.scale(s, s)
-    // draw the source centered on the content center (transparent margins are
-    // harmless and keep the mapping exact)
-    c.drawImage(src, -(minX + bw / 2), -(minY + bh / 2))
+    if (hd) {
+      // Rotate+scale the true HDR buffer, preserving scene-linear values > 1.
+      layer.hdrPixels = affineHdrPixels(hd, src.width, src.height, nw, nh, {
+        sourceCenterX: minX + bw / 2,
+        sourceCenterY: minY + bh / 2,
+        rotationRadians: rot,
+        scale: s,
+      })
+      layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, nw, nh, 'srgb')
+      layer._hdrPreviewBefore = null
+    } else {
+      const out = createCanvas(nw, nh, canvasProfile(src))
+      const c = ctx2d(out)
+      c.imageSmoothingEnabled = true
+      c.imageSmoothingQuality = 'high'
+      c.translate(nw / 2, nh / 2)
+      c.rotate(rot)
+      c.scale(s, s)
+      // Draw source around the content center; transparent margins are harmless.
+      c.drawImage(src, -(minX + bw / 2), -(minY + bh / 2))
+      layer.canvas = out
+    }
     // re-register: content center fixed at (cxDoc, cyDoc)
-    layer.canvas = out
     layer.offsetX = Math.round(cxDoc - nw / 2)
     layer.offsetY = Math.round(cyDoc - nh / 2)
     layer._v++
@@ -4559,7 +4571,20 @@ export class Engine {
     if (layer.locked) { this.ui?.toast('Layer is locked', 'error'); return }
     if (layer.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels to transform', 'error'); return }
     if (layer.kind === 'raster' && layer.hdrPixels) {
-      this.ui?.toast('Raster Transform requires a Float32 HDR transformation path; convert to Smart Object to keep editable transformations', 'info')
+      // Free/Scale/Rotate with uniform scaling can be computed exactly in
+      // Float32. Perspective, shears and mesh warps still require dedicated
+      // scene-linear inverse mapping; never round-trip them via the preview.
+      const uniform = Math.abs((cmd.scaleX ?? 1) - (cmd.scaleY ?? 1)) < 1e-6
+      if ((cmd.mode === 'free' || cmd.mode === 'scale' || cmd.mode === 'rotate') && uniform) {
+        this.freeTransformLayer(id, {
+          x: cmd.x ?? 0, y: cmd.y ?? 0,
+          scale: cmd.mode === 'rotate' ? 1 : (cmd.scaleX ?? 1),
+          rotation: cmd.mode === 'scale' ? 0 : (cmd.rotation ?? 0),
+        })
+        if (remember) this.lastTransformCommand = structuredClone(cmd)
+      } else {
+        this.ui?.toast('HDR raster warp, skew and nonuniform scaling require a dedicated Float32 transform', 'info')
+      }
       return
     }
 

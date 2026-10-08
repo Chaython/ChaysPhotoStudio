@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cropHdrPixels, flipHdrPixels, rotateHdrPixels, resampleHdrPixels } from '../src/editor/image-ops/hdr-geometry'
+import { affineHdrPixels, cropHdrPixels, flipHdrPixels, rotateHdrPixels, resampleHdrPixels } from '../src/editor/image-ops/hdr-geometry'
 
 function image(values: number[]): Float32Array {
   const pixels = new Float32Array(values.length * 4)
@@ -28,3 +28,28 @@ assert.ok(Math.abs(scaled[7] - .5) < 1e-6, 'resampled alpha is fractional')
 assert.throws(() => rotateHdrPixels(source, 2, 3, 45), /quarter turns/)
 assert.throws(() => cropHdrPixels(source, 4, 3, 1, 1, 0, 0), /Invalid HDR/)
 console.log('HDR crop, scale, flip and rotation keep 32-bit scene-linear pixels and alpha')
+
+const rotated90 = affineHdrPixels(source, 2, 3, 3, 2, {
+  sourceCenterX: 1, sourceCenterY: 1.5, rotationRadians: Math.PI / 2, scale: 1,
+})
+for (let i = 0; i < rotated90.length; i++) {
+  assert.ok(Math.abs(rotated90[i] - rotateHdrPixels(source, 2, 3, 90)[i]) < 1e-6,
+    'Float32 affine quarter-turn matches lossless discrete rotation')
+}
+const identity = affineHdrPixels(source, 2, 3, 2, 3, {
+  sourceCenterX: 1, sourceCenterY: 1.5, rotationRadians: 0, scale: 1,
+})
+assert.deepEqual(red(identity), red(source), 'Identity affine transform preserves HDR highlights')
+const midpoint = affineHdrPixels(alpha, 2, 1, 3, 1, {
+  sourceCenterX: 1, sourceCenterY: .5, rotationRadians: 0, scale: 1.5,
+})
+assert.equal(midpoint[4], 12, 'Affine scaling does not introduce a transparent dark fringe')
+assert.ok(Math.abs(midpoint[7] - .5) < 1e-6, 'Affine scaling resamples alpha')
+const rot45 = affineHdrPixels(image([20]), 1, 1, 3, 3, {
+  sourceCenterX: .5, sourceCenterY: .5, rotationRadians: Math.PI / 4, scale: 1,
+})
+assert.ok(rot45[16] >= 19.99, 'Arbitrary-angle rotation retains HDR values above 1')
+assert.throws(() => affineHdrPixels(source, 2, 3, 3, 2, {
+  sourceCenterX: 1, sourceCenterY: 1, rotationRadians: NaN, scale: 1,
+}), /Invalid HDR affine/)
+console.log('Float32 arbitrary rotation and uniform Free Transform regression checks passed')
