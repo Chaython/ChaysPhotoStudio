@@ -253,3 +253,31 @@ rawEngine.undo()
 assert.equal(resizeDoc.width, 100)
 assert.equal(resizeDoc.selection?.mask.width, 2, 'undo restores the original selection backing store')
 console.log('Canvas Size translates masks, channels, saved paths and guides with undo')
+
+// Photoshop Layer > Arrange must invalidate stale flattened-composite caches
+// even when every layer has matching pixel versions and blend properties.
+const stackDoc = resizeDoc
+const firstLayer = stackDoc.layers[0]
+const secondLayer: Layer = { ...firstLayer, id: 'arrange-middle', name: 'Middle', canvas: canvas(17) }
+const thirdLayer: Layer = { ...firstLayer, id: 'arrange-top', name: 'Top', canvas: canvas(18) }
+stackDoc.layers = [firstLayer, secondLayer, thirdLayer]
+stackDoc.activeLayerId = firstLayer.id
+stackDoc.selectedLayerIds = [firstLayer.id]
+rawEngine.pushHistory('Before Arrange', stackDoc)
+;(stackDoc as PsDocument & { _flatCache?: object | null; _flatCacheKey?: string | null })._flatCache = {}
+;(stackDoc as PsDocument & { _flatCacheKey?: string | null })._flatCacheKey = 'stale'
+rawEngine.reorderLayer(firstLayer.id, 2)
+assert.deepEqual(stackDoc.layers.map(l => l.id), [secondLayer.id, thirdLayer.id, firstLayer.id])
+assert.equal((stackDoc as PsDocument & { _flatCache?: object | null })._flatCache, null,
+  'Arranging must invalidate stale composite output')
+assert.equal(stackDoc.history.states[stackDoc.history.index].label, 'Reorder Layer')
+rawEngine.undo()
+assert.deepEqual(stackDoc.layers.map(l => l.id), [firstLayer.id, secondLayer.id, thirdLayer.id])
+rawEngine.redo()
+assert.deepEqual(stackDoc.layers.map(l => l.id), [secondLayer.id, thirdLayer.id, firstLayer.id])
+const previousHistoryIndex = stackDoc.history.index
+rawEngine.reorderLayer(firstLayer.id, 2)
+assert.equal(stackDoc.history.index, previousHistoryIndex, 'No-op arrangement must not add History')
+rawEngine.moveLayerBy(firstLayer.id, 1)
+assert.equal(stackDoc.history.index, previousHistoryIndex, 'Bring Forward at front is a no-op')
+console.log('Layer Arrange updates stack order, invalidates the composite and supports Undo/Redo')

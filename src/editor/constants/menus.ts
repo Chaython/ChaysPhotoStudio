@@ -116,6 +116,36 @@ const newAdjLayerItems: MenuItem[] = ([
   run: () => { engine.addAdjustmentLayer(t) },
 }))
 
+
+// Photoshop-style arrangement of the current layer (index 0 = bottom).
+type ArrangeDirection = 'front' | 'forward' | 'backward' | 'back'
+function arrangeActiveLayer(direction: ArrangeDirection): void {
+  const doc = engine.activeDoc
+  const layer = engine.activeLayer
+  if (!doc || !layer) return
+  const idx = doc.layers.findIndex(l => l.id === layer.id)
+  if (idx < 0) return
+  const last = doc.layers.length - 1
+  const target = direction === 'front' ? last
+    : direction === 'forward' ? Math.min(last, idx + 1)
+    : direction === 'backward' ? Math.max(0, idx - 1) : 0
+  engine.reorderLayer(layer.id, target)
+}
+function canArrangeLayer(direction: ArrangeDirection): boolean {
+  const doc = engine.activeDoc
+  const layer = engine.activeLayer
+  if (!doc || !layer) return false
+  const idx = doc.layers.findIndex(l => l.id === layer.id)
+  return idx >= 0 && (direction === 'front' || direction === 'forward'
+    ? idx < doc.layers.length - 1 : idx > 0)
+}
+const layerArrangeMenu: MenuItem[] = [
+  { id: 'layer-arrange-front', label: 'Bring to Front', shortcut: sc('bringToFront'), enabled: () => canArrangeLayer('front'), run: () => arrangeActiveLayer('front') },
+  { id: 'layer-arrange-forward', label: 'Bring Forward', shortcut: sc('bringForward'), enabled: () => canArrangeLayer('forward'), run: () => arrangeActiveLayer('forward') },
+  { id: 'layer-arrange-backward', label: 'Send Backward', shortcut: sc('sendBackward'), enabled: () => canArrangeLayer('backward'), run: () => arrangeActiveLayer('backward') },
+  { id: 'layer-arrange-back', label: 'Send to Back', shortcut: sc('sendToBack'), enabled: () => canArrangeLayer('back'), run: () => arrangeActiveLayer('back') },
+]
+
 // ---------- Layer > Align / Distribute (editable, non-destructive) ----------
 type LayerAlignMode = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'
 type LayerAlignReference = 'selection' | 'primary' | 'canvas'
@@ -350,6 +380,7 @@ export const MENUS: MenuItem[][] = [
     S(),
     { id: 'layer-new-adj', label: 'New Adjustment Layer', submenu: newAdjLayerItems },
     S(),
+    { id: 'layer-arrange', label: 'Arrange', enabled: () => (engine.activeDoc?.layers.length ?? 0) > 1, submenu: layerArrangeMenu },
     { id: 'layer-align', label: 'Align', enabled: () => engine.selectedLayers().length > 0, submenu: layerAlignMenu },
     { id: 'layer-distribute', label: 'Distribute', enabled: () => engine.selectedLayers().length >= 3, submenu: layerDistributeMenu },
     S(),

@@ -4,6 +4,9 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added **Layer > Arrange** with Bring to Front/Forward and Send Backward/Back plus Photoshop-style Ctrl+[ / Ctrl+] shortcuts. Fixed stale flattened-composite caching and no-op History entries when rearranging layers; included undo/redo regression checks.
+- Corrected Smart Object image resizing applying the scale twice: when the Smart Object source pixels are resampled, its transform scale now remains unchanged.
+
 - Enabled **true Float32 HDR raster Free Transform** for rotation, translation, and uniform scaling, plus arbitrary-angle HDR canvas rotation. Direct alpha-premultiplied affine sampling keeps scene-linear highlights above 1.0 and no longer routes edited pixels through the 8-bit preview. Added exact quarter-turn and arbitrary-angle geometry regression tests.
 
 - Fixed Photoshop-style Canvas Size anchor operations leaving selections, saved alpha channels, vector masks, saved paths, guides, ruler measurements, and animation layer offsets at their old coordinates. Selection bounds are regenerated for both Canvas Size and Crop, and a regression test checks anchored geometry and Undo.

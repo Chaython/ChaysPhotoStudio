@@ -1385,9 +1385,13 @@ export class Engine {
     if (!doc) return
     const idx = doc.layers.findIndex(l => l.id === id)
     if (idx < 0) return
-    const to = clamp(idx + delta, 0, doc.layers.length - 1)
+    const to = clamp(idx + Math.trunc(delta), 0, doc.layers.length - 1)
+    if (idx === to) return
     const [l] = doc.layers.splice(idx, 1)
     doc.layers.splice(to, 0, l)
+    // The flat-composite cache key omits layer IDs. Identical properties on
+    // adjacent layers could otherwise reuse a composite with the OLD z-order.
+    invalidateFlat(doc)
     this.pushHistory('Reorder Layer')
     this.emit()
   }
@@ -1396,9 +1400,12 @@ export class Engine {
     const doc = this.activeDoc
     if (!doc) return
     const idx = doc.layers.findIndex(l => l.id === id)
-    if (idx < 0 || toIndex === idx) return
+    if (idx < 0 || !Number.isFinite(toIndex)) return
+    const to = clamp(Math.round(toIndex), 0, doc.layers.length - 1)
+    if (to === idx) return
     const [l] = doc.layers.splice(idx, 1)
-    doc.layers.splice(clamp(toIndex, 0, doc.layers.length), 0, l)
+    doc.layers.splice(to, 0, l)
+    invalidateFlat(doc)
     this.pushHistory('Reorder Layer')
     this.emit()
   }
@@ -3648,7 +3655,9 @@ export class Engine {
           ...l.transform,
           x: l.transform.x * sx,
           y: l.transform.y * sy,
-          scale: l.transform.scale * smin,
+          // The Smart Object SOURCE was resized above. Its display scale is
+          // relative to that source; multiplying it again would enlarge twice.
+          scale: l.transform.scale,
           quad: l.transform.quad?.map(p => ({ x: p.x * sx, y: p.y * sy })) as typeof l.transform.quad,
         }
       }
