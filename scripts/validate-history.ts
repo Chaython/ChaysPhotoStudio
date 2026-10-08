@@ -715,3 +715,25 @@ rawEngine.redo()
 assert.equal(repeatDoc.layers.find(l => l.id === maskGuard.id)?.maskEnabled, false,
   'Redo reapplies mask disable')
 console.log('Layer Mask apply guards and no-op toggle Undo/Redo pass')
+
+
+// Mask-as-channel workflow preserves the source mask, even when its rendering
+// is disabled; the new channel participates in History/Undo/Redo as normal.
+rawEngine.setActiveDocument(repeatDoc.id)
+const maskSource = repeatDoc.layers.find(l => l.id === maskGuard.id)!
+assert.ok(maskSource.mask)
+const beforeChannelSave = repeatDoc.savedChannels.length
+const sourceMaskBeforeSave = maskSource.mask
+const newChannelId = rawEngine.saveLayerMaskAsChannel(maskSource.id)
+assert.ok(newChannelId)
+assert.equal(repeatDoc.savedChannels.length, beforeChannelSave + 1)
+assert.equal(repeatDoc.savedChannels.at(-1)?.name, maskSource.name + ' Mask')
+assert.notEqual(repeatDoc.savedChannels.at(-1)?.mask, sourceMaskBeforeSave,
+  'alpha channel gets independent raster storage')
+assert.equal(maskSource.mask, sourceMaskBeforeSave)
+assert.equal(repeatDoc.history.states[repeatDoc.history.index].label, 'Save Layer Mask as Channel')
+rawEngine.undo()
+assert.equal(repeatDoc.savedChannels.length, beforeChannelSave)
+rawEngine.redo()
+assert.equal(repeatDoc.savedChannels.at(-1)?.id, newChannelId)
+console.log('Save Layer Mask as Channel preserves mask and supports Undo/Redo')

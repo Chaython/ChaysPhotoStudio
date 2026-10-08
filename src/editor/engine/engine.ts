@@ -3344,6 +3344,25 @@ export class Engine {
    * possible; transformed Smart Objects/text/shapes use their rendered alpha.
    * Photoshop's pixel-thumbnail semantics exclude a raster's separate masks.
    */
+  /** Load a layer mask's alpha as a normal selection, even if the mask is
+   * temporarily disabled. Its mask is detached from subsequent selection edits. */
+  loadLayerMaskAsSelection(mode: SelectionCombine = 'new'): void {
+    const doc = this.activeDoc
+    const mask = this.activeLayer?.mask
+    if (!doc || !mask || mask.width !== doc.width || mask.height !== doc.height) return
+    this.setSelectionMask(cloneCanvas(mask), mode, 'Load Layer Mask as Selection')
+  }
+
+  /** Store the editable layer mask as an alpha Channel for Photoshop-style
+   * Save Selection / Load Selection workflows. This leaves the layer intact. */
+  saveLayerMaskAsChannel(id: string): string | null {
+    const doc = this.activeDoc
+    const layer = this.layerById(id)
+    if (!doc || !layer?.mask ||
+        layer.mask.width !== doc.width || layer.mask.height !== doc.height) return null
+    return this.saveAlphaChannel(getMaskAlpha(layer.mask), layer.name + ' Mask', 'Save Layer Mask as Channel')
+  }
+
   loadLayerTransparency(mode: SelectionCombine = 'new'): void {
     const doc = this.activeDoc
     const layer = this.activeLayer

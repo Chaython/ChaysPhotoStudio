@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added Photoshop-style **Select > Load Layer Mask as Selection**, supporting Replace/Add/Subtract/Intersect. Also added **Layer > Layer Mask > Save Mask as Alpha Channel**, preserving an independent channel for reuse and Undo/Redo. Mask selections can be loaded even when mask visibility is temporarily disabled.
+
 - Fixed **Apply Layer Mask** on 32-bit HDR raster layers: masks are baked directly into Float32 alpha, preserving scene-linear highlights and respecting raster offsets. Applying masks on non-raster layers now requires rasterization rather than silently discarding the mask. Disabled masks no longer erase pixels when applied.
 - Expanded Photoshop-style **Layer > Layer Mask** to Reveal All, Hide All, Reveal Selection, Hide Selection, Invert Mask, Enable/Disable, Apply, and Delete. Locked layers and existing masks are protected from accidental replacement; redundant toggles no longer pollute History. Added Float32 and mask creation regression tests.
 
