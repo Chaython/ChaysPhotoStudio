@@ -1648,16 +1648,14 @@ export class Engine {
     const doc = this.activeDoc
     const layer = id ? this.layerById(id) : this.activeLayer
     if (!doc || !layer || layer.kind === 'raster') return
+    if (layer.locked) { this.ui?.toast('Unlock the layer before rasterizing', 'info'); return }
     if (layer.kind === 'adjustment') {
-      // flatten adjustment onto new raster of composite below? PS rasterizes adjustment into pixel equivalent of its effect over composite. Simplified: apply to flat composite.
-      const flat = compositeDocument(doc)
-      // remove layer, add raster on top
-      const raster = newLayer('raster', layer.name, doc.width, doc.height)
-      ctx2d(raster.canvas!).drawImage(flat, 0, 0)
-      const idx = doc.layers.findIndex(l => l.id === layer.id)
-      doc.layers.splice(idx, 1)
-      doc.layers.push(raster)
-      doc.activeLayerId = raster.id
+      // A standalone adjustment has no independent pixels: the old fallback
+      // copied the *entire* document composite onto a new top layer while
+      // retaining the underlying layers, effectively double-compositing it.
+      // Require an explicit Flatten/Merge instead of silently changing scope.
+      this.ui?.toast('Adjustment layers cannot be rasterized independently; use Merge Visible or Flatten explicitly', 'info')
+      return
     } else {
       // Rasterize editable content/Smart Filters, but preserve the existing
       // editable layer mask, vector mask and layer style ONCE. Rendering the

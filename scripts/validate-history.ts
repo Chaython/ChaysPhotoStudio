@@ -860,3 +860,28 @@ rawEngine.mergeDown()
 assert.equal(repeatDoc.layers.length, 2, 'clipped layer merge must not destroy the stack')
 assert.equal(repeatDoc.history.index, beforeMergeGuard)
 console.log('Merge Down guards adjustment layers and clipped stacks without destructive flatten')
+
+
+// Rasterizing a live adjustment cannot be implemented by stamping the entire
+// document on top of the original layers. That would double-composite pixels.
+rawEngine.setActiveDocument(repeatDoc.id)
+const rasterGuardLayer = repeatDoc.layers[1]
+rasterGuardLayer.kind = 'adjustment'
+rasterGuardLayer.adjustment = { type: 'brightness-contrast', params: {} }
+rasterGuardLayer.canvas = null
+rasterGuardLayer.clipped = false
+rasterGuardLayer.locked = false
+const idsBeforeRasterize = repeatDoc.layers.map(l => l.id)
+const rasterHistoryBefore = repeatDoc.history.index
+rawEngine.rasterizeLayer(rasterGuardLayer.id)
+assert.deepEqual(repeatDoc.layers.map(l => l.id), idsBeforeRasterize)
+assert.equal(rasterGuardLayer.kind, 'adjustment')
+assert.equal(repeatDoc.history.index, rasterHistoryBefore)
+rasterGuardLayer.kind = 'smart'
+rasterGuardLayer.source = canvas(87)
+rasterGuardLayer.adjustment = null
+rasterGuardLayer.locked = true
+rawEngine.rasterizeLayer(rasterGuardLayer.id)
+assert.equal(rasterGuardLayer.kind, 'smart', 'locked layer cannot be rasterized')
+assert.equal(repeatDoc.history.index, rasterHistoryBefore)
+console.log('Rasterize guards adjustments and locked layers without stamping document content')
