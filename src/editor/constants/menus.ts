@@ -313,6 +313,8 @@ export const MENUS: MenuItem[][] = [
     { id: 'edit-paste', label: 'Paste', shortcut: sc('paste'), run: () => engine.pasteLayer() },
     { id: 'edit-paste-into', label: 'Paste Into Selection', shortcut: sc('pasteInto'),
       enabled: () => engine.canPasteIntoSelection(), run: () => { void engine.pasteIntoSelection() } },
+    { id: 'edit-paste-outside', label: 'Paste Outside Selection',
+      enabled: () => engine.canPasteOutsideSelection(), run: () => { void engine.pasteOutsideSelection() } },
     { id: 'edit-paste-system', label: 'Paste External Image', 
       enabled: () => typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function',
       submenu: [
@@ -321,6 +323,9 @@ export const MENUS: MenuItem[][] = [
         { id: 'edit-paste-system-into', label: 'Into Selection',
           enabled: () => !!engine.activeDoc?.selection,
           run: () => { void engine.pasteFromSystemClipboard(true) } },
+        { id: 'edit-paste-system-outside', label: 'Outside Selection',
+          enabled: () => !!engine.activeDoc?.selection,
+          run: () => { void engine.pasteFromSystemClipboard(false, true) } },
       ] },
     S(),
     { id: 'edit-fill-fg', label: 'Fill with Foreground', shortcut: sc('fillFg'), run: () => engine.fillSelection(store().fgColor) },

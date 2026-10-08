@@ -3,6 +3,15 @@ import type { Rect, SelectionCombine, SelectionState, PsDocument } from '../type
 import { createCanvas, ctx2d, cloneCanvas, getImageData, putImageData, setMaskAlpha, uid, clampRectToSize, unionRect } from '../utils/canvas'
 import { gaussianBlurChannel } from '../image-ops/core'
 
+/** Photoshop Paste Outside: complement the selection's feathered alpha.
+ * Keep this a pure byte transformation so no original selection or History
+ * mask is ever modified in place. */
+export function invertMaskAlpha(alpha: Uint8ClampedArray): Uint8ClampedArray {
+  const inverted = new Uint8ClampedArray(alpha.length)
+  for (let i = 0; i < alpha.length; i++) inverted[i] = 255 - alpha[i]
+  return inverted
+}
+
 export function maskCanvasFromAlpha(alpha: Uint8ClampedArray, w: number, h: number): HTMLCanvasElement {
   const c = createCanvas(w, h)
   setMaskAlpha(c, alpha)

@@ -26,7 +26,7 @@ import { isGlEnabled, setGlEnabled, glInfo, glAvailable } from './gl/gl-core'
 import { resampleCanvas } from '../utils/canvas'
 import {
   combineSelection, selectionFromMask, maskCanvasFromAlpha, modifySelection,
-  channelMaskFromComposite, computeBounds,
+  channelMaskFromComposite, computeBounds, invertMaskAlpha,
 } from './selection'
 import { getScriptApi } from './scripting-api'
 import * as imageOps from '../image-ops'
@@ -2693,6 +2693,23 @@ export class Engine {
     )
   }
 
+  canPasteOutsideSelection(): boolean {
+    return this.canPasteIntoSelection()
+  }
+
+  /** Paste Outside keeps the contents editable on an independently masked
+   * raster layer, with mask alpha = 255 - current selection alpha. */
+  pasteOutsideSelection(): boolean | Promise<boolean> {
+    if (!this.canPasteOutsideSelection()) return false
+    return this._clip ? this.pasteLayer(false, true) : this.pasteFromSystemClipboard(false, true)
+  }
+
+  private maskForPaste(selection: SelectionState, outside: boolean): HTMLCanvasElement {
+    if (!outside) return cloneCanvas(selection.mask)
+    const alpha = getMaskAlpha(selection.mask)
+    return maskCanvasFromAlpha(invertMaskAlpha(alpha), selection.mask.width, selection.mask.height)
+  }
+
   /** Use the internal high-bit-depth clipboard when available, or read an
    * image copied from another application when the internal clipboard is empty.
    * Only the external read is asynchronous; the established internal path
@@ -2702,11 +2719,11 @@ export class Engine {
     return this._clip ? this.pasteLayer(true) : this.pasteFromSystemClipboard(true)
   }
 
-  pasteLayer(intoSelection = false): boolean {
+  pasteLayer(intoSelection = false, outsideSelection = false): boolean {
     const doc = this.activeDoc
     if (!doc) { this.ui?.toast('Open or create a document first', 'error'); return false }
     const clip = this._clip
-    if (intoSelection && !doc.selection) return false
+    if ((intoSelection || outsideSelection) && !doc.selection) return false
     if (!clip) {
       if (!intoSelection) void this.pasteFromSystemClipboard()
       return false
@@ -2723,10 +2740,10 @@ export class Engine {
       layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
       layer._hdrPreviewBefore = null
     }
-    if (intoSelection) {
-      // The layer mask is document-space, and detached from the user's live
-      // selection, so future Select > Modify operations cannot alter it.
-      layer.mask = cloneCanvas(doc.selection!.mask)
+    if (intoSelection || outsideSelection) {
+      // Mask is detached from the user's live selection. Paste Outside uses
+      // the alpha complement, retaining partially selected feathered edges.
+      layer.mask = this.maskForPaste(doc.selection!, outsideSelection)
       layer.maskEnabled = true
       layer._mv++
     }
@@ -2735,7 +2752,7 @@ export class Engine {
     doc.activeLayerId = layer.id
     doc.selectedLayerIds = [layer.id]
     invalidateFlat(doc)
-    this.pushHistory(intoSelection ? 'Paste Into Selection' : 'Paste', doc)
+    this.pushHistory(outsideSelection ? 'Paste Outside Selection' : intoSelection ? 'Paste Into Selection' : 'Paste', doc)
     this.emit()
     return true
   }
@@ -2744,10 +2761,10 @@ export class Engine {
    *  a separate non-destructive mask from the selection at invocation time.
    *  The destination document is captured before the asynchronous browser read
    *  so a tab switch cannot unexpectedly paste into another document. */
-  async pasteFromSystemClipboard(intoSelection = false): Promise<boolean> {
+  async pasteFromSystemClipboard(intoSelection = false, outsideSelection = false): Promise<boolean> {
     const doc = this.activeDoc
-    if (!doc || (intoSelection && !doc.selection)) return false
-    const selection = intoSelection ? this.cloneHistorySelection(doc.selection) : null
+    if (!doc || ((intoSelection || outsideSelection) && !doc.selection)) return false
+    const selection = intoSelection || outsideSelection ? this.cloneHistorySelection(doc.selection) : null
     const originalWidth = doc.width, originalHeight = doc.height
     try {
       if (typeof navigator === 'undefined' || !navigator.clipboard?.read) {
@@ -2768,7 +2785,7 @@ export class Engine {
           }
           const canvas = createCanvas(img.width, img.height)
           ctx2d(canvas).drawImage(img, 0, 0)
-          if (!intoSelection) {
+          if (!intoSelection && !outsideSelection) {
             // Keep ordinary external Paste centered, matching the existing
             // behavior, including its independent History entry.
             const pasted = this.addLayerFromCanvas(canvas, 'Pasted Image')
@@ -2778,11 +2795,13 @@ export class Engine {
                 selection.mask.height !== doc.height) return false
             const layer = newLayer('raster', 'Pasted Image', doc.width, doc.height)
             layer.canvas = canvas
-            // Place the bitmap in the center of the selected bounds rather
-            // than the full document, like Photoshop Paste Into.
-            layer.offsetX = Math.round(selection.bounds.x + (selection.bounds.w - img.width) / 2)
-            layer.offsetY = Math.round(selection.bounds.y + (selection.bounds.h - img.height) / 2)
-            layer.mask = selection.mask
+            // Paste Into centers over the selected area. Paste Outside uses
+            // the document center because its visible region may be disjoint.
+            layer.offsetX = outsideSelection ? Math.round((doc.width - img.width) / 2)
+              : Math.round(selection.bounds.x + (selection.bounds.w - img.width) / 2)
+            layer.offsetY = outsideSelection ? Math.round((doc.height - img.height) / 2)
+              : Math.round(selection.bounds.y + (selection.bounds.h - img.height) / 2)
+            layer.mask = this.maskForPaste(selection, outsideSelection)
             layer.maskEnabled = true
             layer._mv++
             if (doc.workingBitDepth === 32) {
@@ -2796,10 +2815,11 @@ export class Engine {
             doc.activeLayerId = layer.id
             doc.selectedLayerIds = [layer.id]
             invalidateFlat(doc)
-            this.pushHistory('Paste Into Selection', doc)
+            this.pushHistory(outsideSelection ? 'Paste Outside Selection' : 'Paste Into Selection', doc)
             this.emit()
           }
-          this.ui?.toast(intoSelection ? 'Pasted image into selection' : 'Pasted from system clipboard', 'success')
+          this.ui?.toast(outsideSelection ? 'Pasted image outside selection'
+            : intoSelection ? 'Pasted image into selection' : 'Pasted from system clipboard', 'success')
           return true
         } finally {
           img.close()

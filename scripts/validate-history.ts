@@ -2,6 +2,7 @@
 // ownership without a GUI, native canvas dependency or browser automation.
 import assert from 'node:assert/strict'
 import { Engine } from '../src/editor/engine/engine'
+import { invertMaskAlpha } from '../src/editor/engine/selection'
 import type { HistoryState, Layer, PsDocument } from '../src/editor/types'
 
 class TestCanvas {
@@ -596,5 +597,31 @@ try {
   else Reflect.deleteProperty(globalThis, 'createImageBitmap')
 }
 console.log('Paste Into supports external PNG clipboard with tab-switch and mask-snapshot safety')
+// Paste Outside must complement alpha, including fractional feather edges.
+// It cannot mutate the underlying selection; Undo restores only the new layer.
+const initialAlpha = new Uint8ClampedArray([0, 32, 128, 255])
+assert.deepEqual(Array.from(invertMaskAlpha(initialAlpha)), [255, 223, 127, 0])
+assert.deepEqual(Array.from(initialAlpha), [0, 32, 128, 255])
+rawEngine.setActiveDocument(repeatDoc.id)
+repeatDoc.selection = {
+  mask: canvas(29), bounds: { x: 0, y: 0, w: 2, h: 2 },
+  _v: 9, _paths: null, _pathsV: -1,
+}
+assert.equal(rawEngine.canPasteOutsideSelection(), true)
+const beforeOutside = repeatDoc.layers.length
+assert.equal(rawEngine.pasteOutsideSelection(), true)
+assert.equal(repeatDoc.layers.length, beforeOutside + 1)
+const outsideLayer = repeatDoc.layers.find(l => l.id === repeatDoc.activeLayerId)!
+assert.equal(outsideLayer.maskEnabled, true)
+assert.notEqual(outsideLayer.mask, repeatDoc.selection.mask)
+assert.equal(repeatDoc.history.states[repeatDoc.history.index].label, 'Paste Outside Selection')
+rawEngine.undo()
+assert.ok(!repeatDoc.layers.some(l => l.id === outsideLayer.id))
+rawEngine.redo()
+assert.ok(repeatDoc.layers.some(l => l.id === outsideLayer.id))
+repeatDoc.selection = null
+assert.equal(rawEngine.pasteOutsideSelection(), false)
+console.log('Paste Outside Selection uses complement alpha, independent masks and Undo')
+
 if (imageDataDescriptor) Object.defineProperty(globalThis, 'ImageData', imageDataDescriptor)
 else Reflect.deleteProperty(globalThis, 'ImageData')
