@@ -39,6 +39,7 @@ export function PuppetWarpDialog({ inst,onClose }:DialogProps){
   const layerId=String(inst.props?.layerId??engine.activeLayer?.id??'')
   const layer=layerId?engine.layerById(layerId):null
   const doc=engine.activeDoc
+  const sourceDocumentId=useRef(doc?.id ?? null)
   const [source]=useState(()=>{
     const raw=layerId?engine.warpSourceCanvas(layerId):null
     if(!raw)return null
@@ -178,8 +179,22 @@ export function PuppetWarpDialog({ inst,onClose }:DialogProps){
   }
 
   const apply=()=>{
-    if(!layerId||!pins.length||hdrBlocked)return
+    if(!source||!layerId||!pins.length||hdrBlocked)return
+    const liveDoc=engine.activeDoc
+    const liveLayer=liveDoc?.layers.find(item=>item.id===layerId)
+    if(!liveDoc||liveDoc.id!==sourceDocumentId.current||!liveLayer){
+      useEditorStore.getState().pushToast('The original Puppet Warp layer is no longer active','error')
+      return
+    }
+    if(liveLayer.locked||liveLayer.kind==='adjustment'){
+      useEditorStore.getState().pushToast('Unlock the layer before applying Puppet Warp','error')
+      return
+    }
+    const previousState=liveDoc.history.states[liveDoc.history.index]
     engine.transformLayer(layerId,{mode:'warp',warp:mesh})
+    // Engine.transformLayer can reject a transform without throwing (e.g. a
+    // missing pixel source). Only close and report success after a History entry.
+    if(liveDoc.history.states[liveDoc.history.index]===previousState)return
     useEditorStore.getState().pushToast('Puppet Warp applied with '+pins.length+' pin'+(pins.length===1?'':'s'),'success')
     onClose()
   }
@@ -265,7 +280,7 @@ export function PuppetWarpDialog({ inst,onClose }:DialogProps){
       </div>
       <DialogFooter>
         <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button size="sm" onClick={apply} disabled={!source||!pins.length||hdrBlocked}>Apply Puppet Warp</Button>
+        <Button size="sm" onClick={apply} disabled={!source||!pins.length||hdrBlocked||!layer||layer.locked||doc?.id!==sourceDocumentId.current}>Apply Puppet Warp</Button>
       </DialogFooter>
     </>
   )

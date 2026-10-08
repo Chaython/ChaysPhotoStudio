@@ -42,6 +42,9 @@ jobs:
       - name: Validate all editor tools
         run: bun run tools:validate
 
+      - name: Validate Puppet Warp geometry
+        run: bun run warp:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 

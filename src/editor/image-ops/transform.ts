@@ -154,8 +154,10 @@ export function puppetWarpMesh(
       const w=priority/Math.pow(dist,power)
       const rad=pin.rotation*Math.PI/180
       const lx=x-pin.x,ly=y-pin.y
-      const rx=lx*Math.cos(rad)-ly*Math.sin(rad)
-      const ry=lx*Math.sin(rad)+ly*Math.cos(rad)
+      // Rotate in physical pixel space. Normalized X and Y are not equal
+      // distances on a wide/tall image; otherwise a 90° turn becomes a skew.
+      const rx=(lx*a*Math.cos(rad)-ly*Math.sin(rad))/a
+      const ry=lx*a*Math.sin(rad)+ly*Math.cos(rad)
       const ddx=(pin.targetX-pin.x)+(rx-lx)
       const ddy=(pin.targetY-pin.y)+(ry-ly)
       sx+=ddx*w;sy+=ddy*w;sw+=w
