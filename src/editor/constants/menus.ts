@@ -441,7 +441,9 @@ export const MENUS: MenuItem[][] = [
   ],
   // ================= FILTER =================
   filterMenu.length === 1 ? filterMenu[0].submenu! : [
-    { id: 'filter-last', label: 'Last Filter', enabled: () => false },
+    { id: 'filter-last', label: 'Last Filter', shortcut: sc('repeatFilter'),
+      enabled: () => engine.canRepeatLastFilter(),
+      run: () => { void engine.repeatLastFilter() } },
     S(),
     { id: 'filter-liquify', label: 'Liquify…', shortcut: sc('liquify'), run: () => openDlg('liquify') },
     S(),

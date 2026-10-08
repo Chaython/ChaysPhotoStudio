@@ -333,3 +333,36 @@ assert.equal(revealDoc.layers[0].transform?.x, -4)
 assert.equal(revealDoc.frames?.[0].layers[revealSmart.id]?.x, -4, 'Undo restores animation offsets')
 assert.equal(revealDoc.measurements?.[0].segments[0].a.x, -3, 'Undo restores ruler measurements')
 console.log('Image > Reveal All preserves off-canvas Smart Objects and Undo')
+
+
+// Photoshop Filter > Last Filter should work on Smart Objects without
+// rasterizing, retain a frozen copy of settings, and respect layer locks.
+const repeatDoc = stackDoc
+const smart: Layer = {
+  ...repeatDoc.layers[0], id: 'repeat-smart', kind: 'smart', name: 'Smart Filters',
+  locked: false, canvas: null, hdrPixels: null, source: canvas(29),
+  smartFilters: [], transform: { x: 1, y: 1, scale: 1, rotation: 0 },
+}
+repeatDoc.layers.push(smart)
+repeatDoc.activeLayerId = smart.id
+repeatDoc.selectedLayerIds = [smart.id]
+assert.equal(rawEngine.canRepeatLastFilter(), false, 'Repeat is disabled until a filter succeeds')
+const params = { radius: 3, advanced: { strength: 7 } }
+rawEngine.addSmartFilter(smart.id, 'gaussian-blur', params)
+assert.equal(smart.smartFilters.length, 1)
+assert.equal(rawEngine.canRepeatLastFilter(), true)
+params.radius = 99
+params.advanced.strength = 99
+await rawEngine.repeatLastFilter()
+assert.equal(smart.smartFilters.length, 2, 'Repeat adds another non-destructive Smart Filter')
+assert.equal(smart.smartFilters[1].params.radius, 3, 'Repeat uses immutable saved parameters')
+assert.equal(smart.smartFilters[1].params.advanced.strength, 7)
+assert.equal(repeatDoc.history.states[repeatDoc.history.index].label, 'Smart Filter: Gaussian Blur')
+smart.locked = true
+assert.equal(rawEngine.canRepeatLastFilter(), false, 'Locked layer cannot run Last Filter')
+await rawEngine.repeatLastFilter()
+assert.equal(smart.smartFilters.length, 2)
+smart.locked = false
+rawEngine.setActiveDocument(originalDoc.id)
+assert.equal(rawEngine.canRepeatLastFilter(), false, 'Last Filter settings are document-scoped')
+console.log('Filter > Last Filter supports Smart Filters, parameter isolation and locked-layer safety')

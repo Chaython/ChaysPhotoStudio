@@ -38,7 +38,7 @@ export type CommandId =
   | 'fillFg' | 'fillBg' | 'clearSelection' | 'invert'
   | 'duplicateLayer' | 'newLayer' | 'transform' | 'mergeDown' | 'mergeVisible'
   // Image
-  | 'imageSize' | 'canvasSize' | 'aiUpscale' | 'liquify'
+  | 'imageSize' | 'canvasSize' | 'aiUpscale' | 'liquify' | 'repeatFilter'
   | 'autoTone' | 'autoContrast' | 'autoColor'
   // Layer
   | 'toggleClipping' | 'bringForward' | 'sendBackward' | 'bringToFront' | 'sendToBack'
@@ -100,6 +100,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'canvasSize', label: 'Canvas Size…', section: 'Image', defaultCombo: 'ctrl+alt+c', run: () => openDlg('canvas-size') },
   { id: 'aiUpscale', label: 'AI Upscale…', section: 'Image', defaultCombo: 'ctrl+alt+u', run: () => openDlg('ai-upscale') },
   { id: 'liquify', label: 'Liquify…', section: 'Image', defaultCombo: 'ctrl+shift+x', run: () => openDlg('liquify') },
+  { id: 'repeatFilter', label: 'Repeat Last Filter', section: 'Image', defaultCombo: 'ctrl+f', run: () => { void engine.repeatLastFilter() } },
   { id: 'autoTone', label: 'Auto Tone', section: 'Image', defaultCombo: 'ctrl+shift+l', run: () => void engine.autoCorrectAsync('tone') },
   { id: 'autoContrast', label: 'Auto Contrast', section: 'Image', defaultCombo: 'ctrl+alt+shift+l', run: () => void engine.autoCorrectAsync('contrast') },
   { id: 'autoColor', label: 'Auto Color', section: 'Image', defaultCombo: 'ctrl+shift+b', run: () => void engine.autoCorrectAsync('color') },

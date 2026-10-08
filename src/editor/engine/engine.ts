@@ -198,6 +198,28 @@ export class Engine {
   actions: PsAction[] = []
   private recordingAction: PsAction | null = null
   private lastTransformCommand: LayerTransformCommand | null = null
+  /** Remember only successfully committed filters, scoped to the source document. */
+  private lastAppliedFilters = new WeakMap<PsDocument, { type: FilterType; params: Record<string, any> }>()
+
+  canRepeatLastFilter(): boolean {
+    const doc = this.activeDoc
+    const layer = this.activeLayer
+    return !!doc && !!layer && !layer.locked && layer.kind !== 'adjustment'
+      && this.lastAppliedFilters.has(doc)
+  }
+
+  async repeatLastFilter(): Promise<void> {
+    if (!this.canRepeatLastFilter()) return
+    const doc = this.activeDoc!
+    const layer = this.activeLayer!
+    const last = this.lastAppliedFilters.get(doc)!
+    await this.applyFilterToLayerAsync(layer.id, last.type, structuredClone(last.params))
+  }
+
+  private rememberLastFilter(doc: PsDocument, type: FilterType, params: Record<string, any>): void {
+    this.lastAppliedFilters.set(doc, { type, params: structuredClone(params) })
+  }
+
   /** Photoshop Select > Reselect: document-scoped, detached last deselection. */
   private lastDeselectedSelections = new WeakMap<PsDocument, SelectionState>()
 
@@ -2499,16 +2521,17 @@ export class Engine {
   addSmartFilter(id: string, type: FilterType, params: Record<string, any>) {
     const doc = this.activeDoc
     const layer = this.layerById(id)
-    if (!doc || !layer) return
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
     if (layer.kind !== 'smart') {
-      // convert filter application to raster behavior instead
       this.applyFilterToLayer(id, type, params)
       return
     }
-    layer.smartFilters.push({ id: uid(), type, params: { ...params }, enabled: true })
+    layer.smartFilters.push({ id: uid(), type, params: structuredClone(params), enabled: true })
     layer._v++
     invalidateFlat(doc)
-    this.pushHistory(`Smart Filter: ${filterLabel(type)}`)
+    this.pushHistory(`Smart Filter: ${filterLabel(type)}`, doc)
+    this.rememberLastFilter(doc, type, params)
+    this.recordStep({ op: 'applyFilter', args: { layerId: id, type, params: structuredClone(params) }, label: filterLabel(type) })
     this.emit()
   }
 
@@ -3144,7 +3167,7 @@ export class Engine {
   applyFilterToLayer(layerId: string, type: FilterType, params: Record<string, any>) {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
-    if (!doc || !layer) return
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
     if (layer.kind === 'smart') {
       this.addSmartFilter(layerId, type, params)
       return
@@ -3156,8 +3179,9 @@ export class Engine {
     imageOps.applyFilter(img, type, params)
     this.commitProcessingPixelsForLayer(l, img)
     invalidateFlat(doc)
-    this.pushHistory(filterLabel(type))
-    this.recordStep({ op: 'applyFilter', args: { layerId, type, params: { ...params } }, label: filterLabel(type) })
+    this.pushHistory(filterLabel(type), doc)
+    this.rememberLastFilter(doc, type, params)
+    this.recordStep({ op: 'applyFilter', args: { layerId, type, params: structuredClone(params) }, label: filterLabel(type) })
     this.emit()
   }
 
@@ -3304,13 +3328,14 @@ export class Engine {
   async applyFilterToLayerAsync(layerId: string, type: FilterType, params: Record<string, any>): Promise<void> {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
-    if (!doc || !layer) return
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
     if (layer.kind === 'smart') {
       this.addSmartFilter(layerId, type, params)
       return
     }
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
+    const layerVersion = l._v
     let out
     try {
       const spec: PixelOpSpec = { kind: 'filter', type, params }
@@ -3324,10 +3349,15 @@ export class Engine {
       console.error('[zphoto] filter worker failed safely', err)
       return
     }
+    // The active tab or history state may have changed while the worker ran.
+    // Never apply stale pixels to an undone/replaced/edited layer or push the
+    // operation into another document's History.
+    if (!this.docs.includes(doc) || !doc.layers.includes(l) || l._v !== layerVersion) return
     this.commitProcessingPixelsForLayer(l, out)
     invalidateFlat(doc)
-    this.pushHistory(filterLabel(type))
-    this.recordStep({ op: 'applyFilter', args: { layerId, type, params: { ...params } }, label: filterLabel(type) })
+    this.pushHistory(filterLabel(type), doc)
+    this.rememberLastFilter(doc, type, params)
+    this.recordStep({ op: 'applyFilter', args: { layerId, type, params: structuredClone(params) }, label: filterLabel(type) })
     this.emit()
   }
 
