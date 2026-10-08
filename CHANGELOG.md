@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Expanded **Edit > Paste Into Selection** to accept external image clipboard content (PNG and other browser-decodable image types), creating a separate masked layer positioned at the selection center. Clipboard decoding is asynchronous with tab-switch/document-resize safety and bitmap cleanup; existing internal HDR clipboard behavior is unchanged.
+
 - Added Photoshop-style **Edit > Paste Into Selection** (Ctrl+Alt+Shift+V). The pasted artwork stays on its own editable raster layer, clipped by an independent document-space selection mask instead of destroying pixel data. Works with the internal Float32 HDR clipboard and supports Undo/Redo.
 
 - Added **Select > Load Layer Transparency** with Replace/Add/Subtract/Intersect selection modes. Raster layers use their original pixel alpha (including full-precision 32-bit HDR alpha), offset raster placement is handled correctly, and Smart Objects/vector/text layers use their rendered silhouette.

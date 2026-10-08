@@ -312,7 +312,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'edit-cut', label: 'Cut', shortcut: sc('cut'), run: () => engine.cutLayer() },
     { id: 'edit-paste', label: 'Paste', shortcut: sc('paste'), run: () => engine.pasteLayer() },
     { id: 'edit-paste-into', label: 'Paste Into Selection', shortcut: sc('pasteInto'),
-      enabled: () => engine.canPasteIntoSelection(), run: () => engine.pasteIntoSelection() },
+      enabled: () => engine.canPasteIntoSelection(), run: () => { void engine.pasteIntoSelection() } },
     S(),
     { id: 'edit-fill-fg', label: 'Fill with Foreground', shortcut: sc('fillFg'), run: () => engine.fillSelection(store().fgColor) },
     { id: 'edit-fill-bg', label: 'Fill with Background', shortcut: sc('fillBg'), run: () => engine.fillSelection(store().bgColor) },

@@ -505,5 +505,80 @@ assert.ok(repeatDoc.layers.some(l => l.id === doomedId))
 rawEngine.redo()
 assert.equal(repeatDoc.activeLayerId, neighborId, 'Redo selects the correct adjacent layer')
 console.log('Delete Layer retains nearest stack position and cleans stale selected IDs')
+
+// External application images can now be pasted INTO the active selection.
+// Stubs keep this browser-only clipboard interaction headless in CI.
+const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+const originalCreateImageBitmap = Object.getOwnPropertyDescriptor(globalThis, 'createImageBitmap')
+const clipboardLayer = repeatDoc
+rawEngine.setActiveDocument(clipboardLayer.id)
+clipboardLayer.width = 2
+clipboardLayer.height = 2
+clipboardLayer.selection = {
+  mask: canvas(73), bounds: { x: 0, y: 0, w: 2, h: 2 }, _v: 7, _paths: null, _pathsV: -1,
+}
+const raw = rawEngine as unknown as { _clip: unknown }
+const originalInternalClip = raw._clip
+raw._clip = null
+let bitmapWasClosed = false
+try {
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
+    clipboard: { read: async () => [{
+      types: ['image/png'],
+      getType: async () => new Blob(['dummy-image'], { type: 'image/png' }),
+    }] },
+  } })
+  Object.defineProperty(globalThis, 'createImageBitmap', {
+    configurable: true,
+    value: async () => ({ width: 2, height: 2, close() { bitmapWasClosed = true } }),
+  })
+  assert.equal(rawEngine.canPasteIntoSelection(), true, 'external clipboard enables Paste Into')
+  const pending = rawEngine.pasteIntoSelection()
+  assert.ok(pending instanceof Promise, 'external clipboard paste is asynchronous')
+  assert.equal(await pending, true)
+  const externalLayer = clipboardLayer.layers.find(l => l.id === clipboardLayer.activeLayerId)!
+  assert.equal(externalLayer.name, 'Pasted Image')
+  assert.equal(externalLayer.maskEnabled, true)
+  assert.equal(externalLayer.hdrPixels?.length, 16, 'external bitmap becomes HDR backing data in 32-bit documents')
+  assert.equal(value(externalLayer.mask), 73)
+  assert.notEqual(externalLayer.mask, clipboardLayer.selection!.mask)
+  assert.equal(clipboardLayer.history.states[clipboardLayer.history.index].label, 'Paste Into Selection')
+  assert.equal(bitmapWasClosed, true)
+  draw(clipboardLayer.selection!.mask, 2)
+  assert.equal(value(externalLayer.mask), 73, 'editing selection never modifies external paste mask')
+  rawEngine.undo()
+  assert.ok(!clipboardLayer.layers.some(l => l.id === externalLayer.id))
+  rawEngine.redo()
+  assert.ok(clipboardLayer.layers.some(l => l.id === externalLayer.id))
+  // Simulate tab switch while the OS clipboard read is pending. The bitmap
+  // may decode, but it must not land in the newly focused document.
+  clipboardLayer.selection = {
+    mask: canvas(74), bounds: { x: 0, y: 0, w: 2, h: 2 }, _v: 8, _paths: null, _pathsV: -1,
+  }
+  rawEngine.setActiveDocument(clipboardLayer.id)
+  const originalCount = clipboardLayer.layers.length
+  let finishRead: (() => void) | null = null
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
+    clipboard: { read: () => new Promise(resolve => {
+      finishRead = () => resolve([{
+        types: ['image/png'],
+        getType: async () => new Blob(['dummy-image'], { type: 'image/png' }),
+      }])
+    }) },
+  } })
+  const delayed = rawEngine.pasteIntoSelection()
+  rawEngine.setActiveDocument(originalDoc.id)
+  finishRead?.()
+  assert.equal(await delayed, false, 'switching tabs cancels the asynchronous paste')
+  assert.equal(clipboardLayer.layers.length, originalCount)
+  assert.equal(rawEngine.activeDoc?.id, originalDoc.id)
+} finally {
+  raw._clip = originalInternalClip
+  if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator)
+  else Reflect.deleteProperty(globalThis, 'navigator')
+  if (originalCreateImageBitmap) Object.defineProperty(globalThis, 'createImageBitmap', originalCreateImageBitmap)
+  else Reflect.deleteProperty(globalThis, 'createImageBitmap')
+}
+console.log('Paste Into supports external PNG clipboard with tab-switch and mask-snapshot safety')
 if (imageDataDescriptor) Object.defineProperty(globalThis, 'ImageData', imageDataDescriptor)
 else Reflect.deleteProperty(globalThis, 'ImageData')

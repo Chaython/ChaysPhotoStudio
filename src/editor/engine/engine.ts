@@ -2688,12 +2688,18 @@ export class Engine {
   /** Paste Into creates a new editable raster layer masked by the current
    * selection, without baking the mask into 8-bit SDR pixels. */
   canPasteIntoSelection(): boolean {
-    return !!this._clip && !!this.activeDoc?.selection
+    return !!this.activeDoc?.selection && (
+      !!this._clip || (typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function')
+    )
   }
 
-  pasteIntoSelection(): boolean {
+  /** Use the internal high-bit-depth clipboard when available, or read an
+   * image copied from another application when the internal clipboard is empty.
+   * Only the external read is asynchronous; the established internal path
+   * remains synchronous to avoid breaking existing shortcut consumers. */
+  pasteIntoSelection(): boolean | Promise<boolean> {
     if (!this.canPasteIntoSelection()) return false
-    return this.pasteLayer(true)
+    return this._clip ? this.pasteLayer(true) : this.pasteFromSystemClipboard(true)
   }
 
   pasteLayer(intoSelection = false): boolean {
@@ -2734,27 +2740,74 @@ export class Engine {
     return true
   }
 
-  /** read an image from the OS clipboard (e.g. copied in another app) and
-   *  paste it as a new centered raster layer */
-  async pasteFromSystemClipboard(): Promise<boolean> {
+  /** Read an image copied from another app, and optionally paste it through
+   *  a separate non-destructive mask from the selection at invocation time.
+   *  The destination document is captured before the asynchronous browser read
+   *  so a tab switch cannot unexpectedly paste into another document. */
+  async pasteFromSystemClipboard(intoSelection = false): Promise<boolean> {
+    const doc = this.activeDoc
+    if (!doc || (intoSelection && !doc.selection)) return false
+    const selection = intoSelection ? this.cloneHistorySelection(doc.selection) : null
+    const originalWidth = doc.width, originalHeight = doc.height
     try {
-      if (!navigator.clipboard?.read) { this.ui?.toast('The clipboard is empty', 'info'); return false }
+      if (typeof navigator === 'undefined' || !navigator.clipboard?.read) {
+        this.ui?.toast('System image clipboard is unavailable', 'info')
+        return false
+      }
       const items = await navigator.clipboard.read()
       for (const item of items) {
         const type = item.types.find(t => t.startsWith('image/'))
         if (!type) continue
         const blob = await item.getType(type)
         const img = await createImageBitmap(blob)
-        const c = createCanvas(img.width, img.height)
-        ctx2d(c).drawImage(img, 0, 0)
-        img.close()
-        this.addLayerFromCanvas(c, 'Pasted Image')
-        this.ui?.toast('Pasted from system clipboard', 'success')
-        return true
+        try {
+          if (this.activeDoc !== doc || !this.docs.includes(doc) ||
+              doc.width !== originalWidth || doc.height !== originalHeight) {
+            this.ui?.toast('Clipboard paste cancelled because the document changed', 'info')
+            return false
+          }
+          const canvas = createCanvas(img.width, img.height)
+          ctx2d(canvas).drawImage(img, 0, 0)
+          if (!intoSelection) {
+            // Keep ordinary external Paste centered, matching the existing
+            // behavior, including its independent History entry.
+            const pasted = this.addLayerFromCanvas(canvas, 'Pasted Image')
+            if (!pasted) return false
+          } else {
+            if (!selection || selection.mask.width !== doc.width ||
+                selection.mask.height !== doc.height) return false
+            const layer = newLayer('raster', 'Pasted Image', doc.width, doc.height)
+            layer.canvas = canvas
+            // Place the bitmap in the center of the selected bounds rather
+            // than the full document, like Photoshop Paste Into.
+            layer.offsetX = Math.round(selection.bounds.x + (selection.bounds.w - img.width) / 2)
+            layer.offsetY = Math.round(selection.bounds.y + (selection.bounds.h - img.height) / 2)
+            layer.mask = selection.mask
+            layer.maskEnabled = true
+            layer._mv++
+            if (doc.workingBitDepth === 32) {
+              layer.hdrPixels = hdrPixelsFromCanvas(canvas)
+              layer.hdrColorSpace = 'linear-srgb'
+              layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, img.width, img.height, 'srgb')
+              layer._hdrPreviewBefore = null
+            }
+            const index = doc.layers.findIndex(layer => layer.id === doc.activeLayerId)
+            doc.layers.splice(index + 1, 0, layer)
+            doc.activeLayerId = layer.id
+            doc.selectedLayerIds = [layer.id]
+            invalidateFlat(doc)
+            this.pushHistory('Paste Into Selection', doc)
+            this.emit()
+          }
+          this.ui?.toast(intoSelection ? 'Pasted image into selection' : 'Pasted from system clipboard', 'success')
+          return true
+        } finally {
+          img.close()
+        }
       }
       this.ui?.toast('The clipboard has no image', 'info')
     } catch {
-      this.ui?.toast('Could not read the clipboard (permission denied)', 'error')
+      this.ui?.toast('Could not read or decode the image clipboard', 'error')
     }
     return false
   }

@@ -87,7 +87,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'cut', label: 'Cut', section: 'Edit', defaultCombo: 'ctrl+x', run: () => engine.cutLayer() },
   { id: 'paste', label: 'Paste', section: 'Edit', defaultCombo: 'ctrl+v', run: () => engine.pasteLayer() },
   { id: 'pasteInto', label: 'Paste Into Selection', section: 'Edit', defaultCombo: 'ctrl+alt+shift+v',
-    run: () => engine.pasteIntoSelection() },
+    run: () => { void engine.pasteIntoSelection() } },
   { id: 'fillFg', label: 'Fill with Foreground', section: 'Edit', defaultCombo: 'alt+backspace', run: () => engine.fillSelection(store().fgColor) },
   { id: 'fillBg', label: 'Fill with Background', section: 'Edit', defaultCombo: 'ctrl+backspace', run: () => engine.fillSelection(store().bgColor) },
   { id: 'clearSelection', label: 'Clear Selection Pixels', section: 'Edit', defaultCombo: 'delete', aliases: ['backspace'], run: () => { if (engine.activeDoc) engine.deleteSelectionPixels() } },
