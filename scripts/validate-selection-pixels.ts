@@ -13,7 +13,7 @@ const result = splitHdrSelectionPixels(src, 3, 2, -1, 0,
   { x: 0, y: 0, w: 2, h: 2 }, selected, true)
 assert.equal(result.hasPixels, true)
 assert.equal(result.pixels[0], 4, 'first copied pixel maps offset raster correctly')
-assert.equal(result.pixels[3], .8)
+assert.ok(Math.abs(result.pixels[3] - .8) < 1e-6)
 assert.equal(result.pixels[4], 0, 'unselected transparent source stays transparent')
 assert.equal(result.pixels[7], 0, 'transparent source stays transparent')
 assert.equal(result.pixels[8], 9, 'HDR RGB values above 1 stay intact')
