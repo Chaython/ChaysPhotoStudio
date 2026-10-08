@@ -103,6 +103,10 @@ Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success o
 
 The local inpainting kernel currently consumes and writes 8-bit Canvas2D image data. It now refuses both 16-bit float and 32-bit HDR documents before copying/mutating pixels rather than silently quantizing the source image; 8-bit documents keep the existing non-destructive History flow. High-bit inpainting needs a future Float32-compatible synthesis path.
 
+## Two-phase asynchronous pixel commits
+
+Background Auto Tone/Contrast/Color, direct Adjustment commits, and raster Filter operations now compute against detached source pixels. Live layer cloning/rasterization is deferred until the worker succeeds, the active tab and source layer are still valid, and the initiating History state remains current. On failure, cancellation, tab switches or Undo, no layer version increment or irreversible conversion of editable Smart Objects/text/shapes occurs. Successful rasterization is folded into the editing History step rather than adding a separate intermediate History entry.
+
 ## Filter and Adjustment dialog preview cleanup
 
 Filter and adjustment previews now hold document-scoped leases: closing via Escape, the X button, Cancel, or switching tabs clears only the preview owned by that dialog, including its original document if now inactive. A second dialog's newer preview is not accidentally erased. Smart Filter edits similarly restore original parameters in their initiating document rather than modifying the newly active tab. Preview changes invalidate the flattened composite cache, and the global last-dialog cleanup runs in a React effect instead of scheduling microtasks during render.

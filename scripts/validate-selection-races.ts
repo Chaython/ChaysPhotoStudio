@@ -23,6 +23,11 @@ class DeferredWorker {
   postMessage(msg: { id: number; buffer: ArrayBuffer }) {
     DeferredWorker.jobs.push({ owner: this, id: msg.id, buffer: msg.buffer })
   }
+  static fail(message = 'intentional operation failure') {
+    const job = this.jobs.shift()
+    assert.ok(job, 'worker received the failing operation')
+    job.owner.onmessage?.({ data: { kind: 'error', id: job.id, message } } as MessageEvent)
+  }
   terminate() {}
   static finish() {
     const job = this.jobs.shift()
@@ -80,7 +85,11 @@ try {
   // document. Patch COW access so the test focuses on worker ownership rather
   // than a full browser's Canvas2D implementation.
   const layer = doc.layers[0]
-  ;(editor as unknown as { mutateLayerPixels: () => typeof layer }).mutateLayerPixels = () => layer
+  let liveMutations = 0
+  ;(editor as unknown as { mutateLayerPixels: () => typeof layer }).mutateLayerPixels = () => {
+    liveMutations++
+    return layer
+  }
   const beforePixels = layer._v
   const beforeHistory = doc.history.states[doc.history.index]
   const autoJob = editor.applyRegionOpAsync('layer', { kind: 'auto-tone' }, 'Auto Tone')
@@ -88,6 +97,7 @@ try {
   doc.history.states[0] = { label: 'Later edit' } as PsDocument['history']['states'][number]
   DeferredWorker.finish()
   assert.equal(await autoJob, false, 'Auto Tone aborts when source history changes')
+  assert.equal(liveMutations, 0, 'stale worker must not clone/rasterize the live layer')
   assert.equal(layer._v, beforePixels)
   assert.equal(doc.history.states[doc.history.index].label, 'Later edit')
 
@@ -101,6 +111,11 @@ try {
   assert.equal(layer._v, beforePixels)
   assert.equal(doc.history.states[doc.history.index].label, 'Later edit')
   ;(editor as unknown as { _activeId: string })._activeId = doc.id
+  const failedAdjustment = editor.applyAdjustmentToLayerAsync('layer', 'exposure', { exposure: 1 })
+  assert.equal(DeferredWorker.jobs.length, 1)
+  DeferredWorker.fail()
+  await failedAdjustment
+  assert.equal(liveMutations, 0, 'a failed worker must not mutate or rasterize the live layer')
 
   const filterJob = editor.applyFilterToLayerAsync('layer', 'offset',
     { horizontal: 1, vertical: 0, edgeMode: 'wrap' })
@@ -114,6 +129,7 @@ try {
   await filterJob
   assert.equal(layer._v, beforeFilterVersion, 'stale filter does not mutate target pixels')
   assert.equal(doc.history.index, beforeFilterHistory, 'stale filter does not create History')
+  assert.equal(liveMutations, 0, 'stale filter worker must not clone/rasterize the live layer')
 
   layer.locked = true
   const oldVersion = layer._v

@@ -4044,6 +4044,29 @@ export class Engine {
   // api, invert shortcut). Small images (< 0.3 MP) and any worker failure run sync
   // automatically inside the wrapper — identical observable behavior.
 
+  /** Compute from a detached source without rasterizing, cloning or versioning
+   * the live layer. A failed or stale worker must not alter Smart Objects,
+   * their filters, pixels, or History before we decide to commit. */
+  private computePixelOpFromLayer(doc: PsDocument, layer: Layer, spec: PixelOpSpec): Promise<PixelImage> | null {
+    const canvas = layer.kind === 'raster' ? layer.canvas
+      : prepareLayer(doc, layerContentForRasterization(layer))
+    if (!canvas) return null
+    const hdrInput = layer.kind === 'raster' ? hdrProcessingImage(layer) : null
+    return hdrInput ? runPixelOpAsync(hdrInput, spec) : runPixelOpFromCanvas(canvas, spec)
+  }
+
+  /** COW/rasterization happens only after asynchronous computation succeeded,
+   * and after the target document and History have been revalidated. */
+  private commitComputedPixelOp(layer: Layer, output: PixelImage): boolean {
+    if (layer.kind !== 'raster') {
+      this.rasterizeLayer(layer.id, { history: false, emit: false })
+    }
+    const live = this.mutateLayerPixels(layer.id)
+    if (!live?.canvas || live.canvas.width !== output.width || live.canvas.height !== output.height) return false
+    this.commitProcessingPixelsForLayer(live, output)
+    return true
+  }
+
   /** Async variant of applyRegionOp for worker-capable op descriptors (PixelOpSpec —
    *  closures cannot cross the worker boundary). Sync applyRegionOp stays for tools. */
   async applyRegionOpAsync(layerId: string, spec: PixelOpSpec, label: string): Promise<boolean> {
@@ -4055,27 +4078,24 @@ export class Engine {
       this.ui?.toast('Automatic histogram corrections are not yet supported for 32-bit HDR layers', 'error')
       return false
     }
-    const l = this.mutateLayerPixels(layerId)
-    if (!l?.canvas) return false
-    const layerVersion = l._v
+    const layerVersion = layer._v
     const historyAnchor = doc.history.states[doc.history.index]
     const sourceEpoch = doc._epoch
-    let out
+    let out: PixelImage
     try {
-      const hdrInput = hdrProcessingImage(l)
-      out = hdrInput
-        ? await runPixelOpAsync(hdrInput, spec)
-        : await runPixelOpFromCanvas(l.canvas, spec)
+      const computation = this.computePixelOpFromLayer(doc, layer, spec)
+      if (!computation) return false
+      out = await computation
     } catch (err) {
       this.ui?.toast(err instanceof Error ? `${label} failed: ${err.message}` : `${label} failed`, 'error')
       return false
     }
     // A worker must never write into a document/layer that was edited, undone,
     // closed, switched away from, or replaced while the operation was running.
-    if (this.activeDoc !== doc || !doc.layers.includes(l) || l._v !== layerVersion ||
-        doc.history.states[doc.history.index] !== historyAnchor ||
+    if (this.activeDoc !== doc || !doc.layers.includes(layer) || layer._v !== layerVersion ||
+        layer.locked || doc.history.states[doc.history.index] !== historyAnchor ||
         doc._epoch !== sourceEpoch) return false
-    this.commitProcessingPixelsForLayer(l, out)
+    if (!this.commitComputedPixelOp(layer, out)) return false
     invalidateFlat(doc)
     this.pushHistory(label, doc)
     this.emit()
@@ -4091,26 +4111,22 @@ export class Engine {
       this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
       return
     }
-    const l = this.mutateLayerPixels(layerId)
-    if (!l?.canvas) return
-    const layerVersion = l._v
+    const layerVersion = layer._v
     const historyAnchor = doc.history.states[doc.history.index]
     const sourceEpoch = doc._epoch
-    let out
+    let out: PixelImage
     try {
-      const spec: PixelOpSpec = { kind: 'adjustment', type, params }
-      const hdrInput = hdrProcessingImage(l)
-      out = hdrInput
-        ? await runPixelOpAsync(hdrInput, spec)
-        : await runPixelOpFromCanvas(l.canvas, spec)
+      const computation = this.computePixelOpFromLayer(doc, layer, { kind: 'adjustment', type, params })
+      if (!computation) return
+      out = await computation
     } catch (err) {
       this.ui?.toast(err instanceof Error ? `Adjustment not applied: ${err.message}` : 'Adjustment not applied', 'error')
       return
     }
-    if (this.activeDoc !== doc || !doc.layers.includes(l) || l._v !== layerVersion ||
-        doc.history.states[doc.history.index] !== historyAnchor ||
+    if (this.activeDoc !== doc || !doc.layers.includes(layer) || layer._v !== layerVersion ||
+        layer.locked || doc.history.states[doc.history.index] !== historyAnchor ||
         doc._epoch !== sourceEpoch) return
-    this.commitProcessingPixelsForLayer(l, out)
+    if (!this.commitComputedPixelOp(layer, out)) return
     invalidateFlat(doc)
     this.pushHistory(typeLabel(type), doc)
     this.recordStep({ op: 'applyAdjustment', args: { layerId, type, params: { ...params } }, label: typeLabel(type) })
@@ -4130,18 +4146,14 @@ export class Engine {
       this.addSmartFilter(layerId, type, params)
       return
     }
-    const l = this.mutateLayerPixels(layerId)
-    if (!l?.canvas) return
-    const layerVersion = l._v
+    const layerVersion = layer._v
     const historyAnchor = doc.history.states[doc.history.index]
     const sourceEpoch = doc._epoch
-    let out
+    let out: PixelImage
     try {
-      const spec: PixelOpSpec = { kind: 'filter', type, params }
-      const hdrInput = hdrProcessingImage(l)
-      out = hdrInput
-        ? await runPixelOpAsync(hdrInput, spec)
-        : await runPixelOpFromCanvas(l.canvas, spec)
+      const computation = this.computePixelOpFromLayer(doc, layer, { kind: 'filter', type, params })
+      if (!computation) return
+      out = await computation
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.ui?.toast(`Filter not applied: ${message}`, 'error')
@@ -4151,10 +4163,10 @@ export class Engine {
     // A worker can complete after switching tabs or performing a different
     // edit (without necessarily changing this layer's version). Commit only
     // to the exact document, source layer, and History state we started from.
-    if (this.activeDoc !== doc || !doc.layers.includes(l) || l._v !== layerVersion ||
-        doc.history.states[doc.history.index] !== historyAnchor ||
+    if (this.activeDoc !== doc || !doc.layers.includes(layer) || layer._v !== layerVersion ||
+        layer.locked || doc.history.states[doc.history.index] !== historyAnchor ||
         doc._epoch !== sourceEpoch) return
-    this.commitProcessingPixelsForLayer(l, out)
+    if (!this.commitComputedPixelOp(layer, out)) return
     invalidateFlat(doc)
     this.pushHistory(filterLabel(type), doc)
     this.rememberLastFilter(doc, type, params)
