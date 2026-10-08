@@ -2539,7 +2539,25 @@ export class Engine {
     let canvas: HTMLCanvasElement
     let ox = 0, oy = 0, name = 'Layer'
     if (merged) {
-      canvas = cloneCanvas(compositeDocument(doc))
+      const composite = compositeDocument(doc)
+      if (doc.selection) {
+        const bounds = doc.selection.bounds
+        const x0 = clamp(Math.floor(bounds.x), 0, doc.width)
+        const y0 = clamp(Math.floor(bounds.y), 0, doc.height)
+        const x1 = clamp(Math.ceil(bounds.x + bounds.w), 0, doc.width)
+        const y1 = clamp(Math.ceil(bounds.y + bounds.h), 0, doc.height)
+        if (x1 <= x0 || y1 <= y0) return false
+        canvas = createCanvas(x1 - x0, y1 - y0, canvasProfile(composite))
+        const ctx = ctx2d(canvas)
+        ctx.drawImage(composite, -x0, -y0)
+        ctx.save()
+        ctx.globalCompositeOperation = 'destination-in'
+        ctx.drawImage(doc.selection.mask, -x0, -y0)
+        ctx.restore()
+        ox = x0; oy = y0
+      } else {
+        canvas = cloneCanvas(composite)
+      }
       name = doc.name
     } else {
       const l = this.activeLayer

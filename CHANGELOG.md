@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Fixed **Edit > Copy Merged (Ctrl+Shift+C)** ignoring the active selection. The clipboard now contains only the selected composite region, preserves feathered selection alpha, and remembers its original document offset for Paste.
+
 - Fixed **Edit > Clear** on 32-bit HDR rasters: feathered selections now modify the scene-linear Float32 alpha buffer directly, without clipping surviving HDR highlights to display precision. Locked/non-raster layers are protected, and non-overlapping selection deletes are no-ops.
 
 - Added Photoshop-style **Layer via Copy (Ctrl+J)** and **Layer via Cut (Ctrl+Shift+J)** for feathered selections. Ctrl+J still duplicates the entire editable layer when no selection exists. Extracted raster selections retain their document offsets and 32-bit Float32 HDR highlights; cutting removes only selected alpha. Fixed Edit > Cut clearing whole raster layers despite a partial selection and made clipboard copies respect selection feathering and layer masks. Added headless HDR alpha-splitting regression coverage.
