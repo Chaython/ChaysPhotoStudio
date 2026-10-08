@@ -64,6 +64,10 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 
 **Select → Grow (Similar Colors)** and **Select → Similar** expand an existing (possibly multi-color) selection by perceptual Lab color similarity. Grow flood-fills only connected qualifying pixels from the existing selection boundary; Similar searches the full composite for disconnected matches. A bounded, diversity-preserving palette avoids gradient runaway and keeps the operation practical on photos. Original feathered alpha is preserved, transparent pixels are penalized, and both commands run through the shared pixel-worker pipeline with a large-image main-thread safeguard. Asynchronous results do not replace selections edited while the job was running; a changed result produces one undoable history entry. More Photoshop parity work remains for direct Magic Wand-option sharing and richer Select dialog controls.
 
+## Photoshop Offset Filter
+
+**Filter → Other → Offset…** offers horizontal and vertical pixel shifts and Photoshop-style Wrap Around / Repeat Edge Pixels choices, plus Transparent edges for isolated layer artwork. Shifted color and alpha channels preserve their original values, including 32-bit scene-linear Float32 values above 1.0. The filter participates in standard Smart Object Smart Filters and shared filter previews, so it can be edited non-destructively. CI tests cover signed shifts, both axes, all three edge modes, and Float32 HDR precision.
+
 ## Stroke Selection
 
 **Edit → Stroke Selection…** creates an editable new raster layer from the active selection using exact Euclidean distance fields. It supports Inside, Center and Outside positioning, 1–200 px width, color and opacity, selection feathering, holes and document edges. The pixel worker performs large operations to avoid blocking the editor. A stale asynchronous result never overwrites a changed selection, and the creation is a single Undo/History step. Existing layers, masks and HDR backing buffers remain unmodified; new paint converts to scene-linear color where appropriate.

@@ -66,7 +66,7 @@ void _filtersComplete
 export { ADJUSTMENTS, FILTERS }
 
 export const HDR_SAFE_ADJUSTMENTS = new Set<AdjustmentType>(['exposure'])
-export const HDR_SAFE_FILTERS = new Set<FilterType>(['gaussian-blur', 'box-blur', 'motion-blur', 'radial-blur'])
+export const HDR_SAFE_FILTERS = new Set<FilterType>(['gaussian-blur', 'box-blur', 'motion-blur', 'radial-blur', 'offset'])
 
 export function applyAdjustment(img: PixelImage, type: AdjustmentType, params: Record<string, any>) {
   if (isSceneLinearHdr(img) && !HDR_SAFE_ADJUSTMENTS.has(type)) {

@@ -189,7 +189,7 @@ const filterGroups: { label: string; filters: FilterType[] }[] = [
   { label: 'Stylize', filters: ['find-edges', 'emboss', 'wind', 'oil-paint', 'diffuse-glow'] },
   { label: 'Distort', filters: ['twirl', 'wave', 'spherize', 'zigzag', 'pinch', 'shear', 'glass', 'ocean-ripple', 'displace', 'chromatic-aberration'] },
   { label: 'Render', filters: ['clouds', 'difference-clouds', 'fibers', 'lens-flare', 'vignette', 'bloom'] },
-  { label: 'Other', filters: ['high-pass', 'custom-kernel', 'minimum', 'maximum', 'lens-correction'] },
+  { label: 'Other', filters: ['high-pass', 'custom-kernel', 'minimum', 'maximum', 'offset', 'lens-correction'] },
 ]
 
 function filterLabel(t: string): string {
@@ -206,7 +206,7 @@ function filterLabel(t: string): string {
     'diffuse-glow': 'Diffuse Glow…', glass: 'Glass…', 'ocean-ripple': 'Ocean Ripple…',
     zigzag: 'Zigzag…', pinch: 'Pinch…', displace: 'Displace…', fibers: 'Fibers…',
     'difference-clouds': 'Difference Clouds…', average: 'Average…',
-    'lens-correction': 'Lens Correction…', shear: 'Shear…',
+    'lens-correction': 'Lens Correction…', shear: 'Shear…', offset: 'Offset…',
   }
   return map[t] ?? t
 }

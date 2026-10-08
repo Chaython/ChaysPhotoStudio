@@ -66,6 +66,9 @@ jobs:
       - name: Validate stroke selection placement
         run: bun run selection-stroke:validate
 
+      - name: Validate Offset filter precision and edge handling
+        run: bun run offset:validate
+
       - name: Validate layer transparency selections
         run: bun run layer-alpha:validate
 

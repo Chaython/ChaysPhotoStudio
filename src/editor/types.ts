@@ -46,7 +46,7 @@ export type FilterType =
   | 'clouds' | 'lens-flare' | 'newsprint' | 'vignette' | 'bloom'
   | 'chromatic-aberration'
   | 'diffuse-glow' | 'glass' | 'ocean-ripple' | 'zigzag' | 'pinch'
-  | 'displace' | 'fibers' | 'difference-clouds' | 'average' | 'lens-correction' | 'shear'
+  | 'displace' | 'fibers' | 'difference-clouds' | 'average' | 'lens-correction' | 'shear' | 'offset'
 
 // Control schemas power the generic dialog renderer + properties panel
 export type ControlType = 'slider' | 'number' | 'select' | 'toggle' | 'color' | 'angle' | 'point' | 'gradient' | 'custom'

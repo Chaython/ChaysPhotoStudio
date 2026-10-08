@@ -48,7 +48,7 @@ const FILTER_TYPES: DialogType[] = [
 const NEW_ADJUSTMENT_TYPES: DialogType[] = (['color-lookup', 'equalize'] as const) as unknown as DialogType[]
 const NEW_FILTER_TYPES: DialogType[] = ([
   'average', 'diffuse-glow', 'glass', 'ocean-ripple', 'zigzag', 'pinch',
-  'shear', 'displace', 'fibers', 'difference-clouds', 'lens-correction',
+  'shear', 'displace', 'fibers', 'difference-clouds', 'lens-correction', 'offset',
 ] as const) as unknown as DialogType[]
 
 export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) => React.ReactNode>> = {

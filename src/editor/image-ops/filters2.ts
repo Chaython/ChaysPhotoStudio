@@ -17,6 +17,7 @@ import { luma, hexToRgbTriple } from './color'
 import { mulberry32, smoothRamp } from './interp'
 import { blurImageData, boxBlurFloat, gaussianBlurFloat } from './blur'
 import { createPixelImageLike, type PixelArray } from './pixel-data'
+import { offsetPixels } from './offset'
 
 // ---------------------------------------------------------------- helpers
 // (module-private twins of the filters.ts helpers — they are not exported there)
@@ -104,7 +105,7 @@ function triWave(phase: number): number {
  *  exported FILTERS record by image-ops/index.ts) */
 export type NewFilterType =
   | 'average' | 'diffuse-glow' | 'glass' | 'ocean-ripple' | 'zigzag' | 'pinch'
-  | 'shear' | 'displace' | 'fibers' | 'difference-clouds' | 'lens-correction'
+  | 'shear' | 'displace' | 'fibers' | 'difference-clouds' | 'lens-correction' | 'offset'
 
 export const FILTERS2: Record<NewFilterType, FilterDef> = {
 
@@ -520,6 +521,27 @@ export const FILTERS2: Record<NewFilterType, FilterDef> = {
   },
 
   // ---------------------------------------------------------------- other
+
+  'offset': {
+    type: 'offset', label: 'Offset', group: 'other',
+    controls: [
+      { key: 'horizontal', label: 'Horizontal (px)', type: 'number', min: -16384, max: 16384, step: 1 },
+      { key: 'vertical', label: 'Vertical (px)', type: 'number', min: -16384, max: 16384, step: 1 },
+      { key: 'edgeMode', label: 'Undefined Areas', type: 'select', options: [
+        { label: 'Wrap Around', value: 'wrap' },
+        { label: 'Repeat Edge Pixels', value: 'repeat-edge' },
+        { label: 'Transparent', value: 'transparent' },
+      ] },
+    ],
+    defaults: { horizontal: 0, vertical: 0, edgeMode: 'wrap' },
+    apply(img, params) {
+      offsetPixels(img, {
+        horizontal: Number(params.horizontal ?? 0),
+        vertical: Number(params.vertical ?? 0),
+        edgeMode: params.edgeMode ?? 'wrap',
+      })
+    },
+  },
 
   'lens-correction': {
     type: 'lens-correction', label: 'Lens Correction', group: 'other',
