@@ -378,30 +378,41 @@ function dispatch(entry: WorkerEntry, job: InternalJob): void {
   }, timeoutMs)
   const transfer: ArrayBuffer[] = [job.buffer]
   if (job.sourceBuffer) transfer.push(job.sourceBuffer)
-  entry.worker.postMessage(
-    {
-      id: job.id,
-      kind: 'op',
-      op: job.op.kind,
-      type: job.op.type,
-      params: job.op.params,
-      width: job.width,
-      height: job.height,
-      // the buffers MUST be referenced here — a transfer-list entry without a
-      // matching message property is transferred but unreachable (undefined
-      // on the worker side). This was the original bug: transfer worked, but
-      // req.buffer was undefined inside the worker.
-      buffer: job.buffer,
-      sourceBuffer: job.sourceBuffer ?? undefined,
-      sourceWidth: job.sourceBuffer ? job.sourceWidth : undefined,
-      sourceHeight: job.sourceBuffer ? job.sourceHeight : undefined,
-      pixelType: job.pixelType,
-      dynamicRange: job.dynamicRange,
-      sourcePixelType: job.sourceBuffer ? job.sourcePixelType : undefined,
-      sourceDynamicRange: job.sourceBuffer ? job.sourceDynamicRange : undefined,
-    },
-    transfer,
-  )
+  try {
+    entry.worker.postMessage(
+      {
+        id: job.id,
+        kind: 'op',
+        op: job.op.kind,
+        type: job.op.type,
+        params: job.op.params,
+        width: job.width,
+        height: job.height,
+        // Transfer only buffers that are also carried in the message payload.
+        buffer: job.buffer,
+        sourceBuffer: job.sourceBuffer ?? undefined,
+        sourceWidth: job.sourceBuffer ? job.sourceWidth : undefined,
+        sourceHeight: job.sourceBuffer ? job.sourceHeight : undefined,
+        pixelType: job.pixelType,
+        dynamicRange: job.dynamicRange,
+        sourcePixelType: job.sourceBuffer ? job.sourcePixelType : undefined,
+        sourceDynamicRange: job.sourceBuffer ? job.sourceDynamicRange : undefined,
+      },
+      transfer,
+    )
+  } catch (err) {
+    // postMessage throws synchronously for uncloneable parameters (DataCloneError)
+    // or detached transfer buffers. The job was never dispatched; release the
+    // worker slot immediately rather than leaving it busy until a timeout.
+    if (job.timer) clearTimeout(job.timer)
+    job.timer = null
+    entry.job = null
+    job.entry = null
+    job.reject(new PixelOpOperationError(
+      `pixel worker request could not be sent: ${err instanceof Error ? err.message : String(err)}`,
+    ))
+    drainQueue()
+  }
 }
 
 function drainQueue(): void {

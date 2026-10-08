@@ -13,6 +13,9 @@ class PartiallyFailedWorker {
   constructor() { PartiallyFailedWorker.created++ }
   postMessage(message: { id: number; buffer: ArrayBuffer }) {
     PartiallyFailedWorker.dispatched++
+    if (PartiallyFailedWorker.dispatched === 3) {
+      throw new Error('simulated postMessage DataCloneError')
+    }
     const first = PartiallyFailedWorker.dispatched === 1
     const result = message.buffer.slice(0)
     if (first) new Float32Array(result)[0] = 999
@@ -41,7 +44,12 @@ try {
   assert.equal(result.data[0], 37, 'following operation returns the uncorrupted fresh input')
   assert.equal(PartiallyFailedWorker.created, 1, 'valid worker reused after operation error')
   assert.equal(PartiallyFailedWorker.dispatched, 2)
-  console.log('Worker operation exceptions reject safely without disabling the pool or replaying dirty pixels')
+  await assert.rejects(runPixelOpAsync(input(), { kind: 'auto-tone' }), PixelOpOperationError)
+  const afterSendFailure = await runPixelOpAsync(input(), { kind: 'auto-tone' })
+  assert.equal(afterSendFailure.data[0], 37)
+  assert.equal(PartiallyFailedWorker.created, 1, 'postMessage failure did not strand or replace the worker')
+  assert.equal(PartiallyFailedWorker.dispatched, 4)
+  console.log('Worker op and postMessage exceptions reject safely, preserve the pool and never replay dirty pixels')
 } finally {
   if (previousWorker) Object.defineProperty(globalThis, 'Worker', previousWorker)
   else Reflect.deleteProperty(globalThis, 'Worker')

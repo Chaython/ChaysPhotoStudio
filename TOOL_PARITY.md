@@ -99,6 +99,10 @@ Documents now carry explicit **PPI resolution metadata** independently from pixe
 
 Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success or record actions when the active layer is locked or lacks editable pixels. Direct Adjustment and Filter commits now reject known unsupported scene-linear 32-bit operations before cloning/mutating layer canvases; supported HDR filters such as Offset remain usable.
 
+## Failed pixel-worker dispatch recovery
+
+Synchronous `Worker.postMessage` errors, including uncloneable filter parameters, now clear the timer, free the worker queue slot and reject the failed request immediately instead of leaving the pool falsely busy until its timeout. The worker can accept subsequent valid jobs. Regression tests exercise failure after partial pixel processing and failure before request dispatch.
+
 ## Background worker resilience
 
 Recoverable pixel-operation exceptions now reject the failing job without reprocessing a partially modified buffer and without disabling otherwise healthy background workers for the rest of the session. Genuine worker transport/load failures still trigger the existing conservative fallback and main-thread freeze guards. Regression coverage submits a second operation after an intentional partial worker failure and verifies that the original worker handles it.
