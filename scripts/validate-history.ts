@@ -743,3 +743,52 @@ assert.equal(repeatDoc.savedChannels.length, beforeChannelSave)
 rawEngine.redo()
 assert.equal(repeatDoc.savedChannels.at(-1)?.id, newChannelId)
 console.log('Save Layer Mask as Channel preserves mask and supports Undo/Redo')
+
+
+// Copy/Paste Layer Mask is detached, documents cannot receive masks with
+// mismatched dimensions, and replacing an existing mask is an explicit action.
+rawEngine.setActiveDocument(repeatDoc.id)
+const copiedMaskSource = repeatDoc.layers.find(l => l.id === maskGuard.id)!
+rawEngine.setLayerMaskEnabled(copiedMaskSource.id, true)
+const sourceMaskAtCopy = copiedMaskSource.mask
+const maskHistoryBeforeCopy = repeatDoc.history.index
+assert.equal(rawEngine.copyLayerMask(copiedMaskSource.id), true)
+assert.equal(repeatDoc.history.index, maskHistoryBeforeCopy, 'copying a mask does not create a History entry')
+const maskPasteTarget: Layer = {
+  ...copiedMaskSource, id: 'mask-paste-target', name: 'Mask target',
+  mask: null, maskEnabled: true, locked: false, _v: 1, _mv: 1,
+}
+repeatDoc.layers.push(maskPasteTarget)
+repeatDoc.activeLayerId = maskPasteTarget.id
+repeatDoc.selectedLayerIds = [maskPasteTarget.id]
+rawEngine.pushHistory('Before Mask Paste', repeatDoc)
+assert.equal(rawEngine.canPasteLayerMask(), true)
+assert.equal(rawEngine.pasteLayerMask(maskPasteTarget.id), true)
+assert.notEqual(maskPasteTarget.mask, sourceMaskAtCopy, 'pasted mask has separate backing canvas')
+assert.equal(maskPasteTarget.mask?.width, repeatDoc.width)
+assert.equal(maskPasteTarget.mask?.height, repeatDoc.height)
+assert.equal(repeatDoc.history.states[repeatDoc.history.index].label, 'Paste Layer Mask')
+assert.equal(rawEngine.canPasteLayerMask(), false, 'normal Paste never replaces an existing mask')
+assert.equal(rawEngine.canPasteLayerMask(true), true, 'mask replacement is explicitly available')
+const pastedMask = maskPasteTarget.mask
+assert.equal(rawEngine.pasteLayerMask(maskPasteTarget.id, true), true)
+assert.notEqual(maskPasteTarget.mask, pastedMask)
+assert.equal(repeatDoc.history.states[repeatDoc.history.index].label, 'Replace Layer Mask')
+maskPasteTarget.locked = true
+assert.equal(rawEngine.canPasteLayerMask(true), false)
+assert.equal(rawEngine.pasteLayerMask(maskPasteTarget.id, true), false)
+maskPasteTarget.locked = false
+const originalMaskDocumentWidth = repeatDoc.width
+repeatDoc.width++
+assert.equal(rawEngine.canPasteLayerMask(true), false, 'document-size mismatch disables mask Paste')
+assert.equal(rawEngine.pasteLayerMask(maskPasteTarget.id, true), false)
+repeatDoc.width = originalMaskDocumentWidth
+rawEngine.undo()
+assert.equal(repeatDoc.layers.find(l => l.id === maskPasteTarget.id)?.mask?.width, repeatDoc.width,
+  'Undo restores previously pasted mask')
+rawEngine.undo()
+assert.equal(repeatDoc.layers.find(l => l.id === maskPasteTarget.id)?.mask, null,
+  'Undo removes the original mask Paste')
+rawEngine.redo()
+assert.ok(repeatDoc.layers.find(l => l.id === maskPasteTarget.id)?.mask)
+console.log('Layer Mask clipboard has independent copies, explicit replacement, mismatch guards and Undo')

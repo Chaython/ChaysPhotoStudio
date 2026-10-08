@@ -2202,7 +2202,11 @@ export class Engine {
    * menu variants use addLayerMaskMode so a missing selection is not silently
    * interpreted as Reveal All. */
   addLayerMask(id: string, fromSelection = true) {
-    this.addLayerMaskMode(id, fromSelection ? 'reveal-selection' : 'reveal-all')
+    // Legacy tools/panels call addLayerMask(id) even without a selection.
+    // Retain their Reveal All fallback. The explicit Reveal Selection menu
+    // still requires a selection through addLayerMaskMode().
+    this.addLayerMaskMode(id,
+      fromSelection && this.activeDoc?.selection ? 'reveal-selection' : 'reveal-all')
   }
 
   addLayerMaskMode(id: string, mode: LayerMaskCreationMode): void {
@@ -2224,6 +2228,50 @@ export class Engine {
     invalidateFlat(doc)
     this.pushHistory('Add Layer Mask: ' + mode, doc)
     this.emit()
+  }
+
+  /** Mask clipboard is stored as detached document-space alpha so editing the
+   * original layer, mask or selection cannot silently change a later paste. */
+  private copiedLayerMask: {
+    alpha: Uint8ClampedArray; width: number; height: number; enabled: boolean
+  } | null = null
+
+  copyLayerMask(id: string): boolean {
+    const doc = this.activeDoc
+    const layer = this.layerById(id)
+    if (!doc || !layer?.mask || layer.mask.width !== doc.width ||
+        layer.mask.height !== doc.height) return false
+    this.copiedLayerMask = {
+      alpha: new Uint8ClampedArray(getMaskAlpha(layer.mask)),
+      width: doc.width, height: doc.height, enabled: layer.maskEnabled,
+    }
+    this.ui?.toast('Layer mask copied', 'success')
+    return true
+  }
+
+  canPasteLayerMask(replace = false): boolean {
+    const doc = this.activeDoc
+    const layer = this.activeLayer
+    const clip = this.copiedLayerMask
+    return !!doc && !!layer && !layer.locked && !!clip &&
+      clip.width === doc.width && clip.height === doc.height &&
+      (replace ? !!layer.mask : !layer.mask)
+  }
+
+  pasteLayerMask(id: string, replace = false): boolean {
+    const doc = this.activeDoc
+    const layer = this.layerById(id)
+    const clip = this.copiedLayerMask
+    if (!doc || !layer || layer.locked || !clip ||
+        clip.width !== doc.width || clip.height !== doc.height ||
+        (replace ? !layer.mask : !!layer.mask)) return false
+    layer.mask = maskCanvasFromAlpha(new Uint8ClampedArray(clip.alpha), clip.width, clip.height)
+    layer.maskEnabled = clip.enabled
+    layer._mv++
+    invalidateFlat(doc)
+    this.pushHistory(replace ? 'Replace Layer Mask' : 'Paste Layer Mask', doc)
+    this.emit()
+    return true
   }
 
   /** Inverting a mask edits the mask alpha without destructively changing the
