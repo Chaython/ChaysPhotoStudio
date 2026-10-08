@@ -709,7 +709,9 @@ assert.equal(repeatDoc.history.index, beforeMaskToggle, 'unchanged mask toggle i
 rawEngine.setLayerMaskEnabled(maskGuard.id, false)
 assert.equal(maskGuard.maskEnabled, false)
 rawEngine.undo()
-assert.equal(maskGuard.maskEnabled, true)
+assert.equal(repeatDoc.layers.find(l => l.id === maskGuard.id)?.maskEnabled, true,
+  'Undo restores the snapshotted mask state')
 rawEngine.redo()
-assert.equal(maskGuard.maskEnabled, false)
+assert.equal(repeatDoc.layers.find(l => l.id === maskGuard.id)?.maskEnabled, false,
+  'Redo reapplies mask disable')
 console.log('Layer Mask apply guards and no-op toggle Undo/Redo pass')
