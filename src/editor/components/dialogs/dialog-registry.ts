@@ -20,6 +20,7 @@ import { ApplyImageDialog } from './apply-image-dialog'
 import { CalculationsDialog } from './calculations-dialog'
 import { ExportLayersDialog } from './export-layers-dialog'
 import { DuplicateLayerDialog } from './duplicate-layer-dialog'
+import { StrokeSelectionDialog } from './stroke-selection-dialog'
 import { ProofSetupDialog } from './proof-setup-dialog'
 import { PuppetWarpDialog } from './puppet-warp-dialog'
 import {
@@ -68,6 +69,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'export': ExportDialog,
   'export-layers': ExportLayersDialog,
   'duplicate-layer': DuplicateLayerDialog,
+  'stroke-selection': StrokeSelectionDialog,
   'proof-setup': ProofSetupDialog,
   'puppet-warp': PuppetWarpDialog,
   'transform': TransformDialog,

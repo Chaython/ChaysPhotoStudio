@@ -1216,7 +1216,7 @@ export class Engine {
     return layer
   }
 
-  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array; aboveActive?: boolean }): Layer | null {
+  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array; aboveActive?: boolean; historyLabel?: string }): Layer | null {
     const doc = this.activeDoc
     if (!doc) return null
     const layer = newLayer('raster', name || this.nextLayerName(), doc.width, doc.height)
@@ -1248,7 +1248,7 @@ export class Engine {
     doc.activeLayerId = layer.id
     doc.selectedLayerIds = [layer.id]
     invalidateFlat(doc)
-    this.pushHistory('Place Layer', doc)
+    this.pushHistory(opts?.historyLabel ?? 'Place Layer', doc)
     this.emit()
     return layer
   }
@@ -3727,6 +3727,43 @@ export class Engine {
   }
 
   // ================================================== pixel operations
+  /** Non-destructive Photoshop Stroke Selection, one undoable layer creation. */
+  async strokeSelectionToLayer(options: {
+    width: number; placement: 'inside' | 'center' | 'outside'; color: string; opacity: number
+  }): Promise<boolean> {
+    const doc = this.activeDoc, selection = doc?.selection
+    if (!doc || !selection || selection.bounds.w < 1 || selection.bounds.h < 1) {
+      this.ui?.toast('Make a selection before using Stroke', 'info')
+      return false
+    }
+    if (!Number.isInteger(options.width) || options.width < 1 || options.width > 200 ||
+        !Number.isFinite(options.opacity) || options.opacity < 0 || options.opacity > 100 ||
+        !/^#[0-9a-f]{6}$/i.test(options.color) ||
+        !['inside', 'center', 'outside'].includes(options.placement)) {
+      this.ui?.toast('Invalid stroke width, position, opacity, or color', 'error')
+      return false
+    }
+    const version = selection._v
+    const src = getImageData(selection.mask)
+    try {
+      const result = await runPixelOpAsync(src, { kind: 'selection-stroke', params: options })
+      if (this.activeDoc !== doc || doc.selection !== selection ||
+          selection._v !== version || doc.width !== result.width || doc.height !== result.height) return false
+      if (!result.data.some((v, i) => i % 4 === 3 && v > 0)) {
+        this.ui?.toast('The selected stroke is outside the visible canvas', 'info')
+        return false
+      }
+      const canvas = createCanvas(doc.width, doc.height, { bitDepth: 8, colorSpace: 'srgb' })
+      putImageData(canvas, result as ImageData)
+      return !!this.addLayerFromCanvas(canvas, 'Selection Stroke', {
+        center: false, aboveActive: true, historyLabel: 'Stroke Selection',
+      })
+    } catch (err) {
+      this.ui?.toast(err instanceof Error ? err.message : 'Stroke Selection failed', 'error')
+      return false
+    }
+  }
+
   fillSelection(color: string) {
     const doc = this.activeDoc
     const layer = this.activeLayer

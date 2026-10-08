@@ -37,6 +37,7 @@ import { applyFilter, applyAdjustment } from '../image-ops'
 import { autoTone, autoContrast, autoColor, matchColor } from '../image-ops/auto'
 import { perceptualWandMask } from '../image-ops/wand'
 import { extendSelectionByColor } from '../image-ops/selection-color'
+import { renderSelectionStroke } from '../image-ops/selection-stroke'
 import type { PixelImage } from '../image-ops/pixel-data'
 
 export type PixelOpKind =
@@ -44,7 +45,7 @@ export type PixelOpKind =
   | 'auto-tone' | 'auto-contrast' | 'auto-color'
   | 'match-color'
   | 'wand-mask'
-  | 'selection-color'
+  | 'selection-color' | 'selection-stroke'
 
 interface OpRequestMessage {
   id: number
@@ -123,6 +124,9 @@ self.onmessage = (ev: MessageEvent) => {
         }
         break
       }
+      case 'selection-stroke':
+        renderSelectionStroke(img as ImageData, req.params as never)
+        break
       default:
         throw new Error(`pixel-op.worker: unknown op "${String(req.op)}"`)
     }

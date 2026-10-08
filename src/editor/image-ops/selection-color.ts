@@ -117,7 +117,7 @@ export function extendSelectionByColor(
 
   if (mode === 'similar') {
     for (let p = 0; p < n; p++) {
-      if (out[p] === 255) continue
+      if (original[p] > 0) continue
       out[p] = Math.max(out[p], match(p))
     }
     return out
@@ -145,7 +145,7 @@ export function extendSelectionByColor(
   while (head < tail) {
     const p = queue[head++]
     const a = match(p)
-    if (a > out[p]) out[p] = a
+    if (original[p] === 0 && a > out[p]) out[p] = a
     if (a < 128) continue
     const x = p % w
     if (x > 0) enqueue(p - 1)

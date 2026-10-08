@@ -333,6 +333,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'edit-fill-fg', label: 'Fill with Foreground', shortcut: sc('fillFg'), run: () => engine.fillSelection(store().fgColor) },
     { id: 'edit-fill-bg', label: 'Fill with Background', shortcut: sc('fillBg'), run: () => engine.fillSelection(store().bgColor) },
     { id: 'edit-clear', label: 'Clear Selection', shortcut: sc('clearSelection'), run: () => engine.deleteSelectionPixels() },
+    { id: 'edit-stroke-selection', label: 'Stroke Selection…', enabled: () => !!engine.activeDoc?.selection, run: () => openDlg('stroke-selection') },
     S(),
     { id: 'edit-transform', label: 'Free Transform…', shortcut: sc('transform'), run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'free' }) },
     { id: 'edit-transform-submenu', label: 'Transform', submenu: transformItems },
