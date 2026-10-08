@@ -38,6 +38,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 ### Color & files
 
 - [Color depth, HDR and proofing](#color-depth-hdr-and-proofing)
+- [HDR Fill and feathered selections](#hdr-fill-and-feathered-selections)
 - [Match Color between documents](#match-color-between-documents)
 - [Saving, exporting and metadata](#saving-exporting-and-metadata)
 
@@ -291,6 +292,26 @@ Work at appropriate precision and simulate output colors.
 - Soft proofing changes the preview, not source image pixels.
 - ICC LUT/CLUT support remains incomplete.
 - Auto Tone, Auto Contrast, Auto Color and Match Color are not yet supported on 32-bit HDR documents.
+
+## HDR Fill and feathered selections
+
+Fill a selected area with a color without clipping HDR highlights or flattening image precision.
+
+**Where:** Edit → Fill / 32-bit HDR document
+
+1. Open or create a 32-bit HDR document and select an unlocked raster layer.
+2. Set a foreground color using a hexadecimal RGB color (such as #ff8800).
+3. Optionally select the pixels you want to paint, using Feather for soft transitions.
+4. Choose Edit → Fill to blend the selected color into the layer's scene-linear Float32 pixels.
+5. Use Undo or History to revert the fill. Unselected pixels and HDR highlights remain unchanged.
+
+**Notes and tips:**
+
+- Fill uses straight-alpha source-over compositing and converts the UI sRGB color into scene-linear RGB.
+- Layer offsets are respected and pixels outside the document are not filled.
+- Text, shapes and Smart Objects must be rasterized explicitly before 32-bit HDR Fill.
+- A selection containing no overlapping pixels does not modify the image or create a History entry.
+- 32-bit HDR Fill is supported, but other editing tools can have their own high-bit precision limitations.
 
 ## Match Color between documents
 

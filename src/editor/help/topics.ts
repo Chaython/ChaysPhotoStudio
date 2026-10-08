@@ -266,6 +266,27 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     ]
   },
   {
+    "id": "hdr-fill",
+    "title": "HDR Fill and feathered selections",
+    "category": "Color & files",
+    "path": "Edit → Fill / 32-bit HDR document",
+    "summary": "Fill a selected area with a color without clipping HDR highlights or flattening image precision.",
+    "steps": [
+      "Open or create a 32-bit HDR document and select an unlocked raster layer.",
+      "Set a foreground color using a hexadecimal RGB color (such as #ff8800).",
+      "Optionally select the pixels you want to paint, using Feather for soft transitions.",
+      "Choose Edit → Fill to blend the selected color into the layer's scene-linear Float32 pixels.",
+      "Use Undo or History to revert the fill. Unselected pixels and HDR highlights remain unchanged."
+    ],
+    "tips": [
+      "Fill uses straight-alpha source-over compositing and converts the UI sRGB color into scene-linear RGB.",
+      "Layer offsets are respected and pixels outside the document are not filled.",
+      "Text, shapes and Smart Objects must be rasterized explicitly before 32-bit HDR Fill.",
+      "A selection containing no overlapping pixels does not modify the image or create a History entry.",
+      "32-bit HDR Fill is supported, but other editing tools can have their own high-bit precision limitations."
+    ]
+  },
+  {
     "id": "match-color",
     "title": "Match Color between documents",
     "category": "Color & files",
