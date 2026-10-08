@@ -1425,7 +1425,8 @@ export class Engine {
       ctx.save()
       ctx.globalCompositeOperation = 'destination-in'
       ctx.drawImage(doc.selection.mask, -region.x, -region.y)
-      if (layerMaskAlpha) ctx.drawImage(source.mask!, -region.x, -region.y)
+      // prepareLayer() already applied masks to Smart Objects, text and shapes.
+      if (layerMaskAlpha && source.kind === 'raster') ctx.drawImage(source.mask!, -region.x, -region.y)
       ctx.restore()
       const data = getImageData(output).data
       if (!data.some((v, i) => i % 4 === 3 && v > 0)) return null
@@ -2575,7 +2576,7 @@ export class Engine {
         ctx.save()
         ctx.globalCompositeOperation = 'destination-in'
         ctx.drawImage(doc.selection.mask, -x0, -y0)
-        if (l.maskEnabled && l.mask) ctx.drawImage(l.mask, -x0, -y0)
+        if (l.kind === 'raster' && l.maskEnabled && l.mask) ctx.drawImage(l.mask, -x0, -y0)
         ctx.restore()
         ox = x0; oy = y0
         name = l.name
