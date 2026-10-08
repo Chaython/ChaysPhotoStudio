@@ -119,6 +119,10 @@ Content-Aware Fill now analyzes and synthesizes on detached raster pixels, inclu
 
 Background Auto Tone/Contrast/Color, direct Adjustment commits, and raster Filter operations now compute against detached source pixels. Live layer cloning/rasterization is deferred until the worker succeeds, the active tab and source layer are still valid, and the initiating History state remains current. On failure, cancellation, tab switches or Undo, no layer version increment or irreversible conversion of editable Smart Objects/text/shapes occurs. Successful rasterization is folded into the editing History step rather than adding a separate intermediate History entry.
 
+## Locked-layer editing and Smart Filter no-op history
+
+Pixel and mask mutation helpers now reject fully locked layers, while locked Adjustment Layers and Smart Filters cannot be changed, toggled or deleted by scripting/editor paths. Removing a missing Smart Filter is a no-op. Smart Filter dialogs commit History only when their final settings differ from those at open, and an unchanged preview does not increment the layer version. Cancel/Escape retains explicit permission to restore preview parameters after a layer was locked during editing.
+
 ## Filter and Adjustment dialog preview cleanup
 
 Filter and adjustment previews now hold document-scoped leases: closing via Escape, the X button, Cancel, or switching tabs clears only the preview owned by that dialog, including its original document if now inactive. A second dialog's newer preview is not accidentally erased. Smart Filter edits similarly restore original parameters in their initiating document rather than modifying the newly active tab. Preview changes invalidate the flattened composite cache, and the global last-dialog cleanup runs in a React effect instead of scheduling microtasks during render.

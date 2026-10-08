@@ -1167,7 +1167,7 @@ export class Engine {
   mutateLayerPixels(layerId: string): Layer | null {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
-    if (!doc || !layer) return null
+    if (!doc || !layer || layer.locked) return null
     if (layer.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels — rasterize first', 'error'); return null }
     if (layer.kind !== 'raster') this.rasterizeLayer(layer.id)
     const l = this.layerById(layerId)!
@@ -1185,7 +1185,7 @@ export class Engine {
   mutateLayerMask(layerId: string): Layer | null {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
-    if (!doc || !layer) return null
+    if (!doc || !layer || layer.locked) return null
     if (!layer.mask) return null
     layer.mask = cloneCanvas(layer.mask)
     layer._mv++
@@ -1640,7 +1640,7 @@ export class Engine {
   setLayerAdjustment(id: string, type: AdjustmentType, params: Record<string, any>) {
     const layer = this.layerById(id)
     const doc = this.activeDoc
-    if (!layer || !doc || layer.kind !== 'adjustment') return
+    if (!layer || !doc || layer.locked || layer.kind !== 'adjustment') return
     layer.adjustment = { type, params: { ...params } }
     layer._v++
     invalidateFlat(doc)
@@ -3075,23 +3075,27 @@ export class Engine {
     this.emit()
   }
 
-  updateSmartFilter(layerId: string, filterId: string, params: Record<string, any>, expectedDoc?: PsDocument | null) {
+  updateSmartFilter(layerId: string, filterId: string, params: Record<string, any>,
+    expectedDoc?: PsDocument | null, restorePreview = false): boolean {
     const doc = expectedDoc ?? this.activeDoc
-    if (!doc || !this.docs.includes(doc)) return
+    if (!doc || !this.docs.includes(doc)) return false
     const layer = doc.layers.find(item => item.id === layerId)
-    if (!layer) return
+    // Explicit preview rollback may restore an earlier value even when the
+    // user locked the layer while the dialog was open.
+    if (!layer || (layer.locked && !restorePreview)) return false
     const sf = layer.smartFilters.find(f => f.id === filterId)
-    if (!sf) return
-    sf.params = { ...params }
+    if (!sf || JSON.stringify(sf.params) === JSON.stringify(params)) return false
+    sf.params = structuredClone(params)
     layer._v++
     invalidateFlat(doc)
-    this.emit() // no history spam while dragging; commit via dialog OK
+    this.emit() // preview updates are not independent History entries
+    return true
   }
 
   removeSmartFilter(layerId: string, filterId: string) {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
-    if (!doc || !layer) return
+    if (!doc || !layer || layer.locked || !layer.smartFilters.some(f => f.id === filterId)) return
     layer.smartFilters = layer.smartFilters.filter(f => f.id !== filterId)
     layer._v++
     invalidateFlat(doc)
@@ -3102,7 +3106,7 @@ export class Engine {
   toggleSmartFilter(layerId: string, filterId: string) {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
-    if (!doc || !layer) return
+    if (!doc || !layer || layer.locked) return
     const sf = layer.smartFilters.find(f => f.id === filterId)
     if (!sf) return
     sf.enabled = !sf.enabled

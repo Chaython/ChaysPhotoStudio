@@ -117,7 +117,7 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
   useEffect(() => () => {
     if (smartFilterId) {
       if (!smartEditCommitted.current && origSmartParams.current) {
-        engine.updateSmartFilter(layerId ?? '', smartFilterId, origSmartParams.current, previewDoc.current)
+        engine.updateSmartFilter(layerId ?? '', smartFilterId, origSmartParams.current, previewDoc.current, true)
       }
     } else {
       // Radix X/Escape and programmatic closes bypass the Cancel button.
@@ -132,7 +132,7 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
       // parameter values already written by a previous live preview.
       if (engine.activeDoc === previewDoc.current) {
         engine.updateSmartFilter(layerId, smartFilterId,
-          preview ? params : (origSmartParams.current ?? params), previewDoc.current)
+          preview ? params : (origSmartParams.current ?? params), previewDoc.current, !preview)
       }
       return
     }
@@ -158,9 +158,19 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
     setApplying(true)
     try {
       if (smartFilterId) {
-        if (engine.activeDoc !== previewDoc.current) return
-        engine.updateSmartFilter(layerId, smartFilterId, params, previewDoc.current)
-        engine.pushHistory(`Smart Filter: ${def.label}`, previewDoc.current!)
+        const initialDoc = previewDoc.current
+        const editingLayer = initialDoc?.layers.find(l => l.id === layerId)
+        if (engine.activeDoc !== initialDoc || !editingLayer || editingLayer.locked) {
+          useEditorStore.getState().pushToast('Unlock the original layer before editing its Smart Filter', 'error')
+          return
+        }
+        // Preview may have already applied the same params, but an unchanged
+        // dialog must not dirty History. Compare to the snapshot from open.
+        const changed = JSON.stringify(params) !== JSON.stringify(origSmartParams.current)
+        if (changed) {
+          engine.updateSmartFilter(layerId, smartFilterId, params, initialDoc)
+          engine.pushHistory(`Smart Filter: ${def.label}`, initialDoc)
+        }
         smartEditCommitted.current = true
       } else {
         engine.clearPreviewFilter(previewOwner.current, previewDoc.current)
@@ -173,7 +183,7 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
   }
   const cancel = () => {
     if (smartFilterId && origSmartParams.current) {
-      engine.updateSmartFilter(layerId, smartFilterId, origSmartParams.current, previewDoc.current)
+      engine.updateSmartFilter(layerId, smartFilterId, origSmartParams.current, previewDoc.current, true)
       smartEditCommitted.current = true // already rolled back; do not do it twice during unmount
     }
     engine.clearPreviewFilter(previewOwner.current, previewDoc.current)

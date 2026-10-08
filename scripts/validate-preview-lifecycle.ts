@@ -52,4 +52,29 @@ assert.equal(a.layers[0].smartFilters[0].params.horizontal, 17)
 assert.equal(b.layers[0].smartFilters[0].params.horizontal, original)
 engine.updateSmartFilter('a-layer', 'a-smart', { horizontal: original }, a)
 assert.equal(a.layers[0].smartFilters[0].params.horizontal, original, 'rollback targets original tab')
-console.log('Preview leases, cross-tab cleanup, cache invalidation and Smart Filter rollback passed')
+const initialVersion = a.layers[0]._v
+useDoc(a)
+assert.equal(engine.updateSmartFilter('a-layer', 'a-smart', { horizontal: original }, a), false,
+  'opening a Smart Filter with unchanged parameters cannot mutate layer version')
+assert.equal(a.layers[0]._v, initialVersion)
+a.layers[0].locked = true
+engine.updateSmartFilter('a-layer', 'a-smart', { horizontal: 99 }, a)
+assert.equal(a.layers[0].smartFilters[0].params.horizontal, original,
+  'locked Smart Filter cannot be edited')
+const beforeLockedVersion = a.layers[0]._v
+engine.toggleSmartFilter('a-layer', 'a-smart')
+engine.removeSmartFilter('a-layer', 'a-smart')
+assert.equal(a.layers[0].smartFilters.length, 1, 'locked filters cannot be deleted')
+assert.equal(a.layers[0].smartFilters[0].enabled, true, 'locked filters cannot be toggled')
+assert.equal(a.layers[0]._v, beforeLockedVersion)
+assert.equal(engine.mutateLayerPixels('a-layer'), null, 'locked pixel layers cannot be mutated')
+a.layers[0].locked = false
+engine.removeSmartFilter('a-layer', 'does-not-exist')
+assert.equal(a.layers[0]._v, beforeLockedVersion,
+  'removing a missing Smart Filter must not create a history step')
+a.layers[0].locked = true
+engine.updateSmartFilter('a-layer', 'a-smart', { horizontal: 11 }, a, true)
+assert.equal(a.layers[0].smartFilters[0].params.horizontal, 11,
+  'preview rollback may restore original parameters after a layer was locked')
+engine.updateSmartFilter('a-layer', 'a-smart', { horizontal: original }, a, true)
+console.log('Preview leases, cross-tab cleanup, no-op edits, layer locks and Smart Filter rollback passed')
