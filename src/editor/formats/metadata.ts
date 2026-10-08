@@ -321,22 +321,27 @@ function parseXmpText(text: string, add: AddField, setRawXmp: (v: string) => voi
 }
 
 function scanEmbeddedXmp(bytes: Uint8Array, add: AddField, setRawXmp: (v: string) => void, warnings: string[]) {
-  const starts = ['<x:xmpmeta', '<xmpmeta', '<rdf:RDF']
+  // Match each opener to its own closer. An RDF closing tag normally precedes
+  // </x:xmpmeta>; picking the first *any* closer truncates valid XMP packets.
+  const wrappers = [
+    { open: '<x:xmpmeta', close: '</x:xmpmeta>' },
+    { open: '<xmpmeta', close: '</xmpmeta>' },
+    { open: '<rdf:RDF', close: '</rdf:RDF>' },
+  ]
   let start = -1
-  for (const marker of starts) {
-    const p = findAscii(bytes, marker)
-    if (p >= 0 && (start < 0 || p < start)) start = p
+  let end = -1
+  for (const wrapper of wrappers) {
+    const p = findAscii(bytes, wrapper.open)
+    if (p < 0) continue
+    const close = findAscii(bytes, wrapper.close, p + wrapper.open.length)
+    if (close < 0) continue
+    if (start < 0 || p < start) {
+      start = p
+      end = close + wrapper.close.length
+    }
   }
   if (start < 0) return
-  const endMarkers = ['</x:xmpmeta>', '</xmpmeta>', '</rdf:RDF>']
-  let end = -1
-  let endLen = 0
-  for (const marker of endMarkers) {
-    const p = findAscii(bytes, marker, start)
-    if (p >= 0 && (end < 0 || p < end)) { end = p; endLen = marker.length }
-  }
-  if (end < 0) return
-  parseXmpText(decodeUtf8(bytes.subarray(start, end + endLen)), add, setRawXmp, warnings)
+  parseXmpText(decodeUtf8(bytes.subarray(start, end)), add, setRawXmp, warnings)
 }
 
 function readIptc(bytes: Uint8Array, start: number, end: number, add: AddField) {
@@ -909,7 +914,11 @@ export async function readImageMetadata(file: File): Promise<ImageMetadata> {
 
   if (bytes.length) {
     try {
-      if (format === 'JPEG') parseJpeg(bytes, add, setRawXmp, warnings)
+      // Sidecar XMP is an XML document, not an embedded packet. Parse the
+      // complete file (including its xpacket processing instructions) directly.
+      if (ext === 'xmp' || file.type === 'application/rdf+xml' || (ext === 'xml' && /xml/i.test(file.type))) {
+        parseXmpText(decodeUtf8(bytes), add, setRawXmp, warnings)
+      } else if (format === 'JPEG') parseJpeg(bytes, add, setRawXmp, warnings)
       else if (format === 'PNG') await parsePng(bytes, add, setRawXmp, warnings)
       else if (format === 'TIFF') parseTiff(bytes, 0, add, warnings)
       else if (format === 'WebP') parseWebp(bytes, add, setRawXmp, warnings)

@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Fixed File Info XMP round-tripping: sidecar XML is parsed as a complete packet, embedded XMP scans pair matching outer tags instead of truncating at `</rdf:RDF>`, and unsupported/invalid sidecars cannot silently overwrite existing editable metadata.
+
 - Added **Edit > Puppet Warp…** with draggable source-space pins, exact mesh intersections, pin rotation, overlap-priority depth, mesh density/rigidity controls, optional mesh display and responsive downscaled preview; Smart Objects retain the resulting warp non-destructively, while raster/text/shape targets reuse the existing mask/vector-mask/history transform path. Also guarded raster Transform Warp on 32-bit HDR layers to prevent stale authoritative Float32 pixel data.
 - Added Photoshop-style **Proof Setup**, **Proof Colors** (`Ctrl+Y`) and **Gamut Warning** (`Ctrl+Shift+Y`) as cached display-only transforms, with sRGB/Display P3/Adobe RGB/SWOP/Gray presets, rendering-intent controls, paper simulation, black-point compensation, project persistence and custom matrix RGB ICC/ICM loading; proofing never alters pixels, History, sampling or exports.
 - Added PSD Layer Style round-trip support: legacy Photoshop `lrFX` shadows/glows/bevel/color-overlay import as editable native effects, PSD export regenerates compatible `lrFX`, and a Photoshop-ignored `chFX` block preserves Chay's complete native FX stack including stroke, gradient, pattern and satin while untouched modern `lfx2/lmfx/lfxs` blocks remain losslessly preserved.

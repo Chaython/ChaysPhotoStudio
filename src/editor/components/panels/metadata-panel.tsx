@@ -196,6 +196,13 @@ function FileInfoEditor({ doc }: { doc: PsDocument }) {
       try {
         const parsed = await readImageMetadata(file)
         const imported = editableMetadataFromFields(parsed.fields)
+        const hasEditableFields = Object.entries(imported).some(([key, value]) => {
+          if (key === 'copyrightStatus') return value !== 'unknown'
+          if (Array.isArray(value)) return value.length > 0
+          if (typeof value === 'number') return Number.isFinite(value)
+          return typeof value === 'string' && value.trim().length > 0
+        })
+        if (!hasEditableFields) throw new Error('This sidecar contains no recognized editable XMP File Info')
         const live = ensureDocumentMetadata(target)
         live.editable = imported
         live.edited = true
