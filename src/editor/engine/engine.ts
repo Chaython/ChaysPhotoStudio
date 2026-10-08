@@ -3867,49 +3867,57 @@ export class Engine {
     this.emit()
   }
 
-  applyAdjustmentToLayer(layerId: string, type: AdjustmentType, params: Record<string, any>) {
+  applyAdjustmentToLayer(layerId: string, type: AdjustmentType, params: Record<string, any>): boolean {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
-    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment' || !imageOps.ADJUSTMENTS[type]) return false
     if (doc.workingBitDepth === 32 && !imageOps.HDR_SAFE_ADJUSTMENTS.has(type)) {
       this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
-      return
+      return false
     }
-    const l = this.mutateLayerPixels(layerId)
-    if (!l?.canvas) return
-    const img = this.processingPixelsForLayer(l)
-    if (!img) return
-    imageOps.applyAdjustment(img, type, params)
-    this.commitProcessingPixelsForLayer(l, img)
+    try {
+      const img = this.processingCopyForLayer(doc, layer)
+      if (!img) return false
+      imageOps.applyAdjustment(img, type, params)
+      if (!this.commitComputedPixelOp(layer, img)) return false
+    } catch (err) {
+      this.ui?.toast(err instanceof Error ? `Adjustment failed: ${err.message}` : 'Adjustment failed', 'error')
+      return false
+    }
     invalidateFlat(doc)
-    this.pushHistory(typeLabel(type))
+    this.pushHistory(typeLabel(type), doc)
     this.recordStep({ op: 'applyAdjustment', args: { layerId, type, params: { ...params } }, label: typeLabel(type) })
     this.emit()
+    return true
   }
 
-  applyFilterToLayer(layerId: string, type: FilterType, params: Record<string, any>) {
+  applyFilterToLayer(layerId: string, type: FilterType, params: Record<string, any>): boolean {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
-    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment' || !imageOps.FILTERS[type]) return false
     if (doc.workingBitDepth === 32 && layer.kind !== 'smart' && !imageOps.HDR_SAFE_FILTERS.has(type)) {
       this.ui?.toast(`${filterLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
-      return
+      return false
     }
     if (layer.kind === 'smart') {
       this.addSmartFilter(layerId, type, params)
-      return
+      return true
     }
-    const l = this.mutateLayerPixels(layerId)
-    if (!l?.canvas) return
-    const img = this.processingPixelsForLayer(l)
-    if (!img) return
-    imageOps.applyFilter(img, type, params)
-    this.commitProcessingPixelsForLayer(l, img)
+    try {
+      const img = this.processingCopyForLayer(doc, layer)
+      if (!img) return false
+      imageOps.applyFilter(img, type, params)
+      if (!this.commitComputedPixelOp(layer, img)) return false
+    } catch (err) {
+      this.ui?.toast(err instanceof Error ? `Filter failed: ${err.message}` : 'Filter failed', 'error')
+      return false
+    }
     invalidateFlat(doc)
     this.pushHistory(filterLabel(type), doc)
     this.rememberLastFilter(doc, type, params)
     this.recordStep({ op: 'applyFilter', args: { layerId, type, params: structuredClone(params) }, label: filterLabel(type) })
     this.emit()
+    return true
   }
 
   /** Content-Aware Fill using a document-space grayscale mask. The mask is
@@ -4010,25 +4018,36 @@ export class Engine {
   }
 
   /** generic region CPU op with history (dodge/burn/blur tools etc.) */
-  applyRegionOp(layerId: string, op: (img: ImageData) => void, label: string) {
+  applyRegionOp(layerId: string, op: (img: ImageData) => void, label: string): boolean {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
-    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
-    const l = this.mutateLayerPixels(layerId)
-    if (!l?.canvas) return
-    const img = getImageData(l.canvas)
-    op(img)
-    putImageData(l.canvas, img)
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return false
+    if (doc.workingBitDepth !== 8) {
+      this.ui?.toast(`${label} requires an 8-bit document to preserve pixel precision`, 'error')
+      return false
+    }
+    try {
+      const canvas = layer.kind === 'raster' ? layer.canvas
+        : prepareLayer(doc, layerContentForRasterization(layer))
+      if (!canvas) return false
+      const img = getImageData(canvas)
+      op(img)
+      if (!this.commitComputedPixelOp(layer, img)) return false
+    } catch (err) {
+      this.ui?.toast(err instanceof Error ? `${label} failed: ${err.message}` : `${label} failed`, 'error')
+      return false
+    }
     invalidateFlat(doc)
-    this.pushHistory(label)
+    this.pushHistory(label, doc)
     this.emit()
+    return true
   }
 
   // ================================================== auto corrections (PS Image menu)
   autoCorrect(kind: 'tone' | 'contrast' | 'color') {
     const layer = this.activeLayer
-    if (this.activeDoc?.workingBitDepth === 32) {
-      this.ui?.toast('Automatic histogram corrections are not yet supported for 32-bit HDR layers', 'error')
+    if (this.activeDoc?.workingBitDepth !== 8) {
+      this.ui?.toast('Automatic histogram corrections currently require an 8-bit document', 'error')
       return
     }
     if (!layer || layer.locked || layer.kind === 'adjustment') {
@@ -4037,9 +4056,10 @@ export class Engine {
     }
     const fn = kind === 'tone' ? autoTone : kind === 'contrast' ? autoContrast : autoColor
     const label = kind === 'tone' ? 'Auto Tone' : kind === 'contrast' ? 'Auto Contrast' : 'Auto Color'
-    this.applyRegionOp(layer.id, fn, label)
-    this.recordStep({ op: 'autoCorrect', args: { kind }, label })
-    this.ui?.toast(label + ' applied', 'success')
+    if (this.applyRegionOp(layer.id, fn, label)) {
+      this.recordStep({ op: 'autoCorrect', args: { kind }, label })
+      this.ui?.toast(label + ' applied', 'success')
+    }
   }
 
   // ================================================== async pixel-op offload (worker pool — Task 7-b)
@@ -4050,6 +4070,14 @@ export class Engine {
   // untouched for callers that must remain synchronous (actions playback, scripting
   // api, invert shortcut). Small images (< 0.3 MP) and any worker failure run sync
   // automatically inside the wrapper — identical observable behavior.
+
+  /** Compute synchronously from detached pixels; errors are not live edits. */
+  private processingCopyForLayer(doc: PsDocument, layer: Layer): PixelImage | null {
+    const canvas = layer.kind === 'raster' ? layer.canvas
+      : prepareLayer(doc, layerContentForRasterization(layer))
+    if (!canvas) return null
+    return (layer.kind === 'raster' ? hdrProcessingImage(layer) : null) ?? getProcessingPixelData(canvas)
+  }
 
   /** Compute from a detached source without rasterizing, cloning or versioning
    * the live layer. A failed or stale worker must not alter Smart Objects,
@@ -4065,11 +4093,17 @@ export class Engine {
   /** COW/rasterization happens only after asynchronous computation succeeded,
    * and after the target document and History have been revalidated. */
   private commitComputedPixelOp(layer: Layer, output: PixelImage): boolean {
+    const doc = this.activeDoc
+    if (!doc || !doc.layers.includes(layer) || layer.locked) return false
+    // Reject invalid output before cloning/rasterizing the live layer.
+    if (layer.kind === 'raster') {
+      if (!layer.canvas || layer.canvas.width !== output.width || layer.canvas.height !== output.height) return false
+    } else if (doc.width !== output.width || doc.height !== output.height) return false
     if (layer.kind !== 'raster') {
       this.rasterizeLayer(layer.id, { history: false, emit: false })
     }
     const live = this.mutateLayerPixels(layer.id)
-    if (!live?.canvas || live.canvas.width !== output.width || live.canvas.height !== output.height) return false
+    if (!live?.canvas) return false
     this.commitProcessingPixelsForLayer(live, output)
     return true
   }
@@ -4080,9 +4114,9 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.kind === 'adjustment' || layer.locked) return false
-    if (doc.workingBitDepth === 32 &&
+    if (doc.workingBitDepth !== 8 &&
         (spec.kind === 'auto-tone' || spec.kind === 'auto-contrast' || spec.kind === 'auto-color')) {
-      this.ui?.toast('Automatic histogram corrections are not yet supported for 32-bit HDR layers', 'error')
+      this.ui?.toast('Automatic histogram corrections currently require an 8-bit document', 'error')
       return false
     }
     const layerVersion = layer._v
@@ -4184,8 +4218,8 @@ export class Engine {
   /** Async auto-correction (Image menu / shortcuts) — autoTone/autoContrast/autoColor in the worker. */
   async autoCorrectAsync(kind: 'tone' | 'contrast' | 'color'): Promise<void> {
     const layer = this.activeLayer
-    if (this.activeDoc?.workingBitDepth === 32) {
-      this.ui?.toast('Automatic histogram corrections are not yet supported for 32-bit HDR layers', 'error')
+    if (this.activeDoc?.workingBitDepth !== 8) {
+      this.ui?.toast('Automatic histogram corrections currently require an 8-bit document', 'error')
       return
     }
     if (!layer || layer.locked || layer.kind === 'adjustment') {

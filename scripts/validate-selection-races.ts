@@ -140,6 +140,16 @@ try {
   assert.equal(doc.history.index, beforeFilterHistory, 'stale filter does not create History')
   assert.equal(liveMutations, 0, 'stale filter worker must not clone/rasterize the live layer')
 
+  // Direct scripting/action operations must not alter live pixels on error.
+  const beforeSyncMutation = liveMutations
+  assert.equal(editor.applyRegionOp('layer', () => {
+    throw new Error('intentional operation failure')
+  }, 'Broken Script Operation'), false)
+  assert.equal(editor.applyFilterToLayer('layer', 'offset',
+    { horizontal: NaN, vertical: 0, edgeMode: 'wrap' }), false)
+  assert.equal(liveMutations, beforeSyncMutation,
+    'failing synchronous commands cannot clone or rasterize the live layer')
+
   const beforeEmptyFillMutations = liveMutations
   await editor.contentAwareFillMask(new Uint8ClampedArray(W * H).fill(255))
   assert.equal(liveMutations, beforeEmptyFillMutations,
@@ -174,6 +184,10 @@ try {
   assert.equal(layer._v, beforeInpaintVersion, 'HDR inpaint rejects before raster mutation')
   assert.equal(doc.history.index, beforeInpaintHistory, 'unsupported HDR inpaint does not change History')
   doc.workingBitDepth = 16
+  const before16Jobs = DeferredWorker.jobs.length
+  editor.autoCorrect('tone')
+  await editor.autoCorrectAsync('contrast')
+  assert.equal(DeferredWorker.jobs.length, before16Jobs, '16-bit auto correction cannot run 8-bit histograms')
   await editor.contentAwareFillMask(new Uint8ClampedArray(W * H).fill(255))
   assert.equal(layer._v, beforeInpaintVersion, '16-bit float inpaint also rejects before 8-bit quantization')
   assert.equal(doc.history.index, beforeInpaintHistory)

@@ -103,6 +103,10 @@ Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success o
 
 The local inpainting kernel currently consumes and writes 8-bit Canvas2D image data. It now refuses both 16-bit float and 32-bit HDR documents before copying/mutating pixels rather than silently quantizing the source image; 8-bit documents keep the existing non-destructive History flow. High-bit inpainting needs a future Float32-compatible synthesis path.
 
+## Atomic synchronous edits
+
+Direct one-shot Filter, Adjustment and region operations now compute on detached buffers and commit only after successful processing. Failed operations do not rasterize Smart Objects or add an extra rasterization History entry, and invalid result dimensions are rejected before touching live layers. Auto Tone/Contrast/Color and Canvas2D-only region operations require an 8-bit document until a float-precision implementation is available.
+
 ## Content-Aware Fill no-op and cancellation integrity
 
 Content-Aware Fill now analyzes and synthesizes on detached raster pixels, including detached prepared sources for editable non-raster layers. The input layer is cloned/rasterized only after there are actually opaque pixels to fill, the async operation finishes successfully, and its target document, History and layer version still match. Empty-source selections, rejected inpainting and stale results leave the original layer and its History untouched.
