@@ -558,9 +558,14 @@ try {
   assert.equal(forcedExternal.hdrPixels?.[0], 0, 'forced system paste must not use stale internal HDR pixels')
   raw._clip = null
   rawEngine.undo()
+  assert.ok(!clipboardLayer.layers.some(l => l.id === forcedExternal.id),
+    'Undo removes the explicitly pasted system image')
+  rawEngine.undo()
   assert.ok(!clipboardLayer.layers.some(l => l.id === externalLayer.id))
   rawEngine.redo()
   assert.ok(clipboardLayer.layers.some(l => l.id === externalLayer.id))
+  rawEngine.redo()
+  assert.ok(clipboardLayer.layers.some(l => l.id === forcedExternal.id))
   // Simulate tab switch while the OS clipboard read is pending. The bitmap
   // may decode, but it must not land in the newly focused document.
   clipboardLayer.selection = {
