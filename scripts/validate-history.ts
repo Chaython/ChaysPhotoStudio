@@ -159,6 +159,7 @@ console.log('Duplicate Document preserves layers, HDR, selections, metadata, lay
 
 const priorSelection = duplicated!.selection!
 assert.ok(priorSelection, 'Duplicate retains an active selection to reselect')
+const beforeDeselectPixel = value(priorSelection.mask)
 assert.equal(rawEngine.canReselectSelection(), false, 'Reselect is disabled while selection is active')
 rawEngine.deselect()
 assert.equal(duplicated!.selection, null)
@@ -169,11 +170,11 @@ assert.equal(rawEngine.canReselectSelection(), false, 'Reselect is scoped to the
 rawEngine.setActiveDocument(duplicated!.id)
 rawEngine.reselectSelection()
 assert.ok(duplicated!.selection)
-assert.equal(value(duplicated!.selection!.mask), 40, 'Reselect must restore the independent selection mask')
+assert.equal(value(duplicated!.selection!.mask), beforeDeselectPixel, 'Reselect must restore the independent selection mask')
 assert.equal(rawEngine.canReselectSelection(), false)
 assert.equal(duplicated!.history.states[duplicated!.history.index].label, 'Reselect')
 rawEngine.undo()
 assert.equal(duplicated!.selection, null, 'Undo Reselect clears the selection')
 rawEngine.redo()
-assert.equal(value(duplicated!.selection!.mask), 40, 'Redo Reselect restores its history-safe mask')
+assert.equal(value(duplicated!.selection!.mask), beforeDeselectPixel, 'Redo Reselect restores its history-safe mask')
 console.log('Select > Reselect is independent, per-document and undo/redo-safe')
