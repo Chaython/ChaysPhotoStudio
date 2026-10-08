@@ -170,13 +170,13 @@ assert.equal(rawEngine.canReselectSelection(), false, 'Reselect is scoped to the
 rawEngine.setActiveDocument(duplicated!.id)
 rawEngine.reselectSelection()
 assert.ok(duplicated!.selection)
-assert.equal(value(duplicated!.selection!.mask), beforeDeselectPixel, 'Reselect must restore the independent selection mask')
+assert.equal(value(rawEngine.activeDoc?.selection?.mask), beforeDeselectPixel, 'Reselect must restore the independent selection mask')
 assert.equal(rawEngine.canReselectSelection(), false)
 assert.equal(duplicated!.history.states[duplicated!.history.index].label, 'Reselect')
 rawEngine.undo()
 assert.equal(duplicated!.selection, null, 'Undo Reselect clears the selection')
 rawEngine.redo()
-assert.equal(value(duplicated!.selection!.mask), beforeDeselectPixel, 'Redo Reselect restores its history-safe mask')
+assert.equal(value(rawEngine.activeDoc?.selection?.mask), beforeDeselectPixel, 'Redo Reselect restores its history-safe mask')
 console.log('Select > Reselect is independent, per-document and undo/redo-safe')
 
 
