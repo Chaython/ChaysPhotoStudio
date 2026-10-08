@@ -119,7 +119,7 @@ try {
 
   const failedMatch = editor.applyRegionOpAsync('layer', {
     kind: 'match-color', params: { luminance: 100, intensity: 100, fade: 0, neutralize: false },
-    source: { width: 1, height: 1, data: new Uint8ClampedArray([60, 90, 120, 255]) },
+    source: new ImageData(new Uint8ClampedArray([60, 90, 120, 255]), 1, 1),
   }, 'Match Color')
   assert.equal(DeferredWorker.jobs.length, 1)
   DeferredWorker.fail('simulated Match Color failure')
