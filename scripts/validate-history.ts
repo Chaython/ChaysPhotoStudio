@@ -567,6 +567,20 @@ try {
   assert.ok(clipboardLayer.layers.some(l => l.id === externalLayer.id))
   rawEngine.redo()
   assert.ok(clipboardLayer.layers.some(l => l.id === forcedExternal.id))
+  // The explicit external Paste Outside path must honor the alpha complement
+  // and use a separate mask, even when the internal clipboard is empty.
+  const beforeOutsideSystem = clipboardLayer.layers.length
+  assert.equal(await rawEngine.pasteFromSystemClipboard(false, true), true)
+  assert.equal(clipboardLayer.layers.length, beforeOutsideSystem + 1)
+  const outsideSystem = clipboardLayer.layers.find(l => l.id === clipboardLayer.activeLayerId)!
+  assert.equal(outsideSystem.maskEnabled, true)
+  assert.notEqual(outsideSystem.mask, clipboardLayer.selection!.mask)
+  assert.equal(clipboardLayer.history.states[clipboardLayer.history.index].label, 'Paste Outside Selection')
+  assert.equal(outsideSystem.offsetX, 0, 'external Paste Outside centers on the document')
+  rawEngine.undo()
+  assert.ok(!clipboardLayer.layers.some(l => l.id === outsideSystem.id))
+  rawEngine.redo()
+  assert.ok(clipboardLayer.layers.some(l => l.id === outsideSystem.id))
   // Simulate tab switch while the OS clipboard read is pending. The bitmap
   // may decode, but it must not land in the newly focused document.
   clipboardLayer.selection = {
