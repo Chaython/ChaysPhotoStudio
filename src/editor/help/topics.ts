@@ -197,6 +197,27 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     ]
   },
   {
+    "id": "layer-matting",
+    "title": "Remove Matte, Defringe and Trim Layer",
+    "category": "Layers",
+    "path": "Layer → Matting → Remove White Matte / Remove Black Matte / Defringe; Layer → Trim Layer to Content",
+    "summary": "Clean unwanted white or black edge contamination and remove transparent padding without changing the layer's position.",
+    "steps": [
+      "Select an unlocked image layer containing transparent or anti-aliased boundaries.",
+      "Choose Layer → Matting → Remove White Matte if translucent edge colors were blended against white, or Remove Black Matte for a dark matte.",
+      "Use Layer → Matting → Defringe to propagate nearby opaque colors into translucent edge pixels; select a suitable fringe width.",
+      "Inspect the result against contrasting backgrounds. Undo if an edge loses useful color.",
+      "Use Layer → Trim Layer to Content to crop away transparent padding while keeping the artwork in the same document-space position."
+    ],
+    "tips": [
+      "Matting changes RGB in partially transparent pixels; it does not remove transparency.",
+      "Fully opaque images, selections without eligible fringe pixels, and already-trimmed layers produce no new History entry.",
+      "Editable Smart Objects can be rasterized by a successful matting operation; duplicate the layer first if you want to retain the original.",
+      "16-bit matting requires browser support for float16 readback. Matting is not yet supported on 32-bit HDR documents.",
+      "Locked layers cannot be trimmed or matted."
+    ]
+  },
+  {
     "id": "transform-crop",
     "title": "Transform, Puppet Warp and Crop",
     "category": "Tools",

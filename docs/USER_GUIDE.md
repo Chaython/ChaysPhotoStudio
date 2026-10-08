@@ -23,6 +23,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Layers, masks and clipping](#layers-masks-and-clipping)
 - [Smart Objects and Smart Filters](#smart-objects-and-smart-filters)
 - [Layer Styles](#layer-styles)
+- [Remove Matte, Defringe and Trim Layer](#remove-matte-defringe-and-trim-layer)
 
 ### Filters
 
@@ -227,6 +228,26 @@ Create editable shadows, glows, outlines and overlays.
 **Notes and tips:**
 
 - Layer Style → Stroke is live; Edit → Stroke Selection writes pixel artwork on a new layer.
+
+## Remove Matte, Defringe and Trim Layer
+
+Clean unwanted white or black edge contamination and remove transparent padding without changing the layer's position.
+
+**Where:** Layer → Matting → Remove White Matte / Remove Black Matte / Defringe; Layer → Trim Layer to Content
+
+1. Select an unlocked image layer containing transparent or anti-aliased boundaries.
+2. Choose Layer → Matting → Remove White Matte if translucent edge colors were blended against white, or Remove Black Matte for a dark matte.
+3. Use Layer → Matting → Defringe to propagate nearby opaque colors into translucent edge pixels; select a suitable fringe width.
+4. Inspect the result against contrasting backgrounds. Undo if an edge loses useful color.
+5. Use Layer → Trim Layer to Content to crop away transparent padding while keeping the artwork in the same document-space position.
+
+**Notes and tips:**
+
+- Matting changes RGB in partially transparent pixels; it does not remove transparency.
+- Fully opaque images, selections without eligible fringe pixels, and already-trimmed layers produce no new History entry.
+- Editable Smart Objects can be rasterized by a successful matting operation; duplicate the layer first if you want to retain the original.
+- 16-bit matting requires browser support for float16 readback. Matting is not yet supported on 32-bit HDR documents.
+- Locked layers cannot be trimmed or matted.
 
 ## Transform, Puppet Warp and Crop
 
