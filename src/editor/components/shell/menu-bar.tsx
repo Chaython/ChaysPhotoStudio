@@ -1,5 +1,8 @@
 'use client'
-import { MenubarMenu, MenubarTrigger, MenubarContent, MenubarItem, MenubarSeparator, Menubar } from '@/components/ui/menubar'
+import {
+  MenubarMenu, MenubarTrigger, MenubarContent, MenubarItem, MenubarSeparator, Menubar,
+  MenubarSub, MenubarSubTrigger, MenubarSubContent,
+} from '@/components/ui/menubar'
 import type { MenuItem } from '../../constants/menus'
 import { MENUS, PLUGINS_MENU_INDEX, getPluginsMenuItems } from '../../constants/menus'
 import { useEditorStore } from '../../store'
@@ -20,16 +23,15 @@ function renderItems(items: MenuItem[], depth = 0): React.ReactNode[] {
     const disabled = item.enabled ? !item.enabled() : false
     if (item.submenu) {
       out.push(
-        <MenubarItem key={item.id} disabled={disabled} className="gap-2">
-          <span className="flex-1">{item.label}</span>
-          <span className="text-muted-foreground text-xs">▶</span>
-        </MenubarItem>
-      )
-      // flatten submenu into nested rendering (radix menubar lacks submenus in shadcn wrapper) — render as second-level list
-      out.push(
-        <div key={`${item.id}-sub`} className="pl-4 border-l border-border ml-2 my-1">
-          {renderItems(item.submenu, depth + 1)}
-        </div>
+        <MenubarSub key={item.id}>
+          <MenubarSubTrigger disabled={disabled} className="gap-2 text-xs">
+            <span className="flex-1">{item.label}</span>
+            {item.checked?.() && <span className="text-primary text-xs">✓</span>}
+          </MenubarSubTrigger>
+          <MenubarSubContent className="min-w-56 max-h-[70vh] overflow-y-auto">
+            {renderItems(item.submenu, depth + 1)}
+          </MenubarSubContent>
+        </MenubarSub>
       )
       continue
     }

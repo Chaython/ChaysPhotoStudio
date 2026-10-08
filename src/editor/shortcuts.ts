@@ -43,7 +43,7 @@ export type CommandId =
   // Layer
   | 'toggleClipping'
   // Select
-  | 'selectAll' | 'deselect' | 'invertSelection' | 'selectMask'
+  | 'selectAll' | 'deselect' | 'reselect' | 'invertSelection' | 'selectMask'
   // View
   | 'toggleRulers' | 'toggleGuides' | 'toggleGrid' | 'toggleSnapGrid' | 'proofColors' | 'gamutWarning'
   | 'zoomIn' | 'zoomOut' | 'zoomFit' | 'zoomFitContent' | 'zoom100'
@@ -108,6 +108,7 @@ export const COMMANDS: CommandDef[] = [
   // ---- Select ----
   { id: 'selectAll', label: 'Select All', section: 'Select', defaultCombo: 'ctrl+a', run: () => engine.selectAll() },
   { id: 'deselect', label: 'Deselect', section: 'Select', defaultCombo: 'ctrl+d', run: () => engine.deselect() },
+  { id: 'reselect', label: 'Reselect Last Selection', section: 'Select', defaultCombo: 'ctrl+shift+d', run: () => engine.reselectSelection() },
   { id: 'invertSelection', label: 'Invert Selection', section: 'Select', defaultCombo: 'ctrl+shift+i', run: () => engine.invertSelection() },
   { id: 'selectMask', label: 'Select and Mask…', section: 'Select', defaultCombo: 'ctrl+alt+r', run: () => openDlg('select-mask') },
   // ---- View ----

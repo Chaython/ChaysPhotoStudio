@@ -263,6 +263,8 @@ export const MENUS: MenuItem[][] = [
   ],
   // ================= IMAGE =================
   [
+    { id: 'img-duplicate', label: 'Duplicate…', enabled: () => !!engine.activeDoc, run: () => engine.duplicateDocument() },
+    S(),
     { id: 'img-size', label: 'Image Size…', shortcut: sc('imageSize'), run: () => openDlg('image-size') },
     { id: 'img-ai-upscale', label: 'AI Upscale…', shortcut: sc('aiUpscale'), run: () => openDlg('ai-upscale') },
     { id: 'img-ca-scale', label: 'Content-Aware Scale…', run: () => openDlg('content-aware-scale') },
@@ -349,7 +351,7 @@ export const MENUS: MenuItem[][] = [
   [
     { id: 'sel-all', label: 'All', shortcut: sc('selectAll'), run: () => engine.selectAll() },
     { id: 'sel-deselect', label: 'Deselect', shortcut: sc('deselect'), run: () => engine.deselect() },
-    { id: 'sel-reselect', label: 'Reselect', enabled: () => false },
+    { id: 'sel-reselect', label: 'Reselect', shortcut: sc('reselect'), enabled: () => engine.canReselectSelection(), run: () => engine.reselectSelection() },
     { id: 'sel-inverse', label: 'Inverse', shortcut: sc('invertSelection'), run: () => engine.invertSelection() },
     S(),
     { id: 'sel-subject', label: 'Select Subject', run: () => engine.selectSubject() },

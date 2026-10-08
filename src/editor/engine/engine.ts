@@ -197,6 +197,8 @@ export class Engine {
   actions: PsAction[] = []
   private recordingAction: PsAction | null = null
   private lastTransformCommand: LayerTransformCommand | null = null
+  /** Photoshop Select > Reselect: document-scoped, detached last deselection. */
+  private lastDeselectedSelections = new WeakMap<PsDocument, SelectionState>()
 
   private mergeHdrCanvasEdits(layer: Layer): void {
     if (!layer.hdrPixels || !layer.canvas || !layer._hdrPreviewBefore) return
@@ -2727,8 +2729,30 @@ export class Engine {
   deselect() {
     const doc = this.activeDoc
     if (!doc || !doc.selection) return
+    // Keep a detached copy: selection refinements and undo restoration must
+    // never change the cached mask that Photoshop's Reselect will restore.
+    const saved = this.cloneHistorySelection(doc.selection)
+    if (saved) this.lastDeselectedSelections.set(doc, saved)
     doc.selection = null
     this.pushHistory('Deselect')
+    this.emitOverlay()
+  }
+
+  canReselectSelection(): boolean {
+    const doc = this.activeDoc
+    if (!doc || doc.selection) return false
+    const saved = this.lastDeselectedSelections.get(doc)
+    // Never reapply masks with stale dimensions after crop / image resize.
+    return !!saved && saved.mask.width === doc.width && saved.mask.height === doc.height
+  }
+
+  reselectSelection(): void {
+    if (!this.canReselectSelection()) return
+    const doc = this.activeDoc!
+    const saved = this.lastDeselectedSelections.get(doc)!
+    doc.selection = this.cloneHistorySelection(saved)
+    this.lastDeselectedSelections.delete(doc)
+    this.pushHistory('Reselect')
     this.emitOverlay()
   }
 

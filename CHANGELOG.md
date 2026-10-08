@@ -4,6 +4,9 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Fixed the Photoshop-style menu hierarchy: Transform, Adjustments, Filters, Matting and other submenus are real keyboard-accessible Radix flyouts instead of permanently expanded nested lists.
+- Enabled **Select > Reselect** (Ctrl+Shift+D) with document-scoped, independent selection-mask retention and undo/redo coverage; also exposed the existing full-fidelity **Image > Duplicate…** command in the menu.
+
 - Fixed pixel-worker failure recovery incorrectly rerunning filters on a potentially partially mutated transferred buffer. The engine now falls back only from a retained untouched original, or raises a recoverable error so canvas-backed callers can re-fetch safe input; added an error-path regression test.
 
 - Fixed crash-recovery autosave starvation under continuous editing: pending saves are no longer postponed by every editor event, timers for closed documents are cleaned up, same-document writes are serialized, and the expensive all-project recovery scan is skipped when the entry cap has not been reached. Added a headless autosave scheduling regression test.
