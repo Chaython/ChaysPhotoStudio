@@ -349,6 +349,8 @@ export const MENUS: MenuItem[][] = [
       if (doc?.selection) engine.cropTo(doc.selection.bounds)
       else store().pushToast('No selection', 'error')
     } },
+    { id: 'img-reveal-all', label: 'Reveal All', enabled: () => !!engine.activeDoc,
+      run: () => { if (!engine.revealAll()) store().pushToast('No off-canvas visible content to reveal', 'info') } },
     { id: 'img-trim', label: 'Trim Transparent Pixels', run: () => {
       const doc = engine.activeDoc
       if (!doc) return

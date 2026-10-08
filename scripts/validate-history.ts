@@ -297,3 +297,30 @@ assert.equal(stackDoc.history.index, previousHistoryIndex, 'No-op arrangement mu
 rawEngine.moveLayerBy(firstLayer.id, 1)
 assert.equal(stackDoc.history.index, previousHistoryIndex, 'Bring Forward at front is a no-op')
 console.log('Layer Arrange updates stack order, invalidates the composite and supports Undo/Redo')
+
+
+// Image > Reveal All grows the canvas around visible off-canvas Smart Object
+// geometry without flattening its source or changing any original pixel values.
+const revealDoc = stackDoc
+revealDoc.width = 100
+revealDoc.height = 60
+const revealSmart: Layer = {
+  ...revealDoc.layers[0], id: 'reveal-smart', name: 'Off-canvas Smart Object',
+  kind: 'smart', visible: true, source: canvas(29), canvas: null, hdrPixels: null,
+  transform: { x: -4, y: 10, scale: 1, rotation: 0 }, mask: null,
+}
+revealDoc.layers = [revealSmart]
+revealDoc.activeLayerId = revealSmart.id
+revealDoc.selectedLayerIds = [revealSmart.id]
+rawEngine.pushHistory('Before Reveal All', revealDoc)
+assert.equal(rawEngine.revealAll(), true)
+assert.equal(revealDoc.width, 105)
+assert.equal(revealDoc.height, 60)
+assert.equal(revealDoc.layers[0].kind, 'smart', 'Reveal All must preserve Smart Object editing')
+assert.equal(revealDoc.layers[0].transform?.x, 1, 'off-canvas source shifted into expanded frame')
+assert.equal(revealDoc.history.states[revealDoc.history.index].label, 'Reveal All')
+assert.equal(rawEngine.revealAll(), false, 'Reveal All is a no-op when all content is in-frame')
+rawEngine.undo()
+assert.equal(revealDoc.width, 100)
+assert.equal(revealDoc.layers[0].transform?.x, -4)
+console.log('Image > Reveal All preserves off-canvas Smart Objects and Undo')

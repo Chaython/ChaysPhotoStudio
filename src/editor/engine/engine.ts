@@ -3852,7 +3852,7 @@ export class Engine {
     this.emit()
   }
 
-  cropTo(rect: Rect, opts: { deletePixels?: boolean; targetW?: number; targetH?: number; resolutionPpi?: number } = {}) {
+  cropTo(rect: Rect, opts: { deletePixels?: boolean; targetW?: number; targetH?: number; resolutionPpi?: number; historyLabel?: string } = {}) {
     const doc = this.activeDoc
     if (!doc) return
     this.syncPendingHdrCanvasEdits(doc)
@@ -3954,15 +3954,65 @@ export class Engine {
     if (Number.isFinite(opts.resolutionPpi) && Number(opts.resolutionPpi) > 0) {
       doc.resolutionPpi = clamp(Number(opts.resolutionPpi), 1, 12000)
     }
-    this.pushHistory(resized
+    const cropLabel = resized
       ? (deletePixels ? 'Crop & Resize' : 'Crop & Resize (Preserve Pixels)')
-      : (deletePixels ? 'Crop' : 'Crop (Preserve Pixels)'))
+      : (deletePixels ? 'Crop' : 'Crop (Preserve Pixels)')
+    this.pushHistory(opts.historyLabel ?? cropLabel)
     this.recordStep({
       op: 'crop',
       args: { x, y, w, h, deletePixels, targetW: resized ? targetW : undefined, targetH: resized ? targetH : undefined, resolutionPpi: doc.resolutionPpi ?? 72 },
-      label: resized ? 'Crop & Resize' : 'Crop',
+      label: opts.historyLabel ?? cropLabel,
     })
     this.emit()
+  }
+
+  /** Image > Reveal All: expand the frame to include visible off-canvas
+   * content without destructively trimming any raster backing stores. */
+  revealAll(): boolean {
+    const doc = this.activeDoc
+    if (!doc) return false
+    this.syncPendingHdrCanvasEdits(doc)
+    let left = 0, top = 0, right = doc.width, bottom = doc.height
+    let found = false
+    for (const layer of doc.layers) {
+      if (!layer.visible || layer.kind === 'adjustment') continue
+      let bounds: Rect | null = null
+      if (layer.kind === 'raster' && layer.canvas) {
+        const cw = layer.canvas.width, ch = layer.canvas.height
+        const hdr = layer.hdrPixels
+        const pixels = hdr ? null : getImageData(layer.canvas).data
+        let minX = cw, minY = ch, maxX = -1, maxY = -1
+        for (let y = 0; y < ch; y++) {
+          for (let x = 0; x < cw; x++) {
+            const a = hdr ? hdr[(y * cw + x) * 4 + 3] : pixels![(y * cw + x) * 4 + 3]
+            if (a <= 0) continue
+            minX = Math.min(minX, x); minY = Math.min(minY, y)
+            maxX = Math.max(maxX, x); maxY = Math.max(maxY, y)
+          }
+        }
+        if (maxX >= minX && maxY >= minY) {
+          bounds = { x: (layer.offsetX ?? 0) + minX, y: (layer.offsetY ?? 0) + minY,
+            w: maxX - minX + 1, h: maxY - minY + 1 }
+        }
+      } else {
+        bounds = this.layerContentRect(layer.id)
+      }
+      if (!bounds) continue
+      found = true
+      left = Math.min(left, Math.floor(bounds.x))
+      top = Math.min(top, Math.floor(bounds.y))
+      right = Math.max(right, Math.ceil(bounds.x + bounds.w))
+      bottom = Math.max(bottom, Math.ceil(bounds.y + bounds.h))
+    }
+    if (!found || (left === 0 && top === 0 && right === doc.width && bottom === doc.height)) return false
+    const width = right - left, height = bottom - top
+    if (width > 32768 || height > 32768 || width * height > 80_000_000) {
+      this.ui?.toast('Reveal All would create an excessively large canvas', 'error')
+      return false
+    }
+    this.cropTo({ x: left, y: top, w: width, h: height },
+      { deletePixels: false, historyLabel: 'Reveal All' })
+    return true
   }
 
   resizeCanvas(opts: { w: number; h: number; anchor: 'center' | 'top-left' | 'top' | 'top-right' | 'left' | 'right' | 'bottom-left' | 'bottom' | 'bottom-right' }) {
