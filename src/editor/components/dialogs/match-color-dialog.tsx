@@ -167,6 +167,18 @@ export function MatchColorDialog({ onClose }: DialogProps) {
     if (!doc || !layer || !activeSource || busy) return
     setBusy(true)
     try {
+      // Match Color currently uses normalized 0..255 source statistics and a
+      // Canvas2D backing store. Don't mutate authoritative Float32 HDR layers
+      // or override protected layers with a late worker reply.
+      if (engine.activeDoc !== doc || !doc.layers.includes(layer) ||
+          layer.locked || layer.kind === 'adjustment') {
+        useEditorStore.getState().pushToast('Select an unlocked, pixel-capable layer for Match Color', 'error')
+        return
+      }
+      if (doc.workingBitDepth === 32) {
+        useEditorStore.getState().pushToast('Match Color is not yet supported for 32-bit HDR documents', 'error')
+        return
+      }
       if (layer.kind !== 'raster') {
         useEditorStore.getState().pushToast('Layer rasterized for Match Color', 'info')
       }
@@ -175,15 +187,26 @@ export function MatchColorDialog({ onClose }: DialogProps) {
         useEditorStore.getState().pushToast('Active layer has no pixels to adjust', 'error')
         return
       }
+      const sourceVersion = l._v
+      const historyAnchor = doc.history.states[doc.history.index]
+      const sourceEpoch = doc._epoch
       const srcImg = downsampleImage(getImageData(getFlatComposite(activeSource)), SRC_COMMIT_MAX)
       const out = await runPixelOpFromCanvas(l.canvas, {
         kind: 'match-color',
         params: { luminance, fade, neutralize, intensity },
         source: srcImg,
       })
+      // A delayed worker result must not overwrite an Undo, another edit, or
+      // a different active document's layer/History. This also prevents the
+      // status toast from reporting an operation that was discarded.
+      if (engine.activeDoc !== doc || !doc.layers.includes(l) ||
+          l._v !== sourceVersion || l.locked ||
+          doc.history.states[doc.history.index] !== historyAnchor ||
+          doc._epoch !== sourceEpoch) return
       putProcessingPixelData(l.canvas, out)
+      l._v++
       invalidateFlat(doc)
-      engine.pushHistory('Match Color')
+      engine.pushHistory('Match Color', doc)
       engine.emit()
       useEditorStore.getState().pushToast(`Match Color applied from “${activeSource.name}”`, 'success')
       onClose()

@@ -4014,6 +4014,10 @@ export class Engine {
   // ================================================== auto corrections (PS Image menu)
   autoCorrect(kind: 'tone' | 'contrast' | 'color') {
     const layer = this.activeLayer
+    if (this.activeDoc?.workingBitDepth === 32) {
+      this.ui?.toast('Automatic histogram corrections are not yet supported for 32-bit HDR layers', 'error')
+      return
+    }
     if (!layer || layer.locked || layer.kind === 'adjustment') {
       this.ui?.toast('Select an unlocked pixel-capable layer for auto correction', 'error')
       return
@@ -4040,6 +4044,11 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.kind === 'adjustment' || layer.locked) return false
+    if (doc.workingBitDepth === 32 &&
+        (spec.kind === 'auto-tone' || spec.kind === 'auto-contrast' || spec.kind === 'auto-color')) {
+      this.ui?.toast('Automatic histogram corrections are not yet supported for 32-bit HDR layers', 'error')
+      return false
+    }
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return false
     const layerVersion = l._v
@@ -4150,6 +4159,10 @@ export class Engine {
   /** Async auto-correction (Image menu / shortcuts) — autoTone/autoContrast/autoColor in the worker. */
   async autoCorrectAsync(kind: 'tone' | 'contrast' | 'color'): Promise<void> {
     const layer = this.activeLayer
+    if (this.activeDoc?.workingBitDepth === 32) {
+      this.ui?.toast('Automatic histogram corrections are not yet supported for 32-bit HDR layers', 'error')
+      return
+    }
     if (!layer || layer.locked || layer.kind === 'adjustment') {
       this.ui?.toast('Select an unlocked pixel-capable layer for auto correction', 'error')
       return

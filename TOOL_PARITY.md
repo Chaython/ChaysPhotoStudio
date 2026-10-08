@@ -99,6 +99,10 @@ Documents now carry explicit **PPI resolution metadata** independently from pixe
 
 Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success or record actions when the active layer is locked or lacks editable pixels. Direct Adjustment and Filter commits now reject known unsupported scene-linear 32-bit operations before cloning/mutating layer canvases; supported HDR filters such as Offset remain usable.
 
+## HDR-safe automatic corrections and Match Color
+
+Auto Tone, Auto Contrast, and Auto Color use 256-bin, 0–255 histograms and are now guarded on scene-linear Float32 HDR documents (synchronous, background, and generic-region paths) instead of clipping HDR values. Match Color similarly refuses 32-bit HDR and locked/adjustment layers; on supported documents it verifies the source layer, active tab, History state, and epoch before committing a delayed worker result. A stale result never reports success or writes into another document.
+
 ## Isolated worker timeouts
 
 A stalled pixel-operation timeout now terminates only the worker responsible for that operation. Healthy workers continue and queued operations are rescheduled on replacement background workers instead of being flushed synchronously on the UI thread. Only actual worker-loader/transport faults latch off the pool. A simulated timeout regression checks that subsequent operations still execute on a newly spawned worker.

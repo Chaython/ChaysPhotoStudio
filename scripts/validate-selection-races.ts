@@ -129,6 +129,15 @@ try {
   assert.equal(layer._v, oldVersion)
   layer.locked = false
   doc.workingBitDepth = 32
+  const beforeAutoCount = DeferredWorker.jobs.length
+  const beforeAutoHistory = doc.history.index
+  editor.autoCorrect('tone')
+  await editor.autoCorrectAsync('contrast')
+  assert.equal(await editor.applyRegionOpAsync('layer', { kind: 'auto-color' }, 'Auto Color'), false)
+  assert.equal(DeferredWorker.jobs.length, beforeAutoCount,
+    'HDR Auto Color/Tone/Contrast are rejected before dispatching workers')
+  assert.equal(doc.history.index, beforeAutoHistory,
+    'unsupported HDR automatic corrections must not create History')
   const beforeInpaintHistory = doc.history.index
   const beforeInpaintVersion = layer._v
   await editor.contentAwareFillMask(new Uint8ClampedArray(W * H).fill(255))
