@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import { Engine } from '../src/editor/engine/engine'
 import { invertMaskAlpha } from '../src/editor/engine/selection'
+import { layerContentForRasterization } from '../src/editor/engine/rasterize-layer'
 import type { HistoryState, Layer, PsDocument } from '../src/editor/types'
 
 class TestCanvas {
@@ -808,3 +809,26 @@ assert.equal(disabledMaskTarget.mask?.width, 2)
 assert.equal(disabledMaskTarget.maskEnabled, false)
 assert.equal(repeatDoc.history.index, historyBeforeDisabledApply)
 console.log('Applying a disabled raster layer mask is a safe no-op')
+
+
+// Rendering the decorated original before rasterization double-applied its
+// mask, vector mask and layer styles. Prepare only source pixels and retain
+// the editable effects on the actual layer.
+const rasterSource: Layer = {
+  ...repeatDoc.layers[0], id: 'rasterized-masked-smart', kind: 'smart',
+  mask: canvas(53), maskEnabled: true, _mv: 4, _v: 8,
+  vectorMask: { anchors: [], closed: false, enabled: true },
+  fx: { dropShadow: { enabled: true } } as Layer['fx'],
+}
+const rasterProxy = layerContentForRasterization(rasterSource)
+assert.notEqual(rasterProxy, rasterSource)
+assert.equal(rasterProxy.maskEnabled, false, 'mask is not baked twice')
+assert.equal(rasterProxy.vectorMask?.enabled, false, 'vector mask is not baked twice')
+assert.equal(rasterProxy.fx, null, 'styles remain editable on the resulting layer')
+assert.equal(rasterSource.maskEnabled, true, 'the live mask remains enabled')
+assert.equal(rasterSource.vectorMask?.enabled, true, 'live vector mask remains enabled')
+assert.ok(rasterSource.fx, 'original layer style remains available')
+assert.equal(rasterProxy.mask, rasterSource.mask)
+assert.equal(rasterProxy._v, rasterSource._v + 1, 'render signature differs from cached decorated result')
+assert.equal(rasterProxy._mv, rasterSource._mv + 1)
+console.log('Rasterize source excludes live masks and effects without mutating the original layer')

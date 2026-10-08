@@ -42,6 +42,7 @@ import { affineHdrPixels, cropHdrPixels, flipHdrPixels, resampleHdrPixels, rotat
 import { splitHdrSelectionPixels } from '../image-ops/selection-pixels'
 import { rasterTransparencyAlpha } from '../image-ops/layer-transparency'
 import { applyHdrRasterMask, createLayerMaskAlpha, type LayerMaskCreationMode } from '../image-ops/layer-mask'
+import { layerContentForRasterization } from './rasterize-layer'
 
 export const MAX_HISTORY = 50
 
@@ -1657,13 +1658,25 @@ export class Engine {
       doc.layers.push(raster)
       doc.activeLayerId = raster.id
     } else {
-      const prepared = prepareLayer(doc, layer)
+      // Rasterize editable content/Smart Filters, but preserve the existing
+      // editable layer mask, vector mask and layer style ONCE. Rendering the
+      // fully decorated layer here would bake those effects and apply again.
+      const prepared = prepareLayer(doc, layerContentForRasterization(layer))
       layer.canvas = prepared ? cloneCanvas(prepared) : createCanvas(doc.width, doc.height)
       layer.kind = 'raster'
       layer.offsetX = 0 // prepared is doc-space
       layer.offsetY = 0
       layer.source = null; layer.transform = null; layer.smartFilters = []
       layer.text = null; layer.shape = null
+      if (doc.workingBitDepth === 32) {
+        layer.hdrPixels = hdrPixelsFromCanvas(layer.canvas)
+        layer.hdrColorSpace = 'linear-srgb'
+        layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
+        layer._hdrPreviewBefore = null
+      } else {
+        layer.hdrPixels = null
+        layer._hdrPreviewBefore = null
+      }
       layer._v++
     }
     invalidateFlat(doc)

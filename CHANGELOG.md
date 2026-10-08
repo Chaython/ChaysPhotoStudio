@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Fixed rasterizing Smart Objects, text, and shapes with existing masks/vector masks/layer styles: rasterization now bakes just the editable content and Smart Filters, leaving live masks and FX to apply once instead of twice. In 32-bit documents, converted rasters receive authoritative Float32 pixel buffers. Added isolation regression coverage.
+
 - Prevented **Apply Layer Mask** from silently discarding a disabled mask. The command remains unavailable until the mask is enabled, and does not create misleading History entries when blocked.
 
 - Added **Layer > Layer Mask > Copy/Paste Layer Mask** with independent alpha buffers, same-sized document safety, explicit **Replace Mask with Copied Mask**, locked-layer guards, and Undo/Redo. Copying a mask creates no History entry.
