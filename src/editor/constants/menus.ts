@@ -376,7 +376,13 @@ export const MENUS: MenuItem[][] = [
   // ================= LAYER =================
   [
     { id: 'layer-new', label: 'New Layer', shortcut: sc('newLayer'), run: () => engine.addRasterLayer() },
-    { id: 'layer-duplicate', label: 'Duplicate Layer', shortcut: sc('duplicateLayer'), run: () => { const l = engine.activeLayer; if (l) engine.duplicateLayer(l.id) } },
+    { id: 'layer-via-copy', label: 'Layer via Copy / Duplicate', shortcut: sc('duplicateLayer'),
+      enabled: () => !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment',
+      run: () => engine.duplicateLayerOrSelection() },
+    { id: 'layer-via-cut', label: 'Layer via Cut', shortcut: sc('layerViaCut'),
+      enabled: () => !!engine.activeDoc?.selection && engine.activeLayer?.kind === 'raster' && !engine.activeLayer.locked,
+      run: () => engine.layerViaSelection('cut') },
+    { id: 'layer-duplicate', label: 'Duplicate Entire Layer', run: () => { const l = engine.activeLayer; if (l) engine.duplicateLayer(l.id) } },
     { id: 'layer-duplicate-into', label: 'Duplicate Into…', enabled: () => !!engine.activeLayer && engine.docs.length > 1, run: () => openDlg('duplicate-layer', { layerId: engine.activeLayer?.id }) },
     { id: 'layer-delete', label: 'Delete Layer', run: () => engine.deleteLayer() },
     S(),

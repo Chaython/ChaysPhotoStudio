@@ -39,6 +39,7 @@ import {
 import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 import { embedRasterMetadata } from '../formats/metadata-write'
 import { affineHdrPixels, cropHdrPixels, flipHdrPixels, resampleHdrPixels, rotateHdrPixels } from '../image-ops/hdr-geometry'
+import { splitHdrSelectionPixels } from '../image-ops/selection-pixels'
 
 export const MAX_HISTORY = 50
 
@@ -1361,6 +1362,117 @@ export class Engine {
     }
   }
 
+  /** Intersection of a selection with the raster backing store, in document
+   * pixel coordinates. Avoid allocating the entire document for small copies. */
+  private selectedPixelRegion(doc: PsDocument, layer: Layer): { x: number; y: number; w: number; h: number } | null {
+    if (!doc.selection || doc.selection.bounds.w <= 0 || doc.selection.bounds.h <= 0) return null
+    const b = doc.selection.bounds
+    const ox = Math.round(layer.kind === 'raster' ? (layer.offsetX ?? 0) : 0)
+    const oy = Math.round(layer.kind === 'raster' ? (layer.offsetY ?? 0) : 0)
+    const layerW = layer.kind === 'raster' ? layer.canvas?.width ?? 0 : doc.width
+    const layerH = layer.kind === 'raster' ? layer.canvas?.height ?? 0 : doc.height
+    const x = Math.max(0, Math.floor(b.x), ox)
+    const y = Math.max(0, Math.floor(b.y), oy)
+    const x1 = Math.min(doc.width, Math.ceil(b.x + b.w), ox + layerW)
+    const y1 = Math.min(doc.height, Math.ceil(b.y + b.h), oy + layerH)
+    return x1 > x && y1 > y ? { x, y, w: x1 - x, h: y1 - y } : null
+  }
+
+  private selectionRegionAlpha(mask: HTMLCanvasElement, region: { x: number; y: number; w: number; h: number }): Uint8ClampedArray {
+    const data = ctx2d(mask).getImageData(region.x, region.y, region.w, region.h).data
+    const alpha = new Uint8ClampedArray(region.w * region.h)
+    for (let i = 0; i < alpha.length; i++) alpha[i] = data[i * 4 + 3]
+    return alpha
+  }
+
+  /** Photoshop's Layer via Copy / Cut lifts only the selected pixels from
+   * the ACTIVE layer, retaining feathered mask edges and the source placement.
+   * HDR layers are split directly in scene-linear Float32 precision. */
+  layerViaSelection(mode: 'copy' | 'cut'): Layer | null {
+    const doc = this.activeDoc
+    const source = this.activeLayer
+    if (!doc?.selection || !source || source.kind === 'adjustment') return null
+    if (mode === 'cut' && (source.locked || source.kind !== 'raster')) {
+      this.ui?.toast('Layer via Cut requires an unlocked raster layer', 'error')
+      return null
+    }
+    const region = this.selectedPixelRegion(doc, source)
+    if (!region) { this.ui?.toast('No selected pixels overlap the active layer', 'info'); return null }
+    this.syncPendingHdrCanvasEdits(doc)
+    const selected = this.selectionRegionAlpha(doc.selection.mask, region)
+    if (!selected.some(a => a > 0)) return null
+    const layerMaskAlpha = source.maskEnabled && source.mask &&
+      source.mask.width === doc.width && source.mask.height === doc.height
+      ? this.selectionRegionAlpha(source.mask, region) : undefined
+
+    let output: HTMLCanvasElement
+    let hdrPixels: Float32Array | null = null
+    let remainder: Float32Array | null = null
+    if (source.kind === 'raster' && source.canvas && source.hdrPixels) {
+      const result = splitHdrSelectionPixels(source.hdrPixels, source.canvas.width, source.canvas.height,
+        Math.round(source.offsetX ?? 0), Math.round(source.offsetY ?? 0),
+        region, selected, mode === 'cut', layerMaskAlpha)
+      if (!result.hasPixels) return null
+      hdrPixels = result.pixels
+      remainder = result.remaining
+      output = hdrFloat32ToPreviewCanvas(hdrPixels, region.w, region.h, 'srgb')
+    } else {
+      const src = this.layerCanvasDocSpace(source.id)
+      if (!src) return null
+      output = createCanvas(region.w, region.h, canvasProfile(src))
+      const ctx = ctx2d(output)
+      ctx.drawImage(src, -region.x, -region.y)
+      ctx.save()
+      ctx.globalCompositeOperation = 'destination-in'
+      ctx.drawImage(doc.selection.mask, -region.x, -region.y)
+      if (layerMaskAlpha) ctx.drawImage(source.mask!, -region.x, -region.y)
+      ctx.restore()
+      const data = getImageData(output).data
+      if (!data.some((v, i) => i % 4 === 3 && v > 0)) return null
+    }
+
+    if (mode === 'cut') {
+      const live = this.mutateLayerPixels(source.id)
+      if (!live?.canvas) return null
+      if (remainder) {
+        live.hdrPixels = remainder
+        live.canvas = hdrFloat32ToPreviewCanvas(remainder, live.canvas.width, live.canvas.height, 'srgb')
+        live._hdrPreviewBefore = null
+      } else {
+        const ctx = ctx2d(live.canvas)
+        ctx.save()
+        ctx.globalCompositeOperation = 'destination-out'
+        ctx.drawImage(doc.selection.mask, -Math.round(live.offsetX ?? 0), -Math.round(live.offsetY ?? 0))
+        ctx.restore()
+      }
+    }
+
+    const lifted = newLayer('raster', `${source.name} via ${mode === 'cut' ? 'Cut' : 'Copy'}`, doc.width, doc.height)
+    lifted.canvas = output
+    lifted.offsetX = region.x
+    lifted.offsetY = region.y
+    lifted.clipped = false
+    if (hdrPixels) {
+      lifted.hdrPixels = hdrPixels
+      lifted.hdrColorSpace = 'linear-srgb'
+      lifted._hdrPreviewBefore = null
+    }
+    const index = doc.layers.findIndex(layer => layer.id === source.id)
+    doc.layers.splice(index + 1, 0, lifted)
+    doc.activeLayerId = lifted.id
+    doc.selectedLayerIds = [lifted.id]
+    invalidateFlat(doc)
+    this.pushHistory(mode === 'cut' ? 'Layer via Cut' : 'Layer via Copy', doc)
+    this.emit()
+    return lifted
+  }
+
+  /** The Photoshop Ctrl+J behavior: selected pixels become a new raster layer,
+   * while no selection duplicates the whole editable layer. */
+  duplicateLayerOrSelection(): Layer | null {
+    return this.activeDoc?.selection ? this.layerViaSelection('copy') : this.duplicateLayer()
+  }
+
   duplicateLayer(id?: string): Layer | null {
     const doc = this.activeDoc
     const src = id ? this.layerById(id) : this.activeLayer
@@ -2440,7 +2552,13 @@ export class Engine {
         const src = this.layerCanvasDocSpace(l.id)
         if (!src) return false
         canvas = createCanvas(x1 - x0, y1 - y0)
-        ctx2d(canvas).drawImage(src, -x0, -y0)
+        const ctx = ctx2d(canvas)
+        ctx.drawImage(src, -x0, -y0)
+        ctx.save()
+        ctx.globalCompositeOperation = 'destination-in'
+        ctx.drawImage(doc.selection.mask, -x0, -y0)
+        if (l.maskEnabled && l.mask) ctx.drawImage(l.mask, -x0, -y0)
+        ctx.restore()
         ox = x0; oy = y0
         name = l.name
       } else if (l.kind === 'raster' && l.canvas) {
@@ -2475,19 +2593,45 @@ export class Engine {
   cutLayer(): boolean {
     const doc = this.activeDoc
     const l = this.activeLayer
-    if (!doc || !l) return false
+    if (!doc || !l || l.locked) return false
+    if (doc.selection && l.kind !== 'raster') {
+      this.ui?.toast('Cutting selected pixels requires an unlocked raster layer', 'error')
+      return false
+    }
     if (!this.copyLayer(false)) return false
     if (l.kind === 'raster' && l.canvas) {
       const m = this.mutateLayerPixels(l.id)
       if (m?.canvas) {
-        ctx2d(m.canvas).clearRect(0, 0, m.canvas.width, m.canvas.height)
-        m._v++
+        if (doc.selection) {
+          const region = this.selectedPixelRegion(doc, m)
+          if (!region) return false
+          if (m.hdrPixels) {
+            const selected = this.selectionRegionAlpha(doc.selection.mask, region)
+            const split = splitHdrSelectionPixels(m.hdrPixels, m.canvas.width, m.canvas.height,
+              Math.round(m.offsetX ?? 0), Math.round(m.offsetY ?? 0), region, selected, true)
+            if (split.remaining) {
+              m.hdrPixels = split.remaining
+              m.canvas = hdrFloat32ToPreviewCanvas(split.remaining, m.canvas.width, m.canvas.height, 'srgb')
+              m._hdrPreviewBefore = null
+            }
+          } else {
+            const ctx = ctx2d(m.canvas)
+            ctx.save()
+            ctx.globalCompositeOperation = 'destination-out'
+            ctx.drawImage(doc.selection.mask, -Math.round(m.offsetX ?? 0), -Math.round(m.offsetY ?? 0))
+            ctx.restore()
+          }
+        } else if (m.hdrPixels) {
+          m.hdrPixels = new Float32Array(m.hdrPixels.length)
+          m.canvas = hdrFloat32ToPreviewCanvas(m.hdrPixels, m.canvas.width, m.canvas.height, 'srgb')
+          m._hdrPreviewBefore = null
+        } else {
+          ctx2d(m.canvas).clearRect(0, 0, m.canvas.width, m.canvas.height)
+        }
         invalidateFlat(doc)
         this.pushHistory('Cut')
         this.emit()
       }
-    } else if (doc.selection) {
-      this.deleteSelectionPixels()
     } else {
       this.ui?.toast(`${l.name} cut to clipboard (paste restores it as a raster layer)`, 'info')
       this.deleteLayer(l.id)

@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added Photoshop-style **Layer via Copy (Ctrl+J)** and **Layer via Cut (Ctrl+Shift+J)** for feathered selections. Ctrl+J still duplicates the entire editable layer when no selection exists. Extracted raster selections retain their document offsets and 32-bit Float32 HDR highlights; cutting removes only selected alpha. Fixed Edit > Cut clearing whole raster layers despite a partial selection and made clipboard copies respect selection feathering and layer masks. Added headless HDR alpha-splitting regression coverage.
+
 - Added **Layer > Lock Selected Layers** and **Unlock Selected Layers**. The commands handle multi-layer selection (including currently locked layers), create one Undo step for the entire operation, and skip redundant History entries.
 
 - Added the Photoshop-style **Select > Modify** flyout with Border, Smooth, Expand, Contract, and Feather (exposing the existing selection-smoothing engine). Invalid, zero, and cancelled radius inputs now safely leave selections and History unchanged.

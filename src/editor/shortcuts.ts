@@ -36,7 +36,7 @@ export type CommandId =
   // Edit
   | 'undo' | 'redo' | 'copy' | 'copyMerged' | 'cut' | 'paste'
   | 'fillFg' | 'fillBg' | 'clearSelection' | 'invert'
-  | 'duplicateLayer' | 'newLayer' | 'transform' | 'mergeDown' | 'mergeVisible'
+  | 'duplicateLayer' | 'layerViaCut' | 'newLayer' | 'transform' | 'mergeDown' | 'mergeVisible'
   // Image
   | 'imageSize' | 'canvasSize' | 'aiUpscale' | 'liquify' | 'repeatFilter'
   | 'autoTone' | 'autoContrast' | 'autoColor'
@@ -90,7 +90,10 @@ export const COMMANDS: CommandDef[] = [
   { id: 'fillBg', label: 'Fill with Background', section: 'Edit', defaultCombo: 'ctrl+backspace', run: () => engine.fillSelection(store().bgColor) },
   { id: 'clearSelection', label: 'Clear Selection Pixels', section: 'Edit', defaultCombo: 'delete', aliases: ['backspace'], run: () => { if (engine.activeDoc) engine.deleteSelectionPixels() } },
   { id: 'invert', label: 'Invert (Adjustment)', section: 'Edit', defaultCombo: 'ctrl+i', run: () => { const l = engine.activeLayer; if (l) engine.applyAdjustmentToLayer(l.id, 'invert', {}) } },
-  { id: 'duplicateLayer', label: 'Duplicate Layer', section: 'Edit', defaultCombo: 'ctrl+j', run: () => { const l = engine.activeLayer; if (l) engine.duplicateLayer(l.id) } },
+  { id: 'duplicateLayer', label: 'Layer via Copy / Duplicate Layer', section: 'Edit', defaultCombo: 'ctrl+j',
+    run: () => engine.duplicateLayerOrSelection() },
+  { id: 'layerViaCut', label: 'Layer via Cut', section: 'Edit', defaultCombo: 'ctrl+shift+j',
+    run: () => engine.layerViaSelection('cut') },
   { id: 'newLayer', label: 'New Layer', section: 'Edit', defaultCombo: 'ctrl+shift+n', run: () => engine.addRasterLayer() },
   { id: 'transform', label: 'Free Transform…', section: 'Edit', defaultCombo: 'ctrl+t', run: () => openDlg('transform', { layerId: engine.activeLayer?.id }) },
   { id: 'mergeDown', label: 'Merge Down', section: 'Edit', defaultCombo: 'ctrl+e', run: () => engine.mergeDown() },

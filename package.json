@@ -41,7 +41,8 @@
     "history:validate": "bun scripts/validate-history.ts",
     "autosave:validate": "bun scripts/validate-autosave.ts",
     "worker:validate": "bun scripts/validate-worker-error.ts",
-    "hdr:validate": "bun scripts/validate-hdr-geometry.ts"
+    "hdr:validate": "bun scripts/validate-hdr-geometry.ts",
+    "selection-pixels:validate": "bun scripts/validate-selection-pixels.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

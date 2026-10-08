@@ -57,6 +57,9 @@ jobs:
       - name: Validate HDR raster geometry
         run: bun run hdr:validate
 
+      - name: Validate selection pixel lifting
+        run: bun run selection-pixels:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
