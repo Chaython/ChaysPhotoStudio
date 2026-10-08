@@ -3500,6 +3500,43 @@ export class Engine {
     this.setSelectionAlpha(mask, opts.mode, 'Magic Wand')
   }
 
+  /** Photoshop Select > Grow / Similar using the same perceptual color
+   *  space as the Magic Wand. The source selection remains untouched until
+   *  the background pixel operation succeeds and is still current. */
+  async selectionColorMatch(mode: 'grow' | 'similar', tolerance = 32): Promise<void> {
+    const doc = this.activeDoc
+    const selection = doc?.selection
+    if (!doc || !selection || selection.bounds.w <= 0 || selection.bounds.h <= 0) {
+      this.ui?.toast('Select an area first', 'info')
+      return
+    }
+    if (!Number.isFinite(tolerance) || tolerance < 0 || tolerance > 100) {
+      this.ui?.toast('Color tolerance must be between 0 and 100', 'error')
+      return
+    }
+    const selectionVersion = selection._v
+    const selected = getMaskAlpha(selection.mask)
+    const img = getImageData(getFlatComposite(doc))
+    try {
+      const result = await runPixelOpAsync(img, {
+        kind: 'selection-color',
+        params: { selectionAlpha: selected, mode, tolerance },
+      })
+      if (this.activeDoc !== doc || doc.selection !== selection ||
+          doc.selection._v !== selectionVersion ||
+          doc.width * doc.height !== selected.length) return
+      const next = new Uint8ClampedArray(selected.length)
+      let changed = false
+      for (let i = 0, j = 3; i < next.length; i++, j += 4) {
+        next[i] = result.data[j]
+        if (next[i] !== selected[i]) changed = true
+      }
+      if (changed) this.setSelectionAlpha(next, 'new', mode === 'grow' ? 'Grow Selection by Color' : 'Select Similar Colors')
+    } catch (err) {
+      this.ui?.toast(err instanceof Error ? `Select ${mode} failed: ${err.message}` : `Select ${mode} failed`, 'error')
+    }
+  }
+
   /** Photoshop Select > Load Selection from the active layer's opacity.
    * Raster transparency is read from authoritative Float32 HDR alpha where
    * possible; transformed Smart Objects/text/shapes use their rendered alpha.

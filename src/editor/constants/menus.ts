@@ -508,6 +508,12 @@ export const MENUS: MenuItem[][] = [
     { id: 'sel-detect-objects', label: 'Detect Objects (AI)…', run: () => openDlg('detect-objects') },
     { id: 'sel-color-range', label: 'Color Range…', run: () => openDlg('color-range') },
     { id: 'sel-focus', label: 'Focus Area…', run: () => engine.focusAreaSelect({ threshold: 6 }) },
+    { id: 'sel-color-grow', label: 'Grow (Similar Colors)…',
+      enabled: () => !!engine.activeDoc?.selection,
+      run: () => { const raw = prompt('Grow color tolerance (0–100):', '32'); if (raw !== null && raw.trim()) void engine.selectionColorMatch('grow', Number(raw)) } },
+    { id: 'sel-color-similar', label: 'Similar…',
+      enabled: () => !!engine.activeDoc?.selection,
+      run: () => { const raw = prompt('Select Similar tolerance (0–100):', '32'); if (raw !== null && raw.trim()) void engine.selectionColorMatch('similar', Number(raw)) } },
     S(),
     { id: 'sel-modify', label: 'Modify', enabled: () => !!engine.activeDoc?.selection, submenu: [
       { id: 'sel-border', label: 'Border…', run: () => { const raw = prompt('Border width (pixels):', '8'); if (raw !== null) engine.selectionModify('border', Number(raw)) } },

@@ -36,6 +36,7 @@
 import { applyFilter, applyAdjustment } from '../image-ops'
 import { autoTone, autoContrast, autoColor, matchColor } from '../image-ops/auto'
 import { perceptualWandMask } from '../image-ops/wand'
+import { extendSelectionByColor } from '../image-ops/selection-color'
 import type { PixelImage } from '../image-ops/pixel-data'
 
 export type PixelOpKind =
@@ -43,6 +44,7 @@ export type PixelOpKind =
   | 'auto-tone' | 'auto-contrast' | 'auto-color'
   | 'match-color'
   | 'wand-mask'
+  | 'selection-color'
 
 interface OpRequestMessage {
   id: number
@@ -110,6 +112,14 @@ self.onmessage = (ev: MessageEvent) => {
           img.data[j + 1] = 255
           img.data[j + 2] = 255
           img.data[j + 3] = mask[i]
+        }
+        break
+      }
+      case 'selection-color': {
+        const p = req.params ?? {}
+        const mask = extendSelectionByColor(img as ImageData, p.selectionAlpha, p.mode, p.tolerance ?? 32)
+        for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
+          img.data[j] = 255; img.data[j + 1] = 255; img.data[j + 2] = 255; img.data[j + 3] = mask[i]
         }
         break
       }

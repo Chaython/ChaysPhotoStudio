@@ -37,6 +37,7 @@
 import { applyFilter, applyAdjustment } from '../image-ops'
 import { autoTone, autoContrast, autoColor, matchColor } from '../image-ops/auto'
 import { perceptualWandMask } from '../image-ops/wand'
+import { extendSelectionByColor } from '../image-ops/selection-color'
 import { getProcessingPixelData } from '../utils/canvas'
 import { isFloatPixelImage, type PixelImage } from '../image-ops/pixel-data'
 import type { AdjustmentType, FilterType } from '../types'
@@ -46,6 +47,7 @@ export type PixelOpKind =
   | 'auto-tone' | 'auto-contrast' | 'auto-color'
   | 'match-color'
   | 'wand-mask'
+  | 'selection-color'
 
 /** Structured-cloneable op descriptor — closures cannot cross the worker boundary. */
 export interface PixelOpSpec {
@@ -86,7 +88,7 @@ const NEVER_SYNC_FILTERS = new Set(['gaussian-blur', 'motion-blur', 'radial-blur
 
 function avoidMainThreadFallback(width: number, height: number, op: PixelOpSpec): boolean {
   if (width * height < MAIN_THREAD_HEAVY_LIMIT_PX) return false
-  if (op.kind === 'wand-mask') return true
+  if (op.kind === 'wand-mask' || op.kind === 'selection-color') return true
   return op.kind === 'filter' && NEVER_SYNC_FILTERS.has(String(op.type ?? ''))
 }
 
@@ -97,7 +99,7 @@ function workerRequiredError(op: PixelOpSpec): PixelOpUnrecoverableError {
 }
 
 function timeoutForJob(job: InternalJob): number {
-  if (job.op.kind === 'wand-mask') return 60_000
+  if (job.op.kind === 'wand-mask' || job.op.kind === 'selection-color') return 60_000
   if (job.op.kind !== 'filter') return OP_TIMEOUT_MS
   const type = job.op.type
   if (type === 'gaussian-blur' || type === 'box-blur' || type === 'motion-blur' || type === 'radial-blur') {
@@ -202,6 +204,14 @@ export function runPixelOpSync(img: PixelImage, op: PixelOpSpec): PixelImage {
         img.data[j + 1] = 255
         img.data[j + 2] = 255
         img.data[j + 3] = mask[i]
+      }
+      break
+    }
+    case 'selection-color': {
+      const p = op.params ?? {}
+      const mask = extendSelectionByColor(img as ImageData, p.selectionAlpha, p.mode, p.tolerance ?? 32)
+      for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
+        img.data[j] = 255; img.data[j + 1] = 255; img.data[j + 2] = 255; img.data[j + 3] = mask[i]
       }
       break
     }
