@@ -160,7 +160,7 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
       if (smartFilterId) {
         const initialDoc = previewDoc.current
         const editingLayer = initialDoc?.layers.find(l => l.id === layerId)
-        if (engine.activeDoc !== initialDoc || !editingLayer || editingLayer.locked) {
+        if (!initialDoc || engine.activeDoc !== initialDoc || !editingLayer || editingLayer.locked) {
           useEditorStore.getState().pushToast('Unlock the original layer before editing its Smart Filter', 'error')
           return
         }
