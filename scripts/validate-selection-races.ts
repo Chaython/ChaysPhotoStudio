@@ -143,6 +143,11 @@ try {
   await editor.contentAwareFillMask(new Uint8ClampedArray(W * H).fill(255))
   assert.equal(layer._v, beforeInpaintVersion, 'HDR inpaint rejects before raster mutation')
   assert.equal(doc.history.index, beforeInpaintHistory, 'unsupported HDR inpaint does not change History')
+  doc.workingBitDepth = 16
+  await editor.contentAwareFillMask(new Uint8ClampedArray(W * H).fill(255))
+  assert.equal(layer._v, beforeInpaintVersion, '16-bit float inpaint also rejects before 8-bit quantization')
+  assert.equal(doc.history.index, beforeInpaintHistory)
+  doc.workingBitDepth = 32
   const versionBeforeHdrRejection = layer._v
   editor.applyAdjustmentToLayer('layer', 'hue-saturation', {})
   editor.applyFilterToLayer('layer', 'smart-sharpen', {})

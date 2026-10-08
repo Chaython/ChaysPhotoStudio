@@ -99,6 +99,10 @@ Documents now carry explicit **PPI resolution metadata** independently from pixe
 
 Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success or record actions when the active layer is locked or lacks editable pixels. Direct Adjustment and Filter commits now reject known unsupported scene-linear 32-bit operations before cloning/mutating layer canvases; supported HDR filters such as Offset remain usable.
 
+## Precision-safe Content-Aware Fill
+
+The local inpainting kernel currently consumes and writes 8-bit Canvas2D image data. It now refuses both 16-bit float and 32-bit HDR documents before copying/mutating pixels rather than silently quantizing the source image; 8-bit documents keep the existing non-destructive History flow. High-bit inpainting needs a future Float32-compatible synthesis path.
+
 ## HDR-safe automatic corrections and Match Color
 
 Auto Tone, Auto Contrast, and Auto Color use 256-bin, 0–255 histograms and are now guarded on scene-linear Float32 HDR documents (synchronous, background, and generic-region paths) instead of clipping HDR values. Match Color similarly refuses 32-bit HDR and locked/adjustment layers; on supported documents it verifies the source layer, active tab, History state, and epoch before committing a delayed worker result. A stale result never reports success or writes into another document.

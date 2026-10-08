@@ -3926,11 +3926,11 @@ export class Engine {
       this.ui?.toast('Content-Aware Fill mask does not match the document', 'error')
       return
     }
-    // Inpainting reads an 8-bit Canvas2D ImageData preview. Applying those
-    // pixels to 32-bit documents would silently quantize HDR color or leave
-    // their authoritative Float32 pixel buffers out of sync.
-    if (doc.workingBitDepth === 32) {
-      this.ui?.toast('Content-Aware Fill is not yet supported for 32-bit HDR layers', 'error')
+    // Inpainting reads/commits 8-bit Canvas2D ImageData. Both 16-bit float
+    // and authoritative 32-bit Float32 layers would be silently quantized.
+    // Keep the original document untouched until float-aware inpainting exists.
+    if (doc.workingBitDepth !== 8) {
+      this.ui?.toast('Content-Aware Fill currently requires an 8-bit document to preserve precision', 'error')
       return
     }
 
