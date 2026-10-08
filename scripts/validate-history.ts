@@ -457,3 +457,29 @@ assert.equal(hdrSource.hdrPixels![0], 12, 'editing the paste does not modify its
 console.log('HDR internal Copy/Paste preserves Float32 scene-linear pixels')
 if (imageDataDescriptor) Object.defineProperty(globalThis, 'ImageData', imageDataDescriptor)
 else Reflect.deleteProperty(globalThis, 'ImageData')
+
+
+// Paste Into keeps the copied artwork editable, with a detached document-space
+// layer mask. Changing the selection afterward cannot alter pasted artwork.
+rawEngine.setActiveDocument(repeatDoc.id)
+repeatDoc.selection = {
+  mask: canvas(67), bounds: { x: 0, y: 0, w: 1, h: 1 }, _v: 4, _paths: null, _pathsV: -1,
+}
+assert.equal(rawEngine.canPasteIntoSelection(), true)
+assert.equal(rawEngine.pasteIntoSelection(), true)
+const intoLayer = repeatDoc.layers.find(l => l.id === repeatDoc.activeLayerId)!
+assert.equal(intoLayer.maskEnabled, true)
+assert.notEqual(intoLayer.mask, repeatDoc.selection.mask)
+assert.equal(value(intoLayer.mask), 67)
+assert.equal(intoLayer.hdrPixels?.[0], 12, 'HDR paste keeps original Float32 pixels')
+assert.equal(repeatDoc.history.states[repeatDoc.history.index].label, 'Paste Into Selection')
+draw(repeatDoc.selection.mask, 199)
+assert.equal(value(intoLayer.mask), 67, 'layer mask is independent of editable selection')
+rawEngine.undo()
+assert.ok(!repeatDoc.layers.some(l => l.id === intoLayer.id))
+rawEngine.redo()
+assert.equal(value(repeatDoc.layers.find(l => l.id === intoLayer.id)?.mask), 67)
+repeatDoc.selection = null
+assert.equal(rawEngine.canPasteIntoSelection(), false)
+assert.equal(rawEngine.pasteIntoSelection(), false)
+console.log('Paste Into Selection creates independent, undoable HDR-safe layer masks')

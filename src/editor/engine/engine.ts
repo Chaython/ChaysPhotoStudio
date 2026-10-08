@@ -2685,11 +2685,26 @@ export class Engine {
   /** Paste the internal clipboard as a new raster layer ABOVE the active one,
    *  at its original position (raster clipboards keep off-canvas pixels).
    *  Empty internal clipboard → falls back to reading the system clipboard. */
-  pasteLayer(): boolean {
+  /** Paste Into creates a new editable raster layer masked by the current
+   * selection, without baking the mask into 8-bit SDR pixels. */
+  canPasteIntoSelection(): boolean {
+    return !!this._clip && !!this.activeDoc?.selection
+  }
+
+  pasteIntoSelection(): boolean {
+    if (!this.canPasteIntoSelection()) return false
+    return this.pasteLayer(true)
+  }
+
+  pasteLayer(intoSelection = false): boolean {
     const doc = this.activeDoc
     if (!doc) { this.ui?.toast('Open or create a document first', 'error'); return false }
     const clip = this._clip
-    if (!clip) { void this.pasteFromSystemClipboard(); return false }
+    if (intoSelection && !doc.selection) return false
+    if (!clip) {
+      if (!intoSelection) void this.pasteFromSystemClipboard()
+      return false
+    }
     const layer = newLayer('raster', `${clip.name} copy`, doc.width, doc.height)
     layer.canvas = cloneCanvas(clip.canvas)
     layer.offsetX = clip.offsetX
@@ -2702,10 +2717,19 @@ export class Engine {
       layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
       layer._hdrPreviewBefore = null
     }
+    if (intoSelection) {
+      // The layer mask is document-space, and detached from the user's live
+      // selection, so future Select > Modify operations cannot alter it.
+      layer.mask = cloneCanvas(doc.selection!.mask)
+      layer.maskEnabled = true
+      layer._mv++
+    }
     const idx = doc.layers.findIndex(x => x.id === doc.activeLayerId)
     doc.layers.splice(idx + 1, 0, layer)
     doc.activeLayerId = layer.id
-    this.pushHistory('Paste')
+    doc.selectedLayerIds = [layer.id]
+    invalidateFlat(doc)
+    this.pushHistory(intoSelection ? 'Paste Into Selection' : 'Paste', doc)
     this.emit()
     return true
   }

@@ -34,7 +34,7 @@ export type CommandId =
   // File
   | 'newDoc' | 'open' | 'save' | 'saveAs' | 'export'
   // Edit
-  | 'undo' | 'redo' | 'copy' | 'copyMerged' | 'cut' | 'paste'
+  | 'undo' | 'redo' | 'copy' | 'copyMerged' | 'cut' | 'paste' | 'pasteInto'
   | 'fillFg' | 'fillBg' | 'clearSelection' | 'invert'
   | 'duplicateLayer' | 'layerViaCut' | 'newLayer' | 'transform' | 'mergeDown' | 'mergeVisible'
   // Image
@@ -86,6 +86,8 @@ export const COMMANDS: CommandDef[] = [
   { id: 'copyMerged', label: 'Copy Merged', section: 'Edit', defaultCombo: 'ctrl+shift+c', run: () => engine.copyLayer(true) },
   { id: 'cut', label: 'Cut', section: 'Edit', defaultCombo: 'ctrl+x', run: () => engine.cutLayer() },
   { id: 'paste', label: 'Paste', section: 'Edit', defaultCombo: 'ctrl+v', run: () => engine.pasteLayer() },
+  { id: 'pasteInto', label: 'Paste Into Selection', section: 'Edit', defaultCombo: 'ctrl+alt+shift+v',
+    run: () => engine.pasteIntoSelection() },
   { id: 'fillFg', label: 'Fill with Foreground', section: 'Edit', defaultCombo: 'alt+backspace', run: () => engine.fillSelection(store().fgColor) },
   { id: 'fillBg', label: 'Fill with Background', section: 'Edit', defaultCombo: 'ctrl+backspace', run: () => engine.fillSelection(store().bgColor) },
   { id: 'clearSelection', label: 'Clear Selection Pixels', section: 'Edit', defaultCombo: 'delete', aliases: ['backspace'], run: () => { if (engine.activeDoc) engine.deleteSelectionPixels() } },
