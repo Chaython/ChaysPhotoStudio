@@ -2719,7 +2719,13 @@ export class Engine {
     return this._clip ? this.pasteLayer(true) : this.pasteFromSystemClipboard(true)
   }
 
-  pasteLayer(intoSelection = false, outsideSelection = false): boolean {
+  /** Explicit alternative to position-preserving Paste: center the copied
+   * pixels within the active document without modifying clipboard offsets. */
+  pasteAtCanvasCenter(): boolean | Promise<boolean> {
+    return this._clip ? this.pasteLayer(false, false, true) : this.pasteFromSystemClipboard(false)
+  }
+
+  pasteLayer(intoSelection = false, outsideSelection = false, center = false): boolean {
     const doc = this.activeDoc
     if (!doc) { this.ui?.toast('Open or create a document first', 'error'); return false }
     const clip = this._clip
@@ -2730,8 +2736,8 @@ export class Engine {
     }
     const layer = newLayer('raster', `${clip.name} copy`, doc.width, doc.height)
     layer.canvas = cloneCanvas(clip.canvas)
-    layer.offsetX = clip.offsetX
-    layer.offsetY = clip.offsetY
+    layer.offsetX = center ? Math.round((doc.width - layer.canvas.width) / 2) : clip.offsetX
+    layer.offsetY = center ? Math.round((doc.height - layer.canvas.height) / 2) : clip.offsetY
     if (doc.workingBitDepth === 32) {
       const expected = layer.canvas.width * layer.canvas.height * 4
       layer.hdrPixels = clip.hdrPixels && clip.hdrPixels.length === expected
@@ -2752,7 +2758,9 @@ export class Engine {
     doc.activeLayerId = layer.id
     doc.selectedLayerIds = [layer.id]
     invalidateFlat(doc)
-    this.pushHistory(outsideSelection ? 'Paste Outside Selection' : intoSelection ? 'Paste Into Selection' : 'Paste', doc)
+    this.pushHistory(outsideSelection ? 'Paste Outside Selection'
+      : intoSelection ? 'Paste Into Selection'
+      : center ? 'Paste at Canvas Center' : 'Paste', doc)
     this.emit()
     return true
   }

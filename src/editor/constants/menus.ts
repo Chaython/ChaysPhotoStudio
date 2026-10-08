@@ -315,6 +315,8 @@ export const MENUS: MenuItem[][] = [
       enabled: () => engine.canPasteIntoSelection(), run: () => { void engine.pasteIntoSelection() } },
     { id: 'edit-paste-outside', label: 'Paste Outside Selection',
       enabled: () => engine.canPasteOutsideSelection(), run: () => { void engine.pasteOutsideSelection() } },
+    { id: 'edit-paste-center', label: 'Paste at Canvas Center',
+      enabled: () => !!engine.activeDoc, run: () => { void engine.pasteAtCanvasCenter() } },
     { id: 'edit-paste-system', label: 'Paste External Image', 
       enabled: () => typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function',
       submenu: [

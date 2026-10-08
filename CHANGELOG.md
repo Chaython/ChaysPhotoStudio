@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added **Edit > Paste at Canvas Center** for internal layer copies. This provides a predictable centered placement when pasting between documents while retaining the existing original-position Paste behavior, full Float32 HDR values, and Undo/Redo.
+
 - Added Photoshop-style **Edit > Paste Outside Selection**, including **Paste External Image > Outside Selection**. Both create non-destructive document-space masks using the complement of the selection alpha; feathered edges, editable pixels, internal Float32 HDR content, and Undo/Redo are preserved.
 
 - Added **Edit > Paste External Image** submenu (As New Layer / Into Selection) to explicitly use a newly copied OS clipboard image even if Photo Studio still holds an older internal HDR clipboard. Browser clipboard-read support is detected before offering the command.

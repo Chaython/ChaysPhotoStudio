@@ -637,5 +637,37 @@ repeatDoc.selection = null
 assert.equal(rawEngine.pasteOutsideSelection(), false)
 console.log('Paste Outside Selection uses complement alpha, independent masks and Undo')
 
+// Paste at Canvas Center is an explicit alternative to the editor's
+// backwards-compatible place-at-original-offset Paste. Both remain HDR safe.
+rawEngine.setActiveDocument(repeatDoc.id)
+repeatDoc.width = 14
+repeatDoc.height = 10
+const previousCenterClip = raw._clip
+raw._clip = {
+  canvas: canvas(91),
+  hdrPixels: new Float32Array([14, 1, 0, 1, 3, 0, 1, 1, 2, 0, 1, .5, 9, 0, 0, 1]),
+  offsetX: -25, offsetY: 99, name: 'Clipboard Test',
+}
+try {
+  assert.equal(rawEngine.pasteAtCanvasCenter(), true)
+  const centered = repeatDoc.layers.find(l => l.id === repeatDoc.activeLayerId)!
+  assert.equal(centered.offsetX, 6)
+  assert.equal(centered.offsetY, 4)
+  assert.equal(centered.hdrPixels?.[0], 14)
+  assert.equal(repeatDoc.history.states[repeatDoc.history.index].label, 'Paste at Canvas Center')
+  rawEngine.undo()
+  assert.ok(!repeatDoc.layers.some(l => l.id === centered.id))
+  rawEngine.redo()
+  assert.equal(repeatDoc.layers.find(l => l.id === centered.id)?.offsetX, 6)
+  assert.equal(rawEngine.pasteLayer(), true)
+  const inPlace = repeatDoc.layers.find(l => l.id === repeatDoc.activeLayerId)!
+  assert.equal(inPlace.offsetX, -25, 'ordinary Paste retains original clipboard position')
+  assert.equal(inPlace.offsetY, 99)
+  assert.equal(inPlace.hdrPixels?.[0], 14)
+} finally {
+  raw._clip = previousCenterClip
+}
+console.log('Paste at Canvas Center retains Float32 HDR and original Paste positioning')
+
 if (imageDataDescriptor) Object.defineProperty(globalThis, 'ImageData', imageDataDescriptor)
 else Reflect.deleteProperty(globalThis, 'ImageData')
