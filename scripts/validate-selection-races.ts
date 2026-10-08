@@ -140,6 +140,11 @@ try {
   assert.equal(doc.history.index, beforeFilterHistory, 'stale filter does not create History')
   assert.equal(liveMutations, 0, 'stale filter worker must not clone/rasterize the live layer')
 
+  const beforeEmptyFillMutations = liveMutations
+  await editor.contentAwareFillMask(new Uint8ClampedArray(W * H).fill(255))
+  assert.equal(liveMutations, beforeEmptyFillMutations,
+    'empty Content-Aware Fill must not clone or rasterize its live layer')
+
   layer.locked = true
   const oldVersion = layer._v
   const oldIndex = doc.history.index

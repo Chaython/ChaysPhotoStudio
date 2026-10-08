@@ -3940,14 +3940,18 @@ export class Engine {
       return
     }
 
-    const l = this.mutateLayerPixels(layer.id)
-    if (!l?.canvas) return
-    const layerVersion = l._v
+    // Work against detached pixels. The selection can have no eligible
+    // opaque source pixels, or the async inpaint can fail; neither case
+    // should rasterize editable artwork or increment a live layer version.
+    const sourceCanvas = layer.kind === 'raster' ? layer.canvas
+      : prepareLayer(doc, layerContentForRasterization(layer))
+    if (!sourceCanvas) return
+    const layerVersion = layer._v
     const historyAnchor = doc.history.states[doc.history.index]
     const sourceEpoch = doc._epoch
-    const img = getImageData(l.canvas)
-    const ox = Math.round(l.offsetX ?? 0)
-    const oy = Math.round(l.offsetY ?? 0)
+    const img = getImageData(sourceCanvas)
+    const ox = layer.kind === 'raster' ? Math.round(layer.offsetX ?? 0) : 0
+    const oy = layer.kind === 'raster' ? Math.round(layer.offsetY ?? 0) : 0
     const localMask = new Uint8ClampedArray(img.width * img.height)
     let any = false
 
@@ -3974,11 +3978,14 @@ export class Engine {
       this.ui?.toast(err instanceof Error ? `Content-Aware Fill failed: ${err.message}` : 'Content-Aware Fill failed', 'error')
       return
     }
-    if (this.activeDoc !== doc || !doc.layers.includes(l) || l._v !== layerVersion ||
+    if (this.activeDoc !== doc || !doc.layers.includes(layer) ||
+        layer._v !== layerVersion || layer.locked ||
         doc.history.states[doc.history.index] !== historyAnchor ||
         doc._epoch !== sourceEpoch) return
-    putImageData(l.canvas, img)
-    l._v++
+    if (layer.kind !== 'raster') this.rasterizeLayer(layer.id, { history: false, emit: false })
+    const live = this.mutateLayerPixels(layer.id)
+    if (!live?.canvas || live.canvas.width !== img.width || live.canvas.height !== img.height) return
+    putImageData(live.canvas, img)
     invalidateFlat(doc)
     this.pushHistory(label, doc)
     // The existing action opcode means "fill the current selection". A direct
