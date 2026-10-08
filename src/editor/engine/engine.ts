@@ -3306,15 +3306,38 @@ export class Engine {
   deleteSelectionPixels() {
     const doc = this.activeDoc
     const layer = this.activeLayer
-    if (!doc || !layer || !doc.selection) return
-    const l = this.mutateLayerPixels(layer.id)
-    if (!l?.canvas) return
-    const c = ctx2d(l.canvas)
-    c.save()
-    c.globalCompositeOperation = 'destination-out'
-    c.translate(-(l.offsetX ?? 0), -(l.offsetY ?? 0))
-    c.drawImage(doc.selection.mask, 0, 0)
-    c.restore()
+    if (!doc?.selection || !layer) return
+    if (layer.locked || layer.kind !== 'raster' || !layer.canvas) {
+      this.ui?.toast('Clear Selected Pixels requires an unlocked raster layer', 'error')
+      return
+    }
+    const region = this.selectedPixelRegion(doc, layer)
+    if (!region) return
+    this.syncPendingHdrCanvasEdits(doc)
+    const selected = this.selectionRegionAlpha(doc.selection.mask, region)
+    if (!selected.some(a => a > 0)) return
+    // Do not destructively erase Float32 scene-linear pixels by round-tripping
+    // them through the display canvas: feathered edges must retain highlights.
+    let remaining: Float32Array | null = null
+    if (layer.hdrPixels) {
+      const split = splitHdrSelectionPixels(layer.hdrPixels, layer.canvas.width, layer.canvas.height,
+        Math.round(layer.offsetX ?? 0), Math.round(layer.offsetY ?? 0), region, selected, true)
+      if (!split.hasPixels) return
+      remaining = split.remaining
+    }
+    const live = this.mutateLayerPixels(layer.id)
+    if (!live?.canvas) return
+    if (remaining) {
+      live.hdrPixels = remaining
+      live.canvas = hdrFloat32ToPreviewCanvas(remaining, live.canvas.width, live.canvas.height, 'srgb')
+      live._hdrPreviewBefore = null
+    } else {
+      const c = ctx2d(live.canvas)
+      c.save()
+      c.globalCompositeOperation = 'destination-out'
+      c.drawImage(doc.selection.mask, -Math.round(live.offsetX ?? 0), -Math.round(live.offsetY ?? 0))
+      c.restore()
+    }
     invalidateFlat(doc)
     this.pushHistory('Clear')
     this.emit()
