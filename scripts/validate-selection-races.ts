@@ -108,7 +108,22 @@ try {
   editor.fillSelection('#ff0000')
   assert.equal(layer._v, oldVersion, 'locked Fill must not mutate pixels')
   assert.equal(doc.history.index, oldIndex, 'locked Fill must not create History')
-  console.log('Selection race: late Magic Wand results discarded; locked Fill guarded')
+  // Even the legacy synchronous Auto Tone command must not claim success
+  // or mutate a locked layer while its caller records an action.
+  const actionCount = editor.actions.length
+  editor.autoCorrect('tone')
+  assert.equal(editor.actions.length, actionCount)
+  assert.equal(layer._v, oldVersion)
+  layer.locked = false
+  doc.workingBitDepth = 32
+  const versionBeforeHdrRejection = layer._v
+  editor.applyAdjustmentToLayer('layer', 'hue-saturation', {})
+  editor.applyFilterToLayer('layer', 'smart-sharpen', {})
+  await editor.applyAdjustmentToLayerAsync('layer', 'hue-saturation', {})
+  await editor.applyFilterToLayerAsync('layer', 'smart-sharpen', {})
+  assert.equal(layer._v, versionBeforeHdrRejection,
+    'unsupported HDR operations must reject before raster mutation')
+  console.log('Selection race, async pixel commits, locked layers and unsupported HDR guards passed')
 } finally {
   if (descriptorWorker) Object.defineProperty(globalThis, 'Worker', descriptorWorker)
   else Reflect.deleteProperty(globalThis, 'Worker')

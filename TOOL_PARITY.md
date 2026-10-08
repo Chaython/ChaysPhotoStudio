@@ -95,6 +95,10 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 
 Documents now carry explicit **PPI resolution metadata** independently from pixel dimensions. New Document and Image Size expose Resolution; Image Size can change PPI without resampling pixels, matching the distinction between physical print size and raster dimensions. Crop and Perspective Crop may update PPI, project save/recovery preserves it, the Measure tool can calibrate physical units from it, the status bar reports it, and PSD import/export reads/writes Photoshop ResolutionInfo instead of hard-coding 72 DPI.
 
+## Locked layer and HDR processing safeguards
+
+Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success or record actions when the active layer is locked or lacks editable pixels. Direct Adjustment and Filter commits now reject known unsupported scene-linear 32-bit operations before cloning/mutating layer canvases; supported HDR filters such as Offset remain usable.
+
 ## Safer asynchronous retouch and tonal corrections
 
 Worker-backed Auto Tone/Auto Color/Auto Contrast and direct Adjustment commits now validate their source layer, History snapshot and active document before applying results. A failed or cancelled worker cannot write stale pixels into an undone or switched document. Auto corrections only record successful operations; locked layer and adjustment layer guards now apply equally to synchronous and worker-backed corrections. Content-Aware Fill discards results after intervening edits/Undo/tab switches and refuses locked-layer writes.

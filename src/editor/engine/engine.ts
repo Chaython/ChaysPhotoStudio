@@ -3865,6 +3865,10 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    if (doc.workingBitDepth === 32 && !imageOps.HDR_SAFE_ADJUSTMENTS.has(type)) {
+      this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
+      return
+    }
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
     const img = this.processingPixelsForLayer(l)
@@ -3881,6 +3885,10 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    if (doc.workingBitDepth === 32 && layer.kind !== 'smart' && !imageOps.HDR_SAFE_FILTERS.has(type)) {
+      this.ui?.toast(`${filterLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
+      return
+    }
     if (layer.kind === 'smart') {
       this.addSmartFilter(layerId, type, params)
       return
@@ -3999,7 +4007,10 @@ export class Engine {
   // ================================================== auto corrections (PS Image menu)
   autoCorrect(kind: 'tone' | 'contrast' | 'color') {
     const layer = this.activeLayer
-    if (!layer) { this.ui?.toast('No active layer', 'error'); return }
+    if (!layer || layer.locked || layer.kind === 'adjustment') {
+      this.ui?.toast('Select an unlocked pixel-capable layer for auto correction', 'error')
+      return
+    }
     const fn = kind === 'tone' ? autoTone : kind === 'contrast' ? autoContrast : autoColor
     const label = kind === 'tone' ? 'Auto Tone' : kind === 'contrast' ? 'Auto Contrast' : 'Auto Color'
     this.applyRegionOp(layer.id, fn, label)
@@ -4054,6 +4065,10 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    if (doc.workingBitDepth === 32 && !imageOps.HDR_SAFE_ADJUSTMENTS.has(type)) {
+      this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
+      return
+    }
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
     const layerVersion = l._v
@@ -4085,6 +4100,10 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    if (doc.workingBitDepth === 32 && layer.kind !== 'smart' && !imageOps.HDR_SAFE_FILTERS.has(type)) {
+      this.ui?.toast(`${filterLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
+      return
+    }
     if (layer.kind === 'smart') {
       this.addSmartFilter(layerId, type, params)
       return
@@ -4120,7 +4139,10 @@ export class Engine {
   /** Async auto-correction (Image menu / shortcuts) — autoTone/autoContrast/autoColor in the worker. */
   async autoCorrectAsync(kind: 'tone' | 'contrast' | 'color'): Promise<void> {
     const layer = this.activeLayer
-    if (!layer) { this.ui?.toast('No active layer', 'error'); return }
+    if (!layer || layer.locked || layer.kind === 'adjustment') {
+      this.ui?.toast('Select an unlocked pixel-capable layer for auto correction', 'error')
+      return
+    }
     const spec: PixelOpSpec = kind === 'tone' ? { kind: 'auto-tone' } : kind === 'contrast' ? { kind: 'auto-contrast' } : { kind: 'auto-color' }
     const label = kind === 'tone' ? 'Auto Tone' : kind === 'contrast' ? 'Auto Contrast' : 'Auto Color'
     if (await this.applyRegionOpAsync(layer.id, spec, label)) {
