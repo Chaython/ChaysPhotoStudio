@@ -43,6 +43,7 @@ import { splitHdrSelectionPixels } from '../image-ops/selection-pixels'
 import { rasterTransparencyAlpha } from '../image-ops/layer-transparency'
 import { applyHdrRasterMask, createLayerMaskAlpha, type LayerMaskCreationMode } from '../image-ops/layer-mask'
 import { layerContentForRasterization } from './rasterize-layer'
+import { compositeHdrRasters, type HdrCompositeLayer } from '../image-ops/hdr-composite'
 
 export const MAX_HISTORY = 50
 
@@ -1684,61 +1685,156 @@ export class Engine {
     if (opts.emit !== false) this.emit()
   }
 
+  /** True Float32 scene-linear compositing is available for normal raster
+   * layers with simple pixel masks. Unsupported vector/fx/blend/adjustment
+   * paths must never silently use an 8-bit preview in 32-bit documents. */
+  private simpleHdrComposite(doc: PsDocument, layers: Layer[]): Float32Array | null {
+    const visible = layers.filter(l => l.visible)
+    const safe = visible.every(l =>
+      l.kind === 'raster' && !!l.canvas &&
+      l.blendMode === 'normal' && !l.clipped && !l.blendIf && !l.fx &&
+      !(l.vectorMask && l.vectorMask.enabled !== false) &&
+      Number.isInteger(l.offsetX ?? 0) && Number.isInteger(l.offsetY ?? 0) &&
+      (!l.maskEnabled || !l.mask || (l.mask.width === doc.width && l.mask.height === doc.height)))
+    if (!safe) return null
+    this.syncPendingHdrCanvasEdits(doc)
+    const inputs: HdrCompositeLayer[] = visible.map(l => ({
+      pixels: l.hdrPixels ?? hdrPixelsFromCanvas(l.canvas!),
+      width: l.canvas!.width,
+      height: l.canvas!.height,
+      offsetX: l.offsetX ?? 0,
+      offsetY: l.offsetY ?? 0,
+      opacity: l.opacity / 100,
+      mask: l.maskEnabled && l.mask ? getMaskAlpha(l.mask) : undefined,
+    }))
+    return compositeHdrRasters(doc.width, doc.height, inputs)
+  }
+
+  /** Photoshop Merge Down: source-over composition must BAKE both opacities
+   * and layer masks exactly once. Never duplicate the lower layer's mask or
+   * properties on the already-composited output. */
   mergeDown(id?: string) {
     const doc = this.activeDoc
-    const layer = id ? this.layerById(id) : this.activeLayer
-    if (!doc || !layer) return
-    const idx = doc.layers.findIndex(l => l.id === layer.id)
+    const upper = id ? this.layerById(id) : this.activeLayer
+    if (!doc || !upper) return
+    const idx = doc.layers.findIndex(l => l.id === upper.id)
     if (idx <= 0) { this.ui?.toast('No layer below to merge into', 'error'); return }
-    // composite just the two (plus clip stack of the upper) onto the lower
     const lower = doc.layers[idx - 1]
-    if (lower.kind === 'adjustment' || layer.kind === 'adjustment') { this.flatten(); return }
-    const merged = newLayer('raster', lower.name, doc.width, doc.height)
-    const mCtx = ctx2d(merged.canvas!)
-    const lowerPrep = prepareLayer(doc, lower)
-    if (lowerPrep) mCtx.drawImage(lowerPrep, 0, 0)
-    const upperPrep = prepareLayer(doc, layer)
-    if (upperPrep) {
-      mCtx.save()
-      mCtx.globalAlpha = layer.opacity / 100
-      mCtx.drawImage(upperPrep, 0, 0)
-      mCtx.restore()
+    if (lower.locked || upper.locked) {
+      this.ui?.toast('Unlock both layers before merging', 'info')
+      return
     }
-    // keep lower's mask/props on merged
-    merged.mask = lower.mask ? cloneCanvas(lower.mask) : null
-    merged.blendMode = lower.blendMode
-    merged.opacity = lower.opacity
-    const replaceIdx = idx - 1
-    doc.layers.splice(replaceIdx, 2, merged)
+    if (lower.kind === 'adjustment' || upper.kind === 'adjustment') {
+      this.ui?.toast('Merge Down on an adjustment layer is not yet supported; layers were left intact', 'info')
+      return
+    }
+    // A clipped stack could otherwise unexpectedly change its anchor and
+    // appearance. Respect layer order rather than flattening the whole file.
+    if (lower.clipped || upper.clipped || doc.layers[idx + 1]?.clipped ||
+        lower.blendMode !== 'normal' || upper.blendMode !== 'normal' ||
+        lower.blendIf || upper.blendIf) {
+      this.ui?.toast('Merge Down requires un-clipped layers with Normal blend mode', 'info')
+      return
+    }
+    const hdr = doc.workingBitDepth === 32 || !!lower.hdrPixels || !!upper.hdrPixels
+    let pixels: Float32Array | null = null
+    if (hdr) {
+      pixels = this.simpleHdrComposite(doc, [lower, upper])
+      if (!pixels) {
+        this.ui?.toast('Cannot merge complex 32-bit HDR layers without losing precision', 'info')
+        return
+      }
+    }
+    const merged = newLayer('raster', lower.name, doc.width, doc.height)
+    merged.visible = lower.visible || upper.visible
+    if (pixels) {
+      merged.hdrPixels = pixels
+      merged.hdrColorSpace = 'linear-srgb'
+      merged.canvas = hdrFloat32ToPreviewCanvas(pixels, doc.width, doc.height, 'srgb')
+      merged._hdrPreviewBefore = null
+    } else {
+      const ctx = ctx2d(merged.canvas!)
+      if (lower.visible) {
+        const c = prepareLayer(doc, lower)
+        if (c) {
+          ctx.globalAlpha = lower.opacity / 100
+          ctx.drawImage(c, 0, 0)
+        }
+      }
+      if (upper.visible) {
+        const c = prepareLayer(doc, upper)
+        if (c) {
+          ctx.globalAlpha = upper.opacity / 100
+          ctx.drawImage(c, 0, 0)
+        }
+      }
+      ctx.globalAlpha = 1
+    }
+    // Raster is a precomposited, default-opacity layer: no re-applied mask
+    // or opacity. The original layers remain available through Undo.
+    doc.layers.splice(idx - 1, 2, merged)
     doc.activeLayerId = merged.id
-    this.pushHistory('Merge Down')
+    doc.selectedLayerIds = [merged.id]
+    invalidateFlat(doc)
+    this.pushHistory('Merge Down', doc)
     this.emit()
+  }
+
+  /** Flattening / merging 32-bit pixel layers must never silently replace the
+   * authoritative Float32 buffers with clamped preview RGBA. */
+  private visibleCompositeForMerge(doc: PsDocument): { canvas: HTMLCanvasElement; hdr: Float32Array | null } | null {
+    const visible = doc.layers.filter(l => l.visible)
+    const needsFloat = doc.workingBitDepth === 32 ||
+      visible.some(l => l.kind === 'raster' && !!l.hdrPixels)
+    if (!needsFloat) return { canvas: compositeDocument(doc), hdr: null }
+    const hdr = this.simpleHdrComposite(doc, visible)
+    if (!hdr) {
+      this.ui?.toast('Cannot flatten complex 32-bit HDR layers without losing precision', 'info')
+      return null
+    }
+    return { canvas: hdrFloat32ToPreviewCanvas(hdr, doc.width, doc.height, 'srgb'), hdr }
   }
 
   flatten() {
     const doc = this.activeDoc
     if (!doc) return
-    const flat = compositeDocument(doc)
+    const result = this.visibleCompositeForMerge(doc)
+    if (!result) return
     const layer = newLayer('raster', 'Background', doc.width, doc.height)
-    ctx2d(layer.canvas!).drawImage(flat, 0, 0)
+    layer.canvas = result.canvas
+    if (result.hdr) {
+      layer.hdrPixels = result.hdr
+      layer.hdrColorSpace = 'linear-srgb'
+      layer._hdrPreviewBefore = null
+    }
     doc.layers = [layer]
     doc.activeLayerId = layer.id
+    doc.selectedLayerIds = [layer.id]
     invalidateFlat(doc)
-    this.pushHistory('Flatten Image')
+    this.pushHistory('Flatten Image', doc)
     this.emit()
   }
 
   mergeVisible() {
     const doc = this.activeDoc
     if (!doc) return
-    const flat = compositeDocument(doc)
-    doc.layers = doc.layers.filter(l => !l.visible)
+    const visible = doc.layers.filter(l => l.visible)
+    if (visible.length === 0) return
+    const result = this.visibleCompositeForMerge(doc)
+    if (!result) return
     const layer = newLayer('raster', 'Merged Visible', doc.width, doc.height)
-    ctx2d(layer.canvas!).drawImage(flat, 0, 0)
+    layer.canvas = result.canvas
+    if (result.hdr) {
+      layer.hdrPixels = result.hdr
+      layer.hdrColorSpace = 'linear-srgb'
+      layer._hdrPreviewBefore = null
+    }
+    doc.layers = doc.layers.filter(l => !l.visible)
     doc.layers.push(layer)
     doc.activeLayerId = layer.id
+    doc.selectedLayerIds = [layer.id]
     invalidateFlat(doc)
-    this.pushHistory('Merge Visible')
+    this.pushHistory('Merge Visible', doc)
     this.emit()
   }
 

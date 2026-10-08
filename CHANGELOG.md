@@ -4,6 +4,9 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Corrected **Merge Down** baking the lower layer mask/opacity twice. The merged raster now composes both layers' alpha exactly once and clears baked properties. Merge on adjustment/complex clipped layers no longer unexpectedly flattens the entire document. Locked layers are protected and resulting layer selection is restored.
+- Added **Float32 HDR Merge Down, Merge Visible, and Flatten** for normal raster stacks, preserving scene-linear values beyond SDR white, alpha masks, source offsets, and opacity. Unsupported complex 32-bit stacks are left intact rather than silently converted to 8-bit preview data. Added headless HDR compositing validation.
+
 - Fixed rasterizing Smart Objects, text, and shapes with existing masks/vector masks/layer styles: rasterization now bakes just the editable content and Smart Filters, leaving live masks and FX to apply once instead of twice. In 32-bit documents, converted rasters receive authoritative Float32 pixel buffers. Added isolation regression coverage.
 
 - Prevented **Apply Layer Mask** from silently discarding a disabled mask. The command remains unavailable until the mask is enabled, and does not create misleading History entries when blocked.

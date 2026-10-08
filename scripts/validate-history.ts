@@ -832,3 +832,31 @@ assert.equal(rasterProxy.mask, rasterSource.mask)
 assert.equal(rasterProxy._v, rasterSource._v + 1, 'render signature differs from cached decorated result')
 assert.equal(rasterProxy._mv, rasterSource._mv + 1)
 console.log('Rasterize source excludes live masks and effects without mutating the original layer')
+
+
+// Merge Down on adjustment layers MUST NOT flatten the entire project.
+// Unsupported clipping/blend stacks similarly stay untouched.
+rawEngine.setActiveDocument(repeatDoc.id)
+const mergeLower: Layer = { ...repeatDoc.layers[0], id: 'merge-bottom', name: 'Bottom',
+  kind: 'raster', canvas: canvas(3), hdrPixels: null,
+  locked: false, visible: true, blendMode: 'normal', clipped: false, blendIf: null }
+const mergeAdj: Layer = { ...mergeLower, id: 'merge-adjustment', name: 'Adjustment',
+  kind: 'adjustment', canvas: null, adjustment: { type: 'brightness-contrast', params: {} } }
+repeatDoc.layers = [mergeLower, mergeAdj]
+repeatDoc.activeLayerId = mergeAdj.id
+repeatDoc.selectedLayerIds = [mergeAdj.id]
+repeatDoc.workingBitDepth = 8
+rawEngine.pushHistory('Before Merge Guard', repeatDoc)
+const beforeMergeGuard = repeatDoc.history.index
+rawEngine.mergeDown()
+assert.deepEqual(repeatDoc.layers.map(l => l.id), [mergeLower.id, mergeAdj.id],
+  'Merge Down must never flatten the entire document for adjustment layers')
+assert.equal(repeatDoc.history.index, beforeMergeGuard)
+mergeAdj.kind = 'raster'
+mergeAdj.canvas = canvas(5)
+mergeAdj.adjustment = null
+mergeAdj.clipped = true
+rawEngine.mergeDown()
+assert.equal(repeatDoc.layers.length, 2, 'clipped layer merge must not destroy the stack')
+assert.equal(repeatDoc.history.index, beforeMergeGuard)
+console.log('Merge Down guards adjustment layers and clipped stacks without destructive flatten')
