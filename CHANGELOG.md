@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Fixed undo/redo and History Snapshot state corruption: raster/Smart Object canvases, layer masks, selection masks, saved alpha channels and HDR pixels are frozen independently of live buffers; nested editable layer properties are copied, while unchanged versioned pixels are shared only between immutable History entries to limit memory use.
+
 - Fixed File Info XMP round-tripping: sidecar XML is parsed as a complete packet, embedded XMP scans pair matching outer tags instead of truncating at `</rdf:RDF>`, and unsupported/invalid sidecars cannot silently overwrite existing editable metadata.
 
 - Added **Edit > Puppet Warp…** with draggable source-space pins, exact mesh intersections, pin rotation, overlap-priority depth, mesh density/rigidity controls, optional mesh display and responsive downscaled preview; Smart Objects retain the resulting warp non-destructively, while raster/text/shape targets reuse the existing mask/vector-mask/history transform path. Also guarded raster Transform Warp on 32-bit HDR layers to prevent stale authoritative Float32 pixel data.

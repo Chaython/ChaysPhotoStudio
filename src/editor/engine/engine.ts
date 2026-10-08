@@ -4,7 +4,7 @@
 // ============================================================
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
-  PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, ShapeSpec, TextSpec, ImageMetadata, ProofSettings,
+  PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, SavedChannel, HistoryState, ShapeSpec, TextSpec, ImageMetadata, ProofSettings,
   ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, HistorySnapshotAutoPolicy, TransformWarpSpec,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
@@ -559,8 +559,10 @@ export class Engine {
   pushHistory(label: string, doc: PsDocument = this.activeDoc!) {
     if (!doc) return
     this.syncPendingHdrCanvasEdits(doc)
-    const st = this.captureState(doc, label)
     const h = doc.history
+    // Reuse immutable pixel snapshots of unchanged layers, not their live canvases.
+    // This keeps the 50-step History buffer usable on multi-layer documents.
+    const st = this.captureState(doc, label, h.states[h.index])
     h.states = h.states.slice(0, h.index + 1)
     h.states.push(st)
     while (h.states.length > MAX_HISTORY) {
@@ -578,41 +580,90 @@ export class Engine {
     doc.dirty = true
   }
 
-  private captureState(doc: PsDocument, label: string) {
+  /** History entries are immutable. Live layer canvases must never be retained
+   * here: brush, fill, selection and mask tools edit their backing stores in-place.
+   * Share pixels ONLY with another frozen history entry at the same version. */
+  private cloneHistoryLayer(layer: Layer, previous?: Layer): Layer {
+    const samePixels = !!previous && layer._v === previous._v &&
+      layer.kind === previous.kind &&
+      layer.canvas?.width === previous.canvas?.width &&
+      layer.canvas?.height === previous.canvas?.height &&
+      layer.source?.width === previous.source?.width &&
+      layer.source?.height === previous.source?.height
+    const sameMask = !!previous && layer._mv === previous._mv &&
+      layer.mask?.width === previous.mask?.width &&
+      layer.mask?.height === previous.mask?.height
     return {
-      label, time: Date.now(),
-      layers: doc.layers.map(l => ({
-        ...l,
-        hdrPixels: l.hdrPixels ? new Float32Array(l.hdrPixels) : null,
-        _hdrPreviewBefore: null,
-        transform: l.transform ? structuredClone(l.transform) : null,
-      })),
-      activeLayerId: doc.activeLayerId,
-      selection: doc.selection ? { ...doc.selection } : null,
-      width: doc.width, height: doc.height,
-      resolutionPpi: doc.resolutionPpi ?? 72,
-      channelView: doc.channelView,
-      savedChannels: doc.savedChannels.map(c => ({ ...c })),
-      savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
+      ...layer,
+      canvas: samePixels ? previous!.canvas : (layer.canvas ? cloneCanvas(layer.canvas) : null),
+      source: samePixels ? previous!.source : (layer.source ? cloneCanvas(layer.source) : null),
+      hdrPixels: samePixels ? previous!.hdrPixels : (layer.hdrPixels ? new Float32Array(layer.hdrPixels) : layer.hdrPixels),
+      _hdrPreviewBefore: null,
+      mask: sameMask ? previous!.mask : (layer.mask ? cloneCanvas(layer.mask) : null),
+      transform: layer.transform ? structuredClone(layer.transform) : null,
+      smartFilters: layer.smartFilters.map(filter => structuredClone(filter)),
+      vectorMask: layer.vectorMask ? structuredClone(layer.vectorMask) : layer.vectorMask,
+      adjustment: layer.adjustment ? structuredClone(layer.adjustment) : null,
+      text: layer.text ? structuredClone(layer.text) : null,
+      shape: layer.shape ? structuredClone(layer.shape) : null,
+      blendIf: layer.blendIf ? structuredClone(layer.blendIf) : null,
+      fx: layer.fx ? structuredClone(layer.fx) : null,
+      psdAdditionalInfo: layer.psdAdditionalInfo ? [...layer.psdAdditionalInfo] : layer.psdAdditionalInfo,
     }
   }
 
-  private restoreState(doc: PsDocument, st: any) {
-    doc.layers = st.layers.map((l: any) => ({
-      ...l,
-      hdrPixels: l.hdrPixels ? new Float32Array(l.hdrPixels) : null,
-      _hdrPreviewBefore: null,
-      transform: l.transform ? structuredClone(l.transform) : null,
-    }))
+  private cloneHistorySelection(selection: SelectionState | null, previous?: SelectionState | null): SelectionState | null {
+    if (!selection) return null
+    const sameMask = !!previous && selection._v === previous._v &&
+      selection.mask.width === previous.mask.width && selection.mask.height === previous.mask.height
+    return {
+      ...selection,
+      bounds: { ...selection.bounds },
+      mask: sameMask ? previous!.mask : cloneCanvas(selection.mask),
+      // Path2D objects are derived from the selection alpha, never persistent state.
+      _paths: null,
+      _pathsV: -1,
+    }
+  }
+
+  private cloneHistoryChannels(channels: SavedChannel[], previous?: SavedChannel[]): SavedChannel[] {
+    return channels.map(channel => {
+      const old = previous?.find(item => item.id === channel.id)
+      const sameMask = !!old && old._v === channel._v &&
+        old.mask.width === channel.mask.width && old.mask.height === channel.mask.height
+      return {
+        ...channel,
+        mask: sameMask ? old!.mask : cloneCanvas(channel.mask),
+      }
+    })
+  }
+
+  private captureState(doc: PsDocument, label: string, previous?: HistoryState) : HistoryState {
+    const previousLayers = new Map(previous?.layers.map(layer => [layer.id, layer]) ?? [])
+    return {
+      label, time: Date.now(),
+      layers: doc.layers.map(layer => this.cloneHistoryLayer(layer, previousLayers.get(layer.id))),
+      activeLayerId: doc.activeLayerId,
+      selection: this.cloneHistorySelection(doc.selection, previous?.selection),
+      width: doc.width, height: doc.height,
+      resolutionPpi: doc.resolutionPpi ?? 72,
+      channelView: doc.channelView,
+      savedChannels: this.cloneHistoryChannels(doc.savedChannels, previous?.savedChannels),
+      savedPaths: (doc.savedPaths ?? []).map(path => structuredClone(path)),
+    }
+  }
+
+  private restoreState(doc: PsDocument, st: HistoryState) {
+    // Restore into separate live buffers. Undo/redo must not expose the frozen
+    // snapshot's canvases to tools that draw into them in-place.
+    doc.layers = st.layers.map(layer => this.cloneHistoryLayer(layer))
     doc.activeLayerId = st.activeLayerId
-    doc.selection = st.selection ? { ...st.selection } : null
+    doc.selection = this.cloneHistorySelection(st.selection)
     doc.width = st.width; doc.height = st.height
     doc.resolutionPpi = Number.isFinite(st.resolutionPpi) ? Math.max(1, Number(st.resolutionPpi)) : 72
     doc.channelView = st.channelView
-    doc.savedChannels = st.savedChannels.map((c: any) => ({ ...c }))
-    doc.savedPaths = Array.isArray(st.savedPaths)
-      ? st.savedPaths.map((p: any) => ({ ...p, anchors: Array.isArray(p.anchors) ? p.anchors.map((a: any) => ({ ...a })) : [] }))
-      : []
+    doc.savedChannels = this.cloneHistoryChannels(st.savedChannels)
+    doc.savedPaths = Array.isArray(st.savedPaths) ? st.savedPaths.map(path => structuredClone(path)) : []
     doc._stroke = null; doc._strokeLayerId = null; doc._strokeBlendMode = 'normal'; doc._strokeBbox = null
     doc.previewFilter = null; doc.previewAdjustment = null
     doc._epoch++
