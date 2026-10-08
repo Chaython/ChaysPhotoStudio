@@ -38,6 +38,7 @@ import {
 } from '../image-ops/transform'
 import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 import { embedRasterMetadata } from '../formats/metadata-write'
+import { cropHdrPixels, flipHdrPixels, resampleHdrPixels, rotateHdrPixels } from '../image-ops/hdr-geometry'
 
 export const MAX_HISTORY = 50
 
@@ -3590,6 +3591,7 @@ export class Engine {
    *  Used by Image Size and Crop target-size output so paths, guides, masks,
    *  vector masks, samplers and layer registrations stay aligned. */
   private rescaleDocumentData(doc: PsDocument, w: number, h: number) {
+    this.syncPendingHdrCanvasEdits(doc)
     w = Math.max(1, Math.round(w))
     h = Math.max(1, Math.round(h))
     const sx = w / Math.max(1, doc.width)
@@ -3597,7 +3599,17 @@ export class Engine {
     const smin = Math.min(sx, sy)
 
     for (const l of doc.layers) {
-      if (l.canvas) l.canvas = resampleCanvas(l.canvas, Math.max(1, Math.round(l.canvas.width * sx)), Math.max(1, Math.round(l.canvas.height * sy)))
+      if (l.canvas) {
+        const newW = Math.max(1, Math.round(l.canvas.width * sx))
+        const newH = Math.max(1, Math.round(l.canvas.height * sy))
+        if (l.kind === 'raster' && l.hdrPixels) {
+          l.hdrPixels = resampleHdrPixels(l.hdrPixels, l.canvas.width, l.canvas.height, newW, newH)
+          l.canvas = hdrFloat32ToPreviewCanvas(l.hdrPixels, newW, newH, 'srgb')
+          l._hdrPreviewBefore = null
+        } else {
+          l.canvas = resampleCanvas(l.canvas, newW, newH)
+        }
+      }
       if (l.kind === 'raster') {
         l.offsetX = (l.offsetX ?? 0) * sx
         l.offsetY = (l.offsetY ?? 0) * sy
@@ -3688,6 +3700,10 @@ export class Engine {
   perspectiveCropTo(quad: Point2[], opts: { targetW?: number; targetH?: number; resolutionPpi?: number } = {}) {
     const doc = this.activeDoc
     if (!doc || quad.length !== 4) return
+    if (doc.layers.some(l => l.kind === 'raster' && l.hdrPixels)) {
+      this.ui?.toast('Perspective Crop is disabled for 32-bit HDR until scene-linear projective sampling is supported', 'info')
+      return
+    }
     const auto = quadOutputSize(quad)
     const outW = Math.max(1, Math.round(opts.targetW || auto.w))
     const outH = Math.max(1, Math.round(opts.targetH || auto.h))
@@ -3790,6 +3806,7 @@ export class Engine {
   cropTo(rect: Rect, opts: { deletePixels?: boolean; targetW?: number; targetH?: number; resolutionPpi?: number } = {}) {
     const doc = this.activeDoc
     if (!doc) return
+    this.syncPendingHdrCanvasEdits(doc)
     // Photoshop-style crop can extend beyond the current canvas. Negative
     // origins / oversized crops add transparent canvas instead of being
     // silently clamped back into the old document.
@@ -3803,9 +3820,17 @@ export class Engine {
       if (l.canvas && l.kind === 'raster') {
         if (deletePixels) {
           // destructive crop: discard raster pixels outside the new frame
-          const next = createCanvas(w, h)
-          ctx2d(next).drawImage(l.canvas, (l.offsetX ?? 0) - x, (l.offsetY ?? 0) - y)
-          l.canvas = next
+          if (l.hdrPixels) {
+            const pixels = cropHdrPixels(l.hdrPixels, l.canvas.width, l.canvas.height,
+              w, h, x - (l.offsetX ?? 0), y - (l.offsetY ?? 0))
+            l.hdrPixels = pixels
+            l.canvas = hdrFloat32ToPreviewCanvas(pixels, w, h, 'srgb')
+            l._hdrPreviewBefore = null
+          } else {
+            const next = createCanvas(w, h, canvasProfile(l.canvas))
+            ctx2d(next).drawImage(l.canvas, (l.offsetX ?? 0) - x, (l.offsetY ?? 0) - y)
+            l.canvas = next
+          }
           l.offsetX = 0
           l.offsetY = 0
         } else {
@@ -3977,6 +4002,10 @@ export class Engine {
   }): Promise<boolean> {
     const doc = this.activeDoc
     if (!doc) { this.ui?.toast('No active document', 'error'); return false }
+    if (doc.layers.some(l => l.kind === 'raster' && l.hdrPixels)) {
+      this.ui?.toast('AI Upscale is disabled for 32-bit HDR until the Float32 upscaler is available', 'info')
+      return false
+    }
     const scale = clamp(opts.scale ?? 2, 0.25, 4)
     const w = Math.max(1, Math.round(doc.width * scale))
     const h = Math.max(1, Math.round(doc.height * scale))
@@ -4060,6 +4089,20 @@ export class Engine {
   rotateCanvas(deg: number) {
     const doc = this.activeDoc
     if (!doc) return
+    this.syncPendingHdrCanvasEdits(doc)
+    // Arbitrary angles need full Float32 interpolation. Do not silently apply
+    // an 8-bit display transform to the authoritative HDR backing store.
+    if (doc.layers.some(l => l.kind === 'raster' && l.hdrPixels) && Math.abs(deg / 90 - Math.round(deg / 90)) > 1e-6) {
+      this.ui?.toast('32-bit HDR canvas rotation currently supports 90° increments only', 'info')
+      return
+    }
+    const hdrRotated = new Map<string, Float32Array>()
+    for (const layer of doc.layers) {
+      if (layer.kind !== 'raster' || !layer.canvas || !layer.hdrPixels) continue
+      const source = cropHdrPixels(layer.hdrPixels, layer.canvas.width, layer.canvas.height,
+        doc.width, doc.height, -(layer.offsetX ?? 0), -(layer.offsetY ?? 0))
+      hdrRotated.set(layer.id, rotateHdrPixels(source, doc.width, doc.height, deg))
+    }
     const rad = (deg * Math.PI) / 180
     const rc = Math.cos(rad), rs = Math.sin(rad)
     const cos = Math.abs(rc), sin = Math.abs(rs)
@@ -4086,6 +4129,11 @@ export class Engine {
     }
     for (const l of doc.layers) {
       if (l.canvas) l.canvas = rotateCanvasPixels(l.canvas)
+      if (hdrRotated.has(l.id)) {
+        l.hdrPixels = hdrRotated.get(l.id)!
+        l.canvas = hdrFloat32ToPreviewCanvas(l.hdrPixels, w, h, 'srgb')
+        l._hdrPreviewBefore = null
+      }
       if (l.mask) l.mask = rotateCanvasPixels(l.mask)
       if (l.transform) {
         const t = l.transform
@@ -4135,6 +4183,7 @@ export class Engine {
   flipCanvas(dir: 'horizontal' | 'vertical') {
     const doc = this.activeDoc
     if (!doc) return
+    this.syncPendingHdrCanvasEdits(doc)
     const flip = (src: HTMLCanvasElement): HTMLCanvasElement => {
       const c = createCanvas(src.width, src.height)
       const ctx = ctx2d(c)
@@ -4145,6 +4194,11 @@ export class Engine {
     }
     for (const l of doc.layers) {
       if (l.canvas) l.canvas = flip(l.canvas)
+      if (l.kind === 'raster' && l.canvas && l.hdrPixels) {
+        l.hdrPixels = flipHdrPixels(l.hdrPixels, l.canvas.width, l.canvas.height, dir)
+        l.canvas = hdrFloat32ToPreviewCanvas(l.hdrPixels, l.canvas.width, l.canvas.height, 'srgb')
+        l._hdrPreviewBefore = null
+      }
       if (l.mask) l.mask = flip(l.mask)
       if (l.source && l.kind !== 'smart') l.source = flip(l.source)
       if (l.kind === 'raster' && l.canvas) {

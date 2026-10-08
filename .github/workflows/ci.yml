@@ -54,6 +54,9 @@ jobs:
       - name: Validate worker error recovery
         run: bun run worker:validate
 
+      - name: Validate HDR raster geometry
+        run: bun run hdr:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
