@@ -792,3 +792,19 @@ assert.equal(repeatDoc.layers.find(l => l.id === maskPasteTarget.id)?.mask, null
 rawEngine.redo()
 assert.ok(repeatDoc.layers.find(l => l.id === maskPasteTarget.id)?.mask)
 console.log('Layer Mask clipboard has independent copies, explicit replacement, mismatch guards and Undo')
+
+
+// Applying a temporarily disabled raster mask must not act like Delete.
+rawEngine.setActiveDocument(repeatDoc.id)
+const disabledMaskTarget: Layer = {
+  ...repeatDoc.layers[0], id: 'mask-apply-disabled', name: 'Disabled raster mask',
+  kind: 'raster', locked: false, canvas: canvas(41), mask: canvas(42),
+  maskEnabled: false, _v: 1, _mv: 1,
+}
+repeatDoc.layers.push(disabledMaskTarget)
+const historyBeforeDisabledApply = repeatDoc.history.index
+rawEngine.deleteLayerMask(disabledMaskTarget.id, true)
+assert.equal(disabledMaskTarget.mask?.width, 2)
+assert.equal(disabledMaskTarget.maskEnabled, false)
+assert.equal(repeatDoc.history.index, historyBeforeDisabledApply)
+console.log('Applying a disabled raster layer mask is a safe no-op')

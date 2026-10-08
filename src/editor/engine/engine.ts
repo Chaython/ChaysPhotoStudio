@@ -2293,6 +2293,12 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(id)
     if (!doc || !layer?.mask || layer.locked) return
+    if (apply && !layer.maskEnabled) {
+      // A disabled mask is not currently part of the rendered layer. Do not
+      // interpret "Apply" as "Delete" and silently throw its data away.
+      this.ui?.toast('Enable the layer mask before applying it', 'info')
+      return
+    }
     if (apply) {
       // Never discard the only editable mask on a text/shape/Smart Object,
       // nor bake a 32-bit HDR mask through its 8-bit display preview.

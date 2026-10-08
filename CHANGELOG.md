@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Prevented **Apply Layer Mask** from silently discarding a disabled mask. The command remains unavailable until the mask is enabled, and does not create misleading History entries when blocked.
+
 - Added **Layer > Layer Mask > Copy/Paste Layer Mask** with independent alpha buffers, same-sized document safety, explicit **Replace Mask with Copied Mask**, locked-layer guards, and Undo/Redo. Copying a mask creates no History entry.
 - Restored the legacy tool/panel behavior of creating a Reveal All mask if **Add Layer Mask** is called without an active selection; the explicit Reveal Selection command still requires one.
 

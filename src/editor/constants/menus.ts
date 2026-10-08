@@ -449,7 +449,8 @@ export const MENUS: MenuItem[][] = [
         run: () => { const l = engine.activeLayer; if (l) engine.setLayerMaskEnabled(l.id, true) } },
       S(),
       { id: 'layer-mask-apply', label: 'Apply Layer Mask',
-        enabled: () => engine.activeLayer?.kind === 'raster' && !!engine.activeLayer.mask && !engine.activeLayer.locked,
+        enabled: () => engine.activeLayer?.kind === 'raster' && !!engine.activeLayer.mask &&
+          !!engine.activeLayer.maskEnabled && !engine.activeLayer.locked,
         run: () => { const l = engine.activeLayer; if (l) engine.deleteLayerMask(l.id, true) } },
       { id: 'layer-mask-delete', label: 'Delete Layer Mask',
         enabled: () => !!engine.activeLayer?.mask && !engine.activeLayer.locked,
