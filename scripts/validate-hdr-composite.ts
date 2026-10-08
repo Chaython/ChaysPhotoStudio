@@ -33,7 +33,7 @@ const out2 = compositeHdrRasters(2, 2, [{
   width: 2, height: 1, offsetX: -1, offsetY: 1, opacity: 1,
 }])
 assert.equal(out2[8], 3, 'off-canvas source maps to correct destination pixel')
-assert.equal(out2[11], .8, 'off-canvas cropped alpha is retained')
+assert.ok(Math.abs(out2[11] - .8) < 1e-6, 'off-canvas cropped alpha is retained')
 assert.equal(out2[12], 0, 'no out-of-bounds pixels leak into the document')
 const hidden = compositeHdrRasters(1, 1, [{
   pixels: new Float32Array([50, 0, 0, 1]),
