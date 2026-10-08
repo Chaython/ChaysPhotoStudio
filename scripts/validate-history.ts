@@ -12,12 +12,14 @@ class TestCanvas {
     drawImage: (source: TestCanvas) => void
     getContextAttributes: () => { colorType: 'unorm8'; colorSpace: 'srgb' }
     getImageData: () => { data: Uint8ClampedArray }
+    putImageData: (data: { data: Uint8ClampedArray }) => void
   } | null = null
   getContext(_kind: string) {
     if (!this.context) this.context = {
       drawImage: (source: TestCanvas) => { this.pixel = source.pixel },
       getContextAttributes: () => ({ colorType: 'unorm8', colorSpace: 'srgb' }),
       getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+      putImageData: () => {},
     }
     return this.context
   }
@@ -406,6 +408,22 @@ assert.ok(selectedIdsForLock.every(id => !repeatDoc.layers.find(l => l.id === id
 console.log('Layer Lock/Unlock acts on multi-selection with one undoable History entry')
 
 
+// Fake pixel canvases do not require a browser ImageData implementation,
+// but HDR preview creation exercises putImageData in its 8-bit fallback.
+const imageDataDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'ImageData')
+if (typeof ImageData === 'undefined') {
+  Object.defineProperty(globalThis, 'ImageData', {
+    configurable: true,
+    value: class ImageData {
+      data: Uint8ClampedArray
+      width: number
+      height: number
+      constructor(data: Uint8ClampedArray, width: number, height: number) {
+        this.data = data; this.width = width; this.height = height
+      }
+    },
+  })
+}
 // The internal clipboard must retain Float32 HDR highlights during Copy/Paste.
 // The OS PNG clipboard remains SDR by design, but internal 32-bit documents
 // preserve full source values and paste from an independent pixel allocation.
@@ -437,3 +455,5 @@ assert.notEqual(pastedHdr.hdrPixels, hdrSource.hdrPixels, 'clipboard and pasted 
 pastedHdr.hdrPixels![0] = 0
 assert.equal(hdrSource.hdrPixels![0], 12, 'editing the paste does not modify its source')
 console.log('HDR internal Copy/Paste preserves Float32 scene-linear pixels')
+if (imageDataDescriptor) Object.defineProperty(globalThis, 'ImageData', imageDataDescriptor)
+else Reflect.deleteProperty(globalThis, 'ImageData')
