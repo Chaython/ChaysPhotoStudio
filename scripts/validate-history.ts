@@ -12,14 +12,15 @@ class TestCanvas {
   private context: {
     drawImage: (source: TestCanvas) => void
     getContextAttributes: () => { colorType: 'unorm8'; colorSpace: 'srgb' }
-    getImageData: () => { data: Uint8ClampedArray }
+    getImageData: () => { data: Uint8ClampedArray; width: number; height: number }
     putImageData: (data: { data: Uint8ClampedArray }) => void
   } | null = null
   getContext(_kind: string) {
     if (!this.context) this.context = {
       drawImage: (source: TestCanvas) => { this.pixel = source.pixel },
       getContextAttributes: () => ({ colorType: 'unorm8', colorSpace: 'srgb' }),
-      getImageData: () => ({ data: new Uint8ClampedArray(this.width * this.height * 4) }),
+      getImageData: () => ({ data: new Uint8ClampedArray(this.width * this.height * 4),
+        width: this.width, height: this.height }),
       putImageData: () => {},
     }
     return this.context
