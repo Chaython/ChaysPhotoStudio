@@ -77,6 +77,7 @@ engine.updateSmartFilter('a-layer', 'a-smart', { horizontal: 11 }, a, true)
 assert.equal(a.layers[0].smartFilters[0].params.horizontal, 11,
   'preview rollback may restore original parameters after a layer was locked')
 engine.updateSmartFilter('a-layer', 'a-smart', { horizontal: original }, a, true)
+a.layers[0].locked = false // Ensure invalid-filter rejection, not lock rejection, is under test.
 const historyIndex = a.history.index
 const smartCount = a.layers[0].smartFilters.length
 engine.addSmartFilter('a-layer', 'unknown-filter' as never, {})
