@@ -3686,6 +3686,13 @@ export class Engine {
         l.shape.y *= sy
         l.shape.w *= sx
         l.shape.h *= sy
+        if (l.shape.shape === 'path' && l.shape.pathAnchors?.length) {
+          l.shape.pathAnchors = l.shape.pathAnchors.map(a => ({
+            ...a, x: a.x * sx, y: a.y * sy,
+            inX: a.inX * sx, inY: a.inY * sy,
+            outX: a.outX * sx, outY: a.outY * sy,
+          }))
+        }
         l.shape.radius *= smin
         l.shape.strokeWidth *= smin
         if (l.shape.dashLength) l.shape.dashLength *= smin
@@ -3732,6 +3739,24 @@ export class Engine {
     }
     if (doc.guides?.length) {
       doc.guides = doc.guides.map(g => ({ ...g, pos: g.pos * (g.orientation === 'v' ? sx : sy) }))
+    }
+    if (doc.measurements?.length) {
+      doc.measurements = doc.measurements.map(m => {
+        const segments = m.segments.map(seg => ({
+          a: { x: seg.a.x * sx, y: seg.a.y * sy },
+          b: { x: seg.b.x * sx, y: seg.b.y * sy },
+        }))
+        return { ...m, segments, totalLengthPx: segments.reduce(
+          (sum, seg) => sum + Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y), 0) }
+      })
+    }
+    if (doc.frames?.length) {
+      doc.frames = doc.frames.map(frame => ({
+        ...frame, layers: Object.fromEntries(Object.entries(frame.layers).map(([id, entry]) => [
+          id, { ...entry, x: entry.x === undefined ? undefined : entry.x * sx,
+            y: entry.y === undefined ? undefined : entry.y * sy },
+        ])),
+      }))
     }
 
     doc.width = w
@@ -3908,7 +3933,12 @@ export class Engine {
         }
       }
       if (l.text) { l.text.x -= x; l.text.y -= y }
-      if (l.shape) { l.shape.x -= x; l.shape.y -= y }
+      if (l.shape) {
+        l.shape.x -= x; l.shape.y -= y
+        if (l.shape.shape === 'path' && l.shape.pathAnchors?.length) {
+          l.shape.pathAnchors = l.shape.pathAnchors.map(a => ({ ...a, x: a.x - x, y: a.y - y }))
+        }
+      }
       if (l.vectorMask) {
         l.vectorMask = mapVectorMask(l.vectorMask, a => ({ ...a, x: a.x - x, y: a.y - y }))
       }
@@ -3939,6 +3969,23 @@ export class Engine {
       doc.guides = doc.guides
         .map(g => ({ ...g, pos: g.pos - (g.orientation === 'v' ? x : y) }))
         .filter(g => g.pos >= 0 && g.pos <= (g.orientation === 'v' ? w : h))
+    }
+    if (doc.measurements?.length) {
+      doc.measurements = doc.measurements.map(measurement => ({
+        ...measurement,
+        segments: measurement.segments.map(seg => ({
+          a: { x: seg.a.x - x, y: seg.a.y - y },
+          b: { x: seg.b.x - x, y: seg.b.y - y },
+        })),
+      }))
+    }
+    if (doc.frames?.length) {
+      doc.frames = doc.frames.map(frame => ({
+        ...frame, layers: Object.fromEntries(Object.entries(frame.layers).map(([id, entry]) => [
+          id, { ...entry, x: entry.x === undefined ? undefined : entry.x - x,
+            y: entry.y === undefined ? undefined : entry.y - y },
+        ])),
+      }))
     }
 
     doc.width = w
@@ -4052,7 +4099,12 @@ export class Engine {
         }
       }
       if (l.text) { l.text.x += dx; l.text.y += dy }
-      if (l.shape) { l.shape.x += dx; l.shape.y += dy }
+      if (l.shape) {
+        l.shape.x += dx; l.shape.y += dy
+        if (l.shape.shape === 'path' && l.shape.pathAnchors?.length) {
+          l.shape.pathAnchors = l.shape.pathAnchors.map(a => ({ ...a, x: a.x + dx, y: a.y + dy }))
+        }
+      }
       if (l.vectorMask) {
         l.vectorMask = mapVectorMask(l.vectorMask, a => ({ ...a, x: a.x + dx, y: a.y + dy }))
       }

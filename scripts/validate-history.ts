@@ -312,15 +312,24 @@ const revealSmart: Layer = {
 revealDoc.layers = [revealSmart]
 revealDoc.activeLayerId = revealSmart.id
 revealDoc.selectedLayerIds = [revealSmart.id]
+revealDoc.frames = [{ id: 'reveal-frame', name: 'Frame', delayMs: 200,
+  layers: { [revealSmart.id]: { x: -4, y: 10, visible: true } } }]
+revealDoc.measurements = [{ id: 'reveal-measurement', name: 'Measure',
+  segments: [{ a: { x: -3, y: 5 }, b: { x: 7, y: 5 } }],
+  unit: 'px', pixelsPerUnit: 1, totalLengthPx: 10, createdAt: 2 }]
 rawEngine.pushHistory('Before Reveal All', revealDoc)
 assert.equal(rawEngine.revealAll(), true)
 assert.equal(revealDoc.width, 105)
 assert.equal(revealDoc.height, 60)
 assert.equal(revealDoc.layers[0].kind, 'smart', 'Reveal All must preserve Smart Object editing')
 assert.equal(revealDoc.layers[0].transform?.x, 1, 'off-canvas source shifted into expanded frame')
+assert.equal(revealDoc.frames?.[0].layers[revealSmart.id]?.x, 1, 'animation offsets translated with Reveal All')
+assert.equal(revealDoc.measurements?.[0].segments[0].a.x, 2, 'ruler measurements translated with Reveal All')
 assert.equal(revealDoc.history.states[revealDoc.history.index].label, 'Reveal All')
 assert.equal(rawEngine.revealAll(), false, 'Reveal All is a no-op when all content is in-frame')
 rawEngine.undo()
 assert.equal(revealDoc.width, 100)
 assert.equal(revealDoc.layers[0].transform?.x, -4)
+assert.equal(revealDoc.frames?.[0].layers[revealSmart.id]?.x, -4, 'Undo restores animation offsets')
+assert.equal(revealDoc.measurements?.[0].segments[0].a.x, -3, 'Undo restores ruler measurements')
 console.log('Image > Reveal All preserves off-canvas Smart Objects and Undo')
