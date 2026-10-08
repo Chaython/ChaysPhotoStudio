@@ -557,10 +557,10 @@ try {
   }
   rawEngine.setActiveDocument(clipboardLayer.id)
   const originalCount = clipboardLayer.layers.length
-  let finishRead: (() => void) | null = null
+  const deferred: { finishRead?: () => void } = {}
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
     clipboard: { read: () => new Promise(resolve => {
-      finishRead = () => resolve([{
+      deferred.finishRead = () => resolve([{
         types: ['image/png'],
         getType: async () => new Blob(['dummy-image'], { type: 'image/png' }),
       }])
@@ -568,7 +568,7 @@ try {
   } })
   const delayed = rawEngine.pasteIntoSelection()
   rawEngine.setActiveDocument(originalDoc.id)
-  finishRead?.()
+  deferred.finishRead?.()
   assert.equal(await delayed, false, 'switching tabs cancels the asynchronous paste')
   assert.equal(clipboardLayer.layers.length, originalCount)
   assert.equal(rawEngine.activeDoc?.id, originalDoc.id)
