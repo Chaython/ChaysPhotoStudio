@@ -581,6 +581,22 @@ try {
   assert.ok(!clipboardLayer.layers.some(l => l.id === outsideSystem.id))
   rawEngine.redo()
   assert.ok(clipboardLayer.layers.some(l => l.id === outsideSystem.id))
+
+  // External Paste as a normal layer must be directly above the selected
+  // anchor layer (not unconditionally at the very top of the layer stack).
+  const stackAnchor = clipboardLayer.layers[0].id
+  clipboardLayer.activeLayerId = stackAnchor
+  clipboardLayer.selectedLayerIds = [stackAnchor]
+  const anchorIndex = clipboardLayer.layers.findIndex(l => l.id === stackAnchor)
+  assert.equal(await rawEngine.pasteFromSystemClipboard(false), true)
+  const pastedOnAnchor = clipboardLayer.layers.find(l => l.id === clipboardLayer.activeLayerId)!
+  assert.equal(clipboardLayer.layers[anchorIndex + 1]?.id, pastedOnAnchor.id)
+  assert.deepEqual(clipboardLayer.selectedLayerIds, [pastedOnAnchor.id])
+  assert.equal(clipboardLayer.history.states[clipboardLayer.history.index].label, 'Place Layer')
+  rawEngine.undo()
+  assert.ok(!clipboardLayer.layers.some(l => l.id === pastedOnAnchor.id))
+  rawEngine.redo()
+  assert.equal(clipboardLayer.layers[anchorIndex + 1]?.id, pastedOnAnchor.id)
   // Simulate tab switch while the OS clipboard read is pending. The bitmap
   // may decode, but it must not land in the newly focused document.
   clipboardLayer.selection = {

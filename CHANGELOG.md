@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Fixed external image Paste inserting at the top of the document regardless of the active layer. It now inserts directly above the active layer, updates the layer selection, and invalidates the composite. Canvas imports can also accept exact Float32 backing pixels without falling back to a preview read.
+
 - Added **Edit > Paste at Canvas Center** for internal layer copies. This provides a predictable centered placement when pasting between documents while retaining the existing original-position Paste behavior, full Float32 HDR values, and Undo/Redo.
 
 - Added Photoshop-style **Edit > Paste Outside Selection**, including **Paste External Image > Outside Selection**. Both create non-destructive document-space masks using the complement of the selection alpha; feathered edges, editable pixels, internal Float32 HDR content, and Undo/Redo are preserved.

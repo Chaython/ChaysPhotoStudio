@@ -1213,7 +1213,7 @@ export class Engine {
     return layer
   }
 
-  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array }): Layer | null {
+  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array; aboveActive?: boolean }): Layer | null {
     const doc = this.activeDoc
     if (!doc) return null
     const layer = newLayer('raster', name || this.nextLayerName(), doc.width, doc.height)
@@ -1232,13 +1232,20 @@ export class Engine {
       ctx2d(layer.canvas!).drawImage(canvas, 0, 0)
     }
     if (doc.workingBitDepth === 32 && layer.canvas) {
-      layer.hdrPixels = hdrPixelsFromCanvas(layer.canvas)
+      const expected = layer.canvas.width * layer.canvas.height * 4
+      layer.hdrPixels = opts?.hdrPixels?.length === expected
+        ? new Float32Array(opts.hdrPixels) : hdrPixelsFromCanvas(layer.canvas)
       layer.hdrColorSpace = 'linear-srgb'
       layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
+      layer._hdrPreviewBefore = null
     }
-    doc.layers.push(layer)
+    const activeIndex = doc.layers.findIndex(item => item.id === doc.activeLayerId)
+    if (opts?.aboveActive && activeIndex >= 0) doc.layers.splice(activeIndex + 1, 0, layer)
+    else doc.layers.push(layer)
     doc.activeLayerId = layer.id
-    this.pushHistory('Place Layer')
+    doc.selectedLayerIds = [layer.id]
+    invalidateFlat(doc)
+    this.pushHistory('Place Layer', doc)
     this.emit()
     return layer
   }
@@ -2796,7 +2803,7 @@ export class Engine {
           if (!intoSelection && !outsideSelection) {
             // Keep ordinary external Paste centered, matching the existing
             // behavior, including its independent History entry.
-            const pasted = this.addLayerFromCanvas(canvas, 'Pasted Image')
+            const pasted = this.addLayerFromCanvas(canvas, 'Pasted Image', { aboveActive: true })
             if (!pasted) return false
           } else {
             if (!selection || selection.mask.width !== doc.width ||
