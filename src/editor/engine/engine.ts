@@ -1641,12 +1641,18 @@ export class Engine {
   setLayerAdjustment(id: string, type: AdjustmentType, params: Record<string, any>) {
     const layer = this.layerById(id)
     const doc = this.activeDoc
-    if (!layer || !doc || layer.locked || layer.kind !== 'adjustment') return
-    layer.adjustment = { type, params: { ...params } }
+    if (!layer || !doc || layer.locked || layer.kind !== 'adjustment' || !imageOps.ADJUSTMENTS[type]) return
+    // Slider/dialog reopen without changes must not dirty the document.
+    if (layer.adjustment?.type === type &&
+        JSON.stringify(layer.adjustment.params) === JSON.stringify(params)) return
+    // Clone nested curve/LUT settings: caller-side mutations must never alter
+    // the committed adjustment outside of History.
+    const parameters = structuredClone(params)
+    layer.adjustment = { type, params: parameters }
     layer._v++
     invalidateFlat(doc)
-    this.pushHistory(`${typeLabel(type)} (edited)`)
-    this.recordStep({ op: 'setAdjustmentParams', args: { id, type, params: { ...params } }, label: 'Edit Adjustment' })
+    this.pushHistory(`${typeLabel(type)} (edited)`, doc)
+    this.recordStep({ op: 'setAdjustmentParams', args: { id, type, params: structuredClone(parameters) }, label: 'Edit Adjustment' })
     this.emit()
   }
 
@@ -3075,6 +3081,12 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(id)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    // Runtime scripting/action imports can supply names that evade TS enums.
+    // Do not persist unknown Smart Filter nodes or append phantom History.
+    if (!imageOps.FILTERS[type]) {
+      this.ui?.toast(`Unknown filter: ${String(type)}`, 'error')
+      return
+    }
     if (layer.kind !== 'smart') {
       this.applyFilterToLayer(id, type, params)
       return

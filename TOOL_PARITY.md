@@ -103,6 +103,10 @@ Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success o
 
 The local inpainting kernel currently consumes and writes 8-bit Canvas2D image data. It now refuses both 16-bit float and 32-bit HDR documents before copying/mutating pixels rather than silently quantizing the source image; 8-bit documents keep the existing non-destructive History flow. High-bit inpainting needs a future Float32-compatible synthesis path.
 
+## No-op Adjustment parameters and unknown filter safety
+
+Reopening an Adjustment Layer and submitting its existing settings no longer increments the layer version, marks the project dirty or writes a redundant History entry. Committed nested curve/LUT parameter objects are deep-cloned to avoid edits leaking in from scripting callers. Unknown filter names from action import or scripting are rejected before Smart Filter insertion or History updates.
+
 ## Safe Layer Matting and Trim Layer
 
 **Layer → Matting** now computes Remove White/Black Matte and Defringe on detached pixels and only rasterizes/commits if the output actually changes. This prevents empty operations and failures from modifying Smart Objects or History; a successful operation is a single undoable entry. On 16-bit layers matting requires native float16 readback rather than silently degrading to 8-bit. **Trim Layer to Content** checks locks before processing and increments the layer version only once.

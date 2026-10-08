@@ -77,4 +77,22 @@ engine.updateSmartFilter('a-layer', 'a-smart', { horizontal: 11 }, a, true)
 assert.equal(a.layers[0].smartFilters[0].params.horizontal, 11,
   'preview rollback may restore original parameters after a layer was locked')
 engine.updateSmartFilter('a-layer', 'a-smart', { horizontal: original }, a, true)
-console.log('Preview leases, cross-tab cleanup, no-op edits, layer locks and Smart Filter rollback passed')
+const historyIndex = a.history.index
+const smartCount = a.layers[0].smartFilters.length
+engine.addSmartFilter('a-layer', 'unknown-filter' as never, {})
+assert.equal(a.layers[0].smartFilters.length, smartCount, 'unknown filters must not be persisted')
+assert.equal(a.history.index, historyIndex, 'unknown filters must not create History')
+const adjustment = {
+  id: 'a-adjustment', kind: 'adjustment', locked: false, _v: 4,
+  adjustment: { type: 'exposure', params: { exposure: 1, nested: { untouched: true } } },
+}
+a.layers.push(adjustment as never)
+engine.setLayerAdjustment(adjustment.id, 'exposure', {
+  exposure: 1, nested: { untouched: true },
+})
+assert.equal(adjustment._v, 4, 'unchanged adjustment values do not modify a layer')
+assert.equal(a.history.index, historyIndex, 'unchanged adjustment does not append History')
+adjustment.locked = true
+engine.setLayerAdjustment(adjustment.id, 'exposure', { exposure: 3 })
+assert.equal(adjustment._v, 4, 'locked adjustment remains unchanged')
+console.log('Preview leases, no-op/locked edits and invalid Smart Filter rejection passed')
