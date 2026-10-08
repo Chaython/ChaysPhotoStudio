@@ -483,3 +483,26 @@ repeatDoc.selection = null
 assert.equal(rawEngine.canPasteIntoSelection(), false)
 assert.equal(rawEngine.pasteIntoSelection(), false)
 console.log('Paste Into Selection creates independent, undoable HDR-safe layer masks')
+
+
+// Deleting the active middle layer must select the adjacent surviving layer,
+// not jump to the top of the stack. Deleted multi-selection IDs must disappear.
+rawEngine.setActiveDocument(repeatDoc.id)
+assert.ok(repeatDoc.layers.length >= 3)
+const removeAt = 1
+const doomedId = repeatDoc.layers[removeAt].id
+const neighborId = repeatDoc.layers[removeAt + 1].id
+const retainedId = repeatDoc.layers[0].id
+repeatDoc.activeLayerId = doomedId
+repeatDoc.selectedLayerIds = [doomedId, retainedId]
+rawEngine.pushHistory('Before Deleting Middle Layer', repeatDoc)
+rawEngine.deleteLayer(doomedId)
+assert.equal(repeatDoc.activeLayerId, neighborId, 'deleting middle layer retains stack position')
+assert.ok(!repeatDoc.selectedLayerIds?.includes(doomedId), 'deleted ID is purged from selection')
+assert.ok(repeatDoc.selectedLayerIds?.includes(neighborId), 'replacement active layer is selected')
+rawEngine.undo()
+assert.equal(repeatDoc.activeLayerId, doomedId, 'Undo restores active layer identity')
+assert.ok(repeatDoc.layers.some(l => l.id === doomedId))
+rawEngine.redo()
+assert.equal(repeatDoc.activeLayerId, neighborId, 'Redo selects the correct adjacent layer')
+console.log('Delete Layer retains nearest stack position and cleans stale selected IDs')
