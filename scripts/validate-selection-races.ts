@@ -117,6 +117,15 @@ try {
   await failedAdjustment
   assert.equal(liveMutations, 0, 'a failed worker must not mutate or rasterize the live layer')
 
+  const failedMatch = editor.applyRegionOpAsync('layer', {
+    kind: 'match-color', params: { luminance: 100, intensity: 100, fade: 0, neutralize: false },
+    source: { width: 1, height: 1, data: new Uint8ClampedArray([60, 90, 120, 255]) },
+  }, 'Match Color')
+  assert.equal(DeferredWorker.jobs.length, 1)
+  DeferredWorker.fail('simulated Match Color failure')
+  assert.equal(await failedMatch, false)
+  assert.equal(liveMutations, 0, 'failed Match Color must preserve editable layer source')
+
   const filterJob = editor.applyFilterToLayerAsync('layer', 'offset',
     { horizontal: 1, vertical: 0, edgeMode: 'wrap' })
   assert.equal(DeferredWorker.jobs.length, 1)

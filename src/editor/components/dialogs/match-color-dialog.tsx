@@ -18,11 +18,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Palette, Image as ImageIcon, Wand2, Info } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
-import { getFlatComposite, invalidateFlat } from '../../engine/document'
+import { getFlatComposite } from '../../engine/document'
 import { matchColor } from '../../image-ops/auto'
 import { downsampleImage } from '../../image-ops/core'
-import { createCanvas, ctx2d, getImageData, putImageData, putProcessingPixelData } from '../../utils/canvas'
-import { runPixelOpFromCanvas } from '../../engine/pixel-worker'
+import { createCanvas, ctx2d, getImageData, putImageData } from '../../utils/canvas'
 import type { DialogProps } from './generic-dialogs'
 import { cn } from '@/lib/utils'
 
@@ -180,35 +179,18 @@ export function MatchColorDialog({ onClose }: DialogProps) {
         useEditorStore.getState().pushToast('Match Color is not yet supported for 32-bit HDR documents', 'error')
         return
       }
-      if (layer.kind !== 'raster') {
-        useEditorStore.getState().pushToast('Layer rasterized for Match Color', 'info')
-      }
-      const l = engine.mutateLayerPixels(layer.id) // COW clone; rasterizes non-raster
-      if (!l?.canvas) {
-        useEditorStore.getState().pushToast('Active layer has no pixels to adjust', 'error')
-        return
-      }
-      const sourceVersion = l._v
-      const historyAnchor = doc.history.states[doc.history.index]
-      const sourceEpoch = doc._epoch
+      // Use the engine's two-phase async pipeline: image statistics are
+      // computed from a detached source and the target is only rasterized or
+      // cloned after the worker succeeds and the initiating History is valid.
+      const rasterizes = layer.kind !== 'raster'
       const srcImg = downsampleImage(getImageData(getFlatComposite(activeSource)), SRC_COMMIT_MAX)
-      const out = await runPixelOpFromCanvas(l.canvas, {
+      const applied = await engine.applyRegionOpAsync(layer.id, {
         kind: 'match-color',
         params: { luminance, fade, neutralize, intensity },
         source: srcImg,
-      })
-      // A delayed worker result must not overwrite an Undo, another edit, or
-      // a different active document's layer/History. This also prevents the
-      // status toast from reporting an operation that was discarded.
-      if (engine.activeDoc !== doc || !doc.layers.includes(l) ||
-          l._v !== sourceVersion || l.locked ||
-          doc.history.states[doc.history.index] !== historyAnchor ||
-          doc._epoch !== sourceEpoch) return
-      putProcessingPixelData(l.canvas, out)
-      l._v++
-      invalidateFlat(doc)
-      engine.pushHistory('Match Color', doc)
-      engine.emit()
+      }, 'Match Color')
+      if (!applied) return
+      if (rasterizes) useEditorStore.getState().pushToast('Layer rasterized for Match Color', 'info')
       useEditorStore.getState().pushToast(`Match Color applied from “${activeSource.name}”`, 'success')
       onClose()
     } catch (err: unknown) {
