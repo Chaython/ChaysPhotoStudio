@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added **Layer > Lock Selected Layers** and **Unlock Selected Layers**. The commands handle multi-layer selection (including currently locked layers), create one Undo step for the entire operation, and skip redundant History entries.
+
 - Added the Photoshop-style **Select > Modify** flyout with Border, Smooth, Expand, Contract, and Feather (exposing the existing selection-smoothing engine). Invalid, zero, and cancelled radius inputs now safely leave selections and History unchanged.
 
 - Enabled **Filter > Last Filter** (Ctrl+F): reuses the last successfully committed filter and its settings on the current layer, preserving Smart Objects as editable Smart Filters. Prevented filter application to locked/adjustment layers and avoided writing asynchronous worker results to a replaced layer or the wrong document. Added regression coverage.

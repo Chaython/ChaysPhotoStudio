@@ -383,6 +383,8 @@ export const MENUS: MenuItem[][] = [
     { id: 'layer-new-adj', label: 'New Adjustment Layer', submenu: newAdjLayerItems },
     S(),
     { id: 'layer-arrange', label: 'Arrange', enabled: () => (engine.activeDoc?.layers.length ?? 0) > 1, submenu: layerArrangeMenu },
+    { id: 'layer-lock', label: 'Lock Selected Layers', enabled: () => engine.canSetSelectedLayersLocked(true), run: () => engine.setSelectedLayersLocked(true) },
+    { id: 'layer-unlock', label: 'Unlock Selected Layers', enabled: () => engine.canSetSelectedLayersLocked(false), run: () => engine.setSelectedLayersLocked(false) },
     { id: 'layer-align', label: 'Align', enabled: () => engine.selectedLayers().length > 0, submenu: layerAlignMenu },
     { id: 'layer-distribute', label: 'Distribute', enabled: () => engine.selectedLayers().length >= 3, submenu: layerDistributeMenu },
     S(),

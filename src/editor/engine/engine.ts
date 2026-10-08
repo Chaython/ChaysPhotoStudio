@@ -1445,6 +1445,29 @@ export class Engine {
     this.emit()
   }
 
+  /** Lock or unlock all selected layers as one Photoshop-style History step.
+   * Unlike selectedLayers(), this includes currently locked layers so the
+   * Unlock command can actually unlock them. */
+  canSetSelectedLayersLocked(locked: boolean): boolean {
+    const doc = this.activeDoc
+    if (!doc) return false
+    const ids = doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : [])
+    const selected = new Set(ids)
+    return doc.layers.some(layer => selected.has(layer.id) && layer.locked !== locked)
+  }
+
+  setSelectedLayersLocked(locked: boolean): void {
+    const doc = this.activeDoc
+    if (!doc || !this.canSetSelectedLayersLocked(locked)) return
+    const ids = doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : [])
+    const selected = new Set(ids)
+    for (const layer of doc.layers) if (selected.has(layer.id)) layer.locked = locked
+    this.pushHistory(locked ? 'Lock Layers' : 'Unlock Layers', doc)
+    this.emit()
+  }
+
   setLayerProps(id: string, patch: Partial<Layer>, opts?: { history?: boolean; label?: string; silent?: boolean }) {
     const doc = this.activeDoc
     const layer = this.layerById(id)

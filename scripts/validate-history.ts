@@ -381,3 +381,26 @@ for (const bad of [0, -2, Number.NaN, Infinity]) {
 assert.equal(originalDoc.selection, originalSelection)
 assert.equal(originalDoc.history.index, historyBeforeInvalidModify)
 console.log('Select > Modify invalid radii cannot destroy selection state')
+
+
+// Layer > Lock / Unlock acts on all selected layers, including layers already
+// locked (which selectedLayers() intentionally omits for move/align commands).
+rawEngine.setActiveDocument(repeatDoc.id)
+repeatDoc.selectedLayerIds = repeatDoc.layers.slice(0, 2).map(l => l.id)
+for (const l of repeatDoc.layers.slice(0, 2)) l.locked = false
+const selectedIdsForLock = [...repeatDoc.selectedLayerIds]
+assert.equal(rawEngine.canSetSelectedLayersLocked(true), true)
+rawEngine.setSelectedLayersLocked(true)
+assert.ok(selectedIdsForLock.every(id => repeatDoc.layers.find(l => l.id === id)?.locked))
+assert.equal(repeatDoc.history.states[repeatDoc.history.index].label, 'Lock Layers')
+const beforeNoOpLock = repeatDoc.history.index
+rawEngine.setSelectedLayersLocked(true)
+assert.equal(repeatDoc.history.index, beforeNoOpLock, 'locking already-locked layers is a no-op')
+rawEngine.setSelectedLayersLocked(false)
+assert.ok(selectedIdsForLock.every(id => !repeatDoc.layers.find(l => l.id === id)?.locked))
+rawEngine.undo()
+assert.ok(selectedIdsForLock.every(id => repeatDoc.layers.find(l => l.id === id)?.locked),
+  'Undo restores the whole locked selection')
+rawEngine.redo()
+assert.ok(selectedIdsForLock.every(id => !repeatDoc.layers.find(l => l.id === id)?.locked))
+console.log('Layer Lock/Unlock acts on multi-selection with one undoable History entry')
