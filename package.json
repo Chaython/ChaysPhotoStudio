@@ -52,6 +52,7 @@
     "help:generate": "bun scripts/generate-help.ts",
     "help:validate": "bun scripts/validate-help.ts",
     "layer-alpha:validate": "bun scripts/validate-layer-alpha.ts",
+    "layer-matting:validate": "bun scripts/validate-layer-matting.ts",
     "layer-mask:validate": "bun scripts/validate-layer-mask.ts",
     "hdr-composite:validate": "bun scripts/validate-hdr-composite.ts",
     "hdr-fill:validate": "bun scripts/validate-hdr-fill.ts"

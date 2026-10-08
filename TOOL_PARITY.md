@@ -103,6 +103,10 @@ Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success o
 
 The local inpainting kernel currently consumes and writes 8-bit Canvas2D image data. It now refuses both 16-bit float and 32-bit HDR documents before copying/mutating pixels rather than silently quantizing the source image; 8-bit documents keep the existing non-destructive History flow. High-bit inpainting needs a future Float32-compatible synthesis path.
 
+## Safe Layer Matting and Trim Layer
+
+**Layer → Matting** now computes Remove White/Black Matte and Defringe on detached pixels and only rasterizes/commits if the output actually changes. This prevents empty operations and failures from modifying Smart Objects or History; a successful operation is a single undoable entry. On 16-bit layers matting requires native float16 readback rather than silently degrading to 8-bit. **Trim Layer to Content** checks locks before processing and increments the layer version only once.
+
 ## Float32 HDR selection Fill
 
 **Edit → Fill** now paints directly into authoritative Float32 scene-linear raster pixels in 32-bit HDR documents. HEX foreground colors are converted from sRGB into linear RGB; the source-over blend preserves unclipped HDR highlights and soft selection transparency. Non-overlapping selections do not create History, and offset raster buffers clip to the document correctly. Text, shapes and Smart Objects must be explicitly rasterized for this operation rather than silently reducing precision. CI validates fractional alpha, highlights above 1.0, no-op selections and offsets.

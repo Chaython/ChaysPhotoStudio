@@ -84,6 +84,9 @@ jobs:
       - name: Validate layer transparency selections
         run: bun run layer-alpha:validate
 
+      - name: Validate Layer Matting no-ops and History
+        run: bun run layer-matting:validate
+
       - name: Validate HDR layer masks
         run: bun run layer-mask:validate
 

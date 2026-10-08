@@ -2155,6 +2155,7 @@ export class Engine {
     const doc = this.activeDoc
     const target = id ? this.layerById(id) : this.activeLayer
     if (!doc || !target) return false
+    if (target.locked) { this.ui?.toast('Unlock the layer before trimming it', 'info'); return false }
     if (target.kind !== 'raster' || !target.canvas) {
       this.ui?.toast('Trim Layer works on raster layers — rasterize first', 'info')
       return false
@@ -2193,9 +2194,9 @@ export class Engine {
     }
     layer.offsetX = (layer.offsetX ?? 0) + minX
     layer.offsetY = (layer.offsetY ?? 0) + minY
-    layer._v++
+    // mutateLayerPixels already incremented the pixel version.
     invalidateFlat(doc)
-    this.pushHistory('Trim Layer to Content')
+    this.pushHistory('Trim Layer to Content', doc)
     this.emit()
     return true
   }
@@ -2230,25 +2231,36 @@ export class Engine {
     if (target.locked) { this.ui?.toast('Layer is locked', 'error'); return false }
     if (target.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels to matte', 'error'); return false }
     if (doc.workingBitDepth === 32) {
-      this.ui?.toast('Layer Matting is disabled for 32-bit HDR until it can edit scene-linear Float32 pixels directly', 'info')
+      this.ui?.toast('Layer Matting requires an SDR document, not 32-bit HDR', 'info')
       return false
     }
-
     const wasRaster = target.kind === 'raster'
-    const layer = this.mutateLayerPixels(target.id)
-    if (!layer?.canvas) return false
-    const selection = this.selectionAlphaForLayer(layer)
-    const image = getProcessingPixelData(layer.canvas)
-    if (operation === 'defringe') defringe(image, width, selection)
-    else removeMatte(image, operation, selection)
-    putProcessingPixelData(layer.canvas, image)
-    layer._v++
+    try {
+      // Inspect detached image data first; no-op and failing operations must
+      // not rasterize Smart Objects or advance History.
+      const canvas = wasRaster ? target.canvas : prepareLayer(doc, layerContentForRasterization(target))
+      if (!canvas) return false
+      if (doc.workingBitDepth === 16 && !getFloat16ImageData(canvas)) {
+        this.ui?.toast('Layer Matting needs float16 readback to retain 16-bit precision', 'error')
+        return false
+      }
+      const proxy = wasRaster ? target : { ...target, canvas, offsetX: 0, offsetY: 0 }
+      const selection = this.selectionAlphaForLayer(proxy)
+      const image = getProcessingPixelData(canvas)
+      const original = image.data.slice()
+      if (operation === 'defringe') defringe(image, width, selection)
+      else removeMatte(image, operation, selection)
+      if (!image.data.some((value, index) => value !== original[index])) return false
+      if (!this.commitComputedPixelOp(target, image)) return false
+    } catch (error) {
+      this.ui?.toast(error instanceof Error ? `Layer Matting failed: ${error.message}` : 'Layer Matting failed', 'error')
+      return false
+    }
     invalidateFlat(doc)
-    const label =
-      operation === 'white' ? 'Remove White Matte' :
-      operation === 'black' ? 'Remove Black Matte' :
-      `Defringe ${Math.max(1, Math.round(width))} px`
-    this.pushHistory(label)
+    const label = operation === 'white' ? 'Remove White Matte'
+      : operation === 'black' ? 'Remove Black Matte'
+      : `Defringe ${Math.max(1, Math.round(width))} px`
+    this.pushHistory(label, doc)
     this.emit()
     if (!wasRaster) this.ui?.toast('Layer rasterized for Matting', 'info')
     return true
