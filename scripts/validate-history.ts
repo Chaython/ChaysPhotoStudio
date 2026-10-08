@@ -722,6 +722,11 @@ console.log('Layer Mask apply guards and no-op toggle Undo/Redo pass')
 rawEngine.setActiveDocument(repeatDoc.id)
 const maskSource = repeatDoc.layers.find(l => l.id === maskGuard.id)!
 assert.ok(maskSource.mask)
+// This older fixture creates 2×2 mock canvases; make the channel's backing
+// mask document-sized before exercising the validation contract.
+maskSource.mask!.width = repeatDoc.width
+maskSource.mask!.height = repeatDoc.height
+maskSource._mv++
 const beforeChannelSave = repeatDoc.savedChannels.length
 const sourceMaskBeforeSave = maskSource.mask
 const newChannelId = rawEngine.saveLayerMaskAsChannel(maskSource.id)
