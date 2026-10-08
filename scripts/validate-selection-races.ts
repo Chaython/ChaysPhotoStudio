@@ -76,7 +76,32 @@ try {
   await historyJob
   assert.equal(doc.selection, newer, 'worker must discard results after a document edit')
 
+  // A pending Auto Tone worker must not commit into an edited or switched
+  // document. Patch COW access so the test focuses on worker ownership rather
+  // than a full browser's Canvas2D implementation.
   const layer = doc.layers[0]
+  ;(editor as unknown as { mutateLayerPixels: () => typeof layer }).mutateLayerPixels = () => layer
+  const beforePixels = layer._v
+  const beforeHistory = doc.history.states[doc.history.index]
+  const autoJob = editor.applyRegionOpAsync('layer', { kind: 'auto-tone' }, 'Auto Tone')
+  assert.equal(DeferredWorker.jobs.length, 1)
+  doc.history.states[0] = { label: 'Later edit' } as PsDocument['history']['states'][number]
+  DeferredWorker.finish()
+  assert.equal(await autoJob, false, 'Auto Tone aborts when source history changes')
+  assert.equal(layer._v, beforePixels)
+  assert.equal(doc.history.states[doc.history.index].label, 'Later edit')
+
+  const adjustJob = editor.applyAdjustmentToLayerAsync('layer', 'exposure', { exposure: 1 })
+  assert.equal(DeferredWorker.jobs.length, 1)
+  // Simulate document switch without undo. A late worker must not write back
+  // to an inactive document or append its History/action transcript.
+  ;(editor as unknown as { _activeId: string })._activeId = 'unrelated-tab'
+  DeferredWorker.finish()
+  await adjustJob
+  assert.equal(layer._v, beforePixels)
+  assert.equal(doc.history.states[doc.history.index].label, 'Later edit')
+  ;(editor as unknown as { _activeId: string })._activeId = doc.id
+
   layer.locked = true
   const oldVersion = layer._v
   const oldIndex = doc.history.index

@@ -3863,7 +3863,8 @@ export class Engine {
 
   applyAdjustmentToLayer(layerId: string, type: AdjustmentType, params: Record<string, any>) {
     const doc = this.activeDoc
-    if (!doc) return
+    const layer = this.layerById(layerId)
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
     const img = this.processingPixelsForLayer(l)
@@ -3909,6 +3910,10 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.activeLayer
     if (!doc || !layer) return
+    if (layer.locked || layer.kind === 'adjustment') {
+      this.ui?.toast('Unlock a pixel-capable layer before Content-Aware Fill', 'error')
+      return
+    }
     if (docMask.length !== doc.width * doc.height) {
       this.ui?.toast('Content-Aware Fill mask does not match the document', 'error')
       return
@@ -3916,6 +3921,9 @@ export class Engine {
 
     const l = this.mutateLayerPixels(layer.id)
     if (!l?.canvas) return
+    const layerVersion = l._v
+    const historyAnchor = doc.history.states[doc.history.index]
+    const sourceEpoch = doc._epoch
     const img = getImageData(l.canvas)
     const ox = Math.round(l.offsetX ?? 0)
     const oy = Math.round(l.offsetY ?? 0)
@@ -3939,11 +3947,19 @@ export class Engine {
       return
     }
 
-    await imageOps.inpaint(img, localMask, onProgress)
+    try {
+      await imageOps.inpaint(img, localMask, onProgress)
+    } catch (err) {
+      this.ui?.toast(err instanceof Error ? `Content-Aware Fill failed: ${err.message}` : 'Content-Aware Fill failed', 'error')
+      return
+    }
+    if (this.activeDoc !== doc || !doc.layers.includes(l) || l._v !== layerVersion ||
+        doc.history.states[doc.history.index] !== historyAnchor ||
+        doc._epoch !== sourceEpoch) return
     putImageData(l.canvas, img)
     l._v++
     invalidateFlat(doc)
-    this.pushHistory(label)
+    this.pushHistory(label, doc)
     // The existing action opcode means "fill the current selection". A direct
     // Bucket-generated mask is transient, so recording it as that opcode would
     // replay a different region later. Record only the selection workflow until
@@ -3968,7 +3984,8 @@ export class Engine {
   /** generic region CPU op with history (dodge/burn/blur tools etc.) */
   applyRegionOp(layerId: string, op: (img: ImageData) => void, label: string) {
     const doc = this.activeDoc
-    if (!doc) return
+    const layer = this.layerById(layerId)
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
     const img = getImageData(l.canvas)
@@ -4001,37 +4018,64 @@ export class Engine {
 
   /** Async variant of applyRegionOp for worker-capable op descriptors (PixelOpSpec —
    *  closures cannot cross the worker boundary). Sync applyRegionOp stays for tools. */
-  async applyRegionOpAsync(layerId: string, spec: PixelOpSpec, label: string): Promise<void> {
+  async applyRegionOpAsync(layerId: string, spec: PixelOpSpec, label: string): Promise<boolean> {
     const doc = this.activeDoc
-    if (!doc) return
+    const layer = this.layerById(layerId)
+    if (!doc || !layer || layer.kind === 'adjustment' || layer.locked) return false
     const l = this.mutateLayerPixels(layerId)
-    if (!l?.canvas) return
-    // getImageData inside is fresh + disposable → zero-copy transfer to the worker;
-    // on an unrecoverable worker failure it re-fetches and runs synchronously
-    const hdrInput = hdrProcessingImage(l)
-    const out = hdrInput
-      ? await runPixelOpAsync(hdrInput, spec)
-      : await runPixelOpFromCanvas(l.canvas, spec)
+    if (!l?.canvas) return false
+    const layerVersion = l._v
+    const historyAnchor = doc.history.states[doc.history.index]
+    const sourceEpoch = doc._epoch
+    let out
+    try {
+      const hdrInput = hdrProcessingImage(l)
+      out = hdrInput
+        ? await runPixelOpAsync(hdrInput, spec)
+        : await runPixelOpFromCanvas(l.canvas, spec)
+    } catch (err) {
+      this.ui?.toast(err instanceof Error ? `${label} failed: ${err.message}` : `${label} failed`, 'error')
+      return false
+    }
+    // A worker must never write into a document/layer that was edited, undone,
+    // closed, switched away from, or replaced while the operation was running.
+    if (this.activeDoc !== doc || !doc.layers.includes(l) || l._v !== layerVersion ||
+        doc.history.states[doc.history.index] !== historyAnchor ||
+        doc._epoch !== sourceEpoch) return false
     this.commitProcessingPixelsForLayer(l, out)
     invalidateFlat(doc)
-    this.pushHistory(label)
+    this.pushHistory(label, doc)
     this.emit()
+    return true
   }
 
   /** Async twin of applyAdjustmentToLayer (dialog OK commits) — pixel math in the worker. */
   async applyAdjustmentToLayerAsync(layerId: string, type: AdjustmentType, params: Record<string, any>): Promise<void> {
     const doc = this.activeDoc
-    if (!doc) return
+    const layer = this.layerById(layerId)
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
-    const spec: PixelOpSpec = { kind: 'adjustment', type, params }
-    const hdrInput = hdrProcessingImage(l)
-    const out = hdrInput
-      ? await runPixelOpAsync(hdrInput, spec)
-      : await runPixelOpFromCanvas(l.canvas, spec)
+    const layerVersion = l._v
+    const historyAnchor = doc.history.states[doc.history.index]
+    const sourceEpoch = doc._epoch
+    let out
+    try {
+      const spec: PixelOpSpec = { kind: 'adjustment', type, params }
+      const hdrInput = hdrProcessingImage(l)
+      out = hdrInput
+        ? await runPixelOpAsync(hdrInput, spec)
+        : await runPixelOpFromCanvas(l.canvas, spec)
+    } catch (err) {
+      this.ui?.toast(err instanceof Error ? `Adjustment not applied: ${err.message}` : 'Adjustment not applied', 'error')
+      return
+    }
+    if (this.activeDoc !== doc || !doc.layers.includes(l) || l._v !== layerVersion ||
+        doc.history.states[doc.history.index] !== historyAnchor ||
+        doc._epoch !== sourceEpoch) return
     this.commitProcessingPixelsForLayer(l, out)
     invalidateFlat(doc)
-    this.pushHistory(typeLabel(type))
+    this.pushHistory(typeLabel(type), doc)
     this.recordStep({ op: 'applyAdjustment', args: { layerId, type, params: { ...params } }, label: typeLabel(type) })
     this.emit()
   }
@@ -4079,9 +4123,10 @@ export class Engine {
     if (!layer) { this.ui?.toast('No active layer', 'error'); return }
     const spec: PixelOpSpec = kind === 'tone' ? { kind: 'auto-tone' } : kind === 'contrast' ? { kind: 'auto-contrast' } : { kind: 'auto-color' }
     const label = kind === 'tone' ? 'Auto Tone' : kind === 'contrast' ? 'Auto Contrast' : 'Auto Color'
-    await this.applyRegionOpAsync(layer.id, spec, label)
-    this.recordStep({ op: 'autoCorrect', args: { kind }, label })
-    this.ui?.toast(label + ' applied', 'success')
+    if (await this.applyRegionOpAsync(layer.id, spec, label)) {
+      this.recordStep({ op: 'autoCorrect', args: { kind }, label })
+      this.ui?.toast(label + ' applied', 'success')
+    }
   }
 
   // ================================================== guides & rulers
