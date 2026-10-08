@@ -99,6 +99,10 @@ Documents now carry explicit **PPI resolution metadata** independently from pixe
 
 Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success or record actions when the active layer is locked or lacks editable pixels. Direct Adjustment and Filter commits now reject known unsupported scene-linear 32-bit operations before cloning/mutating layer canvases; supported HDR filters such as Offset remain usable.
 
+## Async filter and HDR content-aware safety
+
+Filter workers now reject late output after document switches, edits to other layers, or Undo/History changes, even if the target layer's pixel version is unchanged. This keeps both History and recorded actions tied to the initiating document. Content-Aware Fill refuses 32-bit HDR documents rather than processing the low-precision display canvas; proper HDR inpainting needs a Float32 source/synthesis pipeline.
+
 ## Safer asynchronous retouch and tonal corrections
 
 Worker-backed Auto Tone/Auto Color/Auto Contrast and direct Adjustment commits now validate their source layer, History snapshot and active document before applying results. A failed or cancelled worker cannot write stale pixels into an undone or switched document. Auto corrections only record successful operations; locked layer and adjustment layer guards now apply equally to synchronous and worker-backed corrections. Content-Aware Fill discards results after intervening edits/Undo/tab switches and refuses locked-layer writes.

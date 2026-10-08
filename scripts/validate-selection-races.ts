@@ -102,6 +102,19 @@ try {
   assert.equal(doc.history.states[doc.history.index].label, 'Later edit')
   ;(editor as unknown as { _activeId: string })._activeId = doc.id
 
+  const filterJob = editor.applyFilterToLayerAsync('layer', 'offset',
+    { horizontal: 1, vertical: 0, edgeMode: 'wrap' })
+  assert.equal(DeferredWorker.jobs.length, 1)
+  const beforeFilterVersion = layer._v
+  const beforeFilterHistory = doc.history.index
+  // A different layer being edited does not change our target's _v.
+  // The filter still must not commit after the document History moves.
+  doc.history.states[0] = { label: 'Other layer edited' } as PsDocument['history']['states'][number]
+  DeferredWorker.finish()
+  await filterJob
+  assert.equal(layer._v, beforeFilterVersion, 'stale filter does not mutate target pixels')
+  assert.equal(doc.history.index, beforeFilterHistory, 'stale filter does not create History')
+
   layer.locked = true
   const oldVersion = layer._v
   const oldIndex = doc.history.index
@@ -116,6 +129,11 @@ try {
   assert.equal(layer._v, oldVersion)
   layer.locked = false
   doc.workingBitDepth = 32
+  const beforeInpaintHistory = doc.history.index
+  const beforeInpaintVersion = layer._v
+  await editor.contentAwareFillMask(new Uint8ClampedArray(W * H).fill(255))
+  assert.equal(layer._v, beforeInpaintVersion, 'HDR inpaint rejects before raster mutation')
+  assert.equal(doc.history.index, beforeInpaintHistory, 'unsupported HDR inpaint does not change History')
   const versionBeforeHdrRejection = layer._v
   editor.applyAdjustmentToLayer('layer', 'hue-saturation', {})
   editor.applyFilterToLayer('layer', 'smart-sharpen', {})

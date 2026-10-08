@@ -3926,6 +3926,13 @@ export class Engine {
       this.ui?.toast('Content-Aware Fill mask does not match the document', 'error')
       return
     }
+    // Inpainting reads an 8-bit Canvas2D ImageData preview. Applying those
+    // pixels to 32-bit documents would silently quantize HDR color or leave
+    // their authoritative Float32 pixel buffers out of sync.
+    if (doc.workingBitDepth === 32) {
+      this.ui?.toast('Content-Aware Fill is not yet supported for 32-bit HDR layers', 'error')
+      return
+    }
 
     const l = this.mutateLayerPixels(layer.id)
     if (!l?.canvas) return
@@ -4111,6 +4118,8 @@ export class Engine {
     const l = this.mutateLayerPixels(layerId)
     if (!l?.canvas) return
     const layerVersion = l._v
+    const historyAnchor = doc.history.states[doc.history.index]
+    const sourceEpoch = doc._epoch
     let out
     try {
       const spec: PixelOpSpec = { kind: 'filter', type, params }
@@ -4124,10 +4133,12 @@ export class Engine {
       console.error('[zphoto] filter worker failed safely', err)
       return
     }
-    // The active tab or history state may have changed while the worker ran.
-    // Never apply stale pixels to an undone/replaced/edited layer or push the
-    // operation into another document's History.
-    if (!this.docs.includes(doc) || !doc.layers.includes(l) || l._v !== layerVersion) return
+    // A worker can complete after switching tabs or performing a different
+    // edit (without necessarily changing this layer's version). Commit only
+    // to the exact document, source layer, and History state we started from.
+    if (this.activeDoc !== doc || !doc.layers.includes(l) || l._v !== layerVersion ||
+        doc.history.states[doc.history.index] !== historyAnchor ||
+        doc._epoch !== sourceEpoch) return
     this.commitProcessingPixelsForLayer(l, out)
     invalidateFlat(doc)
     this.pushHistory(filterLabel(type), doc)
