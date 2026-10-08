@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Fixed Undo/Redo and named History snapshots discarding/restoring only part of the document state. Snapshots now retain selected layer IDs, guides, color samplers, saved ruler measurements and animation frame offsets; legacy snapshots remain compatible. Added Canvas Size history round-trip assertions for all those fields.
+
 - Added **Layer > Arrange** with Bring to Front/Forward and Send Backward/Back plus Photoshop-style Ctrl+[ / Ctrl+] shortcuts. Fixed stale flattened-composite caching and no-op History entries when rearranging layers; included undo/redo regression checks.
 - Corrected Smart Object image resizing applying the scale twice: when the Smart Object source pixels are resampled, its transform scale now remains unchanged.
 

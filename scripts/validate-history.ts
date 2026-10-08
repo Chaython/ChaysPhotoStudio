@@ -239,6 +239,12 @@ resizeDoc.savedChannels = [{ id: 'alpha-canvas', name: 'Alpha', mask: canvas(82)
 resizeDoc.savedPaths = [{ id: 'path-canvas', name: 'Path', closed: false, visible: true,
   anchors: [{ x: 8, y: 10, inX: 0, inY: 0, outX: 0, outY: 0, pair: true }] }]
 resizeDoc.guides = [{ id: 'guide-canvas', orientation: 'v', pos: 20 }]
+resizeDoc.colorSamplers = [{ id: 'sampler-canvas', x: 3, y: 5 }]
+resizeDoc.measurements = [{ id: 'measurement-canvas', name: 'Distance',
+  segments: [{ a: { x: 5, y: 5 }, b: { x: 25, y: 15 } }],
+  unit: 'px', pixelsPerUnit: 1, totalLengthPx: 22, createdAt: 1 }]
+resizeDoc.frames = [{ id: 'frame-canvas', name: 'Frame', delayMs: 100,
+  layers: { [resizeDoc.layers[0].id]: { visible: true, x: 10, y: 5 } } }]
 rawEngine.pushHistory('Before Canvas Size', resizeDoc)
 rawEngine.resizeCanvas({ w: 120, h: 80, anchor: 'bottom-right' })
 assert.equal(resizeDoc.layers[0].offsetX, 30)
@@ -249,10 +255,20 @@ assert.equal(resizeDoc.savedChannels[0].mask.width, 120)
 assert.equal(resizeDoc.savedPaths?.[0].anchors[0].x, 28)
 assert.equal(resizeDoc.savedPaths?.[0].anchors[0].y, 30)
 assert.equal(resizeDoc.guides[0].pos, 40)
+assert.equal(resizeDoc.colorSamplers?.[0].x, 23)
+assert.equal(resizeDoc.measurements?.[0].segments[0].a.x, 25)
+assert.equal(resizeDoc.frames?.[0].layers[resizeDoc.layers[0].id].x, 30)
 rawEngine.undo()
 assert.equal(resizeDoc.width, 100)
 assert.equal(resizeDoc.selection?.mask.width, 2, 'undo restores the original selection backing store')
-console.log('Canvas Size translates masks, channels, saved paths and guides with undo')
+assert.equal(resizeDoc.guides[0].pos, 20, 'Undo restores guide coordinates')
+assert.equal(resizeDoc.colorSamplers?.[0].x, 3, 'Undo restores color sampler coordinates')
+assert.equal(resizeDoc.measurements?.[0].segments[0].a.x, 5, 'Undo restores ruler measurements')
+assert.equal(resizeDoc.frames?.[0].layers[resizeDoc.layers[0].id].x, 10, 'Undo restores animation geometry')
+rawEngine.redo()
+assert.equal(resizeDoc.guides[0].pos, 40, 'Redo restores adjusted guide coordinates')
+rawEngine.undo()
+console.log('Canvas Size transforms and undoes all document-space metadata')
 
 // Photoshop Layer > Arrange must invalidate stale flattened-composite caches
 // even when every layer has matching pixel versions and blend properties.

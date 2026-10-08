@@ -423,6 +423,8 @@ export interface HistoryState {
   time: number
   layers: Layer[]
   activeLayerId: string | null
+  /** Multi-layer selection is retained across Undo/Redo and named Snapshots. */
+  selectedLayerIds?: string[]
   selection: SelectionState | null
   width: number
   height: number
@@ -431,6 +433,11 @@ export interface HistoryState {
   channelView: ChannelView
   savedChannels: SavedChannel[]
   savedPaths?: SavedPath[]
+  /** Extra document-space geometry (optional for older serialized Snapshots). */
+  guides?: Guide[]
+  colorSamplers?: PsDocument['colorSamplers']
+  measurements?: SavedMeasurement[]
+  frames?: AnimFrame[]
 }
 
 /** Named, durable copy of a history state. Unlike the rolling History list,

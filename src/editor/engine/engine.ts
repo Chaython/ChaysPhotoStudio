@@ -721,12 +721,17 @@ export class Engine {
       label, time: Date.now(),
       layers: doc.layers.map(layer => this.cloneHistoryLayer(layer, previousLayers.get(layer.id))),
       activeLayerId: doc.activeLayerId,
+      selectedLayerIds: [...(doc.selectedLayerIds ?? (doc.activeLayerId ? [doc.activeLayerId] : []))],
       selection: this.cloneHistorySelection(doc.selection, previous?.selection),
       width: doc.width, height: doc.height,
       resolutionPpi: doc.resolutionPpi ?? 72,
       channelView: doc.channelView,
       savedChannels: this.cloneHistoryChannels(doc.savedChannels, previous?.savedChannels),
       savedPaths: (doc.savedPaths ?? []).map(path => structuredClone(path)),
+      guides: doc.guides.map(guide => ({ ...guide })),
+      colorSamplers: doc.colorSamplers?.map(sampler => ({ ...sampler })),
+      measurements: doc.measurements?.map(measurement => structuredClone(measurement)),
+      frames: doc.frames?.map(frame => structuredClone(frame)),
     }
   }
 
@@ -735,12 +740,20 @@ export class Engine {
     // snapshot's canvases to tools that draw into them in-place.
     doc.layers = st.layers.map(layer => this.cloneHistoryLayer(layer))
     doc.activeLayerId = st.activeLayerId
+    doc.selectedLayerIds = (st.selectedLayerIds ?? (st.activeLayerId ? [st.activeLayerId] : []))
+      .filter(id => doc.layers.some(layer => layer.id === id))
     doc.selection = this.cloneHistorySelection(st.selection)
     doc.width = st.width; doc.height = st.height
     doc.resolutionPpi = Number.isFinite(st.resolutionPpi) ? Math.max(1, Number(st.resolutionPpi)) : 72
     doc.channelView = st.channelView
     doc.savedChannels = this.cloneHistoryChannels(st.savedChannels)
     doc.savedPaths = Array.isArray(st.savedPaths) ? st.savedPaths.map(path => structuredClone(path)) : []
+    // Older serialized snapshots lack these optional properties; preserve their
+    // current values rather than wiping document metadata on Undo.
+    if (st.guides) doc.guides = st.guides.map(guide => ({ ...guide }))
+    if ('colorSamplers' in st) doc.colorSamplers = st.colorSamplers?.map(sampler => ({ ...sampler }))
+    if ('measurements' in st) doc.measurements = st.measurements?.map(measurement => structuredClone(measurement))
+    if ('frames' in st) doc.frames = st.frames?.map(frame => structuredClone(frame))
     doc._stroke = null; doc._strokeLayerId = null; doc._strokeBlendMode = 'normal'; doc._strokeBbox = null
     doc.previewFilter = null; doc.previewAdjustment = null
     doc._epoch++
