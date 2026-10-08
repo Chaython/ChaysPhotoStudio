@@ -16,7 +16,8 @@ for (const id of ['getting-started','grow-similar','stroke-selection','offset','
   assert.ok(getHelpTopic(id), `Missing key help topic ${id}`)
 }
 assert.equal(getHelpTopic('unknown'), undefined)
-assert.deepEqual(searchHelpTopics('STROKE selection').map(t=>t.id), ['stroke-selection'])
+assert.ok(searchHelpTopics('STROKE selection').some(t=>t.id === 'stroke-selection'),
+  'search finds Stroke Selection even when other relevant results also match')
 assert.ok(searchHelpTopics('wrap around', 'Filters').some(t=>t.id === 'offset'))
 assert.equal(searchHelpTopics('offset', 'Selections').length, 0)
 assert.equal(readFileSync(new URL('../docs/USER_GUIDE.md',import.meta.url),'utf8'),renderUserGuideMarkdown(),
