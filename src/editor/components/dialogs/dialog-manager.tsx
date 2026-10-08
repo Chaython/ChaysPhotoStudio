@@ -1,4 +1,5 @@
 'use client'
+import { useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useEditorStore } from '../../store'
@@ -50,17 +51,14 @@ export function DialogManager() {
 }
 
 function PreviewClear() {
-  const dialogs = useEditorStore(s => s.dialogs)
-  const prev = useEditorStore(s => s.renderTick)
-  void prev
-  // when dialog count transitions to zero, clear any live previews
-  if (dialogs.length === 0 && (engine.activeDoc?.previewFilter || engine.activeDoc?.previewAdjustment)) {
-    // schedule outside render
-    queueMicrotask(() => {
+  const count = useEditorStore(s => s.dialogs.length)
+  // Never schedule microtasks during React render: one could clear a freshly
+  // opened dialog's preview after the editor has already moved on.
+  useEffect(() => {
+    if (count === 0 && useEditorStore.getState().dialogs.length === 0) {
       engine.clearPreviewFilter()
       engine.clearPreviewAdjustment()
-      engine.emit()
-    })
-  }
+    }
+  }, [count])
   return null
 }

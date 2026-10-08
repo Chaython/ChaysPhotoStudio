@@ -32,13 +32,15 @@ export function GenericAdjustmentDialog({ inst, onClose }: DialogProps) {
   })
   const [preview, setPreview] = useState(true)
   const [applying, setApplying] = useState(false) // heavy op runs off-thread — keep the commit airtight
+  const previewOwner = useRef(Symbol('adjustment-preview'))
+  const previewDoc = useRef(engine.activeDoc)
 
   // live preview (synchronous, stays on the main thread — preview paths are untouched by the worker offload)
   useEffect(() => {
     if (!def) return
-    if (preview) engine.setPreviewAdjustment(type, params)
-    else engine.clearPreviewAdjustment()
-    return () => engine.clearPreviewAdjustment()
+    if (preview) engine.setPreviewAdjustment(type, params, previewOwner.current, previewDoc.current)
+    else engine.clearPreviewAdjustment(previewOwner.current, previewDoc.current)
+    return () => engine.clearPreviewAdjustment(previewOwner.current, previewDoc.current)
   }, [params, preview, type, def])
 
   if (!def || !layerId) return null
@@ -46,7 +48,7 @@ export function GenericAdjustmentDialog({ inst, onClose }: DialogProps) {
   const apply = async () => {
     if (applying) return
     setApplying(true)
-    engine.clearPreviewAdjustment()
+    engine.clearPreviewAdjustment(previewOwner.current, previewDoc.current)
     try {
       if (mode === 'adjust-layer') {
         engine.setLayerAdjustment(layerId, type, params)
@@ -81,7 +83,7 @@ export function GenericAdjustmentDialog({ inst, onClose }: DialogProps) {
           Preview
         </label>
         <Button variant="secondary" size="sm" onClick={() => setParams({ ...def.defaults })} disabled={applying}>Reset</Button>
-        <Button variant="secondary" size="sm" onClick={() => { engine.clearPreviewAdjustment(); onClose() }} disabled={applying}>Cancel</Button>
+        <Button variant="secondary" size="sm" onClick={() => { engine.clearPreviewAdjustment(previewOwner.current, previewDoc.current); onClose() }} disabled={applying}>Cancel</Button>
         <Button size="sm" onClick={apply} disabled={applying}>{applying ? 'Applying…' : 'OK'}</Button>
       </DialogFooter>
     </>
@@ -104,6 +106,8 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
   })
   const [preview, setPreview] = useState(true)
   const [applying, setApplying] = useState(false) // heavy op runs off-thread — keep the commit airtight
+  const previewOwner = useRef(Symbol('filter-preview'))
+  const previewDoc = useRef(engine.activeDoc)
   const origSmartParams = useRef(smartFilterId ? structuredClone(params) : null)
   const smartEditCommitted = useRef(false)
 
@@ -111,8 +115,13 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
   // Otherwise a Smart Filter's preview writes directly into live layer data
   // without ever creating an Undo entry.
   useEffect(() => () => {
-    if (smartFilterId && !smartEditCommitted.current && origSmartParams.current) {
-      engine.updateSmartFilter(layerId ?? '', smartFilterId, origSmartParams.current)
+    if (smartFilterId) {
+      if (!smartEditCommitted.current && origSmartParams.current) {
+        engine.updateSmartFilter(layerId ?? '', smartFilterId, origSmartParams.current, previewDoc.current)
+      }
+    } else {
+      // Radix X/Escape and programmatic closes bypass the Cancel button.
+      engine.clearPreviewFilter(previewOwner.current, previewDoc.current)
     }
   }, [layerId, smartFilterId])
 
@@ -121,12 +130,14 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
     if (smartFilterId) {
       // Preview off must show the original Smart Filter, not the last
       // parameter values already written by a previous live preview.
-      engine.updateSmartFilter(layerId, smartFilterId,
-        preview ? params : (origSmartParams.current ?? params))
+      if (engine.activeDoc === previewDoc.current) {
+        engine.updateSmartFilter(layerId, smartFilterId,
+          preview ? params : (origSmartParams.current ?? params), previewDoc.current)
+      }
       return
     }
     if (!preview) {
-      engine.clearPreviewFilter()
+      engine.clearPreviewFilter(previewOwner.current, previewDoc.current)
       return
     }
 
@@ -134,7 +145,7 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
     // be composited. Coalesce it so broad blurs cannot stack main-thread work.
     const isBlur = type === 'gaussian-blur' || type === 'box-blur' || type === 'motion-blur' || type === 'radial-blur'
     const timer = window.setTimeout(
-      () => engine.setPreviewFilter(layerId, type, params),
+      () => engine.setPreviewFilter(layerId, type, params, previewOwner.current, previewDoc.current),
       isBlur ? 80 : 24,
     )
     return () => window.clearTimeout(timer)
@@ -147,11 +158,12 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
     setApplying(true)
     try {
       if (smartFilterId) {
-        engine.updateSmartFilter(layerId, smartFilterId, params)
-        engine.pushHistory(`Smart Filter: ${def.label}`)
+        if (engine.activeDoc !== previewDoc.current) return
+        engine.updateSmartFilter(layerId, smartFilterId, params, previewDoc.current)
+        engine.pushHistory(`Smart Filter: ${def.label}`, previewDoc.current!)
         smartEditCommitted.current = true
       } else {
-        engine.clearPreviewFilter()
+        engine.clearPreviewFilter(previewOwner.current, previewDoc.current)
         // heavy one-shot op — pixel math off the main thread (worker pool); identical history flow
         await engine.applyFilterToLayerAsync(layerId, type, params)
       }
@@ -161,9 +173,10 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
   }
   const cancel = () => {
     if (smartFilterId && origSmartParams.current) {
-      engine.updateSmartFilter(layerId, smartFilterId, origSmartParams.current)
+      engine.updateSmartFilter(layerId, smartFilterId, origSmartParams.current, previewDoc.current)
+      smartEditCommitted.current = true // already rolled back; do not do it twice during unmount
     }
-    engine.clearPreviewFilter()
+    engine.clearPreviewFilter(previewOwner.current, previewDoc.current)
     onClose()
   }
 

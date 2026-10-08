@@ -103,6 +103,10 @@ Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success o
 
 The local inpainting kernel currently consumes and writes 8-bit Canvas2D image data. It now refuses both 16-bit float and 32-bit HDR documents before copying/mutating pixels rather than silently quantizing the source image; 8-bit documents keep the existing non-destructive History flow. High-bit inpainting needs a future Float32-compatible synthesis path.
 
+## Filter and Adjustment dialog preview cleanup
+
+Filter and adjustment previews now hold document-scoped leases: closing via Escape, the X button, Cancel, or switching tabs clears only the preview owned by that dialog, including its original document if now inactive. A second dialog's newer preview is not accidentally erased. Smart Filter edits similarly restore original parameters in their initiating document rather than modifying the newly active tab. Preview changes invalidate the flattened composite cache, and the global last-dialog cleanup runs in a React effect instead of scheduling microtasks during render.
+
 ## HDR-safe automatic corrections and Match Color
 
 Auto Tone, Auto Contrast, and Auto Color use 256-bin, 0–255 histograms and are now guarded on scene-linear Float32 HDR documents (synchronous, background, and generic-region paths) instead of clipping HDR values. Match Color similarly refuses 32-bit HDR and locked/adjustment layers; on supported documents it verifies the source layer, active tab, History state, and epoch before committing a delayed worker result. A stale result never reports success or writes into another document.

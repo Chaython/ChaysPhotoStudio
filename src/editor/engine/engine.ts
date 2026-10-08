@@ -228,6 +228,11 @@ export class Engine {
   /** Photoshop Select > Reselect: document-scoped, detached last deselection. */
   private lastDeselectedSelections = new WeakMap<PsDocument, SelectionState>()
 
+  // Preview leases ensure that a dialog's unmount/Cancel cannot accidentally
+  // erase another dialog's live preview or clear the wrong document's preview.
+  private filterPreviewOwners = new WeakMap<PsDocument, symbol>()
+  private adjustmentPreviewOwners = new WeakMap<PsDocument, symbol>()
+
   private mergeHdrCanvasEdits(layer: Layer): void {
     if (!layer.hdrPixels || !layer.canvas || !layer._hdrPreviewBefore) return
     const before = layer._hdrPreviewBefore
@@ -3070,10 +3075,11 @@ export class Engine {
     this.emit()
   }
 
-  updateSmartFilter(layerId: string, filterId: string, params: Record<string, any>) {
-    const doc = this.activeDoc
-    const layer = this.layerById(layerId)
-    if (!doc || !layer) return
+  updateSmartFilter(layerId: string, filterId: string, params: Record<string, any>, expectedDoc?: PsDocument | null) {
+    const doc = expectedDoc ?? this.activeDoc
+    if (!doc || !this.docs.includes(doc)) return
+    const layer = doc.layers.find(item => item.id === layerId)
+    if (!layer) return
     const sf = layer.smartFilters.find(f => f.id === filterId)
     if (!sf) return
     sf.params = { ...params }
@@ -5833,35 +5839,51 @@ export class Engine {
   }
 
   // ================================================== previews (dialogs)
-  setPreviewFilter(layerId: string, type: FilterType, params: Record<string, any>) {
-    const doc = this.activeDoc
-    if (!doc) return
+  setPreviewFilter(layerId: string, type: FilterType, params: Record<string, any>,
+    owner?: symbol, expectedDoc?: PsDocument | null) {
+    const doc = expectedDoc ?? this.activeDoc
+    if (!doc || !this.docs.includes(doc) ||
+        (expectedDoc && this.activeDoc !== expectedDoc) ||
+        !doc.layers.some(layer => layer.id === layerId)) return
+    if (owner) this.filterPreviewOwners.set(doc, owner)
+    else this.filterPreviewOwners.delete(doc)
     doc.previewFilter = { layerId, type, params: { ...params } }
-    this.requestRender()
+    invalidateFlat(doc)
+    if (this.activeDoc === doc) this.requestRender()
     for (const l of this.listeners) l()
   }
 
-  clearPreviewFilter() {
-    const doc = this.activeDoc
-    if (!doc) return
+  clearPreviewFilter(owner?: symbol, expectedDoc?: PsDocument | null) {
+    const doc = expectedDoc ?? this.activeDoc
+    if (!doc || (owner && this.filterPreviewOwners.get(doc) !== owner)) return
+    this.filterPreviewOwners.delete(doc)
+    if (!doc.previewFilter) return
     doc.previewFilter = null
-    this.requestRender()
+    invalidateFlat(doc)
+    if (this.activeDoc === doc) this.requestRender()
     for (const l of this.listeners) l()
   }
 
-  setPreviewAdjustment(type: AdjustmentType, params: Record<string, any>) {
-    const doc = this.activeDoc
-    if (!doc) return
+  setPreviewAdjustment(type: AdjustmentType, params: Record<string, any>,
+    owner?: symbol, expectedDoc?: PsDocument | null) {
+    const doc = expectedDoc ?? this.activeDoc
+    if (!doc || !this.docs.includes(doc) || (expectedDoc && this.activeDoc !== expectedDoc)) return
+    if (owner) this.adjustmentPreviewOwners.set(doc, owner)
+    else this.adjustmentPreviewOwners.delete(doc)
     doc.previewAdjustment = { type, params: { ...params } }
-    this.requestRender()
+    invalidateFlat(doc)
+    if (this.activeDoc === doc) this.requestRender()
     for (const l of this.listeners) l()
   }
 
-  clearPreviewAdjustment() {
-    const doc = this.activeDoc
-    if (!doc) return
+  clearPreviewAdjustment(owner?: symbol, expectedDoc?: PsDocument | null) {
+    const doc = expectedDoc ?? this.activeDoc
+    if (!doc || (owner && this.adjustmentPreviewOwners.get(doc) !== owner)) return
+    this.adjustmentPreviewOwners.delete(doc)
+    if (!doc.previewAdjustment) return
     doc.previewAdjustment = null
-    this.requestRender()
+    invalidateFlat(doc)
+    if (this.activeDoc === doc) this.requestRender()
     for (const l of this.listeners) l()
   }
 
