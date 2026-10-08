@@ -39,6 +39,7 @@
     "tools:validate": "bun scripts/validate-tools.ts",
     "warp:validate": "bun scripts/validate-transform.ts",
     "history:validate": "bun scripts/validate-history.ts",
+    "selection-races:validate": "bun scripts/validate-selection-races.ts",
     "autosave:validate": "bun scripts/validate-autosave.ts",
     "worker:validate": "bun scripts/validate-worker-error.ts",
     "hdr:validate": "bun scripts/validate-hdr-geometry.ts",

@@ -95,6 +95,10 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 
 Documents now carry explicit **PPI resolution metadata** independently from pixel dimensions. New Document and Image Size expose Resolution; Image Size can change PPI without resampling pixels, matching the distinction between physical print size and raster dimensions. Crop and Perspective Crop may update PPI, project save/recovery preserves it, the Measure tool can calibrate physical units from it, the status bar reports it, and PSD import/export reads/writes Photoshop ResolutionInfo instead of hard-coding 72 DPI.
 
+## Editing safety and asynchronous selection consistency
+
+Magic Wand, Grow / Similar, and Stroke Selection now discard stale background results when the user changes the active selection, active source layer (where relevant), committed History state, or a live paint stroke before completion. This prevents slower workers from overwriting newer selections or placing a stroke above an unexpected layer. Fill rejects locked and adjustment layers before raster mutation. Smart Filter previews restore their original parameters whenever the editor closes the dialog via Escape/X/Cancel, and turning Preview off immediately restores the original appearance.
+
 ## Shared behavior standards
 
 All pixel-editing tools should remain selection-aware and undoable. Raster content outside the document frame must remain preserved unless the user explicitly chooses destructive cropping. Tools that can reasonably sample a flattened view should distinguish **sampling source** from **output destination** so "Sample All Layers" never accidentally flattens visible layers into the target.

@@ -104,12 +104,25 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
   })
   const [preview, setPreview] = useState(true)
   const [applying, setApplying] = useState(false) // heavy op runs off-thread — keep the commit airtight
-  const origSmartParams = useRef(smartFilterId ? { ...params } : null)
+  const origSmartParams = useRef(smartFilterId ? structuredClone(params) : null)
+  const smartEditCommitted = useRef(false)
+
+  // Closing via Escape/X or switching dialogs must behave like Cancel.
+  // Otherwise a Smart Filter's preview writes directly into live layer data
+  // without ever creating an Undo entry.
+  useEffect(() => () => {
+    if (smartFilterId && !smartEditCommitted.current && origSmartParams.current) {
+      engine.updateSmartFilter(layerId ?? '', smartFilterId, origSmartParams.current)
+    }
+  }, [layerId, smartFilterId])
 
   useEffect(() => {
     if (!def || !layerId) return
     if (smartFilterId) {
-      if (preview) engine.updateSmartFilter(layerId, smartFilterId, params)
+      // Preview off must show the original Smart Filter, not the last
+      // parameter values already written by a previous live preview.
+      engine.updateSmartFilter(layerId, smartFilterId,
+        preview ? params : (origSmartParams.current ?? params))
       return
     }
     if (!preview) {
@@ -136,6 +149,7 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
       if (smartFilterId) {
         engine.updateSmartFilter(layerId, smartFilterId, params)
         engine.pushHistory(`Smart Filter: ${def.label}`)
+        smartEditCommitted.current = true
       } else {
         engine.clearPreviewFilter()
         // heavy one-shot op — pixel math off the main thread (worker pool); identical history flow

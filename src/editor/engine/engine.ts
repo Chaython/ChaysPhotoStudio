@@ -3455,6 +3455,14 @@ export class Engine {
     const src = opts.sample === 'layer' && this.activeLayer ? this.layerCanvasDocSpace(this.activeLayer.id) : getFlatComposite(doc)
     if (!src) return
     const img = getImageData(src)
+    // Capture the selection AND the last committed history state before
+    // yielding to a worker. A subsequent click, Undo or edit takes priority.
+    const originalSelection = doc.selection
+    const selectionVersion = originalSelection?._v
+    const historyAnchor = doc.history.states[doc.history.index]
+    const sourceEpoch = doc._epoch
+    const strokeVersion = doc._strokeV
+    const sourceLayerId = opts.sample === 'layer' ? doc.activeLayerId : null
     const cx = clamp(Math.round(x), 0, doc.width - 1)
     const cy = clamp(Math.round(y), 0, doc.height - 1)
 
@@ -3487,7 +3495,11 @@ export class Engine {
     }
 
     // A large worker job may finish after the user switched documents.
-    if (this.activeDoc?.id !== doc.id || doc.width * doc.height !== mask.length) return
+    if (this.activeDoc !== doc || doc.width * doc.height !== mask.length ||
+        doc.selection !== originalSelection || doc.selection?._v !== selectionVersion ||
+        doc.history.states[doc.history.index] !== historyAnchor ||
+        doc._epoch !== sourceEpoch || doc._strokeV !== strokeVersion ||
+        (opts.sample === 'layer' && doc.activeLayerId !== sourceLayerId)) return
 
     if ((opts.smooth ?? 0) > 0 || (opts.feather ?? 0) > 0) {
       const temp = selectionFromMask(maskCanvasFromAlpha(mask, doc.width, doc.height))
@@ -3515,6 +3527,9 @@ export class Engine {
       return
     }
     const selectionVersion = selection._v
+    const historyAnchor = doc.history.states[doc.history.index]
+    const sourceEpoch = doc._epoch
+    const strokeVersion = doc._strokeV
     const selected = getMaskAlpha(selection.mask)
     const img = getImageData(getFlatComposite(doc))
     try {
@@ -3524,6 +3539,8 @@ export class Engine {
       })
       if (this.activeDoc !== doc || doc.selection !== selection ||
           doc.selection._v !== selectionVersion ||
+          doc.history.states[doc.history.index] !== historyAnchor ||
+          doc._epoch !== sourceEpoch || doc._strokeV !== strokeVersion ||
           doc.width * doc.height !== selected.length) return
       const next = new Uint8ClampedArray(selected.length)
       let changed = false
@@ -3744,11 +3761,19 @@ export class Engine {
       return false
     }
     const version = selection._v
+    const historyAnchor = doc.history.states[doc.history.index]
+    const sourceEpoch = doc._epoch
+    const strokeVersion = doc._strokeV
+    const originalLayerId = doc.activeLayerId
     const src = getImageData(selection.mask)
     try {
       const result = await runPixelOpAsync(src, { kind: 'selection-stroke', params: options })
       if (this.activeDoc !== doc || doc.selection !== selection ||
-          selection._v !== version || doc.width !== result.width || doc.height !== result.height) return false
+          selection._v !== version ||
+          doc.history.states[doc.history.index] !== historyAnchor ||
+          doc._epoch !== sourceEpoch || doc._strokeV !== strokeVersion ||
+          doc.activeLayerId !== originalLayerId ||
+          doc.width !== result.width || doc.height !== result.height) return false
       if (!result.data.some((v, i) => i % 4 === 3 && v > 0)) {
         this.ui?.toast('The selected stroke is outside the visible canvas', 'info')
         return false
@@ -3768,6 +3793,10 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.activeLayer
     if (!doc || !layer) return
+    if (layer.locked || layer.kind === 'adjustment') {
+      this.ui?.toast('Unlock a pixel-capable layer before filling', 'error')
+      return
+    }
     const l = this.mutateLayerPixels(layer.id)
     if (!l?.canvas) return
     const c = ctx2d(l.canvas)
