@@ -224,3 +224,32 @@ assert.equal(end.offsetX, 180, 'last layer remains fixed')
 rawEngine.undo()
 assert.equal(alignDoc.layers.find(l => l.id === middle.id)?.offsetX, 50)
 console.log('Align and Distribute preserve editable layers and history')
+
+
+// Photoshop Canvas Size anchor offset must consistently shift every
+// document-space mask, channel and vector reference, not just raster layers.
+const resizeDoc = alignDoc
+resizeDoc.width = 100
+resizeDoc.height = 60
+resizeDoc.layers = [resizeDoc.layers[0]]
+resizeDoc.layers[0].offsetX = 10
+resizeDoc.layers[0].offsetY = 5
+resizeDoc.selection = { mask: canvas(81), bounds: { x: 0, y: 0, w: 1, h: 1 }, _v: 2, _paths: null, _pathsV: -1 }
+resizeDoc.savedChannels = [{ id: 'alpha-canvas', name: 'Alpha', mask: canvas(82), _v: 2 }]
+resizeDoc.savedPaths = [{ id: 'path-canvas', name: 'Path', closed: false, visible: true,
+  anchors: [{ x: 8, y: 10, inX: 0, inY: 0, outX: 0, outY: 0, pair: true }] }]
+resizeDoc.guides = [{ id: 'guide-canvas', orientation: 'v', pos: 20 }]
+rawEngine.pushHistory('Before Canvas Size', resizeDoc)
+rawEngine.resizeCanvas({ w: 120, h: 80, anchor: 'bottom-right' })
+assert.equal(resizeDoc.layers[0].offsetX, 30)
+assert.equal(resizeDoc.layers[0].offsetY, 25)
+assert.equal(resizeDoc.selection?.mask.width, 120)
+assert.equal(resizeDoc.selection?.mask.height, 80)
+assert.equal(resizeDoc.savedChannels[0].mask.width, 120)
+assert.equal(resizeDoc.savedPaths?.[0].anchors[0].x, 28)
+assert.equal(resizeDoc.savedPaths?.[0].anchors[0].y, 30)
+assert.equal(resizeDoc.guides[0].pos, 40)
+rawEngine.undo()
+assert.equal(resizeDoc.width, 100)
+assert.equal(resizeDoc.selection?.mask.width, 2, 'undo restores the original selection backing store')
+console.log('Canvas Size translates masks, channels, saved paths and guides with undo')

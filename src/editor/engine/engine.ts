@@ -3895,7 +3895,7 @@ export class Engine {
     if (doc.selection) {
       const next = createCanvas(w, h)
       ctx2d(next).drawImage(doc.selection.mask, -x, -y)
-      doc.selection = { ...doc.selection, mask: next, _v: doc.selection._v + 1 }
+      doc.selection = selectionFromMask(next, doc.selection._v + 1)
     }
     for (const ch of doc.savedChannels) {
       const next = createCanvas(w, h)
@@ -3946,7 +3946,8 @@ export class Engine {
   resizeCanvas(opts: { w: number; h: number; anchor: 'center' | 'top-left' | 'top' | 'top-right' | 'left' | 'right' | 'bottom-left' | 'bottom' | 'bottom-right' }) {
     const doc = this.activeDoc
     if (!doc) return
-    const { w, h } = opts
+    const w = Math.max(1, Math.round(opts.w)), h = Math.max(1, Math.round(opts.h))
+    if (w === doc.width && h === doc.height) return
     let dx = 0, dy = 0
     const dw = w - doc.width, dh = h - doc.height
     if (opts.anchor.includes('left')) dx = 0
@@ -3980,7 +3981,55 @@ export class Engine {
       }
       if (l.text) { l.text.x += dx; l.text.y += dy }
       if (l.shape) { l.shape.x += dx; l.shape.y += dy }
+      if (l.vectorMask) {
+        l.vectorMask = mapVectorMask(l.vectorMask, a => ({ ...a, x: a.x + dx, y: a.y + dy }))
+      }
       l._v++; l._mv++
+    }
+    // Canvas Size must translate all document-space masks and geometry, not
+    // merely the visible layer canvases. Leaving old-size selection/channel
+    // masks causes invalid bounds and misregistered subsequent edits.
+    if (doc.selection) {
+      const mask = createCanvas(w, h)
+      ctx2d(mask).drawImage(doc.selection.mask, dx, dy)
+      doc.selection = selectionFromMask(mask, doc.selection._v + 1)
+    }
+    for (const channel of doc.savedChannels) {
+      const mask = createCanvas(w, h)
+      ctx2d(mask).drawImage(channel.mask, dx, dy)
+      channel.mask = mask
+      channel._v++
+    }
+    if (doc.savedPaths?.length) {
+      doc.savedPaths = doc.savedPaths.map(path => ({
+        ...path, anchors: path.anchors.map(a => ({ ...a, x: a.x + dx, y: a.y + dy })),
+      }))
+    }
+    if (doc.guides?.length) {
+      doc.guides = doc.guides
+        .map(g => ({ ...g, pos: g.pos + (g.orientation === 'v' ? dx : dy) }))
+        .filter(g => g.pos >= 0 && g.pos <= (g.orientation === 'v' ? w : h))
+    }
+    if (doc.measurements?.length) {
+      doc.measurements = doc.measurements.map(measurement => ({
+        ...measurement,
+        segments: measurement.segments.map(segment => ({
+          a: { x: segment.a.x + dx, y: segment.a.y + dy },
+          b: { x: segment.b.x + dx, y: segment.b.y + dy },
+        })),
+      }))
+    }
+    if (doc.frames?.length) {
+      doc.frames = doc.frames.map(frame => ({
+        ...frame,
+        layers: Object.fromEntries(Object.entries(frame.layers).map(([id, entry]) => [
+          id, {
+            ...entry,
+            x: entry.x === undefined ? undefined : entry.x + dx,
+            y: entry.y === undefined ? undefined : entry.y + dy,
+          },
+        ])),
+      }))
     }
     if (doc.colorSamplers?.length) {
       doc.colorSamplers = doc.colorSamplers
