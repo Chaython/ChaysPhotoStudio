@@ -99,6 +99,10 @@ Documents now carry explicit **PPI resolution metadata** independently from pixe
 
 Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success or record actions when the active layer is locked or lacks editable pixels. Direct Adjustment and Filter commits now reject known unsupported scene-linear 32-bit operations before cloning/mutating layer canvases; supported HDR filters such as Offset remain usable.
 
+## Background worker resilience
+
+Recoverable pixel-operation exceptions now reject the failing job without reprocessing a partially modified buffer and without disabling otherwise healthy background workers for the rest of the session. Genuine worker transport/load failures still trigger the existing conservative fallback and main-thread freeze guards. Regression coverage submits a second operation after an intentional partial worker failure and verifies that the original worker handles it.
+
 ## Async filter and HDR content-aware safety
 
 Filter workers now reject late output after document switches, edits to other layers, or Undo/History changes, even if the target layer's pixel version is unchanged. This keeps both History and recorded actions tied to the initiating document. Content-Aware Fill refuses 32-bit HDR documents rather than processing the low-precision display canvas; proper HDR inpainting needs a Float32 source/synthesis pipeline.

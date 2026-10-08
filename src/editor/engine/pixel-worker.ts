@@ -78,6 +78,15 @@ export class PixelOpUnrecoverableError extends Error {
   }
 }
 
+/** A reported application/parameter failure inside an otherwise healthy
+ * worker. Do not re-run partially mutated pixels or disable the worker pool. */
+export class PixelOpOperationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PixelOpOperationError'
+  }
+}
+
 // ------------------------------------------------------------ tuning
 const MAX_WORKERS = 2
 /** below this many pixels the worker round-trip costs more than the op — run sync */
@@ -329,9 +338,18 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
     return
   }
   if (msg.kind === 'error') {
-    warnOnce(`op error: ${msg.message ?? 'unknown'}`)
-    // the whole pool is latched off for the session — shut it down (this worker's
-    // job is already detached above, so no double recovery)
+    // The worker catches per-operation exceptions and remains healthy.
+    // A bad filter parameter must not turn OFF background processing for
+    // every subsequent filter. Never retry a partially mutated input.
+    const message = msg.message ?? 'pixel operation failed'
+    if (!message.startsWith('done-post failed:') && !message.includes('AND error-post failed:')) {
+      job.reject(new PixelOpOperationError(message))
+      drainQueue()
+      return
+    }
+    // A failed transport reply can indicate a broken worker protocol;
+    // isolate it without trusting potentially detached or modified input.
+    warnOnce(`worker reply failed: ${message}`)
     try { entry.worker.terminate() } catch { /* already dead */ }
     const others = pool
     pool = []
@@ -342,23 +360,7 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
       if (j) recoverJob(j, 'worker pool shut down')
     }
     flushPendingSync()
-    // A worker may have modified its transferred buffer before throwing.
-    // Running the operation again on that buffer can apply a filter twice.
-    // Only a separately retained ORIGINAL is suitable for a synchronous retry.
-    // Canvas callers re-read pristine pixels after an unrecoverable rejection.
-    if (avoidMainThreadFallback(job.width, job.height, job.op)) {
-      job.reject(workerRequiredError(job.op))
-    } else if (job.original) {
-      try {
-        job.resolve(runPixelOpSync(job.original, job.op))
-      } catch (err) {
-        job.reject(err)
-      }
-    } else {
-      job.reject(new PixelOpUnrecoverableError(
-        `pixel worker failed after input transfer: ${msg.message ?? 'unknown'}`,
-      ))
-    }
+    job.reject(new PixelOpUnrecoverableError(`pixel worker failed after input transfer: ${message}`))
     return
   }
 }
