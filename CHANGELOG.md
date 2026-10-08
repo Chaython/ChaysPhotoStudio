@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Exposed the existing non-destructive Photoshop-style **Layer > Align** (selected bounds, active layer, or canvas; six alignment modes) and **Layer > Distribute** (horizontal/vertical centers and spacing) using real flyout menus; added geometry, primary-layer preservation and Undo/Redo regression checks.
+
 - Fixed the Photoshop-style menu hierarchy: Transform, Adjustments, Filters, Matting and other submenus are real keyboard-accessible Radix flyouts instead of permanently expanded nested lists.
 - Enabled **Select > Reselect** (Ctrl+Shift+D) with document-scoped, independent selection-mask retention and undo/redo coverage; also exposed the existing full-fidelity **Image > Duplicate…** command in the menu.
 

@@ -178,3 +178,49 @@ assert.equal(duplicated!.selection, null, 'Undo Reselect clears the selection')
 rawEngine.redo()
 assert.equal(value(duplicated!.selection!.mask), beforeDeselectPixel, 'Redo Reselect restores its history-safe mask')
 console.log('Select > Reselect is independent, per-document and undo/redo-safe')
+
+
+// The engine already had Photoshop-style geometry operations, but they were
+// absent from the Layer menu. Verify that editable layer positions move once
+// per command, preserve the primary layer, and undo/redo round-trip.
+const alignDoc = duplicated!
+alignDoc.width = 200
+alignDoc.height = 100
+const anchor = alignDoc.layers[0]
+anchor.kind = 'raster'
+anchor.locked = false
+anchor.canvas = canvas(7)
+anchor.offsetX = 20
+anchor.offsetY = 30
+const movable: Layer = {
+  ...anchor, id: 'alignment-movable', name: 'Movable',
+  canvas: canvas(8), offsetX: 120, offsetY: 70, _v: 1,
+  hdrPixels: null, source: null, mask: null,
+}
+alignDoc.layers.push(movable)
+alignDoc.activeLayerId = anchor.id
+alignDoc.selectedLayerIds = [anchor.id, movable.id]
+rawEngine.pushHistory('Before Align', alignDoc)
+rawEngine.alignSelected('left', 'primary')
+assert.equal(anchor.offsetX, 20, 'primary layer must not move')
+assert.equal(movable.offsetX, 20, 'other layer aligns to primary')
+assert.equal(alignDoc.history.states[alignDoc.history.index].label, 'Align Layers')
+rawEngine.undo()
+assert.equal(alignDoc.layers.find(l => l.id === movable.id)?.offsetX, 120)
+rawEngine.redo()
+assert.equal(alignDoc.layers.find(l => l.id === movable.id)?.offsetX, 20)
+
+const top = alignDoc.layers.find(l => l.id === anchor.id)!
+const middle = alignDoc.layers.find(l => l.id === movable.id)!
+top.offsetX = 20
+middle.offsetX = 50
+const end: Layer = { ...middle, id: 'alignment-end', name: 'End', canvas: canvas(9), offsetX: 180, _v: 2 }
+alignDoc.layers.push(end)
+alignDoc.selectedLayerIds = [top.id, middle.id, end.id]
+rawEngine.pushHistory('Before Spacing', alignDoc)
+rawEngine.distributeSelectedSpacing('horizontal')
+assert.equal(middle.offsetX, 100, 'spacing distributes gaps between retained endpoints')
+assert.equal(end.offsetX, 180, 'last layer remains fixed')
+rawEngine.undo()
+assert.equal(alignDoc.layers.find(l => l.id === middle.id)?.offsetX, 50)
+console.log('Align and Distribute preserve editable layers and history')

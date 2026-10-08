@@ -116,6 +116,40 @@ const newAdjLayerItems: MenuItem[] = ([
   run: () => { engine.addAdjustmentLayer(t) },
 }))
 
+// ---------- Layer > Align / Distribute (editable, non-destructive) ----------
+type LayerAlignMode = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'
+type LayerAlignReference = 'selection' | 'primary' | 'canvas'
+const layerAlignModes: { id: LayerAlignMode; label: string }[] = [
+  { id: 'left', label: 'Left Edges' },
+  { id: 'hcenter', label: 'Horizontal Centers' },
+  { id: 'right', label: 'Right Edges' },
+  { id: 'top', label: 'Top Edges' },
+  { id: 'vcenter', label: 'Vertical Centers' },
+  { id: 'bottom', label: 'Bottom Edges' },
+]
+const layerAlignMenu: MenuItem[] = ([
+  { id: 'selection', label: 'Selected Layer Bounds' },
+  { id: 'primary', label: 'Active Layer' },
+  { id: 'canvas', label: 'Canvas' },
+] as { id: LayerAlignReference; label: string }[]).map(reference => ({
+  id: `layer-align-${reference.id}`,
+  label: reference.label,
+  enabled: () => engine.selectedLayers().length >= (reference.id === 'canvas' ? 1 : 2),
+  submenu: layerAlignModes.map(mode => ({
+    id: `layer-align-${reference.id}-${mode.id}`,
+    label: mode.label,
+    run: () => engine.alignSelected(mode.id, reference.id),
+  })),
+}))
+
+const layerDistributeMenu: MenuItem[] = [
+  { id: 'layer-distribute-h', label: 'Horizontal Centers', run: () => engine.distributeSelected('horizontal') },
+  { id: 'layer-distribute-v', label: 'Vertical Centers', run: () => engine.distributeSelected('vertical') },
+  S(),
+  { id: 'layer-distribute-spacing-h', label: 'Horizontal Spacing', run: () => engine.distributeSelectedSpacing('horizontal') },
+  { id: 'layer-distribute-spacing-v', label: 'Vertical Spacing', run: () => engine.distributeSelectedSpacing('vertical') },
+]
+
 // ---------- Filters ----------
 const filterGroups: { label: string; filters: FilterType[] }[] = [
   { label: 'Blur', filters: ['gaussian-blur', 'box-blur', 'motion-blur', 'radial-blur', 'average'] },
@@ -315,6 +349,9 @@ export const MENUS: MenuItem[][] = [
     { id: 'layer-delete', label: 'Delete Layer', run: () => engine.deleteLayer() },
     S(),
     { id: 'layer-new-adj', label: 'New Adjustment Layer', submenu: newAdjLayerItems },
+    S(),
+    { id: 'layer-align', label: 'Align', enabled: () => engine.selectedLayers().length > 0, submenu: layerAlignMenu },
+    { id: 'layer-distribute', label: 'Distribute', enabled: () => engine.selectedLayers().length >= 3, submenu: layerDistributeMenu },
     S(),
     { id: 'layer-mask-from-sel', label: 'Layer Mask from Selection', run: () => { const l = engine.activeLayer; if (l) engine.addLayerMask(l.id, true) } },
     { id: 'layer-mask-reveal', label: 'Layer Mask (Reveal All)', run: () => { const l = engine.activeLayer; if (l) engine.addLayerMask(l.id, false) } },
