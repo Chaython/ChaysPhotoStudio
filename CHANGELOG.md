@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Fixed pixel-worker failure recovery incorrectly rerunning filters on a potentially partially mutated transferred buffer. The engine now falls back only from a retained untouched original, or raises a recoverable error so canvas-backed callers can re-fetch safe input; added an error-path regression test.
+
 - Fixed crash-recovery autosave starvation under continuous editing: pending saves are no longer postponed by every editor event, timers for closed documents are cleaned up, same-document writes are serialized, and the expensive all-project recovery scan is skipped when the entry cap has not been reached. Added a headless autosave scheduling regression test.
 
 - Fixed **Image > Duplicate** flattening the document. Copies now retain independent raster/Smart Object canvases, masks, HDR Float32 layers, editable layer metadata, active and selected layers, saved channels/paths, guides, metadata, proof settings, animation frames and Layer Comps with regenerated layer references. Duplicates start their own undo History and include regression coverage.

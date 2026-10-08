@@ -51,6 +51,9 @@ jobs:
       - name: Validate recovery autosave scheduling
         run: bun run autosave:validate
 
+      - name: Validate worker error recovery
+        run: bun run worker:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 

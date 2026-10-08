@@ -10,8 +10,9 @@
 //     buffer (zero-copy transfer to the worker and back). Pass a
 //     buffer you own — e.g. a fresh getImageData() result. The
 //     promise resolves with a NEW ImageData (worker path) or the
-//     SAME ImageData mutated in place (sync path: images below
-//     SIZE_THRESHOLD_PX or any worker failure).
+//     SAME ImageData mutated in place (sync path for small images or a
+//     retained pristine original). Other transferred-buffer errors reject,
+//     allowing canvas-backed callers to re-fetch safe source pixels.
 //     opts.keepInput — clones the input buffer first so the caller's
 //     ImageData survives the call (one extra copy). The match-color
 //     source is always copied, never consumed.
@@ -329,19 +330,12 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
       if (j) recoverJob(j, 'worker pool shut down')
     }
     flushPendingSync()
-    // the worker posted the buffer back — pixels may be pristine (env failure,
-    // e.g. no ImageData constructor in that worker) or partially mutated (the op
-    // threw mid-run; a deterministic op fails identically on re-run, so this is
-    // either a correct result or the same error surfaces again).
+    // A worker may have modified its transferred buffer before throwing.
+    // Running the operation again on that buffer can apply a filter twice.
+    // Only a separately retained ORIGINAL is suitable for a synchronous retry.
+    // Canvas callers re-read pristine pixels after an unrecoverable rejection.
     if (avoidMainThreadFallback(job.width, job.height, job.op)) {
       job.reject(workerRequiredError(job.op))
-    } else if (msg.buffer) {
-      try {
-        const img = pixelImageFromBuffer(msg.buffer, job.width, job.height, job.pixelType, job.dynamicRange)
-        job.resolve(runPixelOpSync(img, job.op))
-      } catch (err) {
-        job.reject(err)
-      }
     } else if (job.original) {
       try {
         job.resolve(runPixelOpSync(job.original, job.op))
@@ -349,7 +343,9 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
         job.reject(err)
       }
     } else {
-      job.reject(new PixelOpUnrecoverableError(`pixel worker error without buffer: ${msg.message ?? 'unknown'}`))
+      job.reject(new PixelOpUnrecoverableError(
+        `pixel worker failed after input transfer: ${msg.message ?? 'unknown'}`,
+      ))
     }
     return
   }
@@ -421,9 +417,10 @@ function drainQueue(): void {
  * CONTRACT: consumes `img`'s ArrayBuffer unless opts.keepInput — the input
  * ImageData is transferred to the worker and comes back as the RESOLVED value
  * (a new ImageData object wrapping the same buffer). Below SIZE_THRESHOLD_PX,
- * or after any worker failure, the op runs synchronously and the SAME ImageData
- * object (mutated in place) is returned. Either way, callers write the result
- * back with putImageData.
+ * or when a pristine original is available, the op can run synchronously.
+ * After a worker error with no untouched copy, the promise rejects instead of
+ * reprocessing partially modified pixels. Callers write only resolved pixels
+ * back to the canvas.
  */
 export function runPixelOpAsync(img: PixelImage, op: PixelOpSpec, opts: PixelOpRunOptions = {}): Promise<PixelImage> {
   // small images: the worker round-trip (post + transfer + spawn) costs more than the op
