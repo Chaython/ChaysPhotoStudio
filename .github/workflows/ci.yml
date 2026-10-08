@@ -48,6 +48,9 @@ jobs:
       - name: Validate History pixel isolation
         run: bun run history:validate
 
+      - name: Validate recovery autosave scheduling
+        run: bun run autosave:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 

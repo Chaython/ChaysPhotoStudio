@@ -36,7 +36,11 @@ function request<T = unknown>(req: IDBRequest<T>): Promise<T> {
   })
 }
 
-export async function saveRecoverySnapshot(docId: string): Promise<void> {
+// Serialize saves per document so a slow old IndexedDB write cannot land
+// after a newer snapshot and revert the recovery state.
+const savesInFlight = new Map<string, Promise<void>>()
+
+async function persistRecoverySnapshot(docId: string): Promise<void> {
   const doc = engine.docs.find(d => d.id === docId)
   if (!doc) return
   const db = await openDb()
@@ -57,11 +61,29 @@ export async function saveRecoverySnapshot(docId: string): Promise<void> {
       tx.onerror = () => reject(tx.error ?? new Error('Autosave failed'))
       tx.onabort = () => reject(tx.error ?? new Error('Autosave aborted'))
     })
-    const all = await listRecoveryEntries()
-    await Promise.all(all.slice(MAX_RECOVERY).map(e => deleteRecoveryEntry(e.id)))
+    // Projects can contain many full-resolution layers and history snapshots.
+    // Avoid loading all recovery projects into memory after every ordinary save.
+    const countTx = db.transaction(STORE, 'readonly')
+    const count = await request<number>(countTx.objectStore(STORE).count())
+    if (count > MAX_RECOVERY) {
+      const all = await listRecoveryEntries()
+      await Promise.all(all.slice(MAX_RECOVERY).map(e => deleteRecoveryEntry(e.id)))
+    }
   } finally {
     db.close()
   }
+}
+
+export function saveRecoverySnapshot(docId: string): Promise<void> {
+  const previous = savesInFlight.get(docId) ?? Promise.resolve()
+  const current = previous.catch(() => { /* allow retry after a failed save */ })
+    .then(() => persistRecoverySnapshot(docId))
+  savesInFlight.set(docId, current)
+  void current.then(
+    () => { if (savesInFlight.get(docId) === current) savesInFlight.delete(docId) },
+    () => { if (savesInFlight.get(docId) === current) savesInFlight.delete(docId) },
+  )
+  return current
 }
 
 export async function listRecoveryEntries(): Promise<RecoveryEntry[]> {
@@ -117,14 +139,22 @@ export function startAutoSave(): () => void {
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   const knownDocs = new Set<string>()
   const schedule = (docId: string) => {
-    const old = timers.get(docId)
-    if (old) clearTimeout(old)
+    // Do not keep postponing recovery when brush/pointer events continuously
+    // emit updates. The pending callback reads the freshest document state.
+    if (timers.has(docId)) return
     timers.set(docId, setTimeout(() => {
       timers.delete(docId)
       void saveRecoverySnapshot(docId).catch(() => { /* recovery is best-effort */ })
     }, AUTOSAVE_DELAY))
   }
   const queue = () => {
+    const openIds = new Set(engine.docs.map(doc => doc.id))
+    for (const id of knownDocs) {
+      if (openIds.has(id)) continue
+      knownDocs.delete(id)
+      const timer = timers.get(id)
+      if (timer !== undefined) { clearTimeout(timer); timers.delete(id) }
+    }
     for (const doc of engine.docs) {
       // A first snapshot makes this double as a lightweight Recent Sessions list;
       // subsequent snapshots are only scheduled for documents with unsaved edits.
