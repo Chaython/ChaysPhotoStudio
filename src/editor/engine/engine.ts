@@ -1567,16 +1567,24 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(id)
     if (!doc || !layer) return
+    if (layer.locked) { this.ui?.toast('Layer is locked', 'error'); return }
     const l = this.mutateLayerPixels(id)
     if (!l?.canvas) return
-    const c = ctx2d(l.canvas)
-    const tmp = cloneCanvas(l.canvas)
-    c.save()
-    c.clearRect(0, 0, l.canvas!.width, l.canvas!.height)
-    c.translate(dir === 'horizontal' ? l.canvas!.width : 0, dir === 'vertical' ? l.canvas!.height : 0)
-    c.scale(dir === 'horizontal' ? -1 : 1, dir === 'vertical' ? -1 : 1)
-    c.drawImage(tmp, 0, 0)
-    c.restore()
+    if (l.kind === 'raster' && l.hdrPixels) {
+      l.hdrPixels = flipHdrPixels(l.hdrPixels, l.canvas.width, l.canvas.height, dir)
+      l.canvas = hdrFloat32ToPreviewCanvas(l.hdrPixels, l.canvas.width, l.canvas.height, 'srgb')
+      l._hdrPreviewBefore = null
+    } else {
+      const c = ctx2d(l.canvas)
+      const tmp = cloneCanvas(l.canvas)
+      c.save()
+      c.clearRect(0, 0, l.canvas.width, l.canvas.height)
+      c.translate(dir === 'horizontal' ? l.canvas.width : 0, dir === 'vertical' ? l.canvas.height : 0)
+      c.scale(dir === 'horizontal' ? -1 : 1, dir === 'vertical' ? -1 : 1)
+      c.drawImage(tmp, 0, 0)
+      c.restore()
+    }
+    l._v++
     invalidateFlat(doc)
     this.pushHistory('Flip Layer')
     this.emit()
@@ -1841,12 +1849,15 @@ export class Engine {
       this.ui?.toast('Trim Layer works on raster layers — rasterize first', 'info')
       return false
     }
+    this.syncPendingHdrCanvasEdits(doc)
     const src = target.canvas
-    const data = getImageData(src).data
+    const hdr = target.hdrPixels
+    const data = hdr ? null : getImageData(src).data
     let minX = src.width, minY = src.height, maxX = -1, maxY = -1
     for (let y = 0; y < src.height; y++) {
       for (let x = 0; x < src.width; x++) {
-        if (data[(y * src.width + x) * 4 + 3] === 0) continue
+        const alpha = hdr ? hdr[(y * src.width + x) * 4 + 3] : data![(y * src.width + x) * 4 + 3]
+        if (alpha <= 0) continue
         if (x < minX) minX = x
         if (x > maxX) maxX = x
         if (y < minY) minY = y
@@ -1860,9 +1871,16 @@ export class Engine {
     }
     const layer = this.mutateLayerPixels(target.id)
     if (!layer?.canvas) return false
-    const out = createCanvas(maxX - minX + 1, maxY - minY + 1)
-    ctx2d(out).drawImage(layer.canvas, -minX, -minY)
-    layer.canvas = out
+    const newW = maxX - minX + 1, newH = maxY - minY + 1
+    if (layer.hdrPixels) {
+      layer.hdrPixels = cropHdrPixels(layer.hdrPixels, layer.canvas.width, layer.canvas.height, newW, newH, minX, minY)
+      layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, newW, newH, 'srgb')
+      layer._hdrPreviewBefore = null
+    } else {
+      const out = createCanvas(newW, newH, canvasProfile(layer.canvas))
+      ctx2d(out).drawImage(layer.canvas, -minX, -minY)
+      layer.canvas = out
+    }
     layer.offsetX = (layer.offsetX ?? 0) + minX
     layer.offsetY = (layer.offsetY ?? 0) + minY
     layer._v++
@@ -1948,13 +1966,22 @@ export class Engine {
     if (layer.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels to expand', 'error'); return null }
     const r = this.layerContentRect(layer.id)
     if (!r || r.w < 1 || r.h < 1) { this.ui?.toast('This layer has no expandable content', 'error'); return null }
+    this.syncPendingHdrCanvasEdits(doc)
     const s = Math.max(doc.width / r.w, doc.height / r.h)
     if (Math.abs(s - 1) < 0.001) { this.ui?.toast('Layer already covers the frame', 'info'); return null }
     // target rect: the scaled bounds, centered on the document
     const nw = r.w * s, nh = r.h * s
     const tx = (doc.width - nw) / 2, ty = (doc.height - nh) / 2
     if (layer.kind === 'raster' && layer.canvas) {
-      layer.canvas = resampleCanvas(layer.canvas, Math.max(1, Math.round(layer.canvas.width * s)), Math.max(1, Math.round(layer.canvas.height * s)))
+      const newW = Math.max(1, Math.round(layer.canvas.width * s))
+      const newH = Math.max(1, Math.round(layer.canvas.height * s))
+      if (layer.hdrPixels) {
+        layer.hdrPixels = resampleHdrPixels(layer.hdrPixels, layer.canvas.width, layer.canvas.height, newW, newH)
+        layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, newW, newH, 'srgb')
+        layer._hdrPreviewBefore = null
+      } else {
+        layer.canvas = resampleCanvas(layer.canvas, newW, newH)
+      }
       layer.offsetX = Math.round(tx)
       layer.offsetY = Math.round(ty)
     } else if (layer.kind === 'smart' && layer.source) {
@@ -4268,6 +4295,10 @@ export class Engine {
     if (!doc || !layer) return
     if (layer.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels to transform', 'error'); return }
     if (layer.locked) { this.ui?.toast('Layer is locked', 'error'); return }
+    if (layer.kind === 'raster' && layer.hdrPixels) {
+      this.ui?.toast('Raster Free Transform is disabled for 32-bit HDR until scene-linear Float32 resampling is supported', 'info')
+      return
+    }
     const s = Math.max(0.01, opts.scale ?? 1)
     const rot = ((opts.rotation ?? 0) * Math.PI) / 180
     const tx = opts.x ?? 0, ty = opts.y ?? 0
@@ -4478,6 +4509,10 @@ export class Engine {
     if (!doc || !layer) return
     if (layer.locked) { this.ui?.toast('Layer is locked', 'error'); return }
     if (layer.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels to transform', 'error'); return }
+    if (layer.kind === 'raster' && layer.hdrPixels) {
+      this.ui?.toast('Raster Transform requires a Float32 HDR transformation path; convert to Smart Object to keep editable transformations', 'info')
+      return
+    }
 
     const base = this.layerTransformQuad(id)
     if (!base) { this.ui?.toast('This layer has no transformable content', 'error'); return }

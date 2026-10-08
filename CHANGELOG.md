@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Extended Float32-safe geometry to **Flip Layer**, **Trim Layer to Content**, and **Expand to Fill Frame** (including offset-layer alpha bounds). Guarded the remaining raster Free Transform/Transform paths on 32-bit HDR rather than risking stale scene-linear buffers.
+
 - Preserved scene-linear **32-bit HDR Float32 pixels** through image crop, resampling, canvas flips, and 90°/180°/270° rotations rather than updating only the display canvas. Fractional image resampling uses alpha-aware linear interpolation without clipping HDR highlights. Unsupported HDR projective crop and AI Upscale are blocked instead of silently corrupting authoritative pixels, with dedicated geometry tests.
 
 - Exposed the existing non-destructive Photoshop-style **Layer > Align** (selected bounds, active layer, or canvas; six alignment modes) and **Layer > Distribute** (horizontal/vertical centers and spacing) using real flyout menus; added geometry, primary-layer preservation and Undo/Redo regression checks.
