@@ -39,7 +39,7 @@ export function PuppetWarpDialog({ inst,onClose }:DialogProps){
   const layerId=String(inst.props?.layerId??engine.activeLayer?.id??'')
   const layer=layerId?engine.layerById(layerId):null
   const doc=engine.activeDoc
-  const sourceDocumentId=useRef(doc?.id ?? null)
+  const [sourceDocumentId]=useState(()=>doc?.id ?? null)
   const [source]=useState(()=>{
     const raw=layerId?engine.warpSourceCanvas(layerId):null
     if(!raw)return null
@@ -182,7 +182,7 @@ export function PuppetWarpDialog({ inst,onClose }:DialogProps){
     if(!source||!layerId||!pins.length||hdrBlocked)return
     const liveDoc=engine.activeDoc
     const liveLayer=liveDoc?.layers.find(item=>item.id===layerId)
-    if(!liveDoc||liveDoc.id!==sourceDocumentId.current||!liveLayer){
+    if(!liveDoc||liveDoc.id!==sourceDocumentId||!liveLayer){
       useEditorStore.getState().pushToast('The original Puppet Warp layer is no longer active','error')
       return
     }
@@ -280,7 +280,7 @@ export function PuppetWarpDialog({ inst,onClose }:DialogProps){
       </div>
       <DialogFooter>
         <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button size="sm" onClick={apply} disabled={!source||!pins.length||hdrBlocked||!layer||layer.locked||doc?.id!==sourceDocumentId.current}>Apply Puppet Warp</Button>
+        <Button size="sm" onClick={apply} disabled={!source||!pins.length||hdrBlocked||!layer||layer.locked||doc?.id!==sourceDocumentId}>Apply Puppet Warp</Button>
       </DialogFooter>
     </>
   )

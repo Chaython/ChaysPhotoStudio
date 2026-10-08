@@ -45,7 +45,7 @@ const layer: Layer = {
   opacity: 100, blendMode: 'normal', locked: false, clipped: false,
   canvas: canvas(10), source: canvas(20), mask: canvas(30),
   hdrPixels: new Float32Array([2, .5, 0, 1]),
-  transform: null, smartFilters: [{ id: 'f1', type: 'gaussianBlur', params: { settings: { radius: 4 } }, enabled: true }],
+  transform: null, smartFilters: [{ id: 'f1', type: 'gaussian-blur', params: { settings: { radius: 4 } }, enabled: true }],
   maskEnabled: true, vectorMask: null, adjustment: null, text: null, shape: null,
   blendIf: null, fx: null, _v: 1, _mv: 1,
 }
@@ -59,7 +59,7 @@ const doc = {
 
 // These helpers are intentionally private in production, but their buffer
 // isolation is a correctness contract shared by Undo, Redo and Snapshots.
-const engine = new Engine() as Engine & {
+const engine = new Engine() as unknown as {
   captureState: (doc: PsDocument, label: string, previous?: HistoryState) => HistoryState
   restoreState: (doc: PsDocument, state: HistoryState) => void
 }
