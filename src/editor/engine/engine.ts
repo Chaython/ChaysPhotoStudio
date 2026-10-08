@@ -728,7 +728,7 @@ export class Engine {
       channelView: doc.channelView,
       savedChannels: this.cloneHistoryChannels(doc.savedChannels, previous?.savedChannels),
       savedPaths: (doc.savedPaths ?? []).map(path => structuredClone(path)),
-      guides: doc.guides.map(guide => ({ ...guide })),
+      guides: (doc.guides ?? []).map(guide => ({ ...guide })),
       colorSamplers: doc.colorSamplers?.map(sampler => ({ ...sampler })),
       measurements: doc.measurements?.map(measurement => structuredClone(measurement)),
       frames: doc.frames?.map(frame => structuredClone(frame)),
