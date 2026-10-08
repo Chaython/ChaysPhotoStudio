@@ -885,3 +885,19 @@ rawEngine.rasterizeLayer(rasterGuardLayer.id)
 assert.equal(rasterGuardLayer.kind, 'smart', 'locked layer cannot be rasterized')
 assert.equal(repeatDoc.history.index, rasterHistoryBefore)
 console.log('Rasterize guards adjustments and locked layers without stamping document content')
+
+// Complex scene-linear HDR layers cannot fall back to an 8-bit composite.
+// Flatten/Merge Visible are guarded and must leave the History and document
+// untouched until every participating layer supports Float32 rendering.
+rasterGuardLayer.locked = false
+repeatDoc.workingBitDepth = 32
+const hdrGuardIds = repeatDoc.layers.map(l => l.id)
+const beforeUnsupportedHdrMerge = repeatDoc.history.index
+rawEngine.flatten()
+rawEngine.mergeVisible()
+rawEngine.mergeDown(rasterGuardLayer.id)
+assert.deepEqual(repeatDoc.layers.map(l => l.id), hdrGuardIds)
+assert.equal(repeatDoc.history.index, beforeUnsupportedHdrMerge,
+  'unsupported HDR operations must not create destructive history states')
+console.log('Unsupported HDR flatten, visible merge and merge down preserve all editable layers')
+
