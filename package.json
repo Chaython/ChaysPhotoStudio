@@ -43,7 +43,8 @@
     "worker:validate": "bun scripts/validate-worker-error.ts",
     "hdr:validate": "bun scripts/validate-hdr-geometry.ts",
     "selection-pixels:validate": "bun scripts/validate-selection-pixels.ts",
-    "layer-alpha:validate": "bun scripts/validate-layer-alpha.ts"
+    "layer-alpha:validate": "bun scripts/validate-layer-alpha.ts",
+    "layer-mask:validate": "bun scripts/validate-layer-mask.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

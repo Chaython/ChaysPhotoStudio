@@ -687,3 +687,29 @@ console.log('Paste at Canvas Center retains Float32 HDR and original Paste posit
 
 if (imageDataDescriptor) Object.defineProperty(globalThis, 'ImageData', imageDataDescriptor)
 else Reflect.deleteProperty(globalThis, 'ImageData')
+
+
+// Photoshop mask operations must not silently erase an editable Smart Object
+// or a locked layer. Disabled toggles must not create redundant History states.
+rawEngine.setActiveDocument(repeatDoc.id)
+const maskGuard = repeatDoc.layers.find(l => l.kind === 'smart')!
+maskGuard.mask = canvas(33)
+maskGuard.maskEnabled = true
+maskGuard.locked = false
+const smartMask = maskGuard.mask
+rawEngine.deleteLayerMask(maskGuard.id, true)
+assert.equal(maskGuard.mask, smartMask, 'Apply on Smart Object retains editable mask')
+maskGuard.locked = true
+rawEngine.deleteLayerMask(maskGuard.id, false)
+assert.equal(maskGuard.mask, smartMask, 'locked layer keeps mask')
+maskGuard.locked = false
+const beforeMaskToggle = repeatDoc.history.index
+rawEngine.setLayerMaskEnabled(maskGuard.id, true)
+assert.equal(repeatDoc.history.index, beforeMaskToggle, 'unchanged mask toggle is a no-op')
+rawEngine.setLayerMaskEnabled(maskGuard.id, false)
+assert.equal(maskGuard.maskEnabled, false)
+rawEngine.undo()
+assert.equal(maskGuard.maskEnabled, true)
+rawEngine.redo()
+assert.equal(maskGuard.maskEnabled, false)
+console.log('Layer Mask apply guards and no-op toggle Undo/Redo pass')

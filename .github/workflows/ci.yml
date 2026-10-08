@@ -63,6 +63,9 @@ jobs:
       - name: Validate layer transparency selections
         run: bun run layer-alpha:validate
 
+      - name: Validate HDR layer masks
+        run: bun run layer-mask:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 

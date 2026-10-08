@@ -41,6 +41,7 @@ import { embedRasterMetadata } from '../formats/metadata-write'
 import { affineHdrPixels, cropHdrPixels, flipHdrPixels, resampleHdrPixels, rotateHdrPixels } from '../image-ops/hdr-geometry'
 import { splitHdrSelectionPixels } from '../image-ops/selection-pixels'
 import { rasterTransparencyAlpha } from '../image-ops/layer-transparency'
+import { applyHdrRasterMask, createLayerMaskAlpha, type LayerMaskCreationMode } from '../image-ops/layer-mask'
 
 export const MAX_HISTORY = 50
 
@@ -2197,58 +2198,101 @@ export class Engine {
   }
 
   // layer masks
+  /** Keep the legacy call signature used by tools and panels. The explicit
+   * menu variants use addLayerMaskMode so a missing selection is not silently
+   * interpreted as Reveal All. */
   addLayerMask(id: string, fromSelection = true) {
+    this.addLayerMaskMode(id, fromSelection ? 'reveal-selection' : 'reveal-all')
+  }
+
+  addLayerMaskMode(id: string, mode: LayerMaskCreationMode): void {
     const doc = this.activeDoc
     const layer = this.layerById(id)
     if (!doc || !layer) return
-    const mask = createCanvas(doc.width, doc.height)
-    const mCtx = ctx2d(mask)
-    mCtx.fillStyle = '#ffffff'
-    mCtx.fillRect(0, 0, doc.width, doc.height)
-    if (fromSelection && doc.selection) {
-      mCtx.globalCompositeOperation = 'destination-in'
-      mCtx.drawImage(doc.selection.mask, 0, 0)
-      mCtx.globalCompositeOperation = 'source-over'
+    if (layer.locked) { this.ui?.toast('Unlock the layer to add a mask', 'error'); return }
+    if (layer.mask) { this.ui?.toast('Layer already has a mask', 'info'); return }
+    const selectionMode = mode === 'reveal-selection' || mode === 'hide-selection'
+    if (selectionMode && !doc.selection) {
+      this.ui?.toast('Select an area before creating a selection mask', 'info')
+      return
     }
-    layer.mask = mask
+    const selectionAlpha = selectionMode ? getMaskAlpha(doc.selection!.mask) : undefined
+    const alpha = createLayerMaskAlpha(doc.width, doc.height, mode, selectionAlpha)
+    layer.mask = maskCanvasFromAlpha(alpha, doc.width, doc.height)
     layer.maskEnabled = true
     layer._mv++
     invalidateFlat(doc)
-    this.pushHistory('Add Layer Mask')
+    this.pushHistory('Add Layer Mask: ' + mode, doc)
     this.emit()
   }
 
-  deleteLayerMask(id: string, apply = false) {
+  /** Inverting a mask edits the mask alpha without destructively changing the
+   * source pixels. The mask remains independent of an active selection. */
+  invertLayerMask(id: string): void {
     const doc = this.activeDoc
     const layer = this.layerById(id)
-    if (!doc || !layer || !layer.mask) return
+    if (!doc || !layer?.mask || layer.locked) return
+    const alpha = getMaskAlpha(layer.mask)
+    for (let i = 0; i < alpha.length; i++) alpha[i] = 255 - alpha[i]
+    layer.mask = maskCanvasFromAlpha(alpha, layer.mask.width, layer.mask.height)
+    layer._mv++
+    invalidateFlat(doc)
+    this.pushHistory('Invert Layer Mask', doc)
+    this.emit()
+  }
+
+  deleteLayerMask(id: string, apply = false): void {
+    const doc = this.activeDoc
+    const layer = this.layerById(id)
+    if (!doc || !layer?.mask || layer.locked) return
     if (apply) {
-      // bake mask into pixels
-      const l = this.mutateLayerPixels(id)
-      if (l?.canvas && l.mask) {
-        const c = ctx2d(l.canvas)
-        c.save()
-        c.globalCompositeOperation = 'destination-in'
-        // masks are doc-space — align to the layer's offset registration
-        c.translate(-(l.offsetX ?? 0), -(l.offsetY ?? 0))
-        c.drawImage(l.mask, 0, 0)
-        c.restore()
+      // Never discard the only editable mask on a text/shape/Smart Object,
+      // nor bake a 32-bit HDR mask through its 8-bit display preview.
+      if (layer.kind !== 'raster' || !layer.canvas) {
+        this.ui?.toast('Rasterize the layer before applying its mask', 'error')
+        return
+      }
+      if (layer.mask.width !== doc.width || layer.mask.height !== doc.height) {
+        this.ui?.toast('Layer mask dimensions do not match the document', 'error')
+        return
+      }
+      if (layer.maskEnabled) {
+        this.syncPendingHdrCanvasEdits(doc)
+        const alpha = getMaskAlpha(layer.mask)
+        const live = this.mutateLayerPixels(id)
+        if (!live?.canvas) return
+        if (live.hdrPixels) {
+          live.hdrPixels = applyHdrRasterMask(live.hdrPixels,
+            live.canvas.width, live.canvas.height,
+            Math.round(live.offsetX ?? 0), Math.round(live.offsetY ?? 0),
+            alpha, doc.width, doc.height)
+          live.canvas = hdrFloat32ToPreviewCanvas(live.hdrPixels, live.canvas.width, live.canvas.height, 'srgb')
+          live._hdrPreviewBefore = null
+        } else {
+          const ctx = ctx2d(live.canvas)
+          ctx.save()
+          ctx.globalCompositeOperation = 'destination-in'
+          ctx.drawImage(layer.mask, -Math.round(live.offsetX ?? 0), -Math.round(live.offsetY ?? 0))
+          ctx.restore()
+        }
       }
     }
     layer.mask = null
+    layer.maskEnabled = true
     layer._mv++
     invalidateFlat(doc)
-    this.pushHistory(apply ? 'Apply Layer Mask' : 'Delete Layer Mask')
+    this.pushHistory(apply ? 'Apply Layer Mask' : 'Delete Layer Mask', doc)
     this.emit()
   }
 
-  setLayerMaskEnabled(id: string, enabled: boolean) {
+  setLayerMaskEnabled(id: string, enabled: boolean): void {
+    const doc = this.activeDoc
     const layer = this.layerById(id)
-    if (!layer?.mask) return
+    if (!doc || !layer?.mask || layer.locked || layer.maskEnabled === enabled) return
     layer.maskEnabled = enabled
     layer._mv++
-    invalidateFlat(this.activeDoc!)
-    this.pushHistory(enabled ? 'Enable Layer Mask' : 'Disable Layer Mask')
+    invalidateFlat(doc)
+    this.pushHistory(enabled ? 'Enable Layer Mask' : 'Disable Layer Mask', doc)
     this.emit()
   }
 
