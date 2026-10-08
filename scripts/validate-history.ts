@@ -18,7 +18,7 @@ class TestCanvas {
     if (!this.context) this.context = {
       drawImage: (source: TestCanvas) => { this.pixel = source.pixel },
       getContextAttributes: () => ({ colorType: 'unorm8', colorSpace: 'srgb' }),
-      getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+      getImageData: () => ({ data: new Uint8ClampedArray(this.width * this.height * 4) }),
       putImageData: () => {},
     }
     return this.context
