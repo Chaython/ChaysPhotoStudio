@@ -8,16 +8,18 @@ const src = new Float32Array([
 const original = new Float32Array(src)
 // Source extends left of the document, offset X=-1; selection x=0 samples
 // source x=1, so off-canvas HDR data must never leak into the lifted layer.
-const selected = new Uint8ClampedArray([255, 128, 0, 255])
+const selected = new Uint8ClampedArray([255, 0, 128, 255])
 const result = splitHdrSelectionPixels(src, 3, 2, -1, 0,
   { x: 0, y: 0, w: 2, h: 2 }, selected, true)
 assert.equal(result.hasPixels, true)
 assert.equal(result.pixels[0], 4, 'first copied pixel maps offset raster correctly')
 assert.equal(result.pixels[3], .8)
 assert.equal(result.pixels[4], 0, 'unselected transparent source stays transparent')
-assert.equal(result.pixels[11], 0, 'zero selection alpha yields transparent output')
-assert.equal(result.pixels[12], 9, 'HDR RGB values above 1 stay intact')
-assert.ok(Math.abs(result.pixels[15] - .75) < 1e-6)
+assert.equal(result.pixels[7], 0, 'transparent source stays transparent')
+assert.equal(result.pixels[8], 9, 'HDR RGB values above 1 stay intact')
+assert.ok(Math.abs(result.pixels[11] - .75 * 128 / 255) < 1e-6)
+assert.equal(result.pixels[12], 6)
+assert.ok(Math.abs(result.pixels[15] - .4) < 1e-6)
 assert.ok(result.remaining)
 assert.equal(result.remaining![3], 1, 'off-canvas source alpha is untouched')
 assert.equal(result.remaining![7], 0, 'fully cut selection removes only selected source')
