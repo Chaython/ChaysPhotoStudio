@@ -6,7 +6,7 @@ import {
 import type { MenuItem } from '../../constants/menus'
 import { MENUS, PLUGINS_MENU_INDEX, getPluginsMenuItems } from '../../constants/menus'
 import { useEditorStore } from '../../store'
-import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, RotateCcw, LayoutGrid, Check, Smartphone } from 'lucide-react'
+import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -96,6 +96,12 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
           <span className="hidden sm:inline">Generate</span>
         </button>
 
+        <button className="flex items-center gap-1 text-muted-foreground hover:text-foreground px-1.5 py-1 rounded hover:bg-accent"
+          onClick={() => openDialog('help-guide')} aria-label="Help & User Guide" title="Help & User Guide">
+          <CircleHelp size={15}/>
+          <span className="hidden xl:inline text-[11px]">Help</span>
+        </button>
+
         <button
           className="text-muted-foreground hover:text-foreground p-1.5 rounded hover:bg-accent"
           onClick={cycleTheme}
@@ -127,6 +133,9 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
               <Contrast size={13} /><span className="flex-1">OLED black / high contrast</span>{theme === 'oled' && <Check size={13} />}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('help-guide')}>
+              <CircleHelp size={13}/><span className="flex-1">Help & User Guide</span>
+            </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('shortcuts')}>
               <Keyboard size={13} /><span className="flex-1">Keyboard shortcuts</span>
             </DropdownMenuItem>

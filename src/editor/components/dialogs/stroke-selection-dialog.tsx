@@ -11,6 +11,7 @@ import type { StrokePlacement } from '../../image-ops/selection-stroke'
 import type { DialogProps } from './generic-dialogs'
 
 export function StrokeSelectionDialog({ onClose }: DialogProps) {
+  const openHelp = useEditorStore(s => s.openDialog)
   const fg = useEditorStore(s => s.fgColor)
   const [width, setWidth] = useState(3)
   const [placement, setPlacement] = useState<StrokePlacement>('inside')
@@ -66,6 +67,8 @@ export function StrokeSelectionDialog({ onClose }: DialogProps) {
         </p>
       </div>
       <DialogFooter>
+        <Button size="sm" variant="outline" disabled={busy} className="mr-auto"
+          onClick={() => { onClose(); openHelp('help-guide', { topic: 'stroke-selection' }) }}>Help</Button>
         <Button size="sm" variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button>
         <Button size="sm" disabled={busy || !Number.isInteger(width) || width < 1 || width > 200 ||
           !Number.isFinite(opacity) || opacity < 0 || opacity > 100} onClick={() => { void apply() }}>

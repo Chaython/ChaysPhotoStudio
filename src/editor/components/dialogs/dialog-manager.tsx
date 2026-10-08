@@ -19,8 +19,8 @@ export function DialogManager() {
             <DialogContent
               aria-describedby={undefined}
               className={
-                ['select-mask', 'content-aware-fill', 'curves', 'levels', 'batch', 'script-console', 'camera-raw', 'color-range', 'ai-upscale', 'ai-generate', 'liquify', 'content-aware-scale', 'match-color', 'plugin-manager', 'shortcuts', 'customize-toolbar', 'transform'].includes(d.type)
-                  ? 'max-w-2xl max-h-[85vh] overflow-y-auto zphoto-scroll'
+                ['help-guide', 'select-mask', 'content-aware-fill', 'curves', 'levels', 'batch', 'script-console', 'camera-raw', 'color-range', 'ai-upscale', 'ai-generate', 'liquify', 'content-aware-scale', 'match-color', 'plugin-manager', 'shortcuts', 'customize-toolbar', 'transform'].includes(d.type)
+                  ? (d.type === 'help-guide' ? 'max-w-4xl max-h-[90vh] overflow-y-auto zphoto-scroll' : 'max-w-2xl max-h-[85vh] overflow-y-auto zphoto-scroll')
                   : 'max-w-md max-h-[85vh] overflow-y-auto zphoto-scroll'
               }
               style={{ zIndex: 60 + i }}

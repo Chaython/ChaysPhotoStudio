@@ -46,6 +46,8 @@
     "selection-color:validate": "bun scripts/validate-selection-color.ts",
     "selection-stroke:validate": "bun scripts/validate-selection-stroke.ts",
     "offset:validate": "bun scripts/validate-offset.ts",
+    "help:generate": "bun scripts/generate-help.ts",
+    "help:validate": "bun scripts/validate-help.ts",
     "layer-alpha:validate": "bun scripts/validate-layer-alpha.ts",
     "layer-mask:validate": "bun scripts/validate-layer-mask.ts",
     "hdr-composite:validate": "bun scripts/validate-hdr-composite.ts"

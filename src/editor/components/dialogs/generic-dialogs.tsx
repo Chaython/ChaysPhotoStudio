@@ -92,6 +92,7 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
   const type = inst.type as FilterType
   const layerId = inst.props?.layerId ?? engine.activeLayer?.id
   const smartFilterId = inst.props?.smartFilterId as string | undefined
+  const openHelp = useEditorStore(s => s.openDialog)
   const layer = layerId ? engine.layerById(layerId) : null
   const def = imageOps.FILTERS[type]
   const [params, setParams] = useState<Record<string, any>>(() => {
@@ -168,6 +169,10 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
           <input type="checkbox" checked={preview} onChange={e => setPreview(e.target.checked)} className="accent-primary" />
           Preview
         </label>
+        {type === 'offset' && <Button size="sm" variant="outline" disabled={applying} onClick={() => {
+          cancel()
+          openHelp('help-guide', { topic: 'offset' })
+        }}>Help</Button>}
         <Button variant="secondary" size="sm" onClick={() => setParams({ ...def.defaults })} disabled={applying}>Reset</Button>
         <Button variant="secondary" size="sm" onClick={cancel} disabled={applying}>Cancel</Button>
         <Button size="sm" onClick={apply} disabled={applying}>{applying ? 'Applying…' : 'OK'}</Button>

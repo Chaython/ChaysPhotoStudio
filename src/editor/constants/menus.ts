@@ -626,6 +626,8 @@ export const MENUS: MenuItem[][] = [
   ],
   // ================= HELP =================
   [
+    { id: 'help-guide', label: 'User Guide & Documentation…', run: () => openDlg('help-guide') },
+    S(),
     { id: 'help-about', label: "About Chay's Photo Studio", run: () => openDlg('about') },
     { id: 'help-license', label: 'License & Donations…', run: () => openDlg('about') },
     {

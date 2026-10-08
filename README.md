@@ -9,6 +9,12 @@ free Pollinations engine (no account or key) or your own OpenAI-compatible endpo
 
 **Live app:** https://chaython.github.io/ChaysPhotoStudio/
 
+## Help & user documentation
+
+Click the **Help** button (?) in the upper toolbar or choose **Help → User Guide & Documentation…**. Browse and search the categorized documentation without leaving the editor, including offline web/desktop use. The **Stroke Selection** and **Offset** dialogs have contextual Help buttons.
+
+The same manual is also readable on GitHub: **[User Guide](docs/USER_GUIDE.md)**. It covers Grow/Similar selections, Stroke Selection, Offset and seamless textures, layers, masks, Smart Objects, HDR, file exports, recovery and other workflows. Update `src/editor/help/topics.ts` and run `bun run help:generate` to regenerate the Markdown guide; CI checks they remain in sync.
+
 The GitHub Pages site serves the editor itself. The commands below are only for running a local development copy.
 
 ## Quick start (local development)
