@@ -546,6 +546,17 @@ try {
   assert.equal(bitmapWasClosed, true)
   draw(clipboardLayer.selection!.mask, 2)
   assert.equal(value(externalLayer.mask), 73, 'editing selection never modifies external paste mask')
+  // Force an external read even when an older internal clipboard remains
+  // populated; otherwise Paste might silently use stale internal artwork.
+  raw._clip = originalInternalClip
+  const beforeForcedExternal = clipboardLayer.layers.length
+  assert.equal(await rawEngine.pasteFromSystemClipboard(true), true)
+  assert.equal(clipboardLayer.layers.length, beforeForcedExternal + 1)
+  const forcedExternal = clipboardLayer.layers.find(l => l.id === clipboardLayer.activeLayerId)!
+  assert.equal(forcedExternal.name, 'Pasted Image')
+  assert.equal(forcedExternal.maskEnabled, true)
+  assert.equal(forcedExternal.hdrPixels?.[0], 0, 'forced system paste must not use stale internal HDR pixels')
+  raw._clip = null
   rawEngine.undo()
   assert.ok(!clipboardLayer.layers.some(l => l.id === externalLayer.id))
   rawEngine.redo()
