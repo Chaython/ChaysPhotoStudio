@@ -404,3 +404,36 @@ assert.ok(selectedIdsForLock.every(id => repeatDoc.layers.find(l => l.id === id)
 rawEngine.redo()
 assert.ok(selectedIdsForLock.every(id => !repeatDoc.layers.find(l => l.id === id)?.locked))
 console.log('Layer Lock/Unlock acts on multi-selection with one undoable History entry')
+
+
+// The internal clipboard must retain Float32 HDR highlights during Copy/Paste.
+// The OS PNG clipboard remains SDR by design, but internal 32-bit documents
+// preserve full source values and paste from an independent pixel allocation.
+rawEngine.setActiveDocument(repeatDoc.id)
+repeatDoc.selection = null
+repeatDoc.workingBitDepth = 32
+repeatDoc.width = 2
+repeatDoc.height = 2
+const hdrSource = repeatDoc.layers[0]
+hdrSource.kind = 'raster'
+hdrSource.locked = false
+hdrSource.canvas = canvas(33)
+hdrSource.offsetX = 0
+hdrSource.offsetY = 0
+hdrSource.hdrPixels = new Float32Array([
+  12, 2, .25, 1, 3, .2, 1, .5,
+  1, 2, 3, 1, 6, 4, .5, .25,
+])
+hdrSource._hdrPreviewBefore = null
+repeatDoc.activeLayerId = hdrSource.id
+repeatDoc.selectedLayerIds = [hdrSource.id]
+assert.equal(rawEngine.copyLayer(false), true, 'HDR copy succeeds')
+assert.equal(rawEngine.pasteLayer(), true, 'HDR paste succeeds')
+const pastedHdr = repeatDoc.layers.find(l => l.id === repeatDoc.activeLayerId)!
+assert.ok(pastedHdr.hdrPixels)
+assert.equal(pastedHdr.hdrPixels![0], 12, 'pasting preserves values above SDR white')
+assert.equal(pastedHdr.hdrPixels![12], 6)
+assert.notEqual(pastedHdr.hdrPixels, hdrSource.hdrPixels, 'clipboard and pasted HDR buffers are separate')
+pastedHdr.hdrPixels![0] = 0
+assert.equal(hdrSource.hdrPixels![0], 12, 'editing the paste does not modify its source')
+console.log('HDR internal Copy/Paste preserves Float32 scene-linear pixels')

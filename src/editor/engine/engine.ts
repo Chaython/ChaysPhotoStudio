@@ -2527,7 +2527,7 @@ export class Engine {
 
   // ================================================== clipboard (internal + system interop)
 
-  private _clip: { canvas: HTMLCanvasElement; offsetX: number; offsetY: number; name: string } | null = null
+  private _clip: { canvas: HTMLCanvasElement; hdrPixels?: Float32Array | null; offsetX: number; offsetY: number; name: string } | null = null
 
   /** Copy the active layer (or the merged composite with merged=true) to the
    *  internal clipboard AND the system clipboard (PNG). With an active
@@ -2538,7 +2538,9 @@ export class Engine {
     const doc = this.activeDoc
     if (!doc) { this.ui?.toast('No document open', 'error'); return false }
     let canvas: HTMLCanvasElement
+    let hdrPixels: Float32Array | null = null
     let ox = 0, oy = 0, name = 'Layer'
+    this.syncPendingHdrCanvasEdits(doc)
     if (merged) {
       const composite = compositeDocument(doc)
       if (doc.selection) {
@@ -2578,10 +2580,21 @@ export class Engine {
         ctx.drawImage(doc.selection.mask, -x0, -y0)
         if (l.kind === 'raster' && l.maskEnabled && l.mask) ctx.drawImage(l.mask, -x0, -y0)
         ctx.restore()
+        if (l.kind === 'raster' && l.canvas && l.hdrPixels) {
+          const region = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+          const selectionAlpha = this.selectionRegionAlpha(doc.selection.mask, region)
+          const layerMaskAlpha = l.maskEnabled && l.mask &&
+            l.mask.width === doc.width && l.mask.height === doc.height
+            ? this.selectionRegionAlpha(l.mask, region) : undefined
+          hdrPixels = splitHdrSelectionPixels(l.hdrPixels, l.canvas.width, l.canvas.height,
+            Math.round(l.offsetX ?? 0), Math.round(l.offsetY ?? 0),
+            region, selectionAlpha, false, layerMaskAlpha).pixels
+        }
         ox = x0; oy = y0
         name = l.name
       } else if (l.kind === 'raster' && l.canvas) {
         canvas = cloneCanvas(l.canvas)
+        hdrPixels = l.hdrPixels ? new Float32Array(l.hdrPixels) : null
         ox = l.offsetX ?? 0; oy = l.offsetY ?? 0
         name = l.name
       } else {
@@ -2591,7 +2604,7 @@ export class Engine {
         name = l.name
       }
     }
-    this._clip = { canvas, offsetX: ox, offsetY: oy, name }
+    this._clip = { canvas, hdrPixels, offsetX: ox, offsetY: oy, name }
     void this.writeSystemClipboard(canvas)
     return true
   }
@@ -2670,6 +2683,14 @@ export class Engine {
     layer.canvas = cloneCanvas(clip.canvas)
     layer.offsetX = clip.offsetX
     layer.offsetY = clip.offsetY
+    if (doc.workingBitDepth === 32) {
+      const expected = layer.canvas.width * layer.canvas.height * 4
+      layer.hdrPixels = clip.hdrPixels && clip.hdrPixels.length === expected
+        ? new Float32Array(clip.hdrPixels) : hdrPixelsFromCanvas(layer.canvas)
+      layer.hdrColorSpace = 'linear-srgb'
+      layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
+      layer._hdrPreviewBefore = null
+    }
     const idx = doc.layers.findIndex(x => x.id === doc.activeLayerId)
     doc.layers.splice(idx + 1, 0, layer)
     doc.activeLayerId = layer.id

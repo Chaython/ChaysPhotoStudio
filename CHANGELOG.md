@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Preserved 32-bit scene-linear **Float32 HDR data through internal Copy/Paste**, including feathered selected regions. Pasted layers receive independent pixel buffers. The external PNG clipboard remains a display-compatible SDR image.
+
 - Fixed **Edit > Copy Merged (Ctrl+Shift+C)** ignoring the active selection. The clipboard now contains only the selected composite region, preserves feathered selection alpha, and remembers its original document offset for Paste.
 
 - Fixed **Edit > Clear** on 32-bit HDR rasters: feathered selections now modify the scene-linear Float32 alpha buffer directly, without clipping surviving HDR highlights to display precision. Locked/non-raster layers are protected, and non-overlapping selection deletes are no-ops.
