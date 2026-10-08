@@ -4,6 +4,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added a headless History regression test covering immutable undo snapshots, restored live canvas isolation, saved selection/channel masks, nested editable layer settings, HDR pixels, and version-aware sharing of unchanged frozen pixels.
+
 - Fixed Puppet Warp pin rotation on non-square layers by applying rotation in aspect-correct physical coordinates; blocked stale/locked layer application and prevented false success notices when the transform is rejected. Added CPU-only geometry regression tests to CI.
 
 - Fixed undo/redo and History Snapshot state corruption: raster/Smart Object canvases, layer masks, selection masks, saved alpha channels and HDR pixels are frozen independently of live buffers; nested editable layer properties are copied, while unchanged versioned pixels are shared only between immutable History entries to limit memory use.

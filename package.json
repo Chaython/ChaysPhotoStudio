@@ -37,7 +37,8 @@
     "app:dist:mac:arm64": "node scripts/prepare-electron-app.mjs && electron-builder --mac --arm64 --config electron-builder.yml --publish never",
     "dist:validate": "node scripts/validate-distribution.mjs",
     "tools:validate": "bun scripts/validate-tools.ts",
-    "warp:validate": "bun scripts/validate-transform.ts"
+    "warp:validate": "bun scripts/validate-transform.ts",
+    "history:validate": "bun scripts/validate-history.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

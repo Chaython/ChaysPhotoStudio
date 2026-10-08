@@ -45,6 +45,9 @@ jobs:
       - name: Validate Puppet Warp geometry
         run: bun run warp:validate
 
+      - name: Validate History pixel isolation
+        run: bun run history:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
