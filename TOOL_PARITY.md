@@ -103,6 +103,10 @@ Synchronous and asynchronous Auto Tone/Contrast/Color no longer report success o
 
 The local inpainting kernel currently consumes and writes 8-bit Canvas2D image data. It now refuses both 16-bit float and 32-bit HDR documents before copying/mutating pixels rather than silently quantizing the source image; 8-bit documents keep the existing non-destructive History flow. High-bit inpainting needs a future Float32-compatible synthesis path.
 
+## Float32 HDR selection Fill
+
+**Edit → Fill** now paints directly into authoritative Float32 scene-linear raster pixels in 32-bit HDR documents. HEX foreground colors are converted from sRGB into linear RGB; the source-over blend preserves unclipped HDR highlights and soft selection transparency. Non-overlapping selections do not create History, and offset raster buffers clip to the document correctly. Text, shapes and Smart Objects must be explicitly rasterized for this operation rather than silently reducing precision. CI validates fractional alpha, highlights above 1.0, no-op selections and offsets.
+
 ## Atomic synchronous edits
 
 Direct one-shot Filter, Adjustment and region operations now compute on detached buffers and commit only after successful processing. Failed operations do not rasterize Smart Objects or add an extra rasterization History entry, and invalid result dimensions are rejected before touching live layers. Auto Tone/Contrast/Color and Canvas2D-only region operations require an 8-bit document until a float-precision implementation is available.

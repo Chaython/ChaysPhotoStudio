@@ -40,6 +40,7 @@ import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 import { embedRasterMetadata } from '../formats/metadata-write'
 import { affineHdrPixels, cropHdrPixels, flipHdrPixels, resampleHdrPixels, rotateHdrPixels } from '../image-ops/hdr-geometry'
 import { splitHdrSelectionPixels } from '../image-ops/selection-pixels'
+import { hasHdrFillCoverage, paintHdrRasterFill } from '../image-ops/hdr-fill'
 import { rasterTransparencyAlpha } from '../image-ops/layer-transparency'
 import { applyHdrRasterMask, createLayerMaskAlpha, type LayerMaskCreationMode } from '../image-ops/layer-mask'
 import { layerContentForRasterization } from './rasterize-layer'
@@ -3805,6 +3806,35 @@ export class Engine {
     if (!doc || !layer) return
     if (layer.locked || layer.kind === 'adjustment') {
       this.ui?.toast('Unlock a pixel-capable layer before filling', 'error')
+      return
+    }
+    if (doc.workingBitDepth === 32) {
+      if (layer.kind !== 'raster' || !layer.canvas) {
+        this.ui?.toast('Rasterize the layer before 32-bit HDR Fill', 'error')
+        return
+      }
+      if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(color)) {
+        this.ui?.toast('HDR Fill requires a hexadecimal foreground color', 'error')
+        return
+      }
+      const mask = doc.selection ? getMaskAlpha(doc.selection.mask) : null
+      const ox = layer.offsetX ?? 0, oy = layer.offsetY ?? 0
+      if (!hasHdrFillCoverage(layer.canvas.width, layer.canvas.height,
+        ox, oy, doc.width, doc.height, mask)) return
+      this.syncPendingHdrCanvasEdits(doc)
+      const live = this.mutateLayerPixels(layer.id)
+      if (!live?.canvas) return
+      const pixels = live.hdrPixels ?? hdrPixelsFromCanvas(live.canvas)
+      paintHdrRasterFill(pixels, live.canvas.width, live.canvas.height,
+        ox, oy, doc.width, doc.height, mask, color)
+      live.hdrPixels = pixels
+      live.hdrColorSpace = 'linear-srgb'
+      live.canvas = hdrFloat32ToPreviewCanvas(pixels, live.canvas.width, live.canvas.height, 'srgb')
+      live._hdrPreviewBefore = null
+      invalidateFlat(doc)
+      this.pushHistory('Fill', doc)
+      this.recordStep({ op: 'fill', args: { color }, label: 'Fill' })
+      this.emit()
       return
     }
     const l = this.mutateLayerPixels(layer.id)

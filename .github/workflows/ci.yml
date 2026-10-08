@@ -90,6 +90,9 @@ jobs:
       - name: Validate HDR layer compositing
         run: bun run hdr-composite:validate
 
+      - name: Validate scene-linear HDR Fill
+        run: bun run hdr-fill:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
