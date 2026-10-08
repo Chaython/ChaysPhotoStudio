@@ -38,6 +38,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 ### Color & files
 
 - [Color depth, HDR and proofing](#color-depth-hdr-and-proofing)
+- [Match Color between documents](#match-color-between-documents)
 - [Saving, exporting and metadata](#saving-exporting-and-metadata)
 
 ### Workspace
@@ -271,6 +272,7 @@ Remove objects or reconstruct vacated areas.
 **Notes and tips:**
 
 - Content-Aware Fill estimates hidden pixels and may need manual cleanup.
+- Content-Aware Fill requires an 8-bit document; 16-bit float and 32-bit HDR are blocked to prevent precision loss.
 
 ## Color depth, HDR and proofing
 
@@ -288,6 +290,25 @@ Work at appropriate precision and simulate output colors.
 - Not every filter supports authoritative Float32 HDR.
 - Soft proofing changes the preview, not source image pixels.
 - ICC LUT/CLUT support remains incomplete.
+- Auto Tone, Auto Contrast, Auto Color and Match Color are not yet supported on 32-bit HDR documents.
+
+## Match Color between documents
+
+Transfer color and contrast characteristics from one open image to a layer in another document.
+
+**Where:** Image → Adjustments → Match Color…
+
+1. Open the image to modify and a second image that will serve as the color reference.
+2. Select an unlocked raster or rasterizable layer in the document you want to modify.
+3. Choose Image → Adjustments → Match Color… and select the other open image under Source.
+4. Adjust Luminance, Color Intensity, Fade and Neutralize while viewing the Before/After sample.
+5. Choose Match Color to apply the result as an undoable pixel edit, or Cancel to leave the layer unchanged.
+
+**Notes and tips:**
+
+- The command does not support 32-bit scene-linear HDR documents yet; no conversion is performed silently.
+- The original layer is modified, so duplicate it first if you want to keep the source independently editable.
+- Long operations discard stale results if you switch documents, edit the layer or change History.
 
 ## Saving, exporting and metadata
 

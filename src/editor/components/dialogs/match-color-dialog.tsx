@@ -56,6 +56,7 @@ function SliderRow({ label, value, min, max, step = 1, unit, disabled, onChange,
 }
 
 export function MatchColorDialog({ onClose }: DialogProps) {
+  const openHelp = useEditorStore(s => s.openDialog)
   const doc = engine.activeDoc
   const layer = engine.activeLayer
   const renderTick = useEditorStore(s => s.renderTick)
@@ -319,6 +320,8 @@ export function MatchColorDialog({ onClose }: DialogProps) {
         </div>
       </div>
       <DialogFooter>
+        <Button variant="outline" size="sm" className="mr-auto" disabled={busy}
+          onClick={() => { onClose(); openHelp('help-guide', { topic: 'match-color' }) }}>Help</Button>
         <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
         <Button size="sm" onClick={apply} disabled={busy || !activeSource}>
           <Wand2 size={13} className="mr-1.5" />
