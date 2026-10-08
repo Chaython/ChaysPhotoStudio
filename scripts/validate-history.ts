@@ -455,8 +455,7 @@ assert.notEqual(pastedHdr.hdrPixels, hdrSource.hdrPixels, 'clipboard and pasted 
 pastedHdr.hdrPixels![0] = 0
 assert.equal(hdrSource.hdrPixels![0], 12, 'editing the paste does not modify its source')
 console.log('HDR internal Copy/Paste preserves Float32 scene-linear pixels')
-if (imageDataDescriptor) Object.defineProperty(globalThis, 'ImageData', imageDataDescriptor)
-else Reflect.deleteProperty(globalThis, 'ImageData')
+
 
 
 // Paste Into keeps the copied artwork editable, with a detached document-space
@@ -506,3 +505,5 @@ assert.ok(repeatDoc.layers.some(l => l.id === doomedId))
 rawEngine.redo()
 assert.equal(repeatDoc.activeLayerId, neighborId, 'Redo selects the correct adjacent layer')
 console.log('Delete Layer retains nearest stack position and cleans stale selected IDs')
+if (imageDataDescriptor) Object.defineProperty(globalThis, 'ImageData', imageDataDescriptor)
+else Reflect.deleteProperty(globalThis, 'ImageData')
