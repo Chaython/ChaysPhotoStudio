@@ -431,6 +431,13 @@ export const MENUS: MenuItem[][] = [
     { id: 'sel-deselect', label: 'Deselect', shortcut: sc('deselect'), run: () => engine.deselect() },
     { id: 'sel-reselect', label: 'Reselect', shortcut: sc('reselect'), enabled: () => engine.canReselectSelection(), run: () => engine.reselectSelection() },
     { id: 'sel-inverse', label: 'Inverse', shortcut: sc('invertSelection'), run: () => engine.invertSelection() },
+    { id: 'sel-layer-alpha', label: 'Load Layer Transparency', enabled: () => !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment',
+      submenu: [
+        { id: 'sel-layer-alpha-new', label: 'Replace Selection', run: () => engine.loadLayerTransparency('new') },
+        { id: 'sel-layer-alpha-add', label: 'Add to Selection', run: () => engine.loadLayerTransparency('add') },
+        { id: 'sel-layer-alpha-sub', label: 'Subtract from Selection', run: () => engine.loadLayerTransparency('subtract') },
+        { id: 'sel-layer-alpha-intersect', label: 'Intersect with Selection', run: () => engine.loadLayerTransparency('intersect') },
+      ] },
     S(),
     { id: 'sel-subject', label: 'Select Subject', run: () => engine.selectSubject() },
     { id: 'sel-detect-objects', label: 'Detect Objects (AI)…', run: () => openDlg('detect-objects') },

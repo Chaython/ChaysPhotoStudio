@@ -40,6 +40,7 @@ import { mapVectorMask, type VectorMaskOp } from './vector-mask'
 import { embedRasterMetadata } from '../formats/metadata-write'
 import { affineHdrPixels, cropHdrPixels, flipHdrPixels, resampleHdrPixels, rotateHdrPixels } from '../image-ops/hdr-geometry'
 import { splitHdrSelectionPixels } from '../image-ops/selection-pixels'
+import { rasterTransparencyAlpha } from '../image-ops/layer-transparency'
 
 export const MAX_HISTORY = 50
 
@@ -1520,11 +1521,21 @@ export class Engine {
     const layer = id ? this.layerById(id) : this.activeLayer
     if (!doc || !layer) return
     if (doc.layers.length <= 1) { this.ui?.toast('Cannot delete the last layer', 'error'); return }
-    doc.layers = doc.layers.filter(l => l.id !== layer.id)
+    const removedAt = doc.layers.findIndex(l => l.id === layer.id)
+    if (removedAt < 0) return
+    doc.layers.splice(removedAt, 1)
+    // Choose the neighbor at the original stack position, not a lookup for
+    // the already deleted ID (which always returned -1 and selected the top).
     if (doc.activeLayerId === layer.id) {
-      doc.activeLayerId = doc.layers[Math.min(doc.layers.length - 1, doc.layers.findIndex(l => l.id === layer.id))]?.id ?? doc.layers[doc.layers.length - 1].id
+      doc.activeLayerId = doc.layers[Math.min(removedAt, doc.layers.length - 1)].id
     }
-    this.pushHistory('Delete Layer')
+    const liveIds = new Set(doc.layers.map(l => l.id))
+    doc.selectedLayerIds = (doc.selectedLayerIds ?? []).filter(id => liveIds.has(id))
+    if (doc.activeLayerId && !doc.selectedLayerIds.includes(doc.activeLayerId)) {
+      doc.selectedLayerIds = [doc.activeLayerId]
+    }
+    invalidateFlat(doc)
+    this.pushHistory('Delete Layer', doc)
     this.emit()
   }
 
@@ -3170,6 +3181,34 @@ export class Engine {
       return
     }
     this.setSelectionAlpha(mask, opts.mode, 'Magic Wand')
+  }
+
+  /** Photoshop Select > Load Selection from the active layer's opacity.
+   * Raster transparency is read from authoritative Float32 HDR alpha where
+   * possible; transformed Smart Objects/text/shapes use their rendered alpha.
+   * Photoshop's pixel-thumbnail semantics exclude a raster's separate masks.
+   */
+  loadLayerTransparency(mode: SelectionCombine = 'new'): void {
+    const doc = this.activeDoc
+    const layer = this.activeLayer
+    if (!doc || !layer || layer.kind === 'adjustment') return
+    this.syncPendingHdrCanvasEdits(doc)
+    let alpha: Uint8ClampedArray
+    if (layer.kind === 'raster' && layer.canvas) {
+      const pixels = layer.hdrPixels ?? getImageData(layer.canvas).data
+      alpha = rasterTransparencyAlpha(pixels, layer.canvas.width, layer.canvas.height,
+        doc.width, doc.height, Math.round(layer.offsetX ?? 0), Math.round(layer.offsetY ?? 0))
+    } else {
+      const rendered = prepareLayer(doc, layer)
+      if (!rendered) return
+      alpha = rasterTransparencyAlpha(getImageData(rendered).data, rendered.width, rendered.height,
+        doc.width, doc.height, 0, 0)
+    }
+    if (!alpha.some(a => a > 0)) {
+      this.ui?.toast('The active layer contains no selectable pixels', 'info')
+      return
+    }
+    this.setSelectionAlpha(alpha, mode, 'Load Layer Transparency')
   }
 
   loadChannelAsSelection(channel: 'r' | 'g' | 'b' | 'luminosity' | 'rgb' | string) {

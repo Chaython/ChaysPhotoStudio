@@ -60,6 +60,9 @@ jobs:
       - name: Validate selection pixel lifting
         run: bun run selection-pixels:validate
 
+      - name: Validate layer transparency selections
+        run: bun run layer-alpha:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
