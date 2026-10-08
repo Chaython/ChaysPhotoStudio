@@ -366,3 +366,18 @@ smart.locked = false
 rawEngine.setActiveDocument(originalDoc.id)
 assert.equal(rawEngine.canRepeatLastFilter(), false, 'Last Filter settings are document-scoped')
 console.log('Filter > Last Filter supports Smart Filters, parameter isolation and locked-layer safety')
+
+
+// Selection modifiers with zero or invalid widths are no-ops and cannot
+// erase a selection or allocate a History snapshot.
+rawEngine.setActiveDocument(originalDoc.id)
+const originalSelection = originalDoc.selection
+assert.ok(originalSelection)
+const historyBeforeInvalidModify = originalDoc.history.index
+for (const bad of [0, -2, Number.NaN, Infinity]) {
+  rawEngine.selectionModify('smooth', bad)
+  rawEngine.selectionModify('contract', bad)
+}
+assert.equal(originalDoc.selection, originalSelection)
+assert.equal(originalDoc.history.index, historyBeforeInvalidModify)
+console.log('Select > Modify invalid radii cannot destroy selection state')

@@ -2844,7 +2844,11 @@ export class Engine {
   selectionModify(op: 'grow' | 'contract' | 'feather' | 'border' | 'smooth' | 'invert', px: number) {
     const doc = this.activeDoc
     if (!doc?.selection) { this.ui?.toast('No active selection', 'error'); return }
+    // Invalid / zero-width selections must not silently round up to one pixel
+    // or erase the user's selection and create a spurious History entry.
+    if (op !== 'invert' && (!Number.isFinite(px) || px <= 0)) return
     const next = modifySelection(doc.selection, op, px)
+    if (next === null && doc.selection.bounds.w <= 0) return
     doc.selection = next
     this.pushHistory(op === 'invert' ? 'Inverse' : `${op[0].toUpperCase()}${op.slice(1)} Selection`)
     this.emitOverlay()
