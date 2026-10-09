@@ -30,7 +30,7 @@ Actions → *Variables*):
 |---|---|---|
 | `WEBVIEW_APP_URL` | Optional Tauri thin-shell URL override | unset — Tauri embeds `build/webapp-export` |
 
-The **browser plugin and default Tauri release are self-contained**. GitHub Pages
+The **browser plugin and default Tauri release are self-contained**; local editing needs no external hosting, but remote AI calls and fetched resources remain online features. See [WebView Offline Audit](docs/WEBVIEW_OFFLINE_AUDIT.md) for the embedded CSP, native window-state and recovery limitations. GitHub Pages
 publishes the static live editor automatically from default-branch builds. The
 repository's one-time Pages setting must use **Settings → Pages → Build and
 deployment → Source → GitHub Actions**.
@@ -115,7 +115,11 @@ The portable target is built directly by electron-builder; it extracts its runti
 
 The default Tauri release bundles local static editor assets (`build/webapp-export`) and uses the **system WebView**; that is different from bundling a WebView2 runtime installer. A normal Windows NSIS installer may need internet to provision WebView2 when it is missing. A separate Windows NSIS **offline WebView2 installer** is now configured on `main` by merged [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85). Its release asset prefix is `webview-windows-offline-x64--`; verify the release job completed successfully before distributing the artifact.
 
-A separate [WebView hardening and recovery PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86) still proposes an embedded-release CSP, native window state restoration, recovery-backup exports, an optional manual release checker and optional Authenticode signing. None are assumed to be in the latest stable build until merged. The required Windows code-signing secrets and updater keys are **not** supplied by the repository.
+Merged [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86) adds embedded-release CSP, native window-state restoration, manual recovery snapshot exports, a user-initiated release checker, and optional Authenticode signing. Signing only activates when real publisher credentials are configured; Tauri signed **automatic updates** are not enabled. Verify that release artifacts have actually been built before assuming an installer includes any newly merged change.
+
+### Optional Windows Authenticode signing
+
+The release job recognizes optional `WINDOWS_CODESIGN_PFX_BASE64` and `WINDOWS_CODESIGN_PFX_PASSWORD` Actions secrets and signs/verifies Windows WebView NSIS installers when both are supplied. The workflow skips signing if neither is configured. **Checksums are not signatures**, and Authenticode does not replace Tauri updater signature keys. See [WebView Offline Audit](docs/WEBVIEW_OFFLINE_AUDIT.md) for details.
 
 ### Offline versus online features
 
