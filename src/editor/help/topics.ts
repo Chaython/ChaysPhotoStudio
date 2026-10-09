@@ -392,7 +392,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     ],
     "tips": [
       "The Shortcuts dialog shows the current binding if it has been customized.",
-      "Main currently registers 48 tools; additional Pen and Type Mask tools are pending PR #82."
+      "Main registers 52 tools, including Freeform/Curvature Pen and both Type Mask variants; shared keys cycle within tool families."
     ]
   },
   {
