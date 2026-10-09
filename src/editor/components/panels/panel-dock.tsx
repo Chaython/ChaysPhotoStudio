@@ -289,17 +289,16 @@ const PHOTOSHOP_UPPER_TABS = ['color', 'adjustments', 'properties', 'navigator',
 const PHOTOSHOP_LOWER_TABS = ['layers', 'channels', 'paths', 'history', 'actions']
 
 function PhotoshopRightDock() {
-  const [upper, setUpper] = useState('color')
-  const [lower, setLower] = useState('layers')
+  const [upperSelection, setUpperSelection] = useState('color')
+  const [lowerSelection, setLowerSelection] = useState('layers')
   const rightTab = useEditorStore(s => s.panels.rightTab)
-  // Window → Reveal Panel and the + menu still work in the split inspector.
-  useEffect(() => {
-    if (!PANEL_MAP[rightTab]) return
-    if (PHOTOSHOP_UPPER_TABS.includes(rightTab)) setUpper(rightTab)
-    else setLower(rightTab)
-  }, [rightTab])
-  const selectUpper = (id: string) => { setUpper(id); useEditorStore.getState().setRightPanelTab(id) }
-  const selectLower = (id: string) => { setLower(id); useEditorStore.getState().setRightPanelTab(id) }
+  // Derive active tabs from the shared store so Window → Reveal Panel and the
+  // + menu work without setState-in-effect loops.
+  const isUpper = PHOTOSHOP_UPPER_TABS.includes(rightTab)
+  const upper = isUpper ? rightTab : upperSelection
+  const lower = !isUpper && PANEL_MAP[rightTab] ? rightTab : lowerSelection
+  const selectUpper = (id: string) => { setUpperSelection(id); useEditorStore.getState().setRightPanelTab(id) }
+  const selectLower = (id: string) => { setLowerSelection(id); useEditorStore.getState().setRightPanelTab(id) }
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
   const width = useEditorStore(s => s.panels.dockWidth)
