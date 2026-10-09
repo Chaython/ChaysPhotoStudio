@@ -99,7 +99,7 @@ Find tools and customize the appearance of the studio.
 4. Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.
 5. Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.
 6. Choose Settings → Reset panel layout if a panel is difficult to locate.
-7. On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right.
+7. On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right. Docks fit their contents by default; drag the dock divider for a fixed size or double-click it to return to automatic sizing.
 
 **Notes and tips:**
 
