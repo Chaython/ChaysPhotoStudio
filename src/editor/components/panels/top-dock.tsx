@@ -142,6 +142,7 @@ function HeightDivider({ height, onHeight, onReset, bottom = false }: {
     // Auto-height rows no longer use the stored (legacy) height. Begin from
     // the rendered strip size so the first manual resize never jumps.
     drag.current = { startY: e.clientY, startH: e.currentTarget.parentElement?.getBoundingClientRect().height || height }
+    pending.current = null
     setActive(true)
   }
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -151,13 +152,15 @@ function HeightDivider({ height, onHeight, onReset, bottom = false }: {
     if (!rafId.current) {
       rafId.current = requestAnimationFrame(() => {
         rafId.current = 0
-        if (pending.current !== null) onHeight(pending.current)
+        if (pending.current !== null) { const next = pending.current; pending.current = null; onHeight(next) }
       })
     }
   }
   const onUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!drag.current) return
     drag.current = null
+    if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = 0 }
+    if (pending.current !== null) { const next = pending.current; pending.current = null; onHeight(next) }
     setActive(false)
     try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* noop */ }
   }
@@ -175,7 +178,11 @@ function HeightDivider({ height, onHeight, onReset, bottom = false }: {
       onPointerMove={onMove}
       onPointerUp={onUp}
       onPointerCancel={onUp}
-      onDoubleClick={onReset}
+      onDoubleClick={() => {
+        if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = 0 }
+        pending.current = null
+        onReset()
+      }}
     />
   )
 }
