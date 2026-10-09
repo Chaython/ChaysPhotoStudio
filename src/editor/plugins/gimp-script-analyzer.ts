@@ -50,7 +50,8 @@ export function analyzeGimpScript(text: string, filename = 'plugin.txt'): GimpSc
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     for (const result of line.matchAll(namePattern)) {
-      const name = result[0].toLowerCase().replace(/_/g, '-')
+      const rawName = result[0].toLowerCase()
+      const name = rawName.startsWith('gegl:') ? rawName : rawName.replace(/_/g, '-')
       if (name.startsWith('gegl:')) {
         add(name, i + 1, 'gegl-bridge', 'May run through optional desktop GEGL if installed and operation accepts a single image.')
       } else if (EDITOR_EQUIVALENTS[name]) {
