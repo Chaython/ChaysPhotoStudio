@@ -39,11 +39,11 @@ Open **Help → Keyboard Shortcuts** (or **Edit → Keyboard Shortcuts…**) to 
 
 ### File support in brief
 
-**Open/import:** native PNG/JPEG/WebP/GIF/AVIF/SVG where the webview decodes them; custom PSD/PSB, TIFF, TGA, BMP, QOI, PNM/PFM, Radiance HDR, ICO/ICNS, PCX and other supported formats; some structured third-party project containers via dedicated parsers or raster preview extraction. Camera RAW, HEIC/HEIF, JXL, JPEG 2000 and exotic/partial document formats are **decoder- and platform-dependent**. RAW on `main` is primarily a preview-oriented import path, **not complete non-destructive RAW development**.
+**Open/import:** native PNG/JPEG/WebP/GIF/AVIF/SVG where the webview decodes them; custom PSD/PSB, TIFF, TGA, BMP, QOI, PNM/PFM, Radiance HDR, ICO/ICNS, PCX and other supported formats; some structured third-party project containers via dedicated parsers or raster preview extraction. Camera RAW, HEIC/HEIF, JXL, JPEG 2000 and exotic/partial document formats are **decoder- and platform-dependent**. The LibRaw WASM path attempts true sensor decoding, with an embedded-preview fallback when decoding fails. RAW imports can preserve original bytes (up to 64 MiB) as redevelopable Smart Objects; development settings and optional imported Lensfun corrections can be reapplied. This is not universal camera or high-bit-depth compatibility.
 
 **Video frames:** open MP4/WebM/MKV to preview, scrub and **Import frame**; this does *not* create a video-editing timeline. **Export:** PNG, JPEG, WebP, TIFF (including supported 16-bit options), BMP, TGA, QOI, PPM, ICO, OpenRaster and PSD, plus native editable `.zproj.json`. Some advanced PSD features must be approximated or rasterized.
 
-See [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md) for categorized imports, exports and limitations. More RAW/EXR/DICOM support is being developed separately, not yet guaranteed in stable builds.
+See [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md) and [real-camera RAW tests](docs/RAW_CODEC_CORPUS.md) for support details. Six selected cameras passed LibRaw sensor-decoding checks; untested compression variants, precision, color matching and RAW round-trip fidelity are not guaranteed.
 
 ## Plugins, AI and filters
 
