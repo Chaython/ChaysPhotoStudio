@@ -26,7 +26,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     ],
     "tips": [
       "The native project keeps editing structure; PNG and JPEG exports do not.",
-      "Check File → Recent & Recovery after an interruption."
+      "Check File → Recent & Recovery after an interruption.",
+      "Opening MP4, WebM or MKV prompts for a frame timestamp. Scrub the preview and choose Import frame to make an editable still image."
     ]
   },
   {
@@ -38,7 +39,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     "steps": [
       "Choose Window → Layers, History, Channels, Metadata or other panels to reveal them.",
       "Rearrange panels to match your workflow.",
-      "Use the theme toggle for Dark, Light or OLED black; Settings also offers Touch / mobile mode.",
+      "Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.",
+      "Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.",
       "Choose Settings → Reset panel layout if a panel is difficult to locate."
     ],
     "tips": [
