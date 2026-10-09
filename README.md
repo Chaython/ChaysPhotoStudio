@@ -19,7 +19,7 @@ A source-available, browser-first photo editor with layered editing, Photoshop-i
 
 | Area | Available in the current `main` branch |
 |---|---|
-| **48 registered tools** | Move/transform, rectangular/elliptical/single-row/single-column marquee; Lasso/Polygonal/Magnetic; Object/Quick/Brush selection; Magic Wand; crop/perspective crop; painting, erasers, healing, retouching, Pen/Path tools, editable Type/Shapes, Hand/Zoom |
+| **52 registered tools** | Move/transform, rectangular/elliptical/single-row/single-column marquee; Lasso/Polygonal/Magnetic; Object/Quick/Brush selection; Magic Wand; crop/perspective crop; painting, erasers, healing, retouching, Pen/Path tools, editable Type/Shapes, Hand/Zoom |
 | **Selections** | New/Add/Subtract/Intersect, Color Range, Select Subject, Focus Area, Grow/Similar, Select & Mask edge refinement, channels and luminosity selections, feather/smooth/contract/expand |
 | **Layers & masks** | Raster, native text/shape, adjustments, Smart Objects with Smart Filters, alpha/vector masks, clipping, blending, Layer Styles, alignment, layer duplication into another document, Layer Comps |
 | **History & automation** | Undo/redo, durable snapshots and snapshot notes, Actions recording/playback, Batch / Image Processor, scripting console |
@@ -27,15 +27,15 @@ A source-available, browser-first photo editor with layered editing, Photoshop-i
 | **Transforms** | Free Transform, editable Transform/Split Warp, Puppet Warp, crop/perspective crop, smart guides and distance labels; Liquify |
 | **Color** | RGB/HSL/Lab and related adjustments, curves, gradient controls, HDR-aware operations where supported, proof-color preview and gamut warnings, PPI/rulers/guides/grid |
 | **File information** | EXIF, XMP/IPTC, camera and GPS metadata inspection; editable File Info and metadata-aware export/sidecar workflows where supported |
-| **Interface** | Classic/custom or Photoshop-style workspace, themes including OLED black, floating panels, left/right/top docks, touch-first mode, keyboard shortcut customization, lazy-loaded panels and dialogs |
+| **Interface** | Classic/custom or Photoshop-style workspace, themes including OLED black, floating panels, eight desktop dock locations (left, right, top, bottom and four corners), touch-first mode, keyboard shortcut customization, lazy-loaded panels and dialogs |
 
 The table is a **capability summary**, not a claim that every combination of file format, effect, layer type, bit depth, or Photoshop feature is supported. Review [the tool audit](TOOL_PARITY.md) and [known limits](docs/FEATURES_AND_FORMATS.md#known-compatibility-limits) before using unfamiliar formats on important files.
 
 ### Workspaces, tools and shortcuts
 
-Choose **Photoshop-style** or **Classic / custom** from the Workspace selector. Color themes (Dark, Light, OLED black and Photoshop-inspired) are independent from workspace layout. On desktop, panels may be docked left/right/top or floated. The new all-tools search browser and bottom/corner docks are **not yet on `main`**; see [PR #81](https://github.com/Chaython/ChaysPhotoStudio/pull/81).
+Choose **Photoshop-style** or **Classic / custom** from the Workspace selector. Color themes (Dark, Light, OLED black and Photoshop-inspired) are independent from workspace layout. On desktop, panels may be docked **left/right/top/bottom and in all four corners**, or floated. Open **Window → All Tools / Tool Search** to filter and launch tools by name, category or shortcut. These improvements were merged in [PR #81](https://github.com/Chaython/ChaysPhotoStudio/pull/81).
 
-Open **Help → Keyboard Shortcuts** (or **Edit → Keyboard Shortcuts…**) to inspect/change bindings. Several Photoshop-style tools share a letter and **cycle** on repeated presses; they do not all have distinct default keys. The standard Pen is available; Freeform Pen, Curvature Pen and Type Mask variants are pending in [PR #82](https://github.com/Chaython/ChaysPhotoStudio/pull/82).
+Open **Help → Keyboard Shortcuts** (or **Edit → Keyboard Shortcuts…**) to inspect/change bindings. Several Photoshop-style tools share a letter and **cycle** on repeated presses; they do not all have distinct default keys. The Pen group now includes **Standard Pen**, **Freeform Pen** and **Curvature Pen** (P); the Type group includes **Horizontal/Vertical Type Mask** selection tools (T). These are in `main` after [PR #82](https://github.com/Chaython/ChaysPhotoStudio/pull/82).
 
 ### File support in brief
 
