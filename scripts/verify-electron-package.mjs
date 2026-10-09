@@ -4,6 +4,7 @@
 // accidentally omit hidden .next assets and would open on an endless loader.
 import fs from 'node:fs'
 import path from 'node:path'
+import { inspectElectronStaticAssets } from './electron-asset-layout.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const DIST = path.join(ROOT, 'build/electron/dist')
@@ -46,13 +47,14 @@ for (const appDir of appDirs) {
     if (!fs.existsSync(path.join(appDir, rel))) fail(`missing ${path.relative(ROOT, path.join(appDir, rel))}`)
   }
 
-  const chunks = path.join(appDir, '.next', 'static', 'chunks')
-  if (!fs.existsSync(chunks)) fail(`missing static chunk directory in ${path.relative(ROOT, appDir)}`)
-  const names = fs.readdirSync(chunks)
-  if (!names.some(n => n.endsWith('.js'))) fail(`no JavaScript chunks in ${path.relative(ROOT, chunks)}`)
-  if (!names.some(n => n.endsWith('.css'))) fail(`no CSS chunks in ${path.relative(ROOT, chunks)}`)
+  const staticDir = path.join(appDir, '.next', 'static')
+  const chunks = path.join(staticDir, 'chunks')
+  const assets = inspectElectronStaticAssets(staticDir)
+  if (!assets.chunkDirectory) fail(`missing static chunk directory in ${path.relative(ROOT, appDir)}`)
+  if (!assets.javascript) fail(`no JavaScript chunks in ${path.relative(ROOT, chunks)}`)
+  if (!assets.css) fail(`no CSS assets in ${path.relative(ROOT, staticDir)} (checked both chunks and css)`)
   if (fs.existsSync(path.join(appDir, 'node_modules'))) {
     fail(`unexpected prunable node_modules remained in ${path.relative(ROOT, appDir)}`)
   }
-  console.log(`verify-electron-package: OK — ${path.relative(ROOT, appDir)} (${names.length} top-level chunks; traced runtime preserved)`)
+  console.log(`verify-electron-package: OK — ${path.relative(ROOT, appDir)} (${assets.javascript} JS chunks, ${assets.css} CSS assets; traced runtime preserved)`)
 }
