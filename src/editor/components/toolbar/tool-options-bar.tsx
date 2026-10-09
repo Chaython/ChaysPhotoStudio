@@ -366,6 +366,15 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
         </div>
       )
     }
+    case 'text':
+      return (
+        <div className="flex items-center gap-2 shrink-0 h-7">
+          {label}
+          <Input type="text" value={typeof value === 'string' ? value : ''} maxLength={120}
+            onChange={e => onChange(e.target.value)}
+            className="h-6 w-36 text-[11px] px-1.5" aria-label={control.label} />
+        </div>
+      )
     case 'number':
       return (
         <div className="flex items-center gap-2 shrink-0 h-7">
