@@ -90,6 +90,7 @@ export async function decodeJpegLs(buffer:ArrayBuffer):Promise<RawImage>{
   if(componentCount===3 && decoder.getInterleaveMode()!==2)
     throw Error('JPEG-LS planar/line-interleaved RGB is not supported by this importer')
   const rgba=new Uint8ClampedArray(count*4)
+  const rgba16=bitsPerSample>8?new Uint16Array(count*4):undefined
   const bps=bitsPerSample<=8?1:2
   if(decoded.byteLength<count*componentCount*bps)throw Error('Truncated JPEG-LS samples')
   const view=new DataView(decoded.buffer,decoded.byteOffset,decoded.byteLength)
@@ -100,10 +101,12 @@ export async function decodeJpegLs(buffer:ArrayBuffer):Promise<RawImage>{
       const raw=sampleIndex*bps
       const sample=bps===1?decoded[raw]:view.getUint16(raw,true)
       rgba[i*4+c]=scale(sample)
+      if(rgba16)rgba16[i*4+c]=Math.round(sample*65535/(2**bitsPerSample-1))
     }
     rgba[i*4+3]=255
+    if(rgba16)rgba16[i*4+3]=65535
   }
-  return {width,height,rgba:rgba as Uint8ClampedArray<ArrayBuffer>,sourceBitDepth:bitsPerSample}
+  return {width,height,rgba:rgba as Uint8ClampedArray<ArrayBuffer>,rgba16,sourceBitDepth:bitsPerSample}
 }
 
 /** Pure-JavaScript JP2/J2K decoder. Tiles must be 8-bit contiguous RGB/grayscale. */
