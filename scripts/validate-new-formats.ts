@@ -2,9 +2,10 @@ import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
-import { decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
+import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
 function check(v:unknown,description:string) { if(!v)throw new Error(description) }
 const enc=new TextEncoder()
+check(detectFormat(Uint8Array.from([0x42,0x50,0x47,0xfb,0]))==='bpg','BPG magic detection never routes to a generic image fallback')
 function fitCard(key:string,val?:string):Uint8Array {
   return enc.encode((key.padEnd(8,' ')+(val===undefined?'':'= '+val.padStart(20,' '))).padEnd(80,' '))
 }
@@ -212,6 +213,20 @@ const corrected=applyLensProfile({
 check(corrected.sourceBitDepth===16 && corrected.rgba16?.length===sample16.length,'Lens 16-bit preservation')
 check(sample16.every((value,i)=>value===original16[i]),'Lens source samples must not mutate')
 check(corrected.rgba16?.[12*4]===sample16[12*4],'Lens optical center stays fixed')
+
+const correctedLensfun=applyLensProfile({
+  width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
+},{
+  name:'Example calibrated lens',k1:0,k2:0,tca:0,vignette:0,
+  lensfun:{source:'lensfun-xml',maker:'Example',lens:'50 mm',crop:1,focal:50,
+    distortion:{model:'poly3',focal:50,k1:0.02},
+    tca:{model:'poly3',focal:50,vr:1.001,vb:0.999,br:0.001,bb:-0.001},
+    vignetting:{model:'pa',focal:50,k1:-0.2,k2:0.1,k3:-0.02}
+  }
+})
+check(correctedLensfun.rgba16?.length===sample16.length && correctedLensfun.sourceBitDepth===16,
+  'Lensfun-calibrated RAW remap retains 16-bit geometry')
+check(sample16.every((v,i)=>v===original16[i]),'Lensfun correction does not mutate RAW samples')
 
 // Two separate TIFF IFDs, each containing an 8-bit grayscale page.
 const tiff=new Uint8Array(258);const tv=new DataView(tiff.buffer)
