@@ -105,5 +105,5 @@ Do not label a codec or runtime fully verified based only on source inspection. 
 - [`DISTRIBUTION.md`](../DISTRIBUTION.md) explains artifacts and manual release tagging.
 - Tags `v*.*.*` produce stable releases; default-branch pushes produce continuous prereleases.
 - Existing release builds provide SHA-256 checksums, but checksums alone do **not** establish publisher signing.
-- The separate air-gapped Windows WebView installer, manual update checks, optional Windows signing and WebView recovery/security enhancements are in PRs #85/#86 until merged.
+- The offline Windows WebView2 installer is configured on main by merged PR #85. Manual update checks, optional Windows signing and WebView recovery/security enhancements remain in PR #86 until merged.
 - Licensing is consumer-free / commercial-contact, **not an OSI-approved open-source license**. Keep `LICENSE` in every distribution and do not alter licensing text without an explicit project decision.
