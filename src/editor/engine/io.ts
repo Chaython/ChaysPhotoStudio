@@ -103,10 +103,11 @@ export async function openFiles(files: File[], asLayer = false) {
       continue
     }
     try {
-      const rawSettings = publishedFormatKind(file.name) === 'raw'
-        ? await chooseRawDevelopSettings(file.name) : undefined
+      const isRaw=publishedFormatKind(file.name)==='raw'
+      const metadata = (!asLayer||isRaw) ? await readImageMetadata(file).catch(() => undefined) : undefined
+      const rawSettings = isRaw
+        ? await chooseRawDevelopSettings(file.name,undefined,metadata) : undefined
       if (rawSettings === null) continue
-      const metadata = !asLayer ? await readImageMetadata(file).catch(() => undefined) : undefined
       // RAW originals are stored losslessly inside Smart Objects; imported
       // previews are independently editable, and settings can be changed later.
       if (publishedFormatKind(file.name)==='raw' && rawSettings?.smartObject) {
@@ -331,7 +332,8 @@ export async function placeImageAsSmartLayer(file: File) {
   const store = useEditorStore.getState()
   try {
     const isRaw = publishedFormatKind(file.name) === 'raw'
-    const settings = isRaw ? await chooseRawDevelopSettings(file.name) : undefined
+    const rawMetadata=isRaw?await readImageMetadata(file).catch(()=>undefined):undefined
+    const settings = isRaw ? await chooseRawDevelopSettings(file.name,undefined,rawMetadata) : undefined
     if (settings === null) return
     const decoded = await decodeToCanvas(file, settings)
     const layer = engine.placeSmartLayer(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
@@ -364,9 +366,10 @@ export async function redevelopActiveRawSmartLayer(): Promise<void> {
     return
   }
   try {
-    const settings=await chooseRawDevelopSettings(source.fileName,source.settings)
-    if(!settings)return
     const file=new File([base64ToBytes(source.dataBase64) as BlobPart],source.fileName,{type:source.mimeType})
+    const rawMetadata=await readImageMetadata(file).catch(()=>undefined)
+    const settings=await chooseRawDevelopSettings(source.fileName,source.settings,rawMetadata)
+    if(!settings)return
     const developed=await decodeToCanvas(file,settings)
     engine.setLayerProps(layer.id,{
       source:developed.canvas,
