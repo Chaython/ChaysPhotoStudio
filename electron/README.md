@@ -12,6 +12,8 @@
   Windows "Open with" are read in the main process and relayed to the renderer
   as `chays:open-file` events → the app's normal `openFiles()` pipeline.
 
+**Offline model:** Electron bundles the app and a local Next.js server, not remote AI services or every optional desktop filter. Local project editing does not depend on GitHub Pages; remote AI and external image URLs still require internet. See [Feature & Format Reference](../docs/FEATURES_AND_FORMATS.md).
+
 Full build/sign/release instructions: see [`DISTRIBUTION.md`](../DISTRIBUTION.md).
 
 ## Windows portable build

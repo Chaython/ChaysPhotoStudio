@@ -7,10 +7,12 @@ on GitHub Pages or another server and continue to launch offline.
 
 - **Dev:** `bun run webview:dev` — Tauri points at `http://localhost:3000`; run the web dev server separately.
 - **Release (recommended):** `bun run webview:build` — creates the plugin-flavor static export, validates it, then embeds it in the native bundle.
-- **Offline Windows installer:** Releases also publish `webview-windows-offline-x64--*.exe`, an NSIS installer that embeds both the static editor and Microsoft's offline WebView2 installer (roughly 127 MB larger than the regular installer). The offline variant always ignores `WEBVIEW_APP_URL`, even if set as a repository variable.
-- **Optional remote thin shell:** `WEBVIEW_APP_URL=https://studio.example.com bun run webview:build`.
+- **Optional remote thin shell:** `WEBVIEW_APP_URL=https://studio.example.com bun run webview:build`. This override requires connectivity and is not the normal offline release.
+- **Offline Windows installer:** The separate `webview-windows-offline-x64--*.exe` artifact embeds local static editor assets and Microsoft's offline WebView2 installer (roughly 127 MB more than the normal NSIS package). It ignores `WEBVIEW_APP_URL` even when the normal release uses a remote thin-shell.
+- **Windows installation:** the default WebView NSIS setup embeds the editor, but on Windows without an existing WebView2 runtime the runtime may need to be installed separately/online. A second Windows offline-runtime NSIS installer is configured on **main** by merged [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85), and will be available when release jobs publish it.
+- **Hardening and recovery:** merged [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86) adds embedded-release CSP, manual portable recovery exports, native window-state restoration, opt-in manual release checks and optional Authenticode signing (secrets required). This is not an automatic updater.
 - Requires Rust (`rustup`) plus, on Linux: `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`.
 - `dragDropEnabled: false` lets the editor's own HTML5 drag-and-drop work.
 - No IPC capabilities are exposed (see `capabilities/default.json`); the editor is self-contained.
 
-Full instructions: see [`DISTRIBUTION.md`](../DISTRIBUTION.md).
+Local filters and most editing work offline; external generation/image URLs do not. OS WebView codecs and File System Access support vary. See [WebView Offline Audit](../docs/WEBVIEW_OFFLINE_AUDIT.md), [Feature & Format Reference](../docs/FEATURES_AND_FORMATS.md) and [`DISTRIBUTION.md`](../DISTRIBUTION.md) for details.
