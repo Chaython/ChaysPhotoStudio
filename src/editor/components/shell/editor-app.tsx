@@ -28,10 +28,10 @@ import { cn } from '@/lib/utils'
 export function EditorApp() {
   const hasDoc = useEditorStore(s => !!s.activeDocId)
   const workspacePreset = useEditorStore(s => s.workspacePreset)
-  const [theme, setTheme] = useState<'dark' | 'light' | 'oled'>(() => {
+  const [theme, setTheme] = useState<'dark' | 'light' | 'oled' | 'photoshop'>(() => {
     if (typeof window === 'undefined') return 'dark'
     const saved = window.localStorage.getItem('chays-photo-studio-theme')
-    return saved === 'light' || saved === 'oled' || saved === 'dark' ? saved : 'dark'
+    return saved === 'light' || saved === 'oled' || saved === 'dark' || saved === 'photoshop' ? saved : 'dark'
   })
   const [mobileMode, setMobileMode] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -49,6 +49,7 @@ export function EditorApp() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme !== 'light')
     document.documentElement.classList.toggle('oled', theme === 'oled')
+    document.documentElement.classList.toggle('photoshop-theme', theme === 'photoshop')
     document.documentElement.classList.toggle('zphoto', true)
     window.localStorage.setItem('chays-photo-studio-theme', theme)
   }, [theme])
