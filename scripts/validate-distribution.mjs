@@ -3,6 +3,7 @@
 // starting expensive Electron/Tauri matrices so config mistakes fail early.
 import fs from 'node:fs'
 import path from 'node:path'
+import { embeddedWebviewCsp } from './webview-csp.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const readJson = rel => JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8'))
@@ -59,6 +60,30 @@ if ((tauri.bundle?.icon ?? []).length) ok(`found ${tauri.bundle.icon.length} Tau
 const requiredScripts = ['build','app:prepare','app:dist:win','app:dist:win:setup','app:dist:win:portable','ext:build','webview:config','webview:build','dist:validate']
 for (const name of requiredScripts) if (!pkg.scripts?.[name]) fail(`missing package script: ${name}`)
 
+
+// Only embedded release builds receive this policy. Never re-enable remote
+// scripts or embedded objects without a reviewed compatibility/safety reason.
+if (embeddedWebviewCsp['default-src'] !== "'self'" ||
+    embeddedWebviewCsp['object-src'] !== "'none'" ||
+    !embeddedWebviewCsp['worker-src'].includes('blob:') ||
+    /https?:|\*/.test(embeddedWebviewCsp['script-src'])) {
+  fail('embedded WebView CSP has unexpected script/object or worker permissions')
+} else {
+  ok('embedded WebView release CSP is restricted to local scripts')
+}
+
+const webviewConfigScript = fs.readFileSync(path.join(ROOT, 'scripts/webview-config.mjs'), 'utf8')
+if (!webviewConfigScript.includes("...(appUrl ? {} : { app: { security: { csp: embeddedWebviewCsp } } })")) {
+  fail('embedded release CSP must be applied by webview-config.mjs and exempt remote shells')
+}
+if (!cargoText.includes('tauri-plugin-window-state = "2"') ||
+    !fs.readFileSync(path.join(ROOT, 'webview/src-tauri/src/lib.rs'), 'utf8')
+       .includes('tauri_plugin_window_state::Builder::default().build()')) {
+  fail('native window-state plugin must be registered in Cargo and Tauri')
+}
+if (!fs.existsSync(path.join(ROOT, 'scripts/validate-webview-static-offline.mjs'))) {
+  fail('offline asset smoke-test script is missing')
+}
 
 // Windows releases must offer both a conventional installer and a no-install
 // portable executable. Keep this check dependency-free so malformed distro
