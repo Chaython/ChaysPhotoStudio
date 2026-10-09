@@ -9,7 +9,7 @@
 // ============================================================
 import { createCanvas, ctx2d, canvasToBlob, getImageData, getFloat16ImageData, hexToRgb } from '../utils/canvas'
 import {
-  detectFormat, decodeTiff, decodeTga, decodePnm, decodePfm, decodeRadianceHdr, decodeQoi, decodePcx, decodeBmp, decodeIco,
+  detectFormat, decodeTiff, tiffPageOffsets, decodeTga, decodePnm, decodePfm, decodeRadianceHdr, decodeQoi, decodePcx, dcxPageOffsets, decodeBmp, decodeIco,
   rawToCanvas, scanAlpha,
 } from './decoders'
 import {
@@ -22,6 +22,9 @@ import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtensi
 import { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 import { decodeDds, decodeIcns, decodeIff } from './legacy-raster'
 import { decodeSgi, decodeSunRaster } from './heritage-raster'
+import { decodeFits } from './scientific-fits'
+import { decodeDicom } from './scientific-dicom'
+import { decodeExr } from './openexr'
 import type { ParsedDocumentLayer } from './document-parser-types'
 import type { ImageMetadata, LayerFX } from '../types'
 import { buildWritableXmp, embedRasterMetadata } from './metadata-write'
@@ -256,16 +259,57 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   }
 
   switch (format) {
-    case 'tiff': return fromRaw(await decodeTiff(bytes), 'tiff')
+    case 'tiff': {
+      const pages = tiffPageOffsets(bytes)
+      if (pages.length < 2) return fromRaw(await decodeTiff(bytes), 'tiff')
+      const decoded = await Promise.all(pages.map((_, page) => decodeTiff(bytes, page)))
+      const first = fromRaw(decoded[0], 'tiff')
+      return {
+        ...first,
+        documentLayers: decoded.map((page, index) => ({
+          kind: 'raster' as const, name: 'TIFF page ' + (index + 1),
+          canvas: rawToCanvas(page), left: 0, top: 0, visible: index === 0,
+        })),
+        warnings: ['Imported ' + pages.length + ' TIFF pages as separate layers. Toggle page visibility in Layers.'],
+      }
+    }
     case 'tga': return fromRaw(decodeTga(bytes), 'tga')
     case 'ppm': return fromRaw(decodePnm(bytes), 'ppm')
     case 'pfm': return fromRaw(decodePfm(bytes), 'pfm')
     case 'hdr': return fromRaw(decodeRadianceHdr(bytes), 'hdr')
     case 'qoi': return fromRaw(decodeQoi(bytes), 'qoi')
-    case 'pcx': return fromRaw(decodePcx(bytes), 'pcx')
+    case 'pcx': {
+      const pages = dcxPageOffsets(bytes)
+      if (pages.length < 2) return fromRaw(decodePcx(bytes), 'pcx')
+      const decoded = pages.map((_, index) => decodePcx(bytes, index))
+      const first = fromRaw(decoded[0], 'pcx')
+      return {
+        ...first,
+        documentLayers: decoded.map((page, index) => ({
+          kind: 'raster' as const, name: 'DCX page ' + (index + 1),
+          canvas: rawToCanvas(page), left: 0, top: 0, visible: index === 0,
+        })),
+        warnings: ['Imported ' + pages.length + ' DCX pages as separate layers. Toggle page visibility in Layers.'],
+      }
+    }
     case 'bmp': return fromRaw(decodeBmp(bytes), 'bmp')
     case 'ico': return fromRaw(await decodeIco(bytes), 'ico')
     case 'dds': return fromRaw(decodeDds(bytes), 'dds')
+    case 'exr': return fromRaw(await decodeExr(bytes), 'exr')
+    case 'fits':
+    case 'dicom': {
+      const parsed = format === 'fits' ? decodeFits(bytes) : decodeDicom(bytes)
+      const first = fromRaw(parsed.image, format)
+      return {
+        ...first,
+        documentLayers: parsed.frames.length > 1 ? parsed.frames.map((frame, i) => ({
+          kind: 'raster' as const,
+          name: (format === 'fits' ? 'FITS slice ' : 'DICOM frame ') + (i + 1),
+          canvas: rawToCanvas(frame), left: 0, top: 0, visible: i === 0,
+        })) : undefined,
+        warnings: parsed.warnings,
+      }
+    }
     case 'sgi': return fromRaw(decodeSgi(bytes), 'sgi')
     case 'sunras': return fromRaw(decodeSunRaster(bytes), 'sunras')
     case 'iff': return fromRaw(decodeIff(bytes), 'iff')
