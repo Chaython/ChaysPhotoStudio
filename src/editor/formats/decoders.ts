@@ -369,14 +369,34 @@ async function decompressTiffBlock(bytes: Uint8Array, off: number, cnt: number, 
   return full
 }
 
-export async function decodeTiff(bytes: Uint8Array): Promise<RawImage> {
+/** Enumerate a safe, bounded TIFF IFD chain for multi-page import. */
+export function tiffPageOffsets(bytes: Uint8Array, limit = 24): number[] {
+  if (bytes.length < 8) return []
+  const le = bytes[0] === 0x49 && bytes[1] === 0x49
+  if (!le && !(bytes[0] === 0x4d && bytes[1] === 0x4d)) return []
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  if (view.getUint16(2, le) !== 42) return []
+  const pages: number[] = [], seen = new Set<number>()
+  let ptr = view.getUint32(4, le)
+  while (ptr >= 8 && ptr + 2 <= bytes.length && pages.length < limit && !seen.has(ptr)) {
+    seen.add(ptr)
+    const count = view.getUint16(ptr, le)
+    const nextPos = ptr + 2 + count * 12
+    if (nextPos + 4 > bytes.length) break
+    pages.push(ptr)
+    ptr = view.getUint32(nextPos, le)
+  }
+  return pages
+}
+
+export async function decodeTiff(bytes: Uint8Array, pageIndex = 0): Promise<RawImage> {
   if (bytes.length < 8) throw new Error('Truncated TIFF file')
   const le = bytes[0] === 0x49 && bytes[1] === 0x49
   const be = bytes[0] === 0x4d && bytes[1] === 0x4d
   if (!le && !be) throw new Error('Not a TIFF file (bad byte-order mark)')
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   if (view.getUint16(2, le) !== 42) throw new Error('Not a TIFF file (bad magic)')
-  const ifdOff = view.getUint32(4, le)
+  const ifdOff = tiffPageOffsets(bytes, pageIndex + 1)[pageIndex] ?? -1
   if (ifdOff < 8 || ifdOff + 2 > bytes.length) throw new Error('Corrupt TIFF IFD offset')
 
   const tags = new Map<number, number[]>()
