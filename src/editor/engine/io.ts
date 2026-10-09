@@ -103,6 +103,8 @@ export async function openFiles(files: File[], asLayer = false) {
         engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), hdrPixels: decoded.hdrPixels, metadata })
       }
     } catch (err) {
+      // Cancelling the video frame picker is a normal user decision.
+      if (err instanceof Error && err.name === 'AbortError') continue
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
       store.pushToast(`Failed to open ${file.name}${why}`, 'error')
     }
@@ -244,7 +246,8 @@ export async function placeImageAsSmartLayer(file: File) {
       store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed as a ${decoded.workingBitDepth}-bit smart-object raster`, 'info')
     }
     store.pushToast(`Placed ${file.name} as Smart Object`, 'success')
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return
     store.pushToast(`Failed to place ${file.name}`, 'error')
   }
 }
