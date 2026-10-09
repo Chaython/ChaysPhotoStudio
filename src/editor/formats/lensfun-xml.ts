@@ -98,21 +98,30 @@ export function cameraExif(meta:ImageMetadata|undefined):CameraExif {
   const distance=parseFloat(field(meta,/^subject distance$/i))||1000
   return {maker,model,lens,focal,aperture,distance}
 }
-function chooseCurve(curves:LensfunCurve[],exif:CameraExif):LensfunCurve|undefined {
-  if(!curves.length)return undefined
-  // Exact focal samples take precedence; else interpolate only between neighbors
-  // of identical calibration models, avoiding invented extrapolation.
-  const sorted=curves.slice().sort((a,b)=>a.focal-b.focal)
-  const a=sorted.filter(x=>x.focal<=exif.focal).at(-1)
-  const b=sorted.find(x=>x.focal>=exif.focal)
-  if(!a&&!b)return undefined
-  if(!a||!b||a===b||a.model!==b.model)return {...(a||b)!}
-  const t=(exif.focal-a.focal)/(b.focal-a.focal)
-  const result:LensfunCurve={model:a.model,focal:exif.focal}
-  for(const key of ['k1','k2','k3','a','b','c','vr','vb','br','bb'] as const){
-    if(a[key]!==undefined&&b[key]!==undefined)result[key]=a[key]!*(1-t)+b[key]!*t
+/** Select a genuine focal sample or interpolate between compatible neighbors.
+ * No extrapolation, and duplicate conflicting calibration records are rejected. */
+export function chooseLensfunCurve(curves: LensfunCurve[], exif: CameraExif): LensfunCurve | undefined {
+  if (!curves.length || !Number.isFinite(exif.focal) || exif.focal <= 0) return undefined
+  const sorted = curves.filter(x => Number.isFinite(x.focal) && x.focal > 0)
+    .slice().sort((a,b) => a.focal - b.focal)
+  const exact = sorted.filter(x => x.focal === exif.focal)
+  if (exact.length > 0) {
+    // Multiple records at one focal can represent different apertures,
+    // focus distances, or calibration revisions. Don't guess among them.
+    if (exact.length !== 1) return undefined
+    return { ...exact[0] }
   }
-  result.aperture=a.aperture;result.distance=a.distance
+  const a = sorted.filter(x => x.focal < exif.focal).at(-1)
+  const b = sorted.find(x => x.focal > exif.focal)
+  if (!a || !b || a.model !== b.model || b.focal <= a.focal) return undefined
+  const t = (exif.focal - a.focal) / (b.focal - a.focal)
+  const result: LensfunCurve = { model: a.model, focal: exif.focal }
+  for (const key of ['k1','k2','k3','a','b','c','vr','vb','br','bb'] as const) {
+    if (a[key] !== undefined && b[key] !== undefined)
+      result[key] = a[key]! * (1-t) + b[key]! * t
+  }
+  if (a.aperture === b.aperture) result.aperture = a.aperture
+  if (a.distance === b.distance) result.distance = a.distance
   return result
 }
 export function matchLensfun(meta:ImageMetadata|undefined):LensfunCalibration|null {
@@ -134,7 +143,7 @@ export function matchLensfun(meta:ImageMetadata|undefined):LensfunCalibration|nu
   const vignetteSamples=farDistance.length?farDistance:closeVignettes.filter(c=>
     c.distance!==undefined && Math.abs(c.distance-exif.distance)<=Math.max(0.25,exif.distance*0.15))
   return {source:'lensfun-xml',maker:lens.maker,lens:lens.model,crop:lens.crop,
-    focal:exif.focal,distortion:chooseCurve(lens.curves.distortion,exif),
-    tca:chooseCurve(lens.curves.tca,exif),
-    vignetting:chooseCurve(vignetteSamples,exif)}
+    focal:exif.focal,distortion:chooseLensfunCurve(lens.curves.distortion,exif),
+    tca:chooseLensfunCurve(lens.curves.tca,exif),
+    vignetting:chooseLensfunCurve(vignetteSamples,exif)}
 }
