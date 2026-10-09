@@ -185,6 +185,9 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
 export async function decodeFile(file: File | Blob, options?: { rawSettings?: RawDevelopSettings }): Promise<DecodedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const sourceName = (file as File).name || ''
+  if (bytes.length>=4 && bytes[0]===0x42 && bytes[1]===0x50 && bytes[2]===0x47 && bytes[3]===0xfb) {
+    throw new Error('BPG signature detected: no independently reviewed BPG decoder is bundled; legacy libbpg has documented memory-safety vulnerabilities.')
+  }
   if (fileExtension(sourceName) === 'bpg') {
     throw new Error('BPG decoding is unavailable: no reviewed decoder is bundled. Recognition does not imply image decoding support.')
   }
