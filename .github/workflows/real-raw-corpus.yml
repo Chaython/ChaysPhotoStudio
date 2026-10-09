@@ -1,0 +1,56 @@
+name: Real camera RAW corpus
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/real-raw-corpus.yml
+      - scripts/validate-camera-raw-corpus.ts
+jobs:
+  sensor-decode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Download pinned, license-credited real camera samples
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p fixtures/raw
+          BASE='https://raw.githubusercontent.com/f-spot/raw-samples/54425e2cd53ec17d5fd88ee3277d03f54bf1fe84'
+          fetch_raw () {
+            local path="$1" expected="$2" filename="$3"
+            curl --fail --location --silent --show-error --retry 2 --max-time 120 \
+              --max-filesize 16000000 "$BASE/$path" -o "fixtures/raw/$filename"
+            echo "$expected  fixtures/raw/$filename" > /tmp/blob_expected
+            test "$(git hash-object "fixtures/raw/$filename")" = "$expected"
+          }
+          fetch_raw 'ARW/RAW_SONY_A700.ARW' 77ffb0da9dcea5a093c811e20368428c88223d19 sony-a700.arw
+          fetch_raw 'CR2/sample_canon_400d1.cr2' 242b11d790f9b103a51c5916a0155005e87fe62b canon-400d.cr2
+          fetch_raw 'DNG/RAW_LEICA_M8.DNG' aef6a299e5857877f5e45f566c5e193c6329c0a8 leica-m8.dng
+          fetch_raw 'NEF/RAW_NIKON_D90.NEF' dc3544cfad56c81a3c5391b3f7d53ea061fe5436 nikon-d90.nef
+          fetch_raw 'PEF/RAW_PENTAX_KD10.PEF' 4690009edc7eda1197abf7b673ec02cec0c8e44c pentax-k10d.pef
+          fetch_raw 'RW2/RAW_PANASONIC_G1.RW2' 6a9c57c74bfaf816af9bb5fd7e39b36d4650cae1 panasonic-g1.rw2
+      - name: Validate actual LibRaw sensor decoding (never previews)
+        shell: bash
+        run: |
+          cat > fixtures/raw/corpus.json <<'EOF'
+          {
+            "samples": [
+              {"file":"sony-a700.arw","make":"Sony","model":"A700","compression":"ARW proprietary","expect":"decode","minWidth":1000,"minHeight":1000},
+              {"file":"canon-400d.cr2","make":"Canon","model":"EOS 400D","compression":"CR2 proprietary","expect":"decode","minWidth":1000,"minHeight":1000},
+              {"file":"leica-m8.dng","make":"Leica","model":"M8","compression":"DNG","expect":"decode","minWidth":1000,"minHeight":1000},
+              {"file":"nikon-d90.nef","make":"Nikon","model":"D90","compression":"NEF proprietary","expect":"decode","minWidth":1000,"minHeight":1000},
+              {"file":"pentax-k10d.pef","make":"Pentax","model":"K10D","compression":"PEF proprietary","expect":"decode","minWidth":1000,"minHeight":1000},
+              {"file":"panasonic-g1.rw2","make":"Panasonic","model":"G1","compression":"RW2 proprietary","expect":"decode","minWidth":1000,"minHeight":1000}
+            ]
+          }
+          EOF
+          bun run raw-corpus:validate -- fixtures/raw/corpus.json
+      - name: Remove original RAW camera samples
+        if: always()
+        run: rm -rf fixtures/raw
