@@ -12,3 +12,20 @@ export function autoSideDockWidth(panel: PanelDef | undefined, photoshop = false
   if (panel.id === 'tool-options') return 380
   return Math.max(220, Math.min(460, panel.minFloat.w + 12))
 }
+
+/** Natural width for the compact horizontal modules. The browser can measure
+ * the document tabs/toolbar contents, and we only cap the result to prevent
+ * huge filename lists from taking over the canvas. */
+export function horizontalDockPanelWidth(
+  id: string,
+  fallbackWidth: number,
+): { width: string; minWidth: number; maxWidth: string } | { width: number } {
+  if (id === 'documents' || id === 'tool-options') {
+    return {
+      width: 'max-content',
+      minWidth: id === 'documents' ? 180 : 260,
+      maxWidth: 'min(72vw, 940px)',
+    }
+  }
+  return { width: fallbackWidth }
+}
