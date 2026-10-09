@@ -9,6 +9,7 @@ import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../forma
 import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension, publishedFormatKind } from '../formats'
 import { metadataResolutionPpi, readImageMetadata } from '../formats/metadata'
 import { chooseImagePages } from '../formats/page-select'
+import { chooseRawDevelopSettings, type RawDevelopSettings } from '../formats/raw-develop'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
@@ -37,12 +38,12 @@ interface DecodedCanvas {
 /** Decode while retaining source precision. Custom high-depth codecs create
  * rgba-float16 canvases when the runtime supports them; otherwise they expose
  * the same file through an 8-bit compatibility preview. */
-async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
+async function decodeToCanvas(file: File, rawSettings?: RawDevelopSettings): Promise<DecodedCanvas> {
   const format = await sniffFormat(file)
   // RAW extensions may have a TIFF header but require a RAW decoder, not the TIFF codec.
   // Do not silently hide that the embedded camera preview is only 8-bit.
   if (publishedFormatKind(file.name) === 'raw') {
-    const decoded = await decodeFile(file)
+    const decoded = await decodeFile(file, {rawSettings})
     return {
       canvas: decoded.canvas,
       sourceBitDepth: decoded.sourceBitDepth ?? 8,
@@ -89,6 +90,9 @@ export async function openFiles(files: File[], asLayer = false) {
       continue
     }
     try {
+      const rawSettings = publishedFormatKind(file.name) === 'raw'
+        ? await chooseRawDevelopSettings(file.name) : undefined
+      if (rawSettings === null) continue
       const metadata = !asLayer ? await readImageMetadata(file).catch(() => undefined) : undefined
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
@@ -137,7 +141,7 @@ export async function openFiles(files: File[], asLayer = false) {
         for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(warning, 'info')
         continue
       }
-      const decoded = await decodeToCanvas(file)
+      const decoded = await decodeToCanvas(file, rawSettings ?? undefined)
       for (const warning of (decoded.warnings ?? [])) store.pushToast(`${file.name}: ${warning}`, 'info')
       if (asLayer && engine.activeDoc) {
         engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''), { hdrPixels: engine.activeDoc?.workingBitDepth === 32 ? decoded.hdrPixels : undefined })
