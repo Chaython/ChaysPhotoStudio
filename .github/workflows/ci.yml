@@ -60,6 +60,9 @@ jobs:
       - name: Validate recovery autosave scheduling
         run: bun run autosave:validate
 
+      - name: Validate portable recovery backups
+        run: bun run recovery-backup:validate
+
       - name: Validate worker error recovery
         run: bun run worker:validate
 
