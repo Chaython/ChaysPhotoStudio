@@ -2,7 +2,7 @@
 // Horizontal modular panel strip. Panels render side-by-side and use the same
 // actions and pull-to-float behavior as the left/right docks.
 import { useEffect, useRef, useState } from 'react'
-import { useEditorStore, TOP_HEIGHT_DEFAULT } from '../../store'
+import { useEditorStore } from '../../store'
 import { PANEL_MAP } from './panel-registry'
 import { PanelContextMenu } from './panel-actions-menu'
 import { AddPanelMenu, useDockDrop } from './panel-dock'
@@ -15,8 +15,11 @@ export function TopDock({ side = 'top' }: { side?: 'top' | 'bottom' | 'top-left'
   const dockSide = useEditorStore(s => s.panels.dockSide)
   const floating = useEditorStore(s => s.panels.floating)
   const topOrder = useEditorStore(s => s.panels.topOrder)
-  const topHeight = useEditorStore(s => side.startsWith('bottom') ? s.panels.bottomHeight : s.panels.topHeight)
-  const setTopHeight = useEditorStore(s => side.startsWith('bottom') ? s.setBottomHeight : s.setTopHeight)
+  const isBottom = side.startsWith('bottom')
+  const topHeight = useEditorStore(s => isBottom ? s.panels.bottomHeight : s.panels.topHeight)
+  const manualHeight = useEditorStore(s => isBottom ? s.panels.bottomHeightManual : s.panels.topHeightManual)
+  const setTopHeight = useEditorStore(s => isBottom ? s.setBottomHeight : s.setTopHeight)
+  const resetHeight = useEditorStore(s => isBottom ? s.resetBottomHeightAuto : s.resetTopHeightAuto)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
   const dropActive = useDockDrop(side, false)
 
@@ -33,17 +36,17 @@ export function TopDock({ side = 'top' }: { side?: 'top' | 'bottom' | 'top-left'
       data-panel-dock={side}
       data-drop-active={dropActive ? '1' : undefined}
       className={cn('hidden md:flex bg-panel flex-shrink-0 relative panel-dock-drop', side.startsWith('bottom') ? 'border-t' : 'border-b')}
-      style={{ height: topHeight }}
+      style={manualHeight ? { height: topHeight, maxHeight: '45vh' } : { height: 'max-content', maxHeight: '45vh' }}
       aria-label={`${side} panel strip`}
     >
-      <HeightDivider height={topHeight} onHeight={setTopHeight} onReset={() => setTopHeight(side.startsWith('bottom') ? 192 : TOP_HEIGHT_DEFAULT)} bottom={side.startsWith('bottom')} />
+      <HeightDivider height={topHeight} onHeight={setTopHeight} onReset={resetHeight} bottom={isBottom} />
 
       <div className="flex-1 min-w-0 flex">
         <div className="w-8 flex items-center justify-center border-r border-border/60 flex-shrink-0">
           <AddPanelMenu side={side} mobile={false} />
         </div>
-        <div className="flex-1 min-w-0 flex overflow-x-auto zphoto-scroll" role="list" aria-label={`${side} dock panels`}>
-          {ids.map(id => <TopPanelBox key={id} id={id} hasDoc={hasDoc} />)}
+        <div className={cn("min-w-0 flex overflow-x-auto zphoto-scroll", manualHeight ? "flex-1" : "flex-initial")} role="list" aria-label={`${side} dock panels`}>
+          {ids.map(id => <TopPanelBox key={id} id={id} hasDoc={hasDoc} manualHeight={manualHeight} />)}
         </div>
       </div>
 
@@ -58,7 +61,7 @@ export function TopDock({ side = 'top' }: { side?: 'top' | 'bottom' | 'top-left'
   )
 }
 
-function TopPanelBox({ id, hasDoc }: { id: string; hasDoc: boolean }) {
+function TopPanelBox({ id, hasDoc, manualHeight }: { id: string; hasDoc: boolean; manualHeight: boolean }) {
   const def = PANEL_MAP[id]
   const pull = useRef<{ x: number; y: number; handed: boolean } | null>(null)
 
@@ -81,10 +84,16 @@ function TopPanelBox({ id, hasDoc }: { id: string; hasDoc: boolean }) {
   if (!def) return null
   const Icon = def.icon
   const Content = def.render
-  const w = def.topWidth ?? Math.max(200, Math.min(360, def.defaultFloat.w))
+  // Open Files is a 32px document tab bar; reserving its old 720px width
+  // and 232px dock height wasted most of the canvas. Compact modules
+  // follow intrinsic width, bounded by the viewport as their content grows.
+  const compact = id === 'documents' || id === 'tool-options'
+  const width = compact
+    ? { width: 'max-content', minWidth: id === 'documents' ? 180 : 260, maxWidth: 'min(72vw, 940px)' }
+    : { width: def.topWidth ?? Math.max(200, Math.min(360, def.defaultFloat.w)) }
 
   return (
-    <div role="listitem" className="flex flex-col border-r border-border/60 flex-shrink-0 bg-panel" style={{ width: w }}>
+    <div role="listitem" className={cn("flex flex-col border-r border-border/60 flex-shrink-0 bg-panel", manualHeight && "h-full")} style={width}>
       <PanelContextMenu id={id}>
         <div
           className="h-7 flex items-center gap-1 px-1.5 border-b bg-panel/80 flex-shrink-0 cursor-grab active:cursor-grabbing"
@@ -99,7 +108,7 @@ function TopPanelBox({ id, hasDoc }: { id: string; hasDoc: boolean }) {
           <span className="text-[11px] font-medium truncate flex-1 pl-0.5">{def.label}</span>
         </div>
       </PanelContextMenu>
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className={cn("min-h-0 overflow-auto zphoto-scroll", manualHeight ? "flex-1" : compact ? "shrink-0" : "max-h-[min(38vh,420px)]")}>
         {hasDoc || def.home ? <Content /> : (
           <div className="p-3 text-[11px] text-muted-foreground text-center leading-relaxed">
             Open an image or create a document to start editing.
@@ -129,7 +138,9 @@ function HeightDivider({ height, onHeight, onReset, bottom = false }: {
     if (e.button !== 0) return
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
-    drag.current = { startY: e.clientY, startH: height }
+    // Auto-height rows no longer use the stored (legacy) height. Begin from
+    // the rendered strip size so the first manual resize never jumps.
+    drag.current = { startY: e.clientY, startH: e.currentTarget.parentElement?.getBoundingClientRect().height || height }
     setActive(true)
   }
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -155,7 +166,7 @@ function HeightDivider({ height, onHeight, onReset, bottom = false }: {
       role="separator"
       aria-orientation="horizontal"
       aria-label={bottom ? "Resize bottom panel strip" : "Resize top panel strip"}
-      title="Drag to resize · double-click to reset"
+      title="Drag to fix dock height · double-click to fit contents automatically"
       className={cn("absolute left-0 right-0 h-[6px] z-20 cursor-row-resize touch-none transition-colors hover:bg-primary/40", bottom ? "top-0 -mt-[3px]" : "bottom-0 -mb-[3px]")}
       {...(active ? { 'data-active': '1' } : {})}
       style={{ background: active ? 'color-mix(in oklab, var(--primary) 60%, transparent)' : undefined }}
