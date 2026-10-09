@@ -82,8 +82,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
   topOrder: string[]
   topHeight: number
   bottomHeight: number
-  topHeightManual: boolean
-  bottomHeightManual: boolean
+  dockHeights: Partial<Record<DockSide, number>>
 } | null {
   if (typeof window === 'undefined') return null
   try {
@@ -103,8 +102,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
       topOrder?: unknown
       topHeight?: number
       bottomHeight?: number
-      topHeightManual?: boolean
-      bottomHeightManual?: boolean
+      dockHeights?: Record<string, number>
     }
     const vw = window.innerWidth
     const vh = window.innerHeight
@@ -129,6 +127,11 @@ function loadPanelLayout(rawOverride: string | null = null): {
     const topOrder = Array.isArray(data.topOrder)
       ? data.topOrder.filter((id): id is string => typeof id === 'string').slice(0, 32)
       : []
+    const dockHeights: Partial<Record<DockSide, number>> = {}
+    for (const [side, value] of Object.entries(data.dockHeights ?? {})) {
+      if (HORIZONTAL_DOCKS.includes(side as DockSide) && typeof value === 'number' && Number.isFinite(value))
+        dockHeights[side as DockSide] = clampNum(Math.round(value), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
+    }
     const rightTabRaw = typeof data.rightTab === 'string' ? data.rightTab : 'layers'
     return {
       rightTab: rightTabRaw,
@@ -144,8 +147,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
       topOrder: topOrder.filter(id => dockSide[id] === 'top'),
       topHeight: clampNum(Math.round(data.topHeight ?? TOP_HEIGHT_DEFAULT), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX),
       bottomHeight: clampNum(Math.round(data.bottomHeight ?? 192), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX),
-      topHeightManual: data.topHeightManual === true,
-      bottomHeightManual: data.bottomHeightManual === true,
+      dockHeights,
     }
   } catch {
     return null
@@ -169,8 +171,7 @@ function persistPanelLayout(panels: EditorStore['panels']) {
       topOrder: panels.topOrder,
       topHeight: panels.topHeight,
       bottomHeight: panels.bottomHeight,
-      topHeightManual: panels.topHeightManual,
-      bottomHeightManual: panels.bottomHeightManual,
+      dockHeights: panels.dockHeights,
     }))
   } catch {
     /* noop */
@@ -277,7 +278,7 @@ function defaultPanelState(): EditorStore['panels'] {
     leftWidthManual: false, dockWidthManual: false,
     colorPanelOpen: true, floating: {}, dockSide: {}, topOrder: [],
     topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
-    topHeightManual: false, bottomHeightManual: false, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
+    dockHeights: {}, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
   }
 }
 
@@ -287,7 +288,7 @@ function photoshopPanelState(current: EditorStore['panels']): EditorStore['panel
     ...current,
     rightTab: 'layers', leftTab: '', leftOpen: false,
     floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
-    topHeightManual: false, bottomHeightManual: false,
+    dockHeights: {},
     dockWidth: 318, dockWidthManual: false, leftWidthManual: false,
   }
 }
@@ -348,9 +349,8 @@ interface EditorStore {
     topHeight: number
     /** bottom strip height in px (desktop) */
     bottomHeight: number
-    /** automatic content sizing is default; true after dragging a resize handle */
-    topHeightManual: boolean
-    bottomHeightManual: boolean
+    /** Only manually resized horizontal strips appear here; others fit content. */
+    dockHeights: Partial<Record<DockSide, number>>
     /** monotonically increasing z counter for focus stacking */
     zTop: number
     /** right dock width in px (desktop) */
@@ -404,10 +404,8 @@ interface EditorStore {
   setLeftDockWidth(px: number): void
   resetDockWidthAuto(): void
   resetLeftDockWidthAuto(): void
-  setTopHeight(px: number): void
-  setBottomHeight(px: number): void
-  resetTopHeightAuto(): void
-  resetBottomHeightAuto(): void
+  setHorizontalDockHeight(side: DockSide, px: number): void
+  resetHorizontalDockHeight(side: DockSide): void
   resetPanelLayout(): void
   setViewPref(key: 'showRulers' | 'showGuides' | 'snapGuides' | 'showGrid' | 'snapGrid' | 'showGridLabels' | 'showPixelGrid', value: boolean): void
   setViewPref(key: 'rulerUnits', value: 'px' | 'in' | 'cm' | 'mm'): void
@@ -777,32 +775,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { panels }
   }),
 
-  setTopHeight: (px) => set(s => {
-    const topHeight = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
-    if (topHeight === s.panels.topHeight && s.panels.topHeightManual) return {}
-    const panels = { ...s.panels, topHeight, topHeightManual: true }
+  // Size overrides are tied to a specific strip. Resizing top-left should
+  // never force top-right or the center dock to consume the same height.
+  setHorizontalDockHeight: (side, px) => set(s => {
+    if (!HORIZONTAL_DOCKS.includes(side) || !Number.isFinite(px)) return {}
+    const height = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
+    if (s.panels.dockHeights[side] === height) return {}
+    const panels = { ...s.panels, dockHeights: { ...s.panels.dockHeights, [side]: height } }
     persistPanelLayout(panels)
     return { panels }
   }),
 
-  setBottomHeight: (px) => set(s => {
-    const bottomHeight = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
-    if (bottomHeight === s.panels.bottomHeight && s.panels.bottomHeightManual) return {}
-    const panels = { ...s.panels, bottomHeight, bottomHeightManual: true }
-    persistPanelLayout(panels)
-    return { panels }
-  }),
-
-  resetTopHeightAuto: () => set(s => {
-    if (!s.panels.topHeightManual) return {}
-    const panels = { ...s.panels, topHeightManual: false }
-    persistPanelLayout(panels)
-    return { panels }
-  }),
-
-  resetBottomHeightAuto: () => set(s => {
-    if (!s.panels.bottomHeightManual) return {}
-    const panels = { ...s.panels, bottomHeightManual: false }
+  resetHorizontalDockHeight: (side) => set(s => {
+    if (s.panels.dockHeights[side] === undefined) return {}
+    const dockHeights = { ...s.panels.dockHeights }
+    delete dockHeights[side]
+    const panels = { ...s.panels, dockHeights }
     persistPanelLayout(panels)
     return { panels }
   }),
