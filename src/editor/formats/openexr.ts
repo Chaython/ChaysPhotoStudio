@@ -14,16 +14,40 @@ function str(bytes:Uint8Array,pos:number,limit:number):[string,number]{
  if(end>=limit)throw Error('Unterminated OpenEXR attribute')
  return [readAscii(bytes,pos,end),end+1]
 }
-async function unzip(block:Uint8Array,expected:number):Promise<Uint8Array>{
- const ds=new DecompressionStream('deflate')
- const output=new Uint8Array(await new Response(new Blob([block as BlobPart]).stream().pipeThrough(ds)).arrayBuffer())
- if(output.length!==expected)throw Error('Unexpected OpenEXR ZIP block length')
+// RLE and ZIP share the EXR byte predictor + even/odd byte shuffle.
+function undoPredictAndInterleave(output:Uint8Array):Uint8Array{
  for(let i=1;i<output.length;i++)output[i]=(output[i-1]+output[i]-128)&255
  const result=new Uint8Array(output.length)
  const first=Math.ceil(output.length/2)
  for(let i=0;i<first;i++)result[i*2]=output[i]
  for(let i=first;i<output.length;i++)result[(i-first)*2+1]=output[i]
  return result
+}
+function unrle(block:Uint8Array,expected:number):Uint8Array{
+ const output=new Uint8Array(expected)
+ let src=0,dst=0
+ while(src<block.length && dst<expected){
+   const count=(block[src++]<<24)>>24
+   if(count<0){
+     const length=-count
+     if(src+length>block.length||dst+length>expected)throw Error('Truncated or oversized OpenEXR RLE literal')
+     output.set(block.subarray(src,src+length),dst)
+     src+=length;dst+=length
+   }else{
+     const length=count+1
+     if(src>=block.length||dst+length>expected)throw Error('Truncated or oversized OpenEXR RLE repeat')
+     output.fill(block[src++],dst,dst+length)
+     dst+=length
+   }
+ }
+ if(dst!==expected||src!==block.length)throw Error('OpenEXR RLE block size mismatch')
+ return undoPredictAndInterleave(output)
+}
+async function unzip(block:Uint8Array,expected:number):Promise<Uint8Array>{
+ const ds=new DecompressionStream('deflate')
+ const output=new Uint8Array(await new Response(new Blob([block as BlobPart]).stream().pipeThrough(ds)).arrayBuffer())
+ if(output.length!==expected)throw Error('Unexpected OpenEXR ZIP block length')
+ return undoPredictAndInterleave(output)
 }
 function srgb(value:number){
  const v=Math.max(0,Math.min(1,value))
@@ -68,7 +92,7 @@ export async function decodeExr(bytes:Uint8Array):Promise<RawImage>{
  const width=x1-x0+1,height=y1-y0+1
  if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width*height>maxPix)
    throw Error('Invalid OpenEXR data window')
- if(!channels.length||![0,2,3].includes(compression))throw Error('Unsupported OpenEXR compression/channel header (supported NONE/ZIPS/ZIP)')
+ if(!channels.length||![0,1,2,3].includes(compression))throw Error('Unsupported OpenEXR compression/channel header (supported NONE/RLE/ZIPS/ZIP)')
  const rowsPerBlock=compression===3?16:1
  const countBlocks=Math.ceil(height/rowsPerBlock)
  if(pos+countBlocks*8>bytes.length)throw Error('Truncated OpenEXR scanline offset table')
@@ -90,7 +114,10 @@ export async function decodeExr(bytes:Uint8Array):Promise<RawImage>{
    const rows=Math.min(rowsPerBlock,height-row)
    const expected=width*rows*channelSamples
    const packedData=bytes.subarray(rawOffset+8,rawOffset+8+packed)
-   const raw=compression===0?packedData:await unzip(packedData,expected)
+   // EXR stores an uncompressed block when compression would not reduce its size.
+   if(packed>expected)throw Error('OpenEXR compressed block exceeds its unpacked size')
+   const raw=compression===0||packed===expected?packedData:
+     compression===1?unrle(packedData,expected):await unzip(packedData,expected)
    if(raw.length!==expected)throw Error('OpenEXR scanline length mismatch')
    const pixels=new DataView(raw.buffer,raw.byteOffset,raw.byteLength)
    let p=0
