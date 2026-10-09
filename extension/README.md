@@ -19,5 +19,5 @@ extension/
 Build: `bun run ext:build` → static webapp export + `build/extension/unpacked/`
 (load unpacked) + store zips (Chrome & Firefox). Inline scripts in the
 exported HTML are extracted to files so the app satisfies the MV3
-extension-pages CSP. AI generation calls the free engine directly.
-See [`DISTRIBUTION.md`](../DISTRIBUTION.md).
+extension-pages CSP. AI generation calls a **remote** free engine directly and therefore requires internet; it may transmit the prompt and image content. Importing a remote image by URL also depends on network access and image-host CORS. Local editing with a file already imported is offline-capable.
+The extension's bundled static frontend is not a full server runtime; server-side AI proxy routes and arbitrary native GIMP/Photoshop plugins are not included. See [Feature & Format Reference](../docs/FEATURES_AND_FORMATS.md) and [`DISTRIBUTION.md`](../DISTRIBUTION.md).
