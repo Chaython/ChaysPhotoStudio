@@ -6,7 +6,7 @@
 
 export const PHOTOPEA_COMPLEX_EXTENSIONS = [
   'psd', 'psb', 'ai', 'indd', 'xcf', 'sketch', 'xd', 'fig', 'kri', 'kra',
-  'clip', 'sai', 'pxd', 'pxz', 'cdr', 'ufo', 'afphoto', 'gvdesign',
+  'ora', 'clip', 'sai', 'pxd', 'pxz', 'cdr', 'ufo', 'afphoto', 'gvdesign',
   'svg', 'eps', 'pdf', 'pdn', 'wmf', 'emf',
 ] as const
 
