@@ -89,6 +89,8 @@ export class PixelOpOperationError extends Error {
 
 // ------------------------------------------------------------ tuning
 const MAX_WORKERS = 2
+// Reclaim worker heaps after a period without pixel operations.
+const WORKER_IDLE_MS = 60_000
 /** below this many pixels the worker round-trip costs more than the op — run sync */
 export const SIZE_THRESHOLD_PX = 300_000 // 0.3 MP
 const OP_TIMEOUT_MS = 20_000
@@ -145,6 +147,7 @@ interface WorkerEntry {
   worker: Worker
   ready: boolean
   job: InternalJob | null
+  idleTimer: ReturnType<typeof setTimeout> | null
 }
 
 let pool: WorkerEntry[] = []
@@ -244,7 +247,7 @@ function spawnWorker(): WorkerEntry | null {
     // bootstrap + all three chunks return 200 and the op round-trips. Any load
     // failure still falls back to synchronous execution (see onerror below).
     const worker = new Worker(new URL('../workers/pixel-op.worker.ts', import.meta.url))
-    const entry: WorkerEntry = { worker, ready: false, job: null }
+    const entry: WorkerEntry = { worker, ready: false, job: null, idleTimer: null }
     worker.onmessage = (ev: MessageEvent) => handleWorkerMessage(entry, ev)
     worker.onerror = (ev: ErrorEvent) => {
       // script load failure / uncaught worker crash — the pool is unusable
@@ -261,9 +264,26 @@ function spawnWorker(): WorkerEntry | null {
   }
 }
 
+function retireIdleWorker(entry: WorkerEntry): void {
+  if (entry.idleTimer) clearTimeout(entry.idleTimer)
+  entry.idleTimer = null
+  // A new operation may have arrived since the idle timer was scheduled.
+  if (entry.job || pending.length || !pool.includes(entry)) return
+  pool = pool.filter(e => e !== entry)
+  try { entry.worker.terminate() } catch { /* already stopped */ }
+}
+
+function scheduleIdleRetirement(entry: WorkerEntry): void {
+  if (entry.idleTimer) clearTimeout(entry.idleTimer)
+  if (entry.job || pending.length || !pool.includes(entry)) return
+  entry.idleTimer = setTimeout(() => retireIdleWorker(entry), WORKER_IDLE_MS)
+}
+
 /** terminate every worker; recover in-flight jobs; run queued jobs synchronously */
 function shutdownPool(): void {
   for (const entry of pool) {
+    if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    entry.idleTimer = null
     const job = entry.job
     try { entry.worker.terminate() } catch { /* already dead */ }
     if (job) recoverJob(job, 'worker pool shut down')
@@ -320,6 +340,7 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
   if (msg.kind === 'ready') {
     entry.ready = true
     drainQueue()
+    scheduleIdleRetirement(entry)
     return
   }
   const job = entry.job
@@ -336,6 +357,7 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
   if (msg.kind === 'done' && msg.buffer) {
     job.resolve(pixelImageFromBuffer(msg.buffer, job.width, job.height, job.pixelType, job.dynamicRange))
     drainQueue()
+    scheduleIdleRetirement(entry)
     return
   }
   if (msg.kind === 'error') {
@@ -346,17 +368,20 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
     if (!message.startsWith('done-post failed:') && !message.includes('AND error-post failed:')) {
       job.reject(new PixelOpOperationError(message))
       drainQueue()
+      scheduleIdleRetirement(entry)
       return
     }
     // A failed transport reply can indicate a broken worker protocol;
     // isolate it without trusting potentially detached or modified input.
     warnOnce(`worker reply failed: ${message}`)
+    if (entry.idleTimer) clearTimeout(entry.idleTimer)
     try { entry.worker.terminate() } catch { /* already dead */ }
     const others = pool
     pool = []
     for (const e of others) {
       if (e === entry) continue
       const j = e.job
+      if (e.idleTimer) clearTimeout(e.idleTimer)
       try { e.worker.terminate() } catch { /* already dead */ }
       if (j) recoverJob(j, 'worker pool shut down')
     }
@@ -367,6 +392,8 @@ function handleWorkerMessage(entry: WorkerEntry, ev: MessageEvent): void {
 }
 
 function dispatch(entry: WorkerEntry, job: InternalJob): void {
+  if (entry.idleTimer) clearTimeout(entry.idleTimer)
+  entry.idleTimer = null
   entry.job = job
   job.entry = entry
   const timeoutMs = timeoutForJob(job)
@@ -378,6 +405,8 @@ function dispatch(entry: WorkerEntry, job: InternalJob): void {
       timedOutWarned = true
       console.warn(`[zphoto] pixel worker job timed out after ${Math.round(timeoutMs / 1000)}s; restarting only that worker`)
     }
+    if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    entry.idleTimer = null
     try { entry.worker.terminate() } catch { /* already dead */ }
     pool = pool.filter(e => e !== entry)
     recoverJob(job, 'timeout')
@@ -419,6 +448,7 @@ function dispatch(entry: WorkerEntry, job: InternalJob): void {
       `pixel worker request could not be sent: ${err instanceof Error ? err.message : String(err)}`,
     ))
     drainQueue()
+    scheduleIdleRetirement(entry)
   }
 }
 
