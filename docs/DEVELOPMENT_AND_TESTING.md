@@ -54,6 +54,7 @@ For new formats, document *recognition*, *actual decode*, *retained structure*, 
 
 ```bash
 bun run tools:validate
+bun run dock-sizing:validate  # dock size defaults for compact vs content-heavy panels
 bun run retouch-safety:validate
 bun run warp:validate
 bun run history:validate
