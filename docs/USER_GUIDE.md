@@ -71,6 +71,7 @@ Create, edit, save and export a document.
 
 - The native project keeps editing structure; PNG and JPEG exports do not.
 - Check File → Recent & Recovery after an interruption.
+- Opening MP4, WebM or MKV prompts for a frame timestamp. Scrub the preview and choose Import frame to make an editable still image.
 
 ## Workspace and panels
 
@@ -80,8 +81,9 @@ Find tools and customize the appearance of the studio.
 
 1. Choose Window → Layers, History, Channels, Metadata or other panels to reveal them.
 2. Rearrange panels to match your workflow.
-3. Use the theme toggle for Dark, Light or OLED black; Settings also offers Touch / mobile mode.
-4. Choose Settings → Reset panel layout if a panel is difficult to locate.
+3. Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.
+4. Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.
+5. Choose Settings → Reset panel layout if a panel is difficult to locate.
 
 **Notes and tips:**
 
