@@ -71,7 +71,7 @@ rleView.setUint32(4,64,true)
 rleBytes.set([1,10,240,128],64) // PackBits literal, pad to even length
 rw(0xfffe);rw(0xe000);rd(rleBytes.length);rp.push(...rleBytes)
 rw(0xfffe);rw(0xe0dd);rd(0)
-const rleDicom=decodeDicom(Uint8Array.from(rp))
+const rleDicom=await decodeDicom(Uint8Array.from(rp))
 check(rleDicom.image.width===2&&rleDicom.image.rgba[0]<rleDicom.image.rgba[4],'DICOM RLE grayscale')
 
 // Synthetic OpenEXR 1x1, 32-bit RGB no compression.
