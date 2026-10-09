@@ -2,7 +2,7 @@
 import { engine } from '../engine/engine'
 import { getFlatComposite } from '../engine/document'
 import { useEditorStore } from '../store'
-import { newDocumentFromClipboard, openFiles, placeImageAsSmartLayer, saveProject } from '../engine/io'
+import { newDocumentFromClipboard, openFiles, placeImageAsSmartLayer, redevelopActiveRawSmartLayer, saveProject } from '../engine/io'
 import { pluginManager } from '../plugins/plugin-manager'
 import { importGimpBrushFile } from '../plugins/brush-presets'
 import { importGimpGradientFile } from '../plugins/gradient-presets'
@@ -404,6 +404,9 @@ export const MENUS: MenuItem[][] = [
     { id: 'layer-duplicate', label: 'Duplicate Entire Layer', run: () => { const l = engine.activeLayer; if (l) engine.duplicateLayer(l.id) } },
     { id: 'layer-duplicate-into', label: 'Duplicate Into…', enabled: () => !!engine.activeLayer && engine.docs.length > 1, run: () => openDlg('duplicate-layer', { layerId: engine.activeLayer?.id }) },
     { id: 'layer-delete', label: 'Delete Layer', run: () => engine.deleteLayer() },
+    { id: 'layer-raw-redevelop', label: 'Redevelop RAW Smart Object…',
+      enabled: () => engine.activeLayer?.kind === 'smart' && !!engine.activeLayer.rawSmart,
+      run: () => { void redevelopActiveRawSmartLayer() } },
     S(),
     { id: 'layer-new-adj', label: 'New Adjustment Layer', submenu: newAdjLayerItems },
     S(),
