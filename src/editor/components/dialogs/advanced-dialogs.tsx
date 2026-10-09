@@ -41,6 +41,7 @@ import * as imageOps from '../../image-ops'
 import type { PsDocument, Rect } from '../../types'
 import type { DialogProps } from './generic-dialogs'
 import { setScriptHooks } from '../../engine/scripting-api'
+import { checkForReleases, currentVersion, type ReleaseCheck } from '../../update-check'
 
 // ============================================================
 // shared primitives
@@ -1679,6 +1680,19 @@ const ABOUT_FEATURES: { icon: LucideIcon; title: string; desc: string }[] = [
 ]
 
 export function AboutDialog({ onClose }: DialogProps) {
+  const [checking, setChecking] = useState(false)
+  const [release, setRelease] = useState<ReleaseCheck | null>(null)
+  const [updateError, setUpdateError] = useState('')
+  const checkReleases = async () => {
+    if (checking) return
+    setChecking(true)
+    setUpdateError('')
+    try { setRelease(await checkForReleases()) }
+    catch (err) {
+      setRelease(null)
+      setUpdateError(err instanceof Error ? err.message : 'Release check failed')
+    } finally { setChecking(false) }
+  }
   return (
     <>
       <DialogHeader><DialogTitle>About Chay's Photo Studio</DialogTitle></DialogHeader>
@@ -1690,13 +1704,30 @@ export function AboutDialog({ onClose }: DialogProps) {
           <div>
             <div className="text-sm font-semibold text-foreground">
               Chay's Photo Studio
-              <span className="ml-2 text-[10px] font-mono text-primary align-middle">v1.0 · Web Edition</span>
+              <span className="ml-2 text-[10px] font-mono text-primary align-middle">v{currentVersion} · Web Edition</span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               A Photoshop-class raster image editor that runs entirely in your browser.
             </p>
             <p className="text-[10px] text-muted-foreground/80">© Chaython Meredith 2026 · All rights reserved.</p>
           </div>
+        </div>
+        <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium">Release updates (manual)</span>
+            <Button size="sm" variant="outline" disabled={checking} onClick={() => void checkReleases()}>
+              {checking ? 'Checking…' : 'Check for updates'}
+            </Button>
+          </div>
+          {release && (
+            <div className="space-y-1 text-[11px] text-muted-foreground">
+              <p>{release.newerVersion ? 'Newer version available' : release.sameVersionFamily ? 'Latest published build in your version family' : 'Latest published release'}: <span className="font-mono">{release.tag}</span></p>
+              {release.notes && <p className="max-h-20 overflow-y-auto whitespace-pre-wrap break-words">{release.notes}</p>}
+              <a className="text-primary underline" href={release.url} target="_blank" rel="noopener noreferrer">Review GitHub release / download manually</a>
+            </div>
+          )}
+          {updateError && <p role="status" className="text-[11px] text-destructive">{updateError}</p>}
+          <p className="text-[10px] text-muted-foreground">Only checks on click. Does not download, install, or restart the editor.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {ABOUT_FEATURES.map(f => (

@@ -18,7 +18,7 @@ export type ToolId =
   | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'perspective-crop' | 'eyedropper' | 'color-sampler' | 'measure'
   | 'brush' | 'pencil' | 'mixer-brush' | 'color-replacement' | 'history-brush' | 'art-history-brush' | 'clone-stamp' | 'pattern-stamp' | 'healing-brush' | 'spot-healing' | 'patch' | 'content-aware-move' | 'red-eye'
   | 'eraser' | 'background-eraser' | 'magic-eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
-  | 'dodge' | 'burn' | 'sponge' | 'text' | 'shape' | 'pen' | 'path-select' | 'direct-select' | 'hand' | 'zoom'
+  | 'dodge' | 'burn' | 'sponge' | 'text' | 'type-mask-horizontal' | 'type-mask-vertical' | 'shape' | 'pen' | 'pen-freeform' | 'pen-curvature' | 'path-select' | 'direct-select' | 'hand' | 'zoom'
 
 export type SelectionCombine = 'new' | 'add' | 'subtract' | 'intersect'
 
@@ -49,7 +49,7 @@ export type FilterType =
   | 'displace' | 'fibers' | 'difference-clouds' | 'average' | 'lens-correction' | 'shear' | 'offset'
 
 // Control schemas power the generic dialog renderer + properties panel
-export type ControlType = 'slider' | 'number' | 'select' | 'toggle' | 'color' | 'angle' | 'point' | 'gradient' | 'custom'
+export type ControlType = 'slider' | 'number' | 'text' | 'select' | 'toggle' | 'color' | 'angle' | 'point' | 'gradient' | 'custom'
 export interface ControlDef {
   key: string
   label: string
@@ -792,7 +792,7 @@ export type DialogType =
   | 'plugin-manager' | 'ai-generate' | 'ai-tools'
   | 'layer-styles'
   | 'detect-objects'
-  | 'customize-toolbar' | 'recovery'
+  | 'customize-toolbar' | 'all-tools' | 'recovery'
 
 export interface DialogInstance {
   id: string

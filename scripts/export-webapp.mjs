@@ -50,7 +50,7 @@ function runNextBuild(basePath) {
     ...(basePath ? { NEXT_BASE_PATH: basePath } : {}),
   }
   delete env.NEXT_BASE_PATH_UNSET
-  const res = spawnSync('bunx', ['next', 'build'], { cwd: COPY, env, encoding: 'utf8', stdio: 'pipe' })
+  const res = spawnSync('bunx', ['next', 'build', '--webpack'], { cwd: COPY, env, encoding: 'utf8', stdio: 'pipe' })
   if (res.stdout) process.stdout.write(res.stdout)
   if (res.stderr) process.stderr.write(res.stderr)
   if (res.status !== 0) {

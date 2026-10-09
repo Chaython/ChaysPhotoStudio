@@ -27,10 +27,11 @@ import { cn } from '@/lib/utils'
 
 export function EditorApp() {
   const hasDoc = useEditorStore(s => !!s.activeDocId)
-  const [theme, setTheme] = useState<'dark' | 'light' | 'oled'>(() => {
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const [theme, setTheme] = useState<'dark' | 'light' | 'oled' | 'photoshop'>(() => {
     if (typeof window === 'undefined') return 'dark'
     const saved = window.localStorage.getItem('chays-photo-studio-theme')
-    return saved === 'light' || saved === 'oled' || saved === 'dark' ? saved : 'dark'
+    return saved === 'light' || saved === 'oled' || saved === 'dark' || saved === 'photoshop' ? saved : 'dark'
   })
   const [mobileMode, setMobileMode] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -48,6 +49,7 @@ export function EditorApp() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme !== 'light')
     document.documentElement.classList.toggle('oled', theme === 'oled')
+    document.documentElement.classList.toggle('photoshop-theme', theme === 'photoshop')
     document.documentElement.classList.toggle('zphoto', true)
     window.localStorage.setItem('chays-photo-studio-theme', theme)
   }, [theme])
@@ -156,14 +158,15 @@ export function EditorApp() {
       const files = filesOf(e)
       if (!files.length) return
       const projects = files.filter(f => f.name.endsWith('.zproj.json'))
-      const images = files.filter(f => f.type.startsWith('image/') && !f.name.endsWith('.zproj.json'))
-      const others = files.filter(f => !f.type.startsWith('image/') && !f.name.endsWith('.zproj.json'))
-      if (others.length) useEditorStore.getState().pushToast(`Skipped ${others.length} non-image file${others.length > 1 ? 's' : ''}`, 'error')
+      const supported = (f: File) => f.type.startsWith('image/') || /\.(mp4|webm|mkv)$/i.test(f.name)
+      const importable = files.filter(f => !f.name.endsWith('.zproj.json') && supported(f))
+      const others = files.filter(f => !f.name.endsWith('.zproj.json') && !supported(f))
+      if (others.length) useEditorStore.getState().pushToast(`Skipped ${others.length} unsupported file${others.length > 1 ? 's' : ''}`, 'error')
       if (projects.length) void openFiles(projects)
-      if (images.length === 1 && engine.activeDoc) {
-        void placeImageAsSmartLayer(images[0])
-      } else if (images.length) {
-        void openFiles(images)
+      if (importable.length === 1 && engine.activeDoc) {
+        void placeImageAsSmartLayer(importable[0])
+      } else if (importable.length) {
+        void openFiles(importable)
       }
     }
     const onDragOver = (e: DragEvent) => {
@@ -262,7 +265,7 @@ export function EditorApp() {
   }, [])
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none" style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
+    <div className={cn("h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none", !mobileMode && workspacePreset === "photoshop" && "zphoto-photoshop-workspace")} style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
       <MenuBar theme={theme} setTheme={setTheme} mobileMode={mobileMode} setMobileMode={setMobileMode} />
       <div className={cn('flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
         {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
@@ -294,11 +297,24 @@ export function EditorApp() {
                 </div>
               </>
             )}
-            {!mobileMode && <TopDock />}
+            {!mobileMode && (
+              <div className="hidden md:flex min-w-0 shrink-0">
+                <TopDock side="top-left" />
+                <div className="min-w-0 flex-1"><TopDock /></div>
+                <TopDock side="top-right" />
+              </div>
+            )}
             {hasDoc ? <CanvasWorkspace mobile={mobileMode} /> : (
               <div className="flex-1 flex flex-col min-h-0">
                 <WelcomeScreen />
                 {mobileMode && <MobileStatusBar />}
+              </div>
+            )}
+            {!mobileMode && (
+              <div className="hidden md:flex min-w-0 shrink-0">
+                <TopDock side="bottom-left" />
+                <div className="min-w-0 flex-1"><TopDock side="bottom" /></div>
+                <TopDock side="bottom-right" />
               </div>
             )}
           </div>
@@ -343,11 +359,11 @@ export function EditorApp() {
           <div className="absolute inset-4 border-2 border-dashed border-primary/70 rounded-xl bg-primary/5" />
           <div className="relative bg-panel/95 border rounded-lg px-8 py-5 text-center shadow-2xl">
             <ImagePlus size={26} className="mx-auto text-primary mb-2" aria-hidden />
-            <div className="text-sm font-medium">Drop images here</div>
+            <div className="text-sm font-medium">Drop images or videos here</div>
             <div className="text-[11px] text-muted-foreground mt-0.5">
               {engine.activeDoc
                 ? 'A single image is placed as a Smart Object layer in this document'
-                : 'Images open as new documents'}
+                : 'Images and selected video frames open as new documents'}
             </div>
           </div>
         </div>

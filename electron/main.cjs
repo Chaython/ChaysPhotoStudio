@@ -12,6 +12,7 @@
 // ============================================================
 const { app, BrowserWindow, Menu, shell, session, ipcMain } = require('electron')
 const { spawn, execFile } = require('node:child_process')
+const { installGimpIpc } = require('./gimp-runtime.cjs')
 const http = require('node:http')
 const fs = require('node:fs')
 const net = require('node:net')
@@ -243,9 +244,9 @@ function execFileP(file, args, opts = {}) {
 async function findNativeTool(kind) {
   for (const candidate of commandCandidates(kind)) {
     try {
-      const args = kind === 'gmic' ? ['-version'] : ['--version']
+      const args = kind === 'gmic' ? ['-version'] : ['--help']
       const r = await execFileP(candidate, args, { timeout: 10000 })
-      const version = (r.stdout || r.stderr).split(/\r?\n/).find(Boolean) || candidate
+      const version = kind === 'gegl' ? 'GEGL CLI detected' : ((r.stdout || r.stderr).split(/\r?\n/).find(Boolean) || candidate)
       return { path: candidate, version: version.trim() }
     } catch { /* try next */ }
   }
@@ -290,7 +291,39 @@ async function installNativeToolIpc() {
     }
     return cached
   }
-  ipcMain.handle('chays:native-tools:info', () => info())
+  ipcMain.handle('chays:native-tools:info', (_event, refresh) => info(refresh === true))
+  // Read-only filter discovery. The renderer cannot choose executable paths or
+  // arbitrary flags; command/operation names are validated before inspection.
+  ipcMain.handle('chays:native-tools:catalog', async (_event, kind) => {
+    if (kind !== 'gegl') throw new Error('Unsupported native catalog')
+    const state = await info()
+    if (!state.geglPath) throw new Error('GEGL is not installed')
+    const result = await execFileP(state.geglPath, ['--list-all'], { timeout: 15000, maxBuffer: 1024 * 1024 })
+    const names = Array.from(new Set((result.stdout + '\n' + result.stderr).match(/\bgegl:[a-z0-9_.-]+\b/gi) || []))
+    return names.slice(0, 4096).sort((a, b) => a.localeCompare(b))
+  })
+  ipcMain.handle('chays:native-tools:inspect', async (_event, payload) => {
+    const kind = payload?.kind
+    const operation = String(payload?.operation || '').trim()
+    if (!/^[a-z][a-z0-9_-]{0,95}$/i.test(operation) && !/^gegl:[a-z][a-z0-9_.-]{0,90}$/i.test(operation)) {
+      throw new Error('Invalid native operation name')
+    }
+    if (kind === 'gegl') {
+      if (!operation.startsWith('gegl:')) throw new Error('Expected a GEGL operation')
+      const state = await info()
+      if (!state.geglPath) throw new Error('GEGL is not installed')
+      const result = await execFileP(state.geglPath, ['--info', operation], { timeout: 15000, maxBuffer: 128 * 1024 })
+      return (result.stdout + '\n' + result.stderr).slice(0, 12000)
+    }
+    if (kind === 'gmic') {
+      if (operation.includes(':')) throw new Error('Invalid G’MIC command')
+      const state = await info()
+      if (!state.gmicPath) throw new Error('G’MIC is not installed')
+      const result = await execFileP(state.gmicPath, ['-h', operation], { timeout: 15000, maxBuffer: 128 * 1024 })
+      return (result.stdout + '\n' + result.stderr).slice(0, 12000)
+    }
+    throw new Error('Unsupported native filter')
+  })
   ipcMain.handle('chays:native-tools:gmic', async (_event, payload) => {
     const state = await info()
     if (!state.gmicPath) throw new Error('G’MIC was not found. Install gmic or set CHAYS_GMIC_PATH.')
@@ -309,7 +342,7 @@ async function installNativeToolIpc() {
     // GEGL chain syntax: gegl input -o output -- operation property=value ...
     return withNativeImage(payload?.image, (input, output) => execFileP(state.geglPath, [input, '-o', output, '--', operation, ...args]))
   })
-  return info(true)
+  // Do not launch installed filter tools during application startup.
 }
 
 // ---------- file-open relay ----------
@@ -465,6 +498,7 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
     await installNativeToolIpc().catch(err => console.warn('[native-tools]', err?.message || err))
+    installGimpIpc(ipcMain) // registers handlers only; no GIMP launch at startup
 
     buildMenu()
     createWindow()

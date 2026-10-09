@@ -6,6 +6,7 @@ import { newDocumentFromClipboard, openFiles, placeImageAsSmartLayer, redevelopA
 import { pluginManager } from '../plugins/plugin-manager'
 import { importGimpBrushFile } from '../plugins/brush-presets'
 import { importGimpGradientFile } from '../plugins/gradient-presets'
+import { importPatternFile } from '../tools/patterns'
 import type { AdjustmentType, FilterType } from '../types'
 import { commandCombo, formatCombo, type CommandId } from '../shortcuts'
 import { IMPORT_ACCEPT } from '../formats'
@@ -257,6 +258,7 @@ export function getPluginsMenuItems(): MenuItem[] {
   items.push(
     { id: 'plugins-import-brush', label: 'Import GIMP Brush…', run: () => { void importGimpBrushFile() } },
     { id: 'plugins-import-gradient', label: 'Import GIMP Gradient…', run: () => { void importGimpGradientFile() } },
+    { id: 'plugins-import-pattern', label: 'Import GIMP Pattern…', run: () => fileInput('.pat', true, files => { void Promise.all(Array.from(files).map(async file => { try { await importPatternFile(file) } catch (err) { store().pushToast(err instanceof Error ? err.message : 'Pattern import failed', 'error') } })) }) },
   )
   return items
 }
@@ -267,6 +269,7 @@ const pluginsMenuStatic: MenuItem[] = [
   S(),
   { id: 'plugins-import-brush', label: 'Import GIMP Brush…', run: () => { void importGimpBrushFile() } },
   { id: 'plugins-import-gradient', label: 'Import GIMP Gradient…', run: () => { void importGimpGradientFile() } },
+    { id: 'plugins-import-pattern', label: 'Import GIMP Pattern…', run: () => fileInput('.pat', true, files => { void Promise.all(Array.from(files).map(async file => { try { await importPatternFile(file) } catch (err) { store().pushToast(err instanceof Error ? err.message : 'Pattern import failed', 'error') } })) }) },
 ]
 
 export const MENUS: MenuItem[][] = [
@@ -407,6 +410,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'layer-raw-redevelop', label: 'Redevelop RAW Smart Object…',
       enabled: () => engine.activeLayer?.kind === 'smart' && !!engine.activeLayer.rawSmart,
       run: () => { void redevelopActiveRawSmartLayer() } },
+
     S(),
     { id: 'layer-new-adj', label: 'New Adjustment Layer', submenu: newAdjLayerItems },
     S(),
@@ -599,6 +603,7 @@ export const MENUS: MenuItem[][] = [
     // Native workspace chrome remains in its built-in location until moved;
     // revealPanel focuses it wherever the user has arranged it.
     { id: 'win-tools', label: 'Tools', run: () => store().revealPanel('tools') },
+    { id: 'win-all-tools', label: 'All Tools / Tool Search…', run: () => openDlg('all-tools') },
     { id: 'win-tool-options', label: 'Tool Options', run: () => store().revealPanel('tool-options') },
     { id: 'win-documents', label: 'Open Files', run: () => store().revealPanel('documents') },
     S(),
@@ -639,5 +644,6 @@ export const MENUS: MenuItem[][] = [
       run: () => window.open('https://github.com/sponsors/Chaython', '_blank', 'noopener'),
     },
     { id: 'help-shortcuts', label: 'Keyboard Shortcuts', run: () => openDlg('shortcuts') },
+    { id: 'help-all-tools', label: 'All Tools / Tool Search', run: () => openDlg('all-tools') },
   ],
 ]

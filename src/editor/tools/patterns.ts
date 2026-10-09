@@ -1,4 +1,5 @@
 import { createCanvas, ctx2d, clamp } from '../utils/canvas'
+import { parseGimpPattern } from '../plugins/gimp-assets'
 
 export type BuiltinPattern = 'checker' | 'diagonal' | 'dots' | 'grid'
 
@@ -62,7 +63,9 @@ export async function hydrateUserPatterns() {
 }
 
 export async function importPatternFile(file: File): Promise<UserPattern> {
-  const source = await createImageBitmap(file)
+  const isGimp = /\.pat$/i.test(file.name)
+  const parsed = isGimp ? parseGimpPattern(await file.arrayBuffer()) : null
+  const source = parsed?.canvas ?? await createImageBitmap(file)
   const maxSide = 256
   const scale = Math.min(1, maxSide / Math.max(source.width, source.height))
   const w = Math.max(1, Math.round(source.width * scale))
@@ -72,9 +75,9 @@ export async function importPatternFile(file: File): Promise<UserPattern> {
   cc.imageSmoothingEnabled = true
   cc.imageSmoothingQuality = 'high'
   cc.drawImage(source, 0, 0, w, h)
-  source.close()
+  if (!parsed) (source as ImageBitmap).close()
   const id = `user:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const name = file.name.replace(/\.[^.]+$/, '') || 'Imported Pattern'
+  const name = parsed?.name || file.name.replace(/\.[^.]+$/, '') || 'Imported Pattern'
   const item: UserPattern = { id, name, dataUrl: canvas.toDataURL('image/png'), width: w, height: h }
   const next = [item, ...readStoredPatterns().filter(p => p.id !== id)].slice(0, 20)
   try {

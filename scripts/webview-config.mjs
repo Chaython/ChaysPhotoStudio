@@ -10,6 +10,7 @@
 //   WEBVIEW_FRONTEND_DIST=../../some/export node scripts/webview-config.mjs
 import fs from 'node:fs'
 import path from 'node:path'
+import { embeddedWebviewCsp } from './webview-csp.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const SRC_TAURI = path.join(ROOT, 'webview/src-tauri')
@@ -51,6 +52,11 @@ if (appUrl) {
   console.log(`webview-config: embedded frontend → ${frontendDist}`)
 }
 
-const overlay = { build: { frontendDist } }
+// Embedded binaries get CSP hardening without changing the Next.js dev
+// server or imposing a local-app policy on user-configured remote websites.
+const overlay = {
+  build: { frontendDist },
+  ...(appUrl ? {} : { app: { security: { csp: embeddedWebviewCsp } } }),
+}
 fs.writeFileSync(OUT, JSON.stringify(overlay, null, 2) + '\n')
 console.log(`webview-config: wrote ${path.relative(ROOT, OUT)}`)
