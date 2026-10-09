@@ -44,11 +44,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "On desktop, dock panels left/right/top, group tabs or float windows; reveal hidden panels from Window.",
       "Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.",
       "Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.",
-      "Choose Settings → Reset panel layout if a panel is difficult to locate."
+      "Choose Settings → Reset panel layout if a panel is difficult to locate.",
+      "On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right."
     ],
     "tips": [
       "The top-toolbar Help button opens this manual without leaving the editor.",
-      "Eight-way bottom/corner docks and an All Tools search dialog are pending PR #81."
+      "Use Window → All Tools / Tool Search to search and launch registered tools."
     ]
   },
   {
@@ -451,8 +452,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Organize toolbar groups through Edit → Customize Toolbar… and key assignments through Keyboard Shortcuts."
     ],
     "tips": [
-      "Main has 48 registered tools; shared hotkeys cycle tools.",
-      "The searchable All Tools page is pending PR #81."
+      "Main has 52 registered tools; shared hotkeys cycle tools.",
+      "Search all 52 tools through Window → All Tools / Tool Search (merged PR #81)."
     ]
   },
   {
@@ -468,7 +469,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Use Type (T) for point/paragraph text and Shape (U) for rectangles, rounded rectangles, ellipses, stars or polygons."
     ],
     "tips": [
-      "Freeform/Curvature Pen and Type Mask variants are pending PR #82.",
+      "Freeform Pen, Curvature Pen and horizontal/vertical Type Mask tools are included on main (merged PR #82).",
       "Advanced OpenType settings and Photoshop PSD text round-trips are not exact."
     ]
   },
@@ -615,7 +616,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "In Electron, use Desktop Filters to inspect an existing G'MIC or GEGL install; these are never bundled by the browser app.",
       "In Plugin Manager → GIMP Runtime, click Detect GIMP 3, inspect/select a noninteractive procedure, and execute it only after reviewing/trusting it.",
       "Use GIMP Scripts for static source analysis. Electron can run explicitly chosen Python/Script-Fu source in a separate GIMP 3 process; image results are returned as a new layer.",
-      "For simple standalone experiments, choose the embedded Scheme subset or enable Python/Pyodide; these interpreters start only when you press Run."
+      "For simple standalone experiments, choose the embedded Scheme subset or enable Python/Pyodide; these interpreters start only when you press Run.",
+      "With GIMP runtime or embedded interpretation, only the required external process/interpreter starts on explicit execution."
     ],
     "tips": [
       "Native GIMP 3 is Electron-only, installed separately, and runs with OS permissions; scripts are not sandboxed.",
