@@ -4,6 +4,11 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added broader LibRaw camera decoding and source-embedded redevelopable RAW Smart Objects, optional Lensfun XML calibration, supported multipart/tiled OpenEXR, selected compressed DICOM, FITS and multipage image imports. Six pinned camera samples passed sensor decoding; other variants require testing.
+- Fixed a CharLS WASM browser build blocker using the Webpack production/static path, plus invalid/duplicate Lensfun focal interpolation.
+- Fixed eight-way dock routing and the opt-in Python interpreter CSP exception; added content-fit dock sizing with independent saved manual sizes, double-click auto-fit and legacy layout migration.
+
+
 - Prevented **Rasterize Adjustment Layer** from stamping the whole document on top of its remaining editable layers (double-composite/data-loss bug). Adjustment rasterization now requires an explicit Merge Visible/Flatten; locked layers are also protected from unwanted rasterization.
 
 - Corrected **Merge Down** baking the lower layer mask/opacity twice. The merged raster now composes both layers' alpha exactly once and clears baked properties. Merge on adjustment/complex clipped layers no longer unexpectedly flattens the entire document. Locked layers are protected and resulting layer selection is restored.
