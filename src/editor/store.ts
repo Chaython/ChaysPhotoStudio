@@ -73,6 +73,8 @@ function loadPanelLayout(rawOverride: string | null = null): {
   zTop: number
   dockWidth: number
   leftWidth: number
+  leftWidthManual: boolean
+  dockWidthManual: boolean
   leftOpen: boolean
   leftTab: string
   rightTab: string
@@ -92,6 +94,8 @@ function loadPanelLayout(rawOverride: string | null = null): {
       zTop?: number
       dockWidth?: number
       leftWidth?: number
+      leftWidthManual?: boolean
+      dockWidthManual?: boolean
       leftOpen?: boolean
       leftTab?: string
       rightTab?: string
@@ -132,6 +136,8 @@ function loadPanelLayout(rawOverride: string | null = null): {
       zTop: typeof data.zTop === 'number' ? data.zTop : Object.values(floating).reduce((m, r) => Math.max(m, r.z), 0),
       dockWidth: clampNum(Math.round(data.dockWidth ?? DOCK_WIDTH_DEFAULT), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX),
       leftWidth: clampNum(Math.round(data.leftWidth ?? DOCK_WIDTH_DEFAULT), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX),
+      leftWidthManual: data.leftWidthManual === true,
+      dockWidthManual: data.dockWidthManual === true,
       leftOpen: !!data.leftOpen,
       leftTab: typeof data.leftTab === 'string' ? data.leftTab : '',
       dockSide,
@@ -154,6 +160,8 @@ function persistPanelLayout(panels: EditorStore['panels']) {
       zTop: panels.zTop,
       dockWidth: panels.dockWidth,
       leftWidth: panels.leftWidth,
+      leftWidthManual: panels.leftWidthManual,
+      dockWidthManual: panels.dockWidthManual,
       leftOpen: panels.leftOpen,
       leftTab: panels.leftTab,
       rightTab: panels.rightTab,
@@ -266,6 +274,7 @@ function persistToolbarLayout(sections: ToolbarSection[] | null) {
 function defaultPanelState(): EditorStore['panels'] {
   return {
     rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
+    leftWidthManual: false, dockWidthManual: false,
     colorPanelOpen: true, floating: {}, dockSide: {}, topOrder: [],
     topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
     topHeightManual: false, bottomHeightManual: false, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
@@ -279,7 +288,7 @@ function photoshopPanelState(current: EditorStore['panels']): EditorStore['panel
     rightTab: 'layers', leftTab: '', leftOpen: false,
     floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
     topHeightManual: false, bottomHeightManual: false,
-    dockWidth: 318,
+    dockWidth: 318, dockWidthManual: false, leftWidthManual: false,
   }
 }
 
@@ -326,6 +335,8 @@ interface EditorStore {
     leftOpen: boolean
     /** left dock width in px (desktop) */
     leftWidth: number
+    leftWidthManual: boolean
+    dockWidthManual: boolean
     colorPanelOpen: boolean
     /** floating panel windows by panel id — presence = floating */
     floating: Record<string, PanelRect>
@@ -391,6 +402,8 @@ interface EditorStore {
   collapsePanel(id: string, collapsed: boolean): void
   setDockWidth(px: number): void
   setLeftDockWidth(px: number): void
+  resetDockWidthAuto(): void
+  resetLeftDockWidthAuto(): void
   setTopHeight(px: number): void
   setBottomHeight(px: number): void
   resetTopHeightAuto(): void
@@ -736,16 +749,30 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   setDockWidth: (px) => set(s => {
     const dockWidth = clampNum(Math.round(px), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX)
-    if (dockWidth === s.panels.dockWidth) return {}
-    const panels = { ...s.panels, dockWidth }
+    if (dockWidth === s.panels.dockWidth && s.panels.dockWidthManual) return {}
+    const panels = { ...s.panels, dockWidth, dockWidthManual: true }
     persistPanelLayout(panels)
     return { panels }
   }),
 
   setLeftDockWidth: (px) => set(s => {
     const leftWidth = clampNum(Math.round(px), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX)
-    if (leftWidth === s.panels.leftWidth) return {}
-    const panels = { ...s.panels, leftWidth }
+    if (leftWidth === s.panels.leftWidth && s.panels.leftWidthManual) return {}
+    const panels = { ...s.panels, leftWidth, leftWidthManual: true }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+
+  resetDockWidthAuto: () => set(s => {
+    if (!s.panels.dockWidthManual) return {}
+    const panels = { ...s.panels, dockWidthManual: false }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+
+  resetLeftDockWidthAuto: () => set(s => {
+    if (!s.panels.leftWidthManual) return {}
+    const panels = { ...s.panels, leftWidthManual: false }
     persistPanelLayout(panels)
     return { panels }
   }),
