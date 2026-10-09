@@ -43,6 +43,15 @@ export interface PanelRect {
 
 // ---- floating panel layout persistence ---------------------------------------
 const PANEL_LAYOUT_KEY = 'zphoto-panel-layout'
+const WORKSPACE_PRESET_KEY = 'zphoto-workspace-preset'
+const CLASSIC_LAYOUT_BACKUP_KEY = 'zphoto-classic-layout-backup'
+export type WorkspacePreset = 'classic' | 'photoshop'
+
+function loadWorkspacePreset(): WorkspacePreset {
+  if (typeof window === 'undefined') return 'classic'
+  try { return localStorage.getItem(WORKSPACE_PRESET_KEY) === 'photoshop' ? 'photoshop' : 'classic' }
+  catch { return 'classic' }
+}
 export const DOCK_WIDTH_DEFAULT = 264
 export const DOCK_WIDTH_MIN = 220
 export const DOCK_WIDTH_MAX = 460
@@ -58,7 +67,7 @@ export const isNativePanelId = (id: string): id is NativePanelId =>
 
 const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
-function loadPanelLayout(): {
+function loadPanelLayout(rawOverride: string | null = null): {
   floating: Record<string, PanelRect>
   zTop: number
   dockWidth: number
@@ -72,7 +81,7 @@ function loadPanelLayout(): {
 } | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = localStorage.getItem(PANEL_LAYOUT_KEY)
+    const raw = rawOverride ?? localStorage.getItem(PANEL_LAYOUT_KEY)
     if (!raw) return null
     const data = JSON.parse(raw) as {
       floating?: Record<string, Partial<PanelRect>>
@@ -241,7 +250,27 @@ function persistToolbarLayout(sections: ToolbarSection[] | null) {
   } catch { /* noop */ }
 }
 
+function defaultPanelState(): EditorStore['panels'] {
+  return {
+    rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
+    colorPanelOpen: true, floating: {}, dockSide: {}, topOrder: [],
+    topHeight: TOP_HEIGHT_DEFAULT, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
+  }
+}
+
+/** Non-destructive template: save the existing layout before applying the preset. */
+function photoshopPanelState(current: EditorStore['panels']): EditorStore['panels'] {
+  return {
+    ...current,
+    rightTab: 'layers', leftTab: '', leftOpen: false,
+    floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT,
+    dockWidth: 318,
+  }
+}
+
 interface EditorStore {
+  workspacePreset: WorkspacePreset
+  setWorkspacePreset(preset: WorkspacePreset): void
   activeTool: ToolId
   toolOptions: Record<string, Record<string, any>>
   fgColor: string
@@ -372,6 +401,7 @@ interface EditorStore {
 let toastSeq = 1
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
+  workspacePreset: loadWorkspacePreset(),
   activeTool: 'move',
   toolOptions: defaultOptions(),
   fgColor: '#ffffff',
@@ -399,20 +429,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   timelineActiveFrame: 0,
   timelineLoop: true,
   timelineFrames: [],
-  panels: {
-    rightTab: 'layers',
-    leftTab: '',
-    leftOpen: false,
-    leftWidth: DOCK_WIDTH_DEFAULT,
-    colorPanelOpen: true,
-    floating: {},
-    dockSide: {},
-    topOrder: [],
-    topHeight: TOP_HEIGHT_DEFAULT,
-    zTop: 0,
-    dockWidth: DOCK_WIDTH_DEFAULT,
-    ...(loadPanelLayout() ?? {}),
-  },
+  panels: { ...defaultPanelState(), ...(loadPanelLayout() ?? {}) },
   view: {
     // rulers ON by default for fresh users; anyone with persisted prefs
     // keeps their saved choice (the loader merges over these defaults)
@@ -433,6 +450,28 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
   shortcutOverrides: loadShortcutOverrides(),
   toolbarLayout: loadToolbarLayout(),
+
+  setWorkspacePreset: (preset) => set(s => {
+    if (preset === s.workspacePreset) return {}
+    let panels: EditorStore['panels']
+    if (preset === 'photoshop') {
+      // Snapshot the user's existing dock and floating layout, so the original
+      // workspace can be restored after experimenting with the preset.
+      try { localStorage.setItem(CLASSIC_LAYOUT_BACKUP_KEY, JSON.stringify(s.panels)) } catch { /* storage blocked */ }
+      panels = photoshopPanelState(s.panels)
+    } else {
+      let previous: ReturnType<typeof loadPanelLayout> = null
+      try {
+        const raw = localStorage.getItem(CLASSIC_LAYOUT_BACKUP_KEY)
+        if (raw) previous = loadPanelLayout(raw)
+        localStorage.removeItem(CLASSIC_LAYOUT_BACKUP_KEY)
+      } catch { /* storage blocked */ }
+      panels = { ...defaultPanelState(), ...(previous ?? {}) }
+    }
+    try { localStorage.setItem(WORKSPACE_PRESET_KEY, preset) } catch { /* storage blocked */ }
+    persistPanelLayout(panels)
+    return { workspacePreset: preset, panels }
+  }),
 
   setTool: (t) => { set({ activeTool: t }) },
   setToolOption: (tool, key, value) => set(s => {
@@ -696,15 +735,12 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { panels }
   }),
 
-  resetPanelLayout: () => set(() => {
-    try { localStorage.removeItem(PANEL_LAYOUT_KEY) } catch { /* noop */ }
-    return {
-      panels: {
-        rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
-        colorPanelOpen: true, floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT,
-        zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
-      },
-    }
+  resetPanelLayout: () => set(s => {
+    const panels = s.workspacePreset === 'photoshop'
+      ? photoshopPanelState(defaultPanelState())
+      : defaultPanelState()
+    persistPanelLayout(panels)
+    return { panels }
   }),
   setViewPref: (key: 'showRulers' | 'showGuides' | 'snapGuides' | 'showGrid' | 'snapGrid' | 'showGridLabels' | 'showPixelGrid' | 'rulerUnits', value: boolean | 'px' | 'in' | 'cm' | 'mm') => set(s => {
     const view = { ...s.view, [key]: value }
