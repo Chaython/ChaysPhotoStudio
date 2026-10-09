@@ -98,11 +98,12 @@ Find tools and customize the appearance of the studio.
 4. Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.
 5. Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.
 6. Choose Settings → Reset panel layout if a panel is difficult to locate.
+7. On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right.
 
 **Notes and tips:**
 
 - The top-toolbar Help button opens this manual without leaving the editor.
-- Eight-way bottom/corner docks and an All Tools search dialog are pending PR #81.
+- Use Window → All Tools / Tool Search to search and launch registered tools.
 
 ## Making and modifying selections
 
@@ -483,8 +484,8 @@ Find related Photoshop-style tools and inspect their options.
 
 **Notes and tips:**
 
-- Main has 48 registered tools; shared hotkeys cycle tools.
-- The searchable All Tools page is pending PR #81.
+- Main has 52 registered tools; shared hotkeys cycle tools.
+- Search all 52 tools through Window → All Tools / Tool Search (merged PR #81).
 
 ## Paths, text and shapes
 
@@ -499,7 +500,7 @@ Create editable contours and typography rather than painting everything into ras
 
 **Notes and tips:**
 
-- Freeform/Curvature Pen and Type Mask variants are pending PR #82.
+- Freeform Pen, Curvature Pen and horizontal/vertical Type Mask tools are included on main (merged PR #82).
 - Advanced OpenType settings and Photoshop PSD text round-trips are not exact.
 
 ## Layer Comps and alternate designs
@@ -637,6 +638,7 @@ Discover compatible GIMP assets and use supported external GIMP procedures witho
 3. In Plugin Manager → GIMP Runtime, click Detect GIMP 3, inspect/select a noninteractive procedure, and execute it only after reviewing/trusting it.
 4. Use GIMP Scripts for static source analysis. Electron can run explicitly chosen Python/Script-Fu source in a separate GIMP 3 process; image results are returned as a new layer.
 5. For simple standalone experiments, choose the embedded Scheme subset or enable Python/Pyodide; these interpreters start only when you press Run.
+6. With GIMP runtime or embedded interpretation, only the required external process/interpreter starts on explicit execution.
 
 **Notes and tips:**
 
