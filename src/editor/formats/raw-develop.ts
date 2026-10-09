@@ -1,4 +1,6 @@
 import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
+import type { ImageMetadata } from '../types'
+import { cameraExif, importLensfunXml, loadedLensfunCount, matchLensfun } from './lensfun-xml'
 // RAW import controls applied before LibRaw demosaicing. Saves settings only,
 // never image files or camera-identifying metadata.
 export interface RawDevelopSettings {
@@ -38,7 +40,7 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
   }
 }
 
-export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings):Promise<RawDevelopSettings|null> {
+export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings, metadata?:ImageMetadata):Promise<RawDevelopSettings|null> {
   const current=initial?normalizeRawSettings(initial):rawSettingsFromSaved()
   if(typeof document==='undefined'||typeof HTMLDialogElement==='undefined')return current
   return await new Promise(resolve=>{
@@ -94,6 +96,53 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     tca.step='0.0001';tca.min='-0.05';tca.max='0.05'
     const vignette=field('Vignette correction (-0.6…0.6)','number',String(current.lensProfile.vignette)) as HTMLInputElement
     vignette.step='0.01';vignette.min='-0.6';vignette.max='0.6'
+    const lensStatus=document.createElement('p')
+    lensStatus.style.cssText='font-size:12px;overflow-wrap:anywhere;opacity:.85;margin-top:10px'
+    const camera=cameraExif(metadata)
+    lensStatus.textContent='Lensfun XML: '+loadedLensfunCount()+' lenses loaded. EXIF lens: '+(camera.lens||'not detected')
+    let chosenLensfun=current.lensProfile.lensfun
+    const applyMatched=()=>{
+      const match=matchLensfun(metadata)
+      if(!match){
+        lensStatus.textContent='No unambiguous Lensfun match. Lens: '+(camera.lens||'not found in EXIF')+
+          '; focal: '+(camera.focal||'unknown')+'mm. Manual controls remain available.'
+        return
+      }
+      chosenLensfun=match
+      lensName.value='Lensfun: '+match.lens+' @ '+match.focal+'mm'
+      // No additive manual compensation when enabling a calibrated profile.
+      k1.value='0';k2.value='0';tca.value='0';vignette.value='0'
+      lensStatus.textContent='Matched Lensfun calibration: '+match.lens+' @ '+match.focal+
+        'mm (loaded XML; distortion '+(match.distortion?'yes':'no')+', TCA '+
+        (match.tca?'yes':'no')+', vignetting '+(match.vignetting?'yes':'no')+')'
+    }
+    const profileControls=document.createElement('div')
+    profileControls.style.cssText='display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap'
+    const load=document.createElement('button')
+    load.type='button';load.textContent='Import Lensfun XML…'
+    load.style.cssText='padding:7px 10px;border:1px solid var(--border);border-radius:6px'
+    const matchButton=document.createElement('button')
+    matchButton.type='button';matchButton.textContent='Match EXIF Lens'
+    matchButton.style.cssText=load.style.cssText
+    matchButton.addEventListener('click',applyMatched)
+    load.addEventListener('click',()=>{
+      const picker=document.createElement('input')
+      picker.type='file';picker.multiple=true;picker.accept='.xml,application/xml,text/xml'
+      picker.addEventListener('change',async()=>{
+        try{
+          let total=0
+          for(const file of Array.from(picker.files||[])){
+            if(file.size>3*1024*1024)throw Error('Individual XML file exceeds 3 MiB')
+            total+=importLensfunXml(await file.text())
+          }
+          lensStatus.textContent='Imported '+total+' Lensfun lens records. Matching EXIF…'
+          applyMatched()
+        }catch(err){lensStatus.textContent='Lensfun import failed: '+(err instanceof Error?err.message:String(err))}
+      },{once:true})
+      picker.click()
+    })
+    profileControls.append(load,matchButton)
+    if(loadedLensfunCount()&&!chosenLensfun)applyMatched()
     const actions=document.createElement('div')
     actions.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:16px'
     const cancel=document.createElement('button'),apply=document.createElement('button')
@@ -103,7 +152,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     apply.style.cssText='padding:7px 14px;border-radius:6px;background:var(--primary);color:var(--primary-foreground)'
     cancel.addEventListener('click',()=>dialog.close('cancel'))
     apply.addEventListener('click',()=>dialog.close('apply'))
-    actions.append(cancel,apply);dialog.append(heading,caption,form,actions)
+    actions.append(cancel,apply);dialog.append(heading,caption,form,profileControls,lensStatus,actions)
     dialog.addEventListener('close',()=>{
       const result=dialog.returnValue==='apply'?normalizeRawSettings({
         exposureEv:exposure.valueAsNumber,
@@ -113,7 +162,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         denoise:denoise.valueAsNumber,
         halfSize:half.value==='half',
         smartObject:smart.value==='yes',
-        lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,tca:tca.valueAsNumber,vignette:vignette.valueAsNumber},
+        lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
       }):null
       if(result)try{localStorage.setItem(storageKey,JSON.stringify(result))}catch{}
       dialog.remove();resolve(result)
