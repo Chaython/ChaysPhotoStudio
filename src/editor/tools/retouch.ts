@@ -12,7 +12,7 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, regionProcess, drawBrushCursor, walkDabs } from './shared'
+import { getOptions, getFgColor, canUseByteRetouch, regionProcess, drawBrushCursor, walkDabs } from './shared'
 import { smoothstep } from './dab-utils'
 import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb, cloneCanvas, getImageData, putImageData } from '../utils/canvas'
 import { getFlatComposite, newLayer, invalidateFlat } from '../engine/document'
@@ -178,6 +178,7 @@ function makeRetouch(
       const doc = engine.activeDoc
       const layer = engine.activeLayer
       if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+      if (!canUseByteRetouch(id[0].toUpperCase() + id.slice(1))) return
       const opts = getOptions(id)
       if (supportsNewLayerOutput(id) && opts.output === 'new') {
         const src0 = opts.sampleAllLayers === true ? getFlatComposite(doc) : engine.layerCanvasDocSpace(layer.id)
