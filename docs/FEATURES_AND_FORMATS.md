@@ -94,14 +94,14 @@ When interoperability matters, test with a small representative project, reopen 
 |---|---|
 | Browser-hosted live editor | Requires access at initial load; the PWA may use cached shell assets after installation |
 | Default Electron build | Locally bundled application and server; doesn't require GitHub Pages |
-| Default Tauri build | Static editor assets embedded; the OS WebView runtime must be present or provisioned during installation. A separate Windows offline installer bundles WebView2 provisioning |
+| Default Tauri build | Static editor assets embedded with release CSP; native window state is restored. The OS WebView runtime must be present/provisioned; the separate Windows offline installer bundles WebView2 provisioning |
 | Browser extension | Editor bundled locally; opening a *remote* image URL still requires that image to be reachable and CORS-permitted |
 | Painting/layers/local filters/project files | Designed to process locally without uploading source documents |
 | Pollinations/custom remote generation and remote image URLs | **Internet required**; content submitted to an external provider can leave the device |
 | Local ComfyUI, G'MIC, GEGL or GIMP 3 | Separate installation; native GEGL/G'MIC/GIMP 3 execution is Electron-only. Pyodide embedding downloads a runtime on first explicit use |
 | External links/updates | Internet required |
 
-On current `main`, recovery snapshots live in the application's IndexedDB profile; clearing profile/browser data can delete them. Manually save `.zproj.json` projects outside the profile. Recovery snapshot export, native window-state persistence, optional code signing and a manual update check are proposed in [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86). A separate Windows offline WebView2 NSIS installer has been configured on `main` in [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85) and will appear when a successful release publishes it.
+On current `main`, recovery snapshots live in IndexedDB. **Recent & Recovery** now supports per-snapshot `.zproj.json` downloads and a user-selected folder backup where supported. This is a **manual** backup and not a scheduled external copy; clearing the profile can still erase unexported snapshots. Merged [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86) also adds embedded-release CSP, native window-state persistence, a user-initiated release check and optional Authenticode support (which needs signing credentials). A separate Windows offline WebView2 NSIS installer has been configured on `main` in [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85) and will appear when a successful release publishes it.
 
 ## Known compatibility limits
 
