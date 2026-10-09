@@ -9,6 +9,7 @@ interface NativeGimpApi {
   list(): Promise<GimpProcedureList>
   inspect(name: string): Promise<GimpProcedureInfo>
   run(payload: { image: string; name: string; parameters?: Record<string, string | number | boolean> }): Promise<{ image: string }>
+  runScript(payload: { image: string; language: 'python' | 'scheme'; source: string }): Promise<{ image: string }>
 }
 function bridge(): NativeGimpApi {
   if (typeof window === 'undefined') throw new Error('GIMP runtime is available in Electron only')
@@ -25,4 +26,9 @@ export async function gimpListProcedures(): Promise<GimpProcedureList> { return 
 export async function gimpInspectProcedure(name: string): Promise<GimpProcedureInfo> { return bridge().inspect(name) }
 export async function gimpRunProcedure(image: string, name: string, parameters: Record<string, string | number | boolean>): Promise<string> {
   return (await bridge().run({ image, name, parameters })).image
+}
+
+/** Run selected source in a NEW GIMP process. Trust third-party scripts first. */
+export async function gimpRunSource(image: string, language: 'python' | 'scheme', source: string): Promise<string> {
+  return (await bridge().runScript({ image, language, source })).image
 }
