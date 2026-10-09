@@ -1268,14 +1268,28 @@ export function decodeQoi(bytes: Uint8Array): RawImage {
 // PCX / DCX (single page)
 // ============================================================
 
-export function decodePcx(bytes: Uint8Array): RawImage {
+/** DCX starts with a fixed 1024-entry PCX page offset table. */
+export function dcxPageOffsets(bytes: Uint8Array, maxPages = 24): number[] {
+  if(bytes.length < 8 || bytes[0] !== 0x3a || bytes[1] !== 0xde || bytes[2] !== 0x68 || bytes[3] !== 0xb1) return []
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const offsets: number[] = []
+  let previous = 0
+  for(let i=0;i<Math.min(1024,maxPages);i++){
+    if(4+i*4+4>bytes.length) break
+    const off = view.getUint32(4+i*4,true)
+    if(!off) break
+    if(off < 4100 || off <= previous || off >= bytes.length) throw new Error('Invalid DCX page offset')
+    offsets.push(off);previous=off
+  }
+  return offsets
+}
+export function decodePcx(bytes: Uint8Array, pageIndex = 0): RawImage {
   let page = bytes
   if (bytes.length > 8 && bytes[0] === 0x3a && bytes[1] === 0xde && bytes[2] === 0x68 && bytes[3] === 0xb1) {
     // DCX container: magic + array of page offsets (0-terminated)
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-    const first = view.getUint32(4, true)
-    if (first <= 0 || first >= bytes.length) throw new Error('Corrupt DCX container')
-    page = bytes.subarray(first)
+    const pages = dcxPageOffsets(bytes, pageIndex + 2)
+    if (pageIndex < 0 || !pages[pageIndex]) throw new Error('DCX page index is out of range')
+    page = bytes.subarray(pages[pageIndex], pages[pageIndex + 1] ?? bytes.length)
   }
   if (page.length < 128) throw new Error('Truncated PCX header')
   if (page[0] !== 0x0a) throw new Error('Not a PCX file')
