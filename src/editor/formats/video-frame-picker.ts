@@ -136,7 +136,7 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     timeInput.addEventListener('change', () => seek(Number(timeInput.value)))
     play.addEventListener('click', () => {
       if (!video.paused) { video.pause(); return }
-      void video.play().catch(() => fail('The browser blocked video playback'))
+      void video.play().catch(() => { status.textContent = 'Playback unavailable — scrub to choose a frame'; update() })
     })
     importFrame.addEventListener('click', () => {
       if (!canCapture() || finished) return
