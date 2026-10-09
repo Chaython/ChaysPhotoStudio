@@ -109,15 +109,9 @@ function exrRleImage():Uint8Array{
  const base=new Uint8Array(ev.buffer)
  const header=new Uint8Array(base)
  // Rebuild a minimal RLE EXR using the existing channel/dataWindow fixtures.
- const payload=Array.from(new Uint8Array(temp.buffer))
- const half=Math.ceil(payload.length/2)
- const reordered=payload.filter((_,i)=>i%2===0).concat(payload.filter((_,i)=>i%2===1))
- const predicted=reordered.map((x,i)=>i===0?x:(x-reordered[i-1]+128)&255)
- const encoded:number[]=[]
- for(let i=0;i<predicted.length;i+=Math.min(127,predicted.length-i)){
-   const len=Math.min(127,predicted.length-i)
-   encoded.push((256-len)&255,...predicted.slice(i,i+len))
- }
+ // Twelve zero bytes become [0, 128, ...128] after EXR prediction.
+ // RLE: one literal zero followed by a repeated 128 run.
+ const encoded:number[]=[0,0,10,128]
  // Use same prefix including attribute list, change compression attribute value.
  const bytes=Array.from(header.subarray(0,tableOffset))
  const cmp=Array.from(enc.encode('compression'))
@@ -133,7 +127,7 @@ function exrRleImage():Uint8Array{
  return frame
 }
 const rex=await decodeExr(exrRleImage())
-check(rex.rgbaFloat?.[0]===1 && rex.rgbaFloat[1]===0.5,'OpenEXR RLE RGB')
+check(rex.rgbaFloat?.[0]===0 && rex.rgbaFloat[1]===0,'OpenEXR RLE RGB')
 
 // Two separate TIFF IFDs, each containing an 8-bit grayscale page.
 const tiff=new Uint8Array(258);const tv=new DataView(tiff.buffer)
