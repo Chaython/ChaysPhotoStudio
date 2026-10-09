@@ -125,6 +125,7 @@ jobs:
 
   build-smoke:
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     needs: verify
     steps:
       - uses: actions/checkout@v7
