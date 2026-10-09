@@ -40,7 +40,7 @@ dicomElement(0x28,0x101,'US',number16(8))
 dicomElement(0x28,0x02,'US',number16(1))
 dicomElement(0x28,0x04,'CS',Array.from(enc.encode('MONOCHROME2 ')))
 dicomElement(0x7fe0,0x10,'OB',[10,240])
-const d=decodeDicom(new Uint8Array(pieces))
+const d=await decodeDicom(new Uint8Array(pieces))
 check(d.image.width===2 && d.image.height===1,'DICOM dimensions')
 check(d.image.rgba[0]<d.image.rgba[4],'DICOM grayscale gradient')
 
