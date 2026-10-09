@@ -369,11 +369,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Create named history snapshots when you need durable comparison states.",
       "Save projects regularly.",
       "Use File → Recent & Recovery after a browser crash or unexpected restart.",
-      "Create named History snapshots with notes for milestones or comparisons."
+      "Create named History snapshots with notes for milestones or comparisons.",
+      "Click Download Backup on a recovery entry to export a portable project, or Back up all to folder when your WebView supports selecting a directory."
     ],
     "tips": [
       "Autosave and recovery depend on local storage retention; clearing browser data may delete them.",
-      "Current main stores recovery in IndexedDB; save .zproj.json files outside the profile. Portable recovery exports are pending PR #86."
+      "Recovery exports are available after merged PR #86, but these are manual backups; profile deletion can still erase snapshots not copied elsewhere."
     ]
   },
   {
@@ -429,7 +430,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Check whether a command requires an active selection, unlocked layer or specific layer type.",
       "For performance problems, try smaller images and confirm browser worker support.",
       "If a source format fails, try exporting PNG or TIFF from its original application.",
-      "Report reproducible defects with browser version, bit depth, steps and errors on GitHub Issues."
+      "Report reproducible defects with browser version, bit depth, steps and errors on GitHub Issues.",
+      "If the update checker reports offline, continue editing normally; automatic installs are not enabled."
     ],
     "tips": [
       "32-bit HDR, complex PSD layer effects and ICC processing still have compatibility limits.",
@@ -581,10 +583,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Use the browser/PWA, bundled Electron desktop app, or lightweight Tauri WebView build.",
       "Default Tauri releases embed their frontend but require the OS WebView runtime to be present or provisioned.",
       "Save .zproj.json files outside the browser profile as backups.",
-      "External AI, remote image URLs and release updates require connectivity."
+      "External AI, remote image URLs and release updates require connectivity.",
+      "The About dialog includes a manual Check for updates control; it does not silently install or restart the app."
     ],
     "tips": [
-      "The offline Windows WebView2 installer is configured on main by merged PR #85; WebView security/recovery remains under review in PR #86.",
+      "The extra offline Windows installer and embedded WebView CSP/window-state/recovery improvements are in main after merged PRs #85/#86.",
       "Electron uses a bundled localhost server and does not depend on GitHub Pages."
     ]
   },
