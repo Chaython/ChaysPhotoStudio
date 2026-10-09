@@ -11,7 +11,7 @@ A source-available, browser-first photo editor with layered editing, Photoshop-i
 1. Open the live editor or install a release from GitHub. Use **File → New**, **Open…**, **New from Clipboard**, or drag a supported image into the editor.
 2. Select a tool in the left toolbar. Modify size, shape, sampling, selection mode and other settings in **Tool Options**. Right-click a tool group or use **Edit → Customize Toolbar…** to organize tools.
 3. Keep edits reversible with layers, masks, adjustment layers, Smart Objects / Smart Filters, named Paths, History snapshots and Layer Comps.
-4. **File → Save Project** stores an editable `.zproj.json`. **Export As…** produces shareable raster or supported layered files. Use **File → Recent & Recovery…** after an interruption.
+4. **File → Save Project** stores an editable `.zproj.json`. **Export As…** produces shareable raster or supported layered files. Use **File → Recent & Recovery…** after an interruption; current desktop/browser builds also let you download portable backups of recovery snapshots.
 
 **Privacy & connectivity:** Most editing and local file processing run on your device; your images are not uploaded merely by opening them. **AI image generation and explicitly selected remote providers are network services** and may transmit prompts or image content. Optional local ComfyUI and desktop filter programs are separate installations. See [offline limitations](docs/FEATURES_AND_FORMATS.md#offline-use-and-privacy).
 
@@ -22,7 +22,7 @@ A source-available, browser-first photo editor with layered editing, Photoshop-i
 | **52 registered tools** | Move/transform, rectangular/elliptical/single-row/single-column marquee; Lasso/Polygonal/Magnetic; Object/Quick/Brush selection; Magic Wand; crop/perspective crop; painting, erasers, healing, retouching, Pen/Path tools, editable Type/Shapes, Hand/Zoom |
 | **Selections** | New/Add/Subtract/Intersect, Color Range, Select Subject, Focus Area, Grow/Similar, Select & Mask edge refinement, channels and luminosity selections, feather/smooth/contract/expand |
 | **Layers & masks** | Raster, native text/shape, adjustments, Smart Objects with Smart Filters, alpha/vector masks, clipping, blending, Layer Styles, alignment, layer duplication into another document, Layer Comps |
-| **History & automation** | Undo/redo, durable snapshots and snapshot notes, Actions recording/playback, Batch / Image Processor, scripting console |
+| **History & automation** | Undo/redo, durable snapshots and snapshot notes, Actions recording/playback, Batch / Image Processor, scripting console and portable recovery snapshot exports |
 | **Retouching** | Healing and Spot Healing, Patch, Content-Aware Move/Fill, Clone/Pattern Stamps and source transforms, Mixer/History Brushes, Dodge/Burn/Sponge, Blur/Sharpen/Smudge, red-eye correction |
 | **Transforms** | Free Transform, editable Transform/Split Warp, Puppet Warp, crop/perspective crop, smart guides and distance labels; Liquify |
 | **Color** | RGB/HSL/Lab and related adjustments, curves, gradient controls, HDR-aware operations where supported, proof-color preview and gamut warnings, PPI/rulers/guides/grid |
@@ -56,16 +56,16 @@ Expanded GIMP compatibility was merged in [PR #83](https://github.com/Chaython/C
 
 ## Install, build and run
 
-The editor is distributed via web/PWA, Electron desktop (including Windows portable), Tauri WebView, and Chrome/Firefox browser plugin. [**Distribution and releases**](DISTRIBUTION.md) lists package formats, GitHub Actions and signing behavior.
+The editor is distributed via web/PWA, Electron desktop (including Windows portable), Tauri WebView, and Chrome/Firefox browser plugin. Embedded WebView releases apply a CSP; native window position/size can persist, and **About → Check for updates** performs a user-initiated release check without silent installation. [**Distribution and releases**](DISTRIBUTION.md) lists package formats, GitHub Actions and signing behavior.
 
 | Distribution | Local editor assets | Important distinction |
 |---|---|---|
 | **Web / PWA** | PWA caches the shell after installation | First load needs a hosted page; cached content and browser storage can be cleared |
 | **Electron** | Bundled Next.js standalone server and Chromium | Runs a local server internally; does not require an external hosted editor |
-| **Tauri WebView** | Default releases embed the static frontend | Uses OS WebView2/WKWebView/WebKitGTK; a separate Windows offline-runtime installer is also built |
+| **Tauri WebView** | Default releases embed the static frontend | Uses OS WebView2/WKWebView/WebKitGTK; a separate Windows offline-runtime installer is built; optional manual release check, no automatic updater |
 | **Browser plugin** | Bundled static app in extension | Right-click images for import, subject to remote image access/CORS |
 
-The **additional Windows WebView2 offline installer** is now configured in `main` ([PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85)); its release filename starts `webview-windows-offline-x64--` once the release job successfully publishes it. CSP, native window persistence, recovery exports and a manual update checker remain proposed in [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86).
+The **additional Windows WebView2 offline installer** is now configured in `main` ([PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85)); its release filename starts `webview-windows-offline-x64--` once the release job successfully publishes it. Embedded-release CSP, native window persistence, portable recovery exports and a manual update checker are now in `main` after merged [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86). Authenticode signing is optional and requires publisher-provided secrets.
 
 ### Local development
 
