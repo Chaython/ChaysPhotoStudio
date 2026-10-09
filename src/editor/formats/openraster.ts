@@ -22,6 +22,7 @@ const FROM_SVG: Record<string, string> = {
 }
 const TO_SVG = Object.fromEntries(Object.entries(FROM_SVG).map(([key, value]) => [value, key]))
 TO_SVG['linear-dodge'] = 'svg:plus'
+FROM_SVG['svg:plus'] = 'linear-dodge'
 TO_SVG.exclusion = 'svg:src-over' // exclusion is not in baseline ORA
 
 function normalizedNumber(value: string | null, fallback: number): number {
@@ -77,7 +78,7 @@ export async function parseOpenRaster(bytes: Uint8Array, fileName = 'OpenRaster 
         const name = el.getAttribute('name')?.trim() || 'Group'
         const composite = el.getAttribute('composite-op') || 'svg:src-over'
         const groupOpacity = opacity(el)
-        if (composite !== 'svg:src-over' || groupOpacity < 1 || el.getAttribute('isolation') !== 'auto')
+        if (composite !== 'svg:src-over' || groupOpacity < 1 || (el.hasAttribute('isolation') && el.getAttribute('isolation') !== 'auto'))
           warnings.push(`Group “${name}” was flattened into separate layers; isolated group compositing may differ`)
         await walk(el, prefix ? `${prefix} / ${name}` : name,
           inheritedVisible && visible(el), inheritedOpacity * groupOpacity, depth + 1)
