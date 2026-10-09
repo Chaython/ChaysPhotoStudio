@@ -8,10 +8,12 @@ export const embeddedWebviewCsp = {
   'form-action': "'self'",
   'frame-src': "'none'",
   // The plugin worker compiles user-imported scripts with new Function.
-  // Unsafe eval is a deliberate compatibility exception; no remote scripts
-  // or arbitrary inline scripts are allowed. Revisit when plugins have a
-  // fully isolated signed/declarative runtime.
-  'script-src': "'self' 'unsafe-eval' 'wasm-unsafe-eval'",
+  // Unsafe eval is a deliberate compatibility exception for local plugins.
+  // The only permitted remote script path is the explicitly opted-in pinned
+  // Pyodide v0.27.7 distribution used by GIMP Scripts → Embedded Python.
+  // Keeping this narrow avoids breaking Python without allowing arbitrary
+  // third-party scripts. This is NOT SRI verification of the CDN contents.
+  'script-src': "'self' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net/pyodide/v0.27.7/full/",
   'style-src': "'self' 'unsafe-inline'",
   'font-src': "'self' data:",
   'img-src': "'self' data: blob: asset: http://asset.localhost https:",
