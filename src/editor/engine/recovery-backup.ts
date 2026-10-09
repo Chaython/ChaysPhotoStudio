@@ -3,7 +3,7 @@
 import type { RecoveryEntry } from './autosave'
 
 export function recoveryBackupFilename(entry: RecoveryEntry): string {
-  const base = entry.name
+  const base = (entry.name.split(/[\\/]/).pop() || 'Recovered')
     .replace(/\.zproj\.json$/i, '')
     .replace(/\.[^./\\]+$/, '')
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
