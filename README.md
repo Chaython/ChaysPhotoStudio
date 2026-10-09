@@ -1,6 +1,6 @@
 # Chay's Photo Studio
 
-An open-source, browser-first photo editor with layered editing, Photoshop-inspired workflows, a WebGL2-accelerated compositor, and desktop/browser distributions. It aims for useful **Photoshop / GIMP / Photopea workflow compatibility**, not full feature-for-feature or plugin-binary equivalence.
+A source-available, browser-first photo editor with layered editing, Photoshop-inspired workflows, a WebGL2-accelerated compositor, and desktop/browser distributions. It aims for useful **Photoshop / GIMP / Photopea workflow compatibility**, not full feature-for-feature or plugin-binary equivalence.
 
 [**Open the live editor**](https://chaython.github.io/ChaysPhotoStudio/) · [**Download builds**](https://github.com/Chaython/ChaysPhotoStudio/releases) · [**User guide**](docs/USER_GUIDE.md) · [**Feature & format reference**](docs/FEATURES_AND_FORMATS.md) · [**Tool parity audit**](TOOL_PARITY.md) · [**Report an issue**](https://github.com/Chaython/ChaysPhotoStudio/issues)
 
@@ -122,4 +122,4 @@ bun run dist:all         # Shared icons, web build, Electron & extensions (not T
 
 ## Licensing
 
-Free for personal and educational use; commercial use requires licensing. See [LICENSE](LICENSE) for authoritative terms. Commercial contact: **chaython@live.ca** · [Support development](https://github.com/sponsors/Chaython). The project is not affiliated with Adobe, GIMP or Photopea.
+Free for personal and educational use under a **non-commercial, source-available license**; commercial use requires licensing, and redistribution/modifications have additional restrictions. This is **not an OSI-approved open-source license**. See [LICENSE](LICENSE) for the authoritative terms. Commercial contact: **chaython@live.ca** · [Support development](https://github.com/sponsors/Chaython). The project is not affiliated with Adobe, GIMP or Photopea.
