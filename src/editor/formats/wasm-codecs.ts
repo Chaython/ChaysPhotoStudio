@@ -3,6 +3,7 @@
 import type { RawImage } from './decoders'
 import type { RawDevelopSettings } from './raw-develop'
 import { DEFAULT_RAW_SETTINGS, normalizeRawSettings } from './raw-develop'
+import { applyLensProfile } from './lens-correction'
 
 function shape(width:number,height:number){
   if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width*height>64*1024*1024)
@@ -54,24 +55,24 @@ export async function decodeCameraRaw(buffer:ArrayBuffer,options?:RawDevelopSett
       rgba[dst+3]=bits===16?Math.round(alpha/257):alpha
       if(rgba16)rgba16[dst+3]=alpha
     }
-    return {
+    return applyLensProfile({
       width,height,rgba:rgba as Uint8ClampedArray<ArrayBuffer>,rgba16,
       sourceBitDepth:bits,
-    }
+    },settings.lensProfile)
   }finally{decoder.dispose()}
 }
 
 export async function decodeModernWasm(buffer:ArrayBuffer,format:'jxl'|'heic'|'jxr'):Promise<RawImage>{
   let decoded:ImageData
   if(format==='jxl'){
-    const codecModule=await import('@jsquash/jxl')
-    decoded=await codecModule.decode(buffer)
+    const codec=await import('@jsquash/jxl')
+    decoded=await codec.decode(buffer)
   }else if(format==='heic'){
-    const codecModule=await import('@discourse/heic')
-    decoded=await codecModule.decode(buffer)
+    const codec=await import('@discourse/heic')
+    decoded=await codec.decode(buffer)
   }else{
-    const codecModule=await import('@discourse/jxr')
-    decoded=await codecModule.decode(buffer)
+    const codec=await import('@discourse/jxr')
+    decoded=await codec.decode(buffer)
   }
   return fromImageData(decoded)
 }
@@ -89,6 +90,7 @@ export async function decodeJpegLs(buffer:ArrayBuffer):Promise<RawImage>{
   if(componentCount===3 && decoder.getInterleaveMode()!==2)
     throw Error('JPEG-LS planar/line-interleaved RGB is not supported by this importer')
   const rgba=new Uint8ClampedArray(count*4)
+  const rgba16=bitsPerSample>8?new Uint16Array(count*4):undefined
   const bps=bitsPerSample<=8?1:2
   if(decoded.byteLength<count*componentCount*bps)throw Error('Truncated JPEG-LS samples')
   const view=new DataView(decoded.buffer,decoded.byteOffset,decoded.byteLength)
@@ -99,10 +101,12 @@ export async function decodeJpegLs(buffer:ArrayBuffer):Promise<RawImage>{
       const raw=sampleIndex*bps
       const sample=bps===1?decoded[raw]:view.getUint16(raw,true)
       rgba[i*4+c]=scale(sample)
+      if(rgba16)rgba16[i*4+c]=Math.round(sample*65535/(2**bitsPerSample-1))
     }
     rgba[i*4+3]=255
+    if(rgba16)rgba16[i*4+3]=65535
   }
-  return {width,height,rgba:rgba as Uint8ClampedArray<ArrayBuffer>,sourceBitDepth:bitsPerSample}
+  return {width,height,rgba:rgba as Uint8ClampedArray<ArrayBuffer>,rgba16,sourceBitDepth:bitsPerSample}
 }
 
 /** Pure-JavaScript JP2/J2K decoder. Tiles must be 8-bit contiguous RGB/grayscale. */

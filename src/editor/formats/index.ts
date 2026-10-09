@@ -24,7 +24,6 @@ import { decodeDds, decodeIcns, decodeIff } from './legacy-raster'
 import { decodeSgi, decodeSunRaster } from './heritage-raster'
 import { decodeFits } from './scientific-fits'
 import { decodeDicom } from './scientific-dicom'
-import { decodeExr } from './openexr'
 import type { RawDevelopSettings } from './raw-develop'
 import type { ParsedDocumentLayer } from './document-parser-types'
 import type { ImageMetadata, LayerFX } from '../types'
@@ -186,6 +185,12 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
 export async function decodeFile(file: File | Blob, options?: { rawSettings?: RawDevelopSettings }): Promise<DecodedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const sourceName = (file as File).name || ''
+  if (bytes.length>=4 && bytes[0]===0x42 && bytes[1]===0x50 && bytes[2]===0x47 && bytes[3]===0xfb) {
+    throw new Error('BPG signature detected: no independently reviewed BPG decoder is bundled; legacy libbpg has documented memory-safety vulnerabilities.')
+  }
+  if (fileExtension(sourceName) === 'bpg') {
+    throw new Error('BPG decoding is unavailable: no reviewed decoder is bundled. Recognition does not imply image decoding support.')
+  }
   // Dedicated structured parsers keep editable objects/layers for supported
   // document containers. A composite preview is still attached for Place,
   // Open-as-Layer and callers that only understand a canvas.
@@ -309,14 +314,25 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
     case 'bmp': return fromRaw(decodeBmp(bytes), 'bmp')
     case 'ico': return fromRaw(await decodeIco(bytes), 'ico')
     case 'dds': return fromRaw(decodeDds(bytes), 'dds')
-    case 'exr': return fromRaw(await decodeExr(bytes), 'exr')
+    case 'exr': {
+      const {decodeExrParts}=await import('./openexr')
+      const parts=await decodeExrParts(bytes)
+      if(parts.length===1)return fromRaw(parts[0].image,'exr')
+      const base=fromRaw(parts[0].image,'exr')
+      return {...base,documentLayers:parts.map((part,index)=>({
+        kind:'raster' as const,name:part.name,
+        canvas:rawToCanvas(part.image),hdrPixels:part.image.rgbaFloat,
+        left:0,top:0,visible:index===0,
+      })),warnings:['EXR has '+parts.length+' regular image parts. Layer previews may be reduced to the canvas working precision; retain the original EXR for HDR-authoritative samples.'],
+      }
+    }
     case 'jp2': {
       const { decodeJpeg2000 } = await import('./wasm-codecs')
       return fromRaw(await decodeJpeg2000(bytes.buffer as ArrayBuffer), 'jp2')
     }
     case 'fits':
     case 'dicom': {
-      const parsed = format === 'fits' ? decodeFits(bytes) : decodeDicom(bytes)
+      const parsed = format === 'fits' ? decodeFits(bytes) : await decodeDicom(bytes)
       const first = fromRaw(parsed.image, format)
       return {
         ...first,

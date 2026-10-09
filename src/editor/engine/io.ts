@@ -12,6 +12,19 @@ import { chooseImagePages } from '../formats/page-select'
 import { chooseRawDevelopSettings, type RawDevelopSettings } from '../formats/raw-develop'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
+// Source-embedded RAW Smart Objects deliberately cap project size. Large camera
+// files still open as ordinary rasters, with an explicit user-facing warning.
+const MAX_EMBEDDED_RAW_BYTES = 64 * 1024 * 1024
+async function embeddedRawSource(file: File, settings: RawDevelopSettings): Promise<NonNullable<Layer['rawSmart']> | null> {
+  if (file.size > MAX_EMBEDDED_RAW_BYTES) return null
+  return {
+    fileName: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    dataBase64: bytesToBase64(new Uint8Array(await file.arrayBuffer())),
+    settings: structuredClone(settings),
+  }
+}
+
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
 const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim', 'sgi', 'sunras', 'exr', 'fits', 'dicom']
@@ -90,10 +103,40 @@ export async function openFiles(files: File[], asLayer = false) {
       continue
     }
     try {
-      const rawSettings = publishedFormatKind(file.name) === 'raw'
-        ? await chooseRawDevelopSettings(file.name) : undefined
+      const isRaw=publishedFormatKind(file.name)==='raw'
+      const metadata = (!asLayer||isRaw) ? await readImageMetadata(file).catch(() => undefined) : undefined
+      const rawSettings = isRaw
+        ? await chooseRawDevelopSettings(file.name,undefined,metadata) : undefined
       if (rawSettings === null) continue
-      const metadata = !asLayer ? await readImageMetadata(file).catch(() => undefined) : undefined
+      // RAW originals are stored losslessly inside Smart Objects; imported
+      // previews are independently editable, and settings can be changed later.
+      if (publishedFormatKind(file.name)==='raw' && rawSettings?.smartObject) {
+        const decoded=await decodeToCanvas(file,rawSettings)
+        const embedded=await embeddedRawSource(file,rawSettings)
+        if (!embedded) store.pushToast('RAW exceeds 64 MiB: importing raster without embedded source', 'info')
+        if (asLayer && engine.activeDoc) {
+          if (embedded) {
+            const layer=engine.placeSmartLayer(decoded.canvas,file.name.replace(/\.[^.]+$/,''))
+            if (layer)engine.setLayerProps(layer.id,{rawSmart:embedded},{label:'Embed original camera RAW'})
+          } else engine.addLayerFromCanvas(decoded.canvas,file.name.replace(/\.[^.]+$/,''))
+        } else {
+          const doc=engine.addCanvasDocument(decoded.canvas,file.name,{
+            sourceBitDepth:decoded.sourceBitDepth,workingBitDepth:decoded.workingBitDepth,
+            resolutionPpi:decoded.resolutionPpi??metadataResolutionPpi(metadata),metadata,
+          })
+          if(embedded){
+            const layer=doc.layers[0]
+            engine.setLayerProps(layer.id,{
+              kind:'smart',canvas:null,source:decoded.canvas,
+              transform:{x:doc.width/2,y:doc.height/2,scale:1,rotation:0},
+              rawSmart:embedded,
+            },{label:'Open RAW Smart Object'})
+          }
+        }
+        for(const warning of decoded.warnings??[])store.pushToast(`${file.name}: ${warning}`,'info')
+        continue
+      }
+
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded, metadata); continue }
@@ -111,7 +154,7 @@ export async function openFiles(files: File[], asLayer = false) {
       }
       // Multi-page raster and scientific containers carry independent frames.
       // Represent these as independently selectable layers instead of silently discarding pages.
-      if (!asLayer && ['tiff', 'pcx', 'fits', 'dicom'].includes(format ?? '')) {
+      if (!asLayer && ['tiff', 'pcx', 'fits', 'dicom', 'exr'].includes(format ?? '')) {
         const decoded = await decodeFile(file)
         if (decoded.documentLayers?.length) {
           const choice = await chooseImagePages(file.name, decoded.documentLayers.map(page => ({
@@ -125,7 +168,8 @@ export async function openFiles(files: File[], asLayer = false) {
             if (!chosen?.canvas) throw new Error('Selected page has no image')
             engine.addCanvasDocument(chosen.canvas, file.name + ' — ' + chosen.name, {
               sourceBitDepth: decoded.sourceBitDepth ?? 8,
-              workingBitDepth: canvasProfile(chosen.canvas).bitDepth,
+              workingBitDepth: format==='exr' && chosen.hdrPixels ? 32 : canvasProfile(chosen.canvas).bitDepth,
+              hdrPixels:format==='exr' && chosen.hdrPixels ? new Float32Array(chosen.hdrPixels) : undefined,
               resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata),
               metadata,
             })
@@ -180,6 +224,10 @@ function layerFromParsed(parsed: ParsedDocumentLayer, width: number, height: num
   if (kind === 'raster') {
     if (!parsed.canvas) return null
     layer.canvas = parsed.canvas
+    if(parsed.hdrPixels?.length===parsed.canvas.width*parsed.canvas.height*4){
+      layer.hdrPixels = new Float32Array(parsed.hdrPixels)
+      layer.hdrColorSpace = 'linear-srgb'
+    }
     layer.offsetX = Number(parsed.left) || 0
     layer.offsetY = Number(parsed.top) || 0
   } else if (kind === 'smart') {
@@ -205,7 +253,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage, metadata?: I
   const doc: PsDocument = {
     id: uid(), name, width, height,
     resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi ?? metadataResolutionPpi(metadata)) || 72)),
-    workingBitDepth: 8,
+    workingBitDepth: decoded.format === 'exr' && decoded.sourceFloatPixels ? 32 : 8,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     workingColorSpace: 'srgb',
     metadata: metadata ? structuredClone(metadata) : undefined,
@@ -288,14 +336,54 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
 export async function placeImageAsSmartLayer(file: File) {
   const store = useEditorStore.getState()
   try {
-    const decoded = await decodeToCanvas(file)
-    engine.placeSmartLayer(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
-    if (decoded.sourceBitDepth > 8) {
-      store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed as a ${decoded.workingBitDepth}-bit smart-object raster`, 'info')
+    const isRaw = publishedFormatKind(file.name) === 'raw'
+    const rawMetadata=isRaw?await readImageMetadata(file).catch(()=>undefined):undefined
+    const settings = isRaw ? await chooseRawDevelopSettings(file.name,undefined,rawMetadata) : undefined
+    if (settings === null) return
+    const decoded = await decodeToCanvas(file, settings)
+    const layer = engine.placeSmartLayer(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
+    if (!layer) {
+      store.pushToast('Open a document before placing a Smart Object', 'error')
+      return
     }
+    if (isRaw && settings?.smartObject) {
+      const source = await embeddedRawSource(file, settings)
+      if (source) engine.setLayerProps(layer.id, {rawSmart:source}, {label:'Embed original camera RAW'})
+      else store.pushToast('RAW exceeds 64 MiB: Smart Object holds developed pixels only; original RAW not embedded', 'info')
+    }
+    if (decoded.sourceBitDepth > 8) {
+      store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed as a ${decoded.workingBitDepth}-bit Smart Object`, 'info')
+    }
+    for(const warning of decoded.warnings ?? [])store.pushToast(`${file.name}: ${warning}`, 'info')
     store.pushToast(`Placed ${file.name} as Smart Object`, 'success')
-  } catch {
-    store.pushToast(`Failed to place ${file.name}`, 'error')
+  } catch (err) {
+    store.pushToast(`Failed to place ${file.name}: ${err instanceof Error ? err.message : String(err)}`, 'error')
+  }
+}
+
+/** Re-run LibRaw on the embedded original; existing Smart Filters and transforms remain. */
+export async function redevelopActiveRawSmartLayer(): Promise<void> {
+  const store=useEditorStore.getState()
+  const layer=engine.activeLayer
+  const source=layer?.rawSmart
+  if(!layer || layer.kind!=='smart' || !source) {
+    store.pushToast('Select a RAW Smart Object to redevelop', 'info')
+    return
+  }
+  try {
+    const file=new File([base64ToBytes(source.dataBase64) as BlobPart],source.fileName,{type:source.mimeType})
+    const rawMetadata=await readImageMetadata(file).catch(()=>undefined)
+    const settings=await chooseRawDevelopSettings(source.fileName,source.settings,rawMetadata)
+    if(!settings)return
+    const developed=await decodeToCanvas(file,settings)
+    engine.setLayerProps(layer.id,{
+      source:developed.canvas,
+      rawSmart:{...source,settings:structuredClone(settings)},
+    },{label:'Redevelop RAW Smart Object'})
+    for(const warning of developed.warnings ?? [])store.pushToast(`${source.fileName}: ${warning}`,'info')
+    store.pushToast('RAW Smart Object redeveloped; source bytes and Smart Filters retained','success')
+  }catch(err){
+    store.pushToast(`Could not redevelop RAW: ${err instanceof Error?err.message:String(err)}`,'error')
   }
 }
 
@@ -434,6 +522,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       vectorMask: cloneVectorMask(l.vectorMask),
       psdAdditionalInfo: Array.isArray(l.psdAdditionalInfo) ? [...l.psdAdditionalInfo] : undefined,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
+      rawSmart: l.kind === 'smart' && l.rawSmart ? structuredClone(l.rawSmart) : undefined,
     },
     canvas: l.canvas ? toDataURL(l.canvas) : undefined,
     canvas16: serializeFloatCanvas(l.canvas),
@@ -580,6 +669,9 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     psdAdditionalInfo: Array.isArray(sl.props.psdAdditionalInfo) ? sl.props.psdAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
     offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
     origin: sl.props.origin ?? null,
+    rawSmart: sl.props.kind === 'smart' && typeof sl.props.rawSmart?.dataBase64 === 'string' &&
+      sl.props.rawSmart.dataBase64.length <= MAX_EMBEDDED_RAW_BYTES * 4 / 3 + 8
+      ? { ...sl.props.rawSmart, settings: structuredClone(sl.props.rawSmart.settings) } : null,
   })
   if (sl.canvas) layer.canvas = await dataURLToCanvas(sl.canvas, sl.canvas16)
   if (sl.hdr32?.data && sl.hdr32.width > 0 && sl.hdr32.height > 0) {
