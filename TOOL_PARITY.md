@@ -1,7 +1,11 @@
 # Tool parity audit
 
 This document tracks the editor tool surface against common Adobe Photoshop workflows.
-"Parity" here means the interaction and editing model is reasonably familiar, not binary-compatible reproduction of Adobe internals.
+"Parity" here means the interaction and editing model is reasonably familiar, not binary-compatible reproduction of Adobe internals. This audit describes implemented functionality on the current `main` branch; the level of fidelity varies by tool, layer kind, document depth and runtime. The [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md) covers import/export limits and channel-specific availability.
+
+**Tool registry:** 48 tools on `main`. Freeform Pen, Curvature Pen and Type Mask tools are under review in [PR #82](https://github.com/Chaython/ChaysPhotoStudio/pull/82) rather than part of this table. Likewise, the searchable All Tools browser and eight-position docking are pending [PR #81](https://github.com/Chaython/ChaysPhotoStudio/pull/81). Merging those PRs should update the table and documentation together.
+
+**Precision/safety:** Recent fixes in the `main` branch guard high-bit retouching, avoid rasterizing editable layers before a stroke is known to change pixels, and validate numeric Tool Options fields. A supported operation in 8-bit RGB is not a guarantee of an identical 16/32-bit HDR implementation; unsupported combinations should refuse unsafe edits.
 
 | Tool | Current Photoshop-style behavior | Remaining deeper work |
 |---|---|---|
