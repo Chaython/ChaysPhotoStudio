@@ -284,7 +284,66 @@ function DropOverlay({ side }: { side: 'left' | 'right' }) {
   )
 }
 
+/** Photoshop-inspired two-stack inspector: real registered panels, no mock controls. */
+function PhotoshopRightDock() {
+  const [upper, setUpper] = useState('color')
+  const [lower, setLower] = useState('layers')
+  const floating = useEditorStore(s => s.panels.floating)
+  const dockSide = useEditorStore(s => s.panels.dockSide)
+  const width = useEditorStore(s => s.panels.dockWidth)
+  const setWidth = useEditorStore(s => s.setDockWidth)
+  const hasDoc = useEditorStore(s => !!s.activeDocId)
+  const upperTabs = ['color', 'swatches', 'adjustments', 'properties', 'navigator', 'histogram'].filter(id => id !== 'swatches')
+  const lowerTabs = ['layers', 'channels', 'paths', 'history', 'actions']
+  const tabs = (ids: string[], active: string, choose: (id: string) => void) => (
+    <div className="flex h-8 shrink-0 overflow-x-auto border-b border-border/70 bg-panel zphoto-scroll" role="tablist">
+      {ids.map(id => {
+        const def = PANEL_MAP[id]
+        if (!def) return null
+        const Icon = def.icon
+        const relocated = !!floating[id] || (dockSide[id] != null && dockSide[id] !== 'right')
+        return <button key={id} type="button" role="tab" aria-selected={active === id}
+          title={def.label + (relocated ? ' (arranged elsewhere)' : '')}
+          className={cn('relative flex shrink-0 items-center gap-1 px-2 text-[10px] border-r border-border/40',
+            active === id ? 'text-foreground bg-background font-semibold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}
+          onClick={() => choose(id)}><Icon size={12}/><span>{def.label}</span></button>
+      })}
+    </div>
+  )
+  const content = (id: string) => {
+    const def = PANEL_MAP[id]
+    if (!def) return null
+    if (floating[id] || (dockSide[id] && dockSide[id] !== 'right')) return (
+      <div className="flex-1 flex flex-col justify-center items-center gap-2 p-3 text-center text-xs text-muted-foreground">
+        {def.label} was moved to another dock.
+        <button className="text-primary underline" onClick={() => useEditorStore.getState().dockPanel(id, 'right')}>Return panel here</button>
+      </div>)
+    if (!hasDoc && !def.home) return <div className="p-3 text-[11px] text-muted-foreground">Open an image to use {def.label}.</div>
+    const Content = def.render
+    return <Content />
+  }
+  return <aside data-panel-dock="right" data-photoshop-dock="true"
+    className="relative hidden md:flex shrink-0 min-h-0 flex-col border-l border-border bg-panel panel-dock-drop"
+    style={{width}} aria-label="Photoshop-style inspector panels">
+    <WidthDivider side="right" width={width} onWidth={setWidth} onReset={() => setWidth(318)}/>
+    <div className="h-7 shrink-0 px-2 border-b flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <span>Color &amp; adjustments</span><AddPanelMenu side="right" mobile={false}/>
+    </div>
+    <section className="flex min-h-0 flex-col" style={{flex:'0 0 42%'}}>
+      {tabs(upperTabs, upper, setUpper)}
+      <div className="flex flex-1 min-h-0 flex-col overflow-auto zphoto-scroll">{content(upper)}</div>
+    </section>
+    <div className="h-1 border-y border-border/80 bg-background shrink-0" aria-hidden/>
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="h-6 border-b px-2 flex items-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Layers &amp; history</div>
+      {tabs(lowerTabs, lower, setLower)}
+      <div className="flex-1 flex min-h-0 flex-col overflow-auto zphoto-scroll">{content(lower)}</div>
+    </section>
+  </aside>
+}
+
 export function PanelDock({ mobile = false }: { mobile?: boolean }) {
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
   const rightTab = useEditorStore(s => s.panels.rightTab)
   const setTab = useEditorStore(s => s.setRightPanelTab)
   const floating = useEditorStore(s => s.panels.floating)
@@ -311,6 +370,7 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
     if (healed !== rightTab) setTab(healed)
   }, [rightTab, floating, dockSide, mobile, setTab])
 
+  if (!mobile && workspacePreset === 'photoshop') return <PhotoshopRightDock />
   if (!mobile && !dockVisible) return null
 
   return (
