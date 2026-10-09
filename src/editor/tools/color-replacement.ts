@@ -7,40 +7,32 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
+import type { DeferredRegionStroke } from './shared'
 import {
-  getOptions, getBgColor, getFgColor, regionProcess, walkDabs, drawBrushCursor,
+  getOptions, getBgColor, getFgColor, canUseByteRetouch, beginDeferredRegionStroke, deferredRegionProcess, deferredStrokePixel, walkDabs, drawBrushCursor,
 } from './shared'
-import { clamp, ctx2d, hexToRgb, rgbToHsv, hsvToRgb } from '../utils/canvas'
+import { clamp, hexToRgb, rgbToHsv, hsvToRgb } from '../utils/canvas'
 import { rgbToLab } from '../image-ops/color'
 
 type RGB = [number, number, number]
 
 let active = false
 let layerId: string | null = null
+let stroke: DeferredRegionStroke | null = null
 let last: { x: number; y: number } | null = null
 let lockedSample: RGB | null = null
 let changed = false
 
-function pixelAtDoc(id: string, x: number, y: number): RGB | null {
-  const l = engine.layerById(id)
-  if (!l?.canvas) return null
-  const ox = l.kind === 'raster' ? (l.offsetX ?? 0) : 0
-  const oy = l.kind === 'raster' ? (l.offsetY ?? 0) : 0
-  const px = Math.round(x - ox), py = Math.round(y - oy)
-  if (px < 0 || py < 0 || px >= l.canvas.width || py >= l.canvas.height) return null
-  const d = ctx2d(l.canvas).getImageData(px, py, 1, 1).data
-  if (!d[3]) return null
-  return [d[0], d[1], d[2]]
-}
 
 function sampleForDab(id: string, x: number, y: number): RGB | null {
+  void id
   const opts = getOptions('color-replacement')
   if (opts.sampling === 'background') return hexToRgb(getBgColor())
   if (opts.sampling === 'once') {
-    if (!lockedSample) lockedSample = pixelAtDoc(id, x, y)
+    if (!lockedSample) lockedSample = stroke ? deferredStrokePixel(stroke, x, y) : null
     return lockedSample
   }
-  return pixelAtDoc(id, x, y) ?? lockedSample
+  return stroke ? deferredStrokePixel(stroke, x, y) : null ?? lockedSample
 }
 
 function colorDistance(r: number, g: number, b: number, ref: RGB, perceptual: boolean): number {
@@ -102,7 +94,7 @@ function contiguousComponent(match: Uint8Array, rw: number, rh: number, falloff:
 }
 
 function dab(x: number, y: number, p: PointerInfo) {
-  if (!active || !layerId) return
+  if (!active || !layerId || !stroke) return
   const opts = getOptions('color-replacement')
   let size = Math.max(2, Number(opts.size) || 50)
   if (p.pointerType === 'pen' && opts.pressureSize === true) {
@@ -121,7 +113,7 @@ function dab(x: number, y: number, p: PointerInfo) {
   const limits = String(opts.limits ?? 'find-edges')
   const radius = size / 2
 
-  regionProcess(layerId, x, y, radius, (region, falloff, rw, rh) => {
+  const didChange = deferredRegionProcess(stroke, x, y, radius, (region, falloff, rw, rh) => {
     const d = region.data
     const match = new Uint8Array(rw * rh)
     for (let py = 0; py < rh; py++) {
@@ -152,9 +144,9 @@ function dab(x: number, y: number, p: PointerInfo) {
       d[j] = d[j] * (1 - a) + rr * a
       d[j + 1] = d[j + 1] * (1 - a) + gg * a
       d[j + 2] = d[j + 2] * (1 - a) + bb * a
-      changed = true
     }
   }, Number(opts.hardness) || 0)
+  if (didChange) changed = true
   engine.requestRender()
 }
 
@@ -164,6 +156,7 @@ function finish() {
   last = null
   lockedSample = null
   layerId = null
+  stroke = null
   if (changed) {
     changed = false
     engine.pushHistory('Color Replacement')
@@ -179,12 +172,13 @@ export const colorReplacementTool: Tool = {
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
     const layer = engine.activeLayer
-    if (!layer || layer.locked || layer.kind === 'adjustment') return
-    const l = engine.mutateLayerPixels(layer.id)
-    if (!l?.canvas) return
+    if (!layer || layer.locked || layer.kind === 'adjustment' || !canUseByteRetouch('Color Replacement')) return
+    const nextStroke = beginDeferredRegionStroke(layer.id)
+    if (!nextStroke) return
     active = true
     changed = false
-    layerId = l.id
+    stroke = nextStroke
+    layerId = layer.id
     last = { x: p.docX, y: p.docY }
     lockedSample = null
     dab(p.docX, p.docY, p)
