@@ -61,6 +61,25 @@ const requiredScripts = ['build','app:prepare','app:dist:win','app:dist:win:setu
 for (const name of requiredScripts) if (!pkg.scripts?.[name]) fail(`missing package script: ${name}`)
 
 
+// The additional air-gapped Windows variant must bundle the complete
+// WebView2 offline installer, while preserving the ordinary small setup.
+const offlineTauri = readJson('webview/src-tauri/tauri.conf.offline.json')
+const releaseWorkflow = fs.readFileSync(path.join(ROOT, '.github/workflows/release.yml'), 'utf8')
+if (offlineTauri.bundle?.windows?.webviewInstallMode?.type !== 'offlineInstaller') {
+  fail('offline Windows Tauri overlay must set bundle.windows.webviewInstallMode.type to offlineInstaller')
+} else {
+  ok('offline Windows WebView2 installer overlay is configured')
+}
+for (const required of [
+  'name: windows-offline-x64',
+  'offline: true',
+  'WEBVIEW_APP_URL= node scripts/webview-config.mjs',
+  'build_configs+=(--config tauri.conf.offline.json)',
+  'webview-${{ matrix.name }}',
+]) {
+  if (!releaseWorkflow.includes(required)) fail(`release workflow is missing offline Windows build setting: ${required}`)
+}
+
 // Only embedded release builds receive this policy. Never re-enable remote
 // scripts or embedded objects without a reviewed compatibility/safety reason.
 if (embeddedWebviewCsp['default-src'] !== "'self'" ||
