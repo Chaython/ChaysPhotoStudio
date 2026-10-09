@@ -57,7 +57,7 @@ export const DOCK_WIDTH_MIN = 220
 export const DOCK_WIDTH_MAX = 460
 /** height of the horizontal top-dock strip (below the tool options bar) */
 export const TOP_HEIGHT_DEFAULT = 232
-export const TOP_HEIGHT_MIN = 120
+export const TOP_HEIGHT_MIN = 44
 export const TOP_HEIGHT_MAX = 480
 export type DockSide = 'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 export const HORIZONTAL_DOCKS: readonly DockSide[] = ['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right']
