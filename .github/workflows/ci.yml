@@ -39,6 +39,9 @@ jobs:
       - name: Validate distribution metadata
         run: bun run dist:validate
 
+      - name: Validate Electron static JS/CSS packaging layouts
+        run: node scripts/validate-electron-asset-layout.mjs
+
       - name: Parse lazy Electron GIMP host
         run: node --check electron/gimp-runtime.cjs
 
@@ -47,6 +50,9 @@ jobs:
 
       - name: Validate all editor tools
         run: bun run tools:validate
+
+      - name: Validate content-sized docks
+        run: bun run dock-sizing:validate
 
       - name: Validate eight-way dock routing
         run: bun run dock-routing:validate

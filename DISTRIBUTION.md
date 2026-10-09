@@ -66,6 +66,8 @@ continuous-style release just like a push.
 > will warn on unsigned installers until enough installs or an EV/OV certificate
 > is used.
 
+**Electron release smoke verification:** Next.js Webpack places CSS in `.next/static/css`, while other builds may emit it in `.next/static/chunks`. `scripts/verify-electron-package.mjs` checks both valid locations in the packaged standalone payload and still rejects missing JS/CSS; run `node scripts/validate-electron-asset-layout.mjs` to validate the detector's fixtures.
+
 ## 3. Building each channel locally
 
 ```bash

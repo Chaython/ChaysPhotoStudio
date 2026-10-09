@@ -5,6 +5,8 @@ This document tracks the editor tool surface against common Adobe Photoshop work
 
 **Tool registry:** 52 tools on `main`. Freeform/Curvature Pen and horizontal/vertical Type Mask were added in [PR #82](https://github.com/Chaython/ChaysPhotoStudio/pull/82). A searchable All Tools dialog and eight dock positions (four sides, four corners) were added in [PR #81](https://github.com/Chaython/ChaysPhotoStudio/pull/81). Tool keys are shared within groups, so repeated presses cycle tools.
 
+**Panel sizing:** The eight desktop dock destinations fit panel contents by default, including a compact Open Files strip. Manual width and height overrides are stored per location; drag the divider to set a size or double-click to restore automatic fitting. Older custom layouts are migrated when distinguishable from defaults. Real browser drag/drop validation remains necessary.
+
 **Precision/safety:** Recent fixes in the `main` branch guard high-bit retouching, avoid rasterizing editable layers before a stroke is known to change pixels, and validate numeric Tool Options fields. A supported operation in 8-bit RGB is not a guarantee of an identical 16/32-bit HDR implementation; unsupported combinations should refuse unsafe edits.
 
 | Tool | Current Photoshop-style behavior | Remaining deeper work |

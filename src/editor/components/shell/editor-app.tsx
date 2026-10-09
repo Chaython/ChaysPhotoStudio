@@ -298,7 +298,7 @@ export function EditorApp() {
               </>
             )}
             {!mobileMode && (
-              <div className="hidden md:flex min-w-0 shrink-0">
+              <div className="hidden md:flex min-w-0 shrink-0 items-start">
                 <TopDock side="top-left" />
                 <div className="min-w-0 flex-1"><TopDock /></div>
                 <TopDock side="top-right" />
@@ -311,7 +311,7 @@ export function EditorApp() {
               </div>
             )}
             {!mobileMode && (
-              <div className="hidden md:flex min-w-0 shrink-0">
+              <div className="hidden md:flex min-w-0 shrink-0 items-end">
                 <TopDock side="bottom-left" />
                 <div className="min-w-0 flex-1"><TopDock side="bottom" /></div>
                 <TopDock side="bottom-right" />

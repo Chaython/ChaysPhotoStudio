@@ -33,17 +33,17 @@ The table is a **capability summary**, not a claim that every combination of fil
 
 ### Workspaces, tools and shortcuts
 
-Choose **Photoshop-style** or **Classic / custom** from the Workspace selector. Color themes (Dark, Light, OLED black and Photoshop-inspired) are independent from workspace layout. On desktop, panels may be docked **left/right/top/bottom and in all four corners**, or floated. Open **Window → All Tools / Tool Search** to filter and launch tools by name, category or shortcut. These improvements were merged in [PR #81](https://github.com/Chaython/ChaysPhotoStudio/pull/81).
+Choose **Photoshop-style** or **Classic / custom** from the Workspace selector. Color themes (Dark, Light, OLED black and Photoshop-inspired) are independent from workspace layout. On desktop, panels may be docked **left/right/top/bottom and in all four corners**, or floated. Dock dimensions adapt to the active content (Open Files is a compact strip); resizing by dragging preserves a manual size and double-clicking the divider restores automatic fitting. Open **Window → All Tools / Tool Search** to filter and launch tools by name, category or shortcut. These improvements were merged in [PR #81](https://github.com/Chaython/ChaysPhotoStudio/pull/81).
 
 Open **Help → Keyboard Shortcuts** (or **Edit → Keyboard Shortcuts…**) to inspect/change bindings. Several Photoshop-style tools share a letter and **cycle** on repeated presses; they do not all have distinct default keys. The Pen group now includes **Standard Pen**, **Freeform Pen** and **Curvature Pen** (P); the Type group includes **Horizontal/Vertical Type Mask** selection tools (T). These are in `main` after [PR #82](https://github.com/Chaython/ChaysPhotoStudio/pull/82).
 
 ### File support in brief
 
-**Open/import:** native PNG/JPEG/WebP/GIF/AVIF/SVG where the webview decodes them; custom PSD/PSB, TIFF, TGA, BMP, QOI, PNM/PFM, Radiance HDR, ICO/ICNS, PCX and other supported formats; some structured third-party project containers via dedicated parsers or raster preview extraction. Camera RAW, HEIC/HEIF, JXL, JPEG 2000 and exotic/partial document formats are **decoder- and platform-dependent**. RAW on `main` is primarily a preview-oriented import path, **not complete non-destructive RAW development**.
+**Open/import:** native PNG/JPEG/WebP/GIF/AVIF/SVG where the webview decodes them; custom PSD/PSB, TIFF, TGA, BMP, QOI, PNM/PFM, Radiance HDR, ICO/ICNS, PCX and other supported formats; some structured third-party project containers via dedicated parsers or raster preview extraction. Camera RAW, HEIC/HEIF, JXL, JPEG 2000 and exotic/partial document formats are **decoder- and platform-dependent**. The LibRaw WASM path attempts true sensor decoding, with an embedded-preview fallback when decoding fails. RAW imports can preserve original bytes (up to 64 MiB) as redevelopable Smart Objects; development settings and optional imported Lensfun corrections can be reapplied. This is not universal camera or high-bit-depth compatibility.
 
 **Video frames:** open MP4/WebM/MKV to preview, scrub and **Import frame**; this does *not* create a video-editing timeline. **Export:** PNG, JPEG, WebP, TIFF (including supported 16-bit options), BMP, TGA, QOI, PPM, ICO, OpenRaster and PSD, plus native editable `.zproj.json`. Some advanced PSD features must be approximated or rasterized.
 
-See [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md) for categorized imports, exports and limitations. More RAW/EXR/DICOM support is being developed separately, not yet guaranteed in stable builds.
+See [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md) and [real-camera RAW tests](docs/RAW_CODEC_CORPUS.md) for support details. Six selected cameras passed LibRaw sensor-decoding checks; untested compression variants, precision, color matching and RAW round-trip fidelity are not guaranteed.
 
 ## Plugins, AI and filters
 
