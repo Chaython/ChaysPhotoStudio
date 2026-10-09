@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { autoSideDockWidth, horizontalDockPanelWidth } from '../src/editor/components/panels/auto-dock-sizing'
 import type { PanelDef } from '../src/editor/components/panels/panel-registry'
+import { useEditorStore } from '../src/editor/store'
 
 function panel(id: PanelDef['id'], minWidth: number): PanelDef {
   return { id, label: id, minFloat: { w: minWidth, h: 110 }, defaultFloat: { w: 720, h: 420 } } as PanelDef
@@ -21,3 +22,19 @@ assert.deepEqual(horizontalDockPanelWidth('tool-options', 760), {
 })
 assert.deepEqual(horizontalDockPanelWidth('layers', 290), { width: 290 })
 console.log('Dock widths fit compact modules and keep complex content usable and bounded')
+
+// Manual height must only affect the chosen strip, not other corners.
+const store = useEditorStore.getState()
+store.setHorizontalDockHeight('top-left', 66)
+store.setHorizontalDockHeight('top-right', 180)
+store.setHorizontalDockHeight('bottom', 72)
+assert.equal(useEditorStore.getState().panels.dockHeights['top-left'], 66)
+assert.equal(useEditorStore.getState().panels.dockHeights['top-right'], 180)
+assert.equal(useEditorStore.getState().panels.dockHeights['bottom'], 72)
+assert.equal(useEditorStore.getState().panels.dockHeights['bottom-right'], undefined)
+store.resetHorizontalDockHeight('top-left')
+assert.equal(useEditorStore.getState().panels.dockHeights['top-left'], undefined)
+assert.equal(useEditorStore.getState().panels.dockHeights['top-right'], 180, 'reset must not affect other corners')
+store.setHorizontalDockHeight('bottom-right', 1)
+assert.equal(useEditorStore.getState().panels.dockHeights['bottom-right'], 44, 'manual height clamps to 44px instead of jumping to 120px')
+useEditorStore.getState().resetPanelLayout()
