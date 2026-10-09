@@ -10,7 +10,7 @@ import { engine, type TransformMode, type TransformReference } from '../../engin
 import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob, canvasPixelCapabilities } from '../../utils/canvas'
 import { compositeDocument, getFlatComposite } from '../../engine/document'
-import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd } from '../../formats'
+import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster } from '../../formats'
 import type { PsdLayerInput } from '../../formats'
 import type { DialogProps } from './generic-dialogs'
 import { TransformWarpEditor } from './transform-warp-editor'
@@ -292,7 +292,7 @@ export function ExportDialog({ onClose }: DialogProps) {
   const [busy, setBusy] = useState(false)
 
   const info = FORMAT_INFO.find(f => f.id === format) ?? FORMAT_INFO[0]
-  const isPsd = info.id === 'psd'
+  const isPsd = info.id === 'psd' || format === 'ora'
   // icon entries can't exceed the source dimensions
   const icoPool = ICO_SIZE_POOL.filter(s => s <= Math.min(doc?.width ?? 256, doc?.height ?? 256))
   const effectiveIcoSizes = icoSizes.filter(s => icoPool.includes(s))
@@ -315,7 +315,26 @@ export function ExportDialog({ onClose }: DialogProps) {
       engine.clearPreviewAdjustment()
       const outName = name || doc.name
 
-      if (isPsd) {
+      if (format === 'ora') {
+        const layers = doc.layers.filter(l => l.kind !== 'adjustment').flatMap(l => {
+          const canvas = engine.layerCanvas(l.id)
+          if (!canvas || !canvas.width || !canvas.height) return []
+          const documentSpace = l.kind !== 'raster'
+          return [{
+            name: l.name, canvas,
+            left: documentSpace ? 0 : l.offsetX ?? 0,
+            top: documentSpace ? 0 : l.offsetY ?? 0,
+            opacity: l.opacity, visible: l.visible, blendMode: l.blendMode,
+          }]
+        })
+        showProgress('Building OpenRaster…')
+        await sleep(16)
+        const blob = await buildOpenRaster(doc.width, doc.height, layers, getFlatComposite(doc), {
+          name: doc.name, resolutionPpi: doc.resolutionPpi,
+        })
+        downloadBlob(blob, `${outName}.ora`)
+        store.pushToast(`Exported ${outName}.ora — ${layers.length} layers (complex effects may be rasterized)`, 'success')
+      } else if (isPsd) {
         // ---- layered PSD: one record per layer (bottom-first = doc order) ----
         const inputs: PsdLayerInput[] = []
         for (const l of doc.layers) {
