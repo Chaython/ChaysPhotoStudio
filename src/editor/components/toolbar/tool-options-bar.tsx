@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
@@ -305,7 +305,13 @@ function ToolNumberInput({ control, value, onChange, className }: {
   className: string
 }) {
   const [draft, setDraft] = useState<string | null>(null)
+  const cancelled = useRef(false)
   const commit = () => {
+    if (cancelled.current) {
+      cancelled.current = false
+      setDraft(null)
+      return
+    }
     if (draft === null) return
     const next = normalizeToolNumber(draft, control.min, control.max)
     setDraft(null)
@@ -317,13 +323,13 @@ function ToolNumberInput({ control, value, onChange, className }: {
     min={control.min}
     max={control.max}
     step={control.step}
-    onChange={e => setDraft(e.target.value)}
+    onChange={e => { cancelled.current = false; setDraft(e.target.value) }}
     onBlur={commit}
     onKeyDown={e => {
       // Don't dispatch editor hotkeys while editing a numeric field.
       e.stopPropagation()
       if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
-      else if (e.key === 'Escape') { e.preventDefault(); setDraft(null); e.currentTarget.blur() }
+      else if (e.key === 'Escape') { e.preventDefault(); cancelled.current = true; setDraft(null); e.currentTarget.blur() }
     }}
     className={className}
   />
