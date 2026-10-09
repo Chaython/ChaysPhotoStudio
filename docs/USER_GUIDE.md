@@ -405,11 +405,12 @@ Review earlier versions and recover unsaved work.
 3. Save projects regularly.
 4. Use File → Recent & Recovery after a browser crash or unexpected restart.
 5. Create named History snapshots with notes for milestones or comparisons.
+6. Click Download Backup on a recovery entry to export a portable project, or Back up all to folder when your WebView supports selecting a directory.
 
 **Notes and tips:**
 
 - Autosave and recovery depend on local storage retention; clearing browser data may delete them.
-- Current main stores recovery in IndexedDB; save .zproj.json files outside the profile. Portable recovery exports are pending PR #86.
+- Recovery exports are available after merged PR #86, but these are manual backups; profile deletion can still erase snapshots not copied elsewhere.
 
 ## Keyboard shortcuts and mobile
 
@@ -462,6 +463,7 @@ Find a missing tool or diagnose a failed operation.
 3. For performance problems, try smaller images and confirm browser worker support.
 4. If a source format fails, try exporting PNG or TIFF from its original application.
 5. Report reproducible defects with browser version, bit depth, steps and errors on GitHub Issues.
+6. If the update checker reports offline, continue editing normally; automatic installs are not enabled.
 
 **Notes and tips:**
 
@@ -605,10 +607,11 @@ Choose a distribution that matches connectivity and OS needs.
 2. Default Tauri releases embed their frontend but require the OS WebView runtime to be present or provisioned.
 3. Save .zproj.json files outside the browser profile as backups.
 4. External AI, remote image URLs and release updates require connectivity.
+5. The About dialog includes a manual Check for updates control; it does not silently install or restart the app.
 
 **Notes and tips:**
 
-- The offline Windows WebView2 installer is configured on main by merged PR #85; WebView security/recovery remains under review in PR #86.
+- The extra offline Windows installer and embedded WebView CSP/window-state/recovery improvements are in main after merged PRs #85/#86.
 - Electron uses a bundled localhost server and does not depend on GitHub Pages.
 
 ## Large documents, performance and memory
