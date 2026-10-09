@@ -38,7 +38,7 @@ export function RecoveryDialog({ onClose }: DialogProps) {
     if (!picker || busy) return
     setBusy('backup')
     try {
-      const directory = await picker()
+      const directory = await picker.call(window)
       const count = await writeRecoveryBackups(items, directory)
       useEditorStore.getState().pushToast(`Backed up ${count} recoveries outside the application profile`, 'success')
     } catch (err: any) {
