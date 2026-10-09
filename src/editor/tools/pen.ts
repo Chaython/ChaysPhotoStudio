@@ -815,10 +815,11 @@ function putFreeformPoint(x: number, y: number, minStep: number) {
   // reached, replace the final sample so the user's final endpoint is honored.
   if (freeformPoints.length >= 4000) {
     freeformPoints[freeformPoints.length - 1] = { x, y }
+    anchors[anchors.length - 1] = { x, y, inX: 0, inY: 0, outX: 0, outY: 0, pair: true }
   } else {
     freeformPoints.push({ x, y })
+    anchors.push({ x, y, inX: 0, inY: 0, outX: 0, outY: 0, pair: true })
   }
-  anchors = freeformPoints.map(pt => ({ ...pt, inX: 0, inY: 0, outX: 0, outY: 0, pair: true }))
   activeAnchor = anchors.length - 1
   engine.pokeOverlay()
 }
@@ -879,7 +880,7 @@ export const curvaturePenTool: Tool = {
     activeAnchor = anchors.length - 1
     smoothAnchors()
   },
-  onDoubleClick(p) {
+  onDoubleClick() {
     // The browser dispatches pointerdown before dblclick: drop the
     // duplicate last knot so a double-click cleanly ends the open path.
     const n = anchors.length
