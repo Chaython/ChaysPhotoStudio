@@ -458,5 +458,7 @@ export async function encodeCanvas(
     }
     case 'psd':
       throw new Error('PSD export needs the layer stack — use buildPsd() from the Export dialog')
+    case 'ora':
+      throw new Error('OpenRaster export needs the layer stack — use buildOpenRaster() from the Export dialog')
   }
 }
