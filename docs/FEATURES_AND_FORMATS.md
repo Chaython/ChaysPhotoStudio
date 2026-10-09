@@ -84,7 +84,7 @@ When interoperability matters, test with a small representative project, reopen 
 
 **Photoshop UXP:** optional manifest/JS compatibility bridge supports a subset of commands and `batchPlay` descriptors. Arbitrary UXP plugins, native C/C++ binaries, or Adobe-only APIs may not work.
 
-**GIMP:** `.gbr` brushes and `.ggr` gradients import into the native editing workflow. Desktop **Electron** can discover optional separately installed G'MIC and GEGL programs and run supported filters via a native process; generated results are imported as layers. These do **not** make arbitrary GIMP Python, Script-Fu, libgimp/PDB or C plugins executable in the browser. A future parser/interpreter exploration is tracked in [PR #83](https://github.com/Chaython/ChaysPhotoStudio/pull/83), pending merge.
+**GIMP (merged PR #83):** `.gbr` brushes, `.ggr` gradients, related GIMP assets, GEGL operation discovery, curated G'MIC command browsing, and GIMP script analysis are available. In **Electron only**, a separately installed **GIMP 3** executable can discover and invoke supported noninteractive PDB procedures and explicitly chosen Python/Script-Fu source in a new GIMP process. GIMP filters return a temporary PNG imported as a new layer, **not** high-depth RAW/PSD round-tripping. This executes code under the user's OS permissions: run only trusted scripts. Embedded interpreters provide a limited Scheme subset, or opt-in Pyodide Python WASM loaded **only when used** from a remote CDN; they do not implement GIMP GI/PDB or image editing.
 
 **Trust model:** never import third-party plugins you don't trust. Plugins can request capabilities; compatibility scripts are not a guarantee of complete sandbox isolation. Keep copies of project files before testing experimental plugins.
 
@@ -94,14 +94,14 @@ When interoperability matters, test with a small representative project, reopen 
 |---|---|
 | Browser-hosted live editor | Requires access at initial load; the PWA may use cached shell assets after installation |
 | Default Electron build | Locally bundled application and server; doesn't require GitHub Pages |
-| Default Tauri build | Static editor assets embedded; the OS WebView runtime must be present (or provisioned during installation) |
+| Default Tauri build | Static editor assets embedded; the OS WebView runtime must be present or provisioned during installation. A separate Windows offline installer bundles WebView2 provisioning |
 | Browser extension | Editor bundled locally; opening a *remote* image URL still requires that image to be reachable and CORS-permitted |
 | Painting/layers/local filters/project files | Designed to process locally without uploading source documents |
 | Pollinations/custom remote generation and remote image URLs | **Internet required**; content submitted to an external provider can leave the device |
-| Local ComfyUI, G'MIC or GEGL | Separate installation; availability depends on configuration and platform |
+| Local ComfyUI, G'MIC, GEGL or GIMP 3 | Separate installation; native GEGL/G'MIC/GIMP 3 execution is Electron-only. Pyodide embedding downloads a runtime on first explicit use |
 | External links/updates | Internet required |
 
-On current `main`, recovery snapshots live in the application's IndexedDB profile; clearing profile/browser data can delete them. Manually save `.zproj.json` projects outside the profile. Recovery snapshot export, native window-state persistence, optional code signing and a manual update check are proposed in [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86). An additional Windows installer bundling WebView2's offline installation package is proposed in [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85).
+On current `main`, recovery snapshots live in the application's IndexedDB profile; clearing profile/browser data can delete them. Manually save `.zproj.json` projects outside the profile. Recovery snapshot export, native window-state persistence, optional code signing and a manual update check are proposed in [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86). A separate Windows offline WebView2 NSIS installer has been configured on `main` in [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85) and will appear when a successful release publishes it.
 
 ## Known compatibility limits
 
