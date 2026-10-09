@@ -44,6 +44,36 @@ const d=decodeDicom(new Uint8Array(pieces))
 check(d.image.width===2 && d.image.height===1,'DICOM dimensions')
 check(d.image.rgba[0]<d.image.rgba[4],'DICOM grayscale gradient')
 
+
+// RLE-lossless DICOM, 2 pixels (10, 240). One fragment, no BOT offsets.
+const rp:number[]=[...new Uint8Array(128),...enc.encode('DICM')]
+const rw=(n:number)=>rp.push(n&255,(n>>>8)&255)
+const rd=(n:number)=>{rw(n&65535);rw(n>>>16)}
+const re=(g:number,t:number,vr:string,data:number[])=>{
+ rw(g);rw(t);rp.push(...enc.encode(vr))
+ if(['OB','OW','SQ','UN','UT'].includes(vr)){rw(0);rd(data.length)}
+ else rw(data.length)
+ rp.push(...data)
+}
+re(2,0x10,'UI',Array.from(enc.encode('1.2.840.10008.1.2.5\\0')))
+re(0x28,0x10,'US',number16(1))
+re(0x28,0x11,'US',number16(2))
+re(0x28,0x100,'US',number16(8))
+re(0x28,0x101,'US',number16(8))
+re(0x28,0x02,'US',number16(1))
+re(0x28,0x04,'CS',Array.from(enc.encode('MONOCHROME2 ')))
+rw(0x7fe0);rw(0x0010);rp.push(...enc.encode('OB'));rw(0);rd(0xffffffff)
+rw(0xfffe);rw(0xe000);rd(0) // empty basic offset table
+const rleBytes=new Uint8Array(68)
+const rleView=new DataView(rleBytes.buffer)
+rleView.setUint32(0,1,true)
+rleView.setUint32(4,64,true)
+rleBytes.set([1,10,240,128],64) // PackBits literal, pad to even length
+rw(0xfffe);rw(0xe000);rd(rleBytes.length);rp.push(...rleBytes)
+rw(0xfffe);rw(0xe0dd);rd(0)
+const rleDicom=decodeDicom(Uint8Array.from(rp))
+check(rleDicom.image.width===2&&rleDicom.image.rgba[0]<rleDicom.image.rgba[4],'DICOM RLE grayscale')
+
 // Synthetic OpenEXR 1x1, 32-bit RGB no compression.
 const out:number[]=[]
 function bytes(b:number[]|Uint8Array){out.push(...b)}
@@ -72,6 +102,38 @@ ev.setBigUint64(tableOffset,BigInt(scanlineOffset),true)
 const exr=await decodeExr(new Uint8Array(ev.buffer))
 check(exr.width===1 && exr.height===1,'EXR dimensions')
 check(exr.rgbaFloat?.[0]===1 && exr.rgbaFloat[1]===0.5,'EXR floating RGB')
+
+
+// Same OpenEXR payload using the EXR RLE compression + predictor + byte shuffle.
+function exrRleImage():Uint8Array{
+ const base=new Uint8Array(ev.buffer)
+ const header=new Uint8Array(base)
+ // Rebuild a minimal RLE EXR using the existing channel/dataWindow fixtures.
+ const payload=Array.from(new Uint8Array(temp.buffer))
+ const half=Math.ceil(payload.length/2)
+ const reordered=payload.filter((_,i)=>i%2===0).concat(payload.filter((_,i)=>i%2===1))
+ const predicted=reordered.map((x,i)=>i===0?x:(x-reordered[i-1]+128)&255)
+ const encoded:number[]=[]
+ for(let i=0;i<predicted.length;i+=Math.min(127,predicted.length-i)){
+   const len=Math.min(127,predicted.length-i)
+   encoded.push((256-len)&255,...predicted.slice(i,i+len))
+ }
+ // Use same prefix including attribute list, change compression attribute value.
+ const bytes=Array.from(header.subarray(0,tableOffset))
+ const cmp=Array.from(enc.encode('compression'))
+ let at=-1
+ for(let i=0;i<bytes.length-cmp.length;i++){
+   if(cmp.every((value,j)=>bytes[i+j]===value)){at=i;break}
+ }
+ if(at<0)throw Error('EXR compression test header missing')
+ bytes[at+cmp.length+1+'compression'.length+1+4]=1
+ const offset=bytes.length+8
+ const frame=Uint8Array.from([...bytes,...new Uint8Array(8),0,0,0,0,encoded.length,0,0,0,...encoded])
+ new DataView(frame.buffer).setBigUint64(tableOffset,BigInt(offset),true)
+ return frame
+}
+const rex=await decodeExr(exrRleImage())
+check(rex.rgbaFloat?.[0]===1 && rex.rgbaFloat[1]===0.5,'OpenEXR RLE RGB')
 
 // Two separate TIFF IFDs, each containing an 8-bit grayscale page.
 const tiff=new Uint8Array(258);const tv=new DataView(tiff.buffer)
