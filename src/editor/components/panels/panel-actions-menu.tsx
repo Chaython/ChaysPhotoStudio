@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import { ArrowUp, Check, ChevronDown, ChevronUp, Home, Maximize2, PanelLeft, PanelRight } from 'lucide-react'
 import { useEditorStore, type DockSide } from '../../store'
 import { PANEL_MAP } from './panel-registry'
@@ -14,7 +15,9 @@ import {
  * finished selection and closing. Otherwise the original menu can survive
  * and apply a stale "Dock bottom" item on the next right-click.
  */
-function afterContextMenuClose(action: () => void) {
+function afterContextMenuClose(close: () => void, action: () => void) {
+  close()
+  // Close in a separate turn before the menu's trigger changes DOM parent.
   window.setTimeout(action, 0)
 }
 
@@ -29,6 +32,7 @@ export function PanelContextMenu({
   id: string
   children: React.ReactElement
 }) {
+  const [open, setOpen] = useState(false)
   const dockSide = useEditorStore(s => s.panels.dockSide)
   const floatingRect = useEditorStore(s => s.panels.floating[id])
   const def = PANEL_MAP[id]
@@ -41,15 +45,15 @@ export function PanelContextMenu({
     ? 'floating'
     : explicitSide ?? (def.home ? 'home' : 'right')
 
-  const move = (side: DockSide) => afterContextMenuClose(() => useEditorStore.getState().dockPanel(id, side))
+  const move = (side: DockSide) => afterContextMenuClose(() => setOpen(false), () => useEditorStore.getState().dockPanel(id, side))
 
   return (
-    <ContextMenu>
+    <ContextMenu open={open} onOpenChange={setOpen}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="z-[90] min-w-52">
         {def.home && (
           <>
-            <ContextMenuItem className="gap-2 text-xs" onSelect={() => afterContextMenuClose(() => useEditorStore.getState().homePanel(id))}>
+            <ContextMenuItem className="gap-2 text-xs" onSelect={() => afterContextMenuClose(() => setOpen(false), () => useEditorStore.getState().homePanel(id))}>
               <Home size={13} />
               <span className="flex-1">Return to default position</span>
               {current === 'home' && <Check size={12} className="text-primary" />}
@@ -62,7 +66,7 @@ export function PanelContextMenu({
           <>
             <ContextMenuItem
               className="gap-2 text-xs"
-              onSelect={() => afterContextMenuClose(() => useEditorStore.getState().collapsePanel(id, !floatingRect.collapsed))}
+              onSelect={() => afterContextMenuClose(() => setOpen(false), () => useEditorStore.getState().collapsePanel(id, !floatingRect.collapsed))}
             >
               {floatingRect.collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
               <span className="flex-1">{floatingRect.collapsed ? 'Expand panel' : 'Collapse panel'}</span>
@@ -73,7 +77,7 @@ export function PanelContextMenu({
           <>
             <ContextMenuItem
               className="gap-2 text-xs"
-              onSelect={() => afterContextMenuClose(() => useEditorStore.getState().floatPanel(id, def.defaultFloat))}
+              onSelect={() => afterContextMenuClose(() => setOpen(false), () => useEditorStore.getState().floatPanel(id, def.defaultFloat))}
             >
               <Maximize2 size={13} />
               <span className="flex-1">Float panel</span>
