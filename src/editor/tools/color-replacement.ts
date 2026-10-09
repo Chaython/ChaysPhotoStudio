@@ -32,7 +32,7 @@ function sampleForDab(id: string, x: number, y: number): RGB | null {
     if (!lockedSample) lockedSample = stroke ? deferredStrokePixel(stroke, x, y) : null
     return lockedSample
   }
-  return stroke ? deferredStrokePixel(stroke, x, y) : null ?? lockedSample
+  return (stroke ? deferredStrokePixel(stroke, x, y) : null) ?? lockedSample
 }
 
 function colorDistance(r: number, g: number, b: number, ref: RGB, perceptual: boolean): number {
