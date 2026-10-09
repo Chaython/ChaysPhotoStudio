@@ -41,6 +41,8 @@ jobs:
 
       - name: Validate all editor tools
         run: bun run tools:validate
+      - name: Validate camera, HDR, scientific and multi-page formats
+        run: bun run formats:validate
 
       - name: Validate Puppet Warp geometry
         run: bun run warp:validate
