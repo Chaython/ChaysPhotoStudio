@@ -68,6 +68,39 @@ export const isNativePanelId = (id: string): id is NativePanelId =>
 
 const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
+/** Keep user-defined dock sizes when migrating layouts from earlier releases. */
+export function restoreDockHeightOverrides(saved: {
+  dockHeights?: Record<string, number> | null
+  topHeight?: number
+  bottomHeight?: number
+}): Partial<Record<DockSide, number>> {
+  const result: Partial<Record<DockSide, number>> = {}
+  if (saved.dockHeights && typeof saved.dockHeights === 'object' && !Array.isArray(saved.dockHeights)) {
+    for (const [side, value] of Object.entries(saved.dockHeights)) {
+      if (HORIZONTAL_DOCKS.includes(side as DockSide) && typeof value === 'number' && Number.isFinite(value))
+        result[side as DockSide] = clampNum(Math.round(value), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
+    }
+    return result
+  }
+  // Only interpret legacy slots when the new map is ABSENT, not when the
+  // user explicitly reset a strip to automatic sizing (dockHeights: {}).
+  if (typeof saved.topHeight === 'number' && Number.isFinite(saved.topHeight) &&
+      saved.topHeight !== TOP_HEIGHT_DEFAULT)
+    result.top = clampNum(Math.round(saved.topHeight), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
+  if (typeof saved.bottomHeight === 'number' && Number.isFinite(saved.bottomHeight) &&
+      saved.bottomHeight !== 192)
+    result.bottom = clampNum(Math.round(saved.bottomHeight), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
+  return result
+}
+
+export function restoreManualDockWidth(saved: number | undefined, manual: boolean | undefined, right = false): boolean {
+  if (typeof manual === 'boolean') return manual
+  if (typeof saved !== 'number' || !Number.isFinite(saved)) return false
+  // 318px was the Photoshop workspace default, not necessarily a user resize.
+  return saved !== DOCK_WIDTH_DEFAULT && !(right && saved === 318)
+}
+
+
 function loadPanelLayout(rawOverride: string | null = null): {
   floating: Record<string, PanelRect>
   zTop: number
@@ -127,11 +160,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
     const topOrder = Array.isArray(data.topOrder)
       ? data.topOrder.filter((id): id is string => typeof id === 'string').slice(0, 32)
       : []
-    const dockHeights: Partial<Record<DockSide, number>> = {}
-    for (const [side, value] of Object.entries(data.dockHeights ?? {})) {
-      if (HORIZONTAL_DOCKS.includes(side as DockSide) && typeof value === 'number' && Number.isFinite(value))
-        dockHeights[side as DockSide] = clampNum(Math.round(value), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
-    }
+    const dockHeights = restoreDockHeightOverrides(data)
     const rightTabRaw = typeof data.rightTab === 'string' ? data.rightTab : 'layers'
     return {
       rightTab: rightTabRaw,
@@ -139,8 +168,8 @@ function loadPanelLayout(rawOverride: string | null = null): {
       zTop: typeof data.zTop === 'number' ? data.zTop : Object.values(floating).reduce((m, r) => Math.max(m, r.z), 0),
       dockWidth: clampNum(Math.round(data.dockWidth ?? DOCK_WIDTH_DEFAULT), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX),
       leftWidth: clampNum(Math.round(data.leftWidth ?? DOCK_WIDTH_DEFAULT), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX),
-      leftWidthManual: data.leftWidthManual === true,
-      dockWidthManual: data.dockWidthManual === true,
+      leftWidthManual: restoreManualDockWidth(data.leftWidth, data.leftWidthManual),
+      dockWidthManual: restoreManualDockWidth(data.dockWidth, data.dockWidthManual, true),
       leftOpen: !!data.leftOpen,
       leftTab: typeof data.leftTab === 'string' ? data.leftTab : '',
       dockSide,
