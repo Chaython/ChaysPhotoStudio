@@ -117,6 +117,17 @@ The default Tauri release bundles local static editor assets (`build/webapp-expo
 
 Merged [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86) adds embedded-release CSP, native window-state restoration, manual recovery snapshot exports, a user-initiated release checker, and optional Authenticode signing. Signing only activates when real publisher credentials are configured; Tauri signed **automatic updates** are not enabled. Verify that release artifacts have actually been built before assuming an installer includes any newly merged change.
 
+For a local offline NSIS build, create the static editor export and release config, then build from `webview/src-tauri` with the offline overlay:
+
+```bash
+node scripts/export-webapp.mjs plugin
+node scripts/webview-config.mjs
+cd webview/src-tauri
+bunx @tauri-apps/cli build --config tauri.conf.release.json --config tauri.conf.offline.json --bundles nsis
+```
+
+The offline variant bundles Microsoft's full WebView2 offline installer (roughly 127 MB extra). This is different from fixed-version WebView2 distribution; external AI and downloads still need internet.
+
 ### Optional Windows Authenticode signing
 
 The release job recognizes optional `WINDOWS_CODESIGN_PFX_BASE64` and `WINDOWS_CODESIGN_PFX_PASSWORD` Actions secrets and signs/verifies Windows WebView NSIS installers when both are supplied. The workflow skips signing if neither is configured. **Checksums are not signatures**, and Authenticode does not replace Tauri updater signature keys. See [WebView Offline Audit](docs/WEBVIEW_OFFLINE_AUDIT.md) for details.
