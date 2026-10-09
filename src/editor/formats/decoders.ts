@@ -11,7 +11,7 @@ import { createCanvas, ctx2d, canvasProfile, putFloat16Pixels } from '../utils/c
 
 export type ImportFormatId =
   | 'png' | 'jpeg' | 'gif' | 'webp' | 'avif' | 'heic' | 'jxl' | 'jp2' | 'svg'
-  | 'bmp' | 'ico' | 'icns' | 'dds' | 'iff' | 'anim' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx' | 'sgi' | 'sunras' | 'exr' | 'fits' | 'dicom'
+  | 'bpg' | 'bmp' | 'ico' | 'icns' | 'dds' | 'iff' | 'anim' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx' | 'sgi' | 'sunras' | 'exr' | 'fits' | 'dicom'
 
 /** decoded raster: tightly packed 8-bit RGBA (ImageData-compatible).
  *  Typed as Uint8ClampedArray<ArrayBuffer> (not ArrayBufferLike) so it feeds
@@ -105,6 +105,7 @@ export function detectFormat(bytes: Uint8Array): ImportFormatId | null {
   if (eq('GIF8')) return 'gif'
   if (eq('RIFF') && eq('WEBP', 8)) return 'webp'
   if (eq('qoif')) return 'qoi'
+  if (n>=4 && b[0]===0x42 && b[1]===0x50 && b[2]===0x47 && b[3]===0xfb) return 'bpg'
   if (n >= 2 && b[0] === 0xff && b[1] === 0x0a) return 'jxl'
   if (n >= 12 && b[0] === 0x00 && b[1] === 0x00 && b[2] === 0x00 && b[3] === 0x0c &&
       b[4] === 0x4a && b[5] === 0x58 && b[6] === 0x4c && b[7] === 0x20 &&

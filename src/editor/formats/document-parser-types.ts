@@ -11,6 +11,8 @@ export interface ParsedDocumentLayer {
   left?: number
   top?: number
   canvas?: HTMLCanvasElement | null
+  /** Float32 scene-linear image samples for HDR parts. */
+  hdrPixels?: Float32Array | null
   source?: HTMLCanvasElement | null
   transform?: TransformSpec | null
   text?: Partial<TextSpec> | null

@@ -1,9 +1,12 @@
+import { chooseLensfunCurve, type CameraExif } from '../src/editor/formats/lensfun-xml'
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
-import { decodeExr } from '../src/editor/formats/openexr'
-import { decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
+import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
+import { applyLensProfile } from '../src/editor/formats/lens-correction'
+import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
 function check(v:unknown,description:string) { if(!v)throw new Error(description) }
 const enc=new TextEncoder()
+check(detectFormat(Uint8Array.from([0x42,0x50,0x47,0xfb,0]))==='bpg','BPG magic detection never routes to a generic image fallback')
 function fitCard(key:string,val?:string):Uint8Array {
   return enc.encode((key.padEnd(8,' ')+(val===undefined?'':'= '+val.padStart(20,' '))).padEnd(80,' '))
 }
@@ -40,9 +43,39 @@ dicomElement(0x28,0x101,'US',number16(8))
 dicomElement(0x28,0x02,'US',number16(1))
 dicomElement(0x28,0x04,'CS',Array.from(enc.encode('MONOCHROME2 ')))
 dicomElement(0x7fe0,0x10,'OB',[10,240])
-const d=decodeDicom(new Uint8Array(pieces))
+const d=await decodeDicom(new Uint8Array(pieces))
 check(d.image.width===2 && d.image.height===1,'DICOM dimensions')
 check(d.image.rgba[0]<d.image.rgba[4],'DICOM grayscale gradient')
+
+
+// RLE-lossless DICOM, 2 pixels (10, 240). One fragment, no BOT offsets.
+const rp:number[]=[...new Uint8Array(128),...enc.encode('DICM')]
+const rw=(n:number)=>rp.push(n&255,(n>>>8)&255)
+const rd=(n:number)=>{rw(n&65535);rw(n>>>16)}
+const re=(g:number,t:number,vr:string,data:number[])=>{
+ rw(g);rw(t);rp.push(...enc.encode(vr))
+ if(['OB','OW','SQ','UN','UT'].includes(vr)){rw(0);rd(data.length)}
+ else rw(data.length)
+ rp.push(...data)
+}
+re(2,0x10,'UI',Array.from(enc.encode('1.2.840.10008.1.2.5\0')))
+re(0x28,0x10,'US',number16(1))
+re(0x28,0x11,'US',number16(2))
+re(0x28,0x100,'US',number16(8))
+re(0x28,0x101,'US',number16(8))
+re(0x28,0x02,'US',number16(1))
+re(0x28,0x04,'CS',Array.from(enc.encode('MONOCHROME2 ')))
+rw(0x7fe0);rw(0x0010);rp.push(...enc.encode('OB'));rw(0);rd(0xffffffff)
+rw(0xfffe);rw(0xe000);rd(0) // empty basic offset table
+const rleBytes=new Uint8Array(68)
+const rleView=new DataView(rleBytes.buffer)
+rleView.setUint32(0,1,true)
+rleView.setUint32(4,64,true)
+rleBytes.set([1,10,240,128],64) // PackBits literal, pad to even length
+rw(0xfffe);rw(0xe000);rd(rleBytes.length);rp.push(...rleBytes)
+rw(0xfffe);rw(0xe0dd);rd(0)
+const rleDicom=await decodeDicom(Uint8Array.from(rp))
+check(rleDicom.image.width===2&&rleDicom.image.rgba[0]<rleDicom.image.rgba[4],'DICOM RLE grayscale')
 
 // Synthetic OpenEXR 1x1, 32-bit RGB no compression.
 const out:number[]=[]
@@ -72,6 +105,129 @@ ev.setBigUint64(tableOffset,BigInt(scanlineOffset),true)
 const exr=await decodeExr(new Uint8Array(ev.buffer))
 check(exr.width===1 && exr.height===1,'EXR dimensions')
 check(exr.rgbaFloat?.[0]===1 && exr.rgbaFloat[1]===0.5,'EXR floating RGB')
+
+
+// Same OpenEXR payload using the EXR RLE compression + predictor + byte shuffle.
+function exrRleImage():Uint8Array{
+ const base=new Uint8Array(ev.buffer)
+ const header=new Uint8Array(base)
+ // Rebuild a minimal RLE EXR using the existing channel/dataWindow fixtures.
+ // Twelve zero bytes become [0, 128, ...128] after EXR prediction.
+ // RLE: one literal zero followed by a repeated 128 run.
+ const encoded:number[]=[0,0,10,128]
+ // Use same prefix including attribute list, change compression attribute value.
+ const bytes=Array.from(header.subarray(0,tableOffset))
+ const cmp=Array.from(enc.encode('compression'))
+ let at=-1
+ for(let i=0;i<bytes.length-cmp.length;i++){
+   if(cmp.every((value,j)=>bytes[i+j]===value)){at=i;break}
+ }
+ if(at<0)throw Error('EXR compression test header missing')
+ bytes[at+cmp.length+1+'compression'.length+1+4]=1
+ const offset=bytes.length+8
+ const frame=Uint8Array.from([...bytes,...new Uint8Array(8),0,0,0,0,encoded.length,0,0,0,...encoded])
+ new DataView(frame.buffer).setBigUint64(tableOffset,BigInt(offset),true)
+ return frame
+}
+const rex=await decodeExr(exrRleImage())
+check(rex.rgbaFloat?.[0]===0 && rex.rgbaFloat[1]===0,'OpenEXR RLE RGB')
+
+
+// One-level, one-tile OpenEXR: same channels and pixel values as the scanline fixture.
+const tiledHeader=out.slice(0,tableOffset-1)
+const tileAttr=(nameText:string,typeText:string,data:number[])=>{
+  tiledHeader.push(...enc.encode(nameText),0,...enc.encode(typeText),0)
+  const n=data.length
+  tiledHeader.push(n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255,...data)
+}
+tileAttr('tiles','tiledesc',[1,0,0,0,1,0,0,0,0])
+tiledHeader.push(0)
+const tileTable=tiledHeader.length
+const tileStart=tileTable+8
+const tilePayload=Array.from(new Uint8Array(temp.buffer))
+const tiled=Uint8Array.from([
+  ...tiledHeader,...new Uint8Array(8),
+  0,0,0,0, // tile X
+  0,0,0,0, // tile Y
+  0,0,0,0, // level X
+  0,0,0,0, // level Y
+  12,0,0,0, // packed size
+  ...tilePayload,
+])
+const tiledView=new DataView(tiled.buffer)
+tiledView.setUint32(4,0x202,true)
+tiledView.setBigUint64(tileTable,BigInt(tileStart),true)
+const tiledExr=await decodeExr(tiled)
+check(tiledExr.width===1&&tiledExr.rgbaFloat?.[0]===1&&tiledExr.rgbaFloat[1]===0.5,'OpenEXR tiled RGB')
+
+// EXR v2 multipart: two separately named 1x1 scanline parts, each with its
+// own chunk offset table and part-number-prefixed block.
+const chunkCount=(n:number)=>[n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]
+const multipartHeader:number[]=[]
+const appendAttr=(dest:number[],key:string,kind:string,data:number[])=>{
+ dest.push(...enc.encode(key),0,...enc.encode(kind),0,...chunkCount(data.length),...data)
+}
+for(const label of ['Beauty','Normals']){
+ appendAttr(multipartHeader,'channels','chlist',channel)
+ appendAttr(multipartHeader,'compression','compression',[0])
+ appendAttr(multipartHeader,'dataWindow','box2i',[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
+ appendAttr(multipartHeader,'name','string',Array.from(enc.encode(label)))
+ appendAttr(multipartHeader,'type','string',Array.from(enc.encode('scanlineimage')))
+ appendAttr(multipartHeader,'chunkCount','int',chunkCount(1))
+ multipartHeader.push(0)
+}
+multipartHeader.push(0)
+const mpTable=8+multipartHeader.length
+const mpPixels=Array.from(new Uint8Array(temp.buffer))
+const mpChunk=(partIndex:number,data:number[])=>[...chunkCount(partIndex),0,0,0,0,12,0,0,0,...data]
+const part0=mpChunk(0,mpPixels),part1=mpChunk(1,mpPixels)
+const mp=Uint8Array.from([
+ ...chunkCount(20000630),...chunkCount(0x1002),
+ ...multipartHeader,...new Uint8Array(16),...part0,...part1
+])
+const mpView=new DataView(mp.buffer)
+mpView.setBigUint64(mpTable,BigInt(mpTable+16),true)
+mpView.setBigUint64(mpTable+8,BigInt(mpTable+16+part0.length),true)
+const decodedParts=await decodeExrParts(mp)
+check(decodedParts.length===2 && decodedParts[0].name==='Beauty' && decodedParts[1].name==='Normals',
+  'EXR multipart part labels')
+check(decodedParts.every(p=>p.image.rgbaFloat?.[0]===1 && p.image.rgbaFloat[1]===0.5),
+  'EXR multipart floating pixels')
+try{
+ await decodeExr(mp)
+ throw Error('Single-image EXR entrypoint must not discard extra parts')
+}catch(err){
+ check(err instanceof Error && err.message.includes('multiple parts'), 'Multipart EXR must not silently discard parts')
+}
+
+// A lossless 16-bit correction path must preserve bit depth and input data.
+const sample16=new Uint16Array(5*5*4)
+const sample8=new Uint8ClampedArray(5*5*4)
+for(let pixel=0;pixel<25;pixel++)for(let c=0;c<4;c++){
+  sample16[pixel*4+c]=c===3?65535:pixel*500+c*100
+  sample8[pixel*4+c]=Math.round(sample16[pixel*4+c]/257)
+}
+const original16=sample16.slice()
+const corrected=applyLensProfile({
+  width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
+},{name:'Test profile',k1:0.1,k2:-0.03,tca:0.005,vignette:0.1})
+check(corrected.sourceBitDepth===16 && corrected.rgba16?.length===sample16.length,'Lens 16-bit preservation')
+check(sample16.every((value,i)=>value===original16[i]),'Lens source samples must not mutate')
+check(corrected.rgba16?.[12*4]===sample16[12*4],'Lens optical center stays fixed')
+
+const correctedLensfun=applyLensProfile({
+  width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
+},{
+  name:'Example calibrated lens',k1:0,k2:0,tca:0,vignette:0,
+  lensfun:{source:'lensfun-xml',maker:'Example',lens:'50 mm',crop:1,focal:50,
+    distortion:{model:'poly3',focal:50,k1:0.02},
+    tca:{model:'poly3',focal:50,vr:1.001,vb:0.999,br:0.001,bb:-0.001},
+    vignetting:{model:'pa',focal:50,k1:-0.2,k2:0.1,k3:-0.02}
+  }
+})
+check(correctedLensfun.rgba16?.length===sample16.length && correctedLensfun.sourceBitDepth===16,
+  'Lensfun-calibrated RAW remap retains 16-bit geometry')
+check(sample16.every((v,i)=>v===original16[i]),'Lensfun correction does not mutate RAW samples')
 
 // Two separate TIFF IFDs, each containing an 8-bit grayscale page.
 const tiff=new Uint8Array(258);const tv=new DataView(tiff.buffer)
@@ -112,4 +268,13 @@ cv.setUint32(4,4100,true);cv.setUint32(8,4234,true)
 dcx.set(pcx(10,20,30),4100);dcx.set(pcx(40,50,60),4234)
 check(dcxPageOffsets(dcx).length===2,'DCX pages')
 check(decodePcx(dcx,0).rgba[0]===10 && decodePcx(dcx,1).rgba[0]===40,'DCX page selection')
-console.log('Scientific, EXR and multipage TIFF/DCX tests passed')
+
+// Lensfun duplicate focal records used to divide by zero and generate NaNs.
+const lensExif: CameraExif = {maker:'Test', model:'Body',lens:'50mm',focal:50,aperture:4,distance:1000}
+check(chooseLensfunCurve([{model:'poly3',focal:50,k1:0.1}],lensExif)?.k1===0.1,'Exact Lensfun focal curve')
+check(chooseLensfunCurve([{model:'poly3',focal:50,k1:0.1},{model:'poly3',focal:50,k1:0.2}],lensExif)===undefined,'Ambiguous same-focal records are rejected')
+const sampleCurve=chooseLensfunCurve([{model:'poly3',focal:20,k1:0.1},{model:'poly3',focal:80,k1:0.3}],lensExif)
+check(sampleCurve && Math.abs((sampleCurve.k1??0)-0.2)<1e-8,'Lensfun focal interpolation stays finite')
+check(chooseLensfunCurve([{model:'poly3',focal:60,k1:0.3}],lensExif)===undefined,'Lensfun never extrapolates beyond known focal calibrations')
+check(chooseLensfunCurve([{model:'poly3',focal:20,k1:0.1},{model:'ptlens',focal:80,a:0.1}],lensExif)===undefined,'Lensfun does not mix incompatible curve models')
+console.log('Scientific, DICOM-RLE, EXR, Lensfun calibration and multipage TIFF/DCX tests passed')

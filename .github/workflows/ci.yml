@@ -51,6 +51,9 @@ jobs:
       - name: Validate content-sized docks
         run: bun run dock-sizing:validate
 
+      - name: Validate eight-way dock routing
+        run: bun run dock-routing:validate
+
       - name: Validate camera, HDR, scientific and multi-page formats
         run: bun run formats:validate
 
