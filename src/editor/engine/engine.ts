@@ -1225,8 +1225,13 @@ export class Engine {
   addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array; aboveActive?: boolean; historyLabel?: string }): Layer | null {
     const doc = this.activeDoc
     if (!doc) return null
-    const layer = newLayer('raster', name || this.nextLayerName(), doc.width, doc.height)
-    if (opts?.center !== false && (canvas.width !== doc.width || canvas.height !== doc.height)) {
+    const centeredNativeSize = opts?.center !== false &&
+      (canvas.width !== doc.width || canvas.height !== doc.height)
+    // The centered branch replaces its backing canvas immediately. Avoid
+    // allocating a huge throwaway document-sized canvas first.
+    const layer = newLayer('raster', name || this.nextLayerName(),
+      centeredNativeSize ? 1 : doc.width, centeredNativeSize ? 1 : doc.height)
+    if (centeredNativeSize) {
       // keep the pixels at native size, registered in the doc CENTER — nothing
       // is cropped and the layer can be moved/transformed losslessly afterwards
       const placed = createCanvas(canvas.width, canvas.height, {

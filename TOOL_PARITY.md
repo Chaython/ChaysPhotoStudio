@@ -107,6 +107,10 @@ The local inpainting kernel currently consumes and writes 8-bit Canvas2D image d
 
 Reopening an Adjustment Layer and submitting its existing settings no longer increments the layer version, marks the project dirty or writes a redundant History entry. Committed nested curve/LUT parameter objects are deep-cloned to avoid edits leaking in from scripting callers. Unknown filter names from action import or scripting are rejected before Smart Filter insertion or History updates.
 
+## Efficient centered image placement
+
+When inserting a smaller canvas as a centered layer, **Place Layer** no longer allocates an unused document-size canvas before creating the native-size backing buffer. The original centering offsets, authoring color profile and 32-bit Float32 pixel values remain unchanged. Headless tests cover allocation behavior, offsets and HDR pixel fidelity.
+
 ## Native-size Object Layer allocation
 
 Object Layer extraction now creates the destination layer at the cropped object's width and height, instead of allocating a full-document backing canvas only to discard it. This lowers temporary canvas memory pressure for small detected objects on large photos. A regression test verifies that an HDR object copy does not create a full-document canvas.

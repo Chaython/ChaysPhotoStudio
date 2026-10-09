@@ -66,7 +66,24 @@ try {
   assert.equal(engine.addObjectLayer({ x: 0, y: 0, w: 1, h: 1 }), null)
   assert.equal(doc.layers.length, count, 'unsupported complex HDR stack is a true no-op')
   assert.equal(history, 1)
-  console.log('HDR object extraction preserves Float32 highlights, alpha, offsets and History')
+  const canvasCount = created.length
+  const input = new FakeCanvas()
+  input.width = 2
+  input.height = 1
+  const hdrInput = new Float32Array([7, 2, 1, 1, 11, 3, 2, 0.5])
+  const centered = engine.addLayerFromCanvas(input, 'Centered HDR', { center: true, hdrPixels: hdrInput })
+  assert.ok(centered)
+  assert.equal(centered.offsetX, 1)
+  assert.equal(centered.offsetY, 1)
+  assert.equal(centered.canvas?.width, 2)
+  assert.equal(centered.canvas?.height, 1)
+  assert.deepEqual(Array.from(centered.hdrPixels!), Array.from(hdrInput),
+    'centered placement keeps authoritative HDR values')
+  assert.equal(created.slice(canvasCount).some(c =>
+    c.width === doc.width && c.height === doc.height), false,
+    'centered native-size placement avoids a throwaway full-document canvas')
+  assert.equal(history, 2)
+  console.log('HDR object extraction and centered placement preserve Float32 data without full-canvas allocations')
 } finally {
   if (prevDoc) Object.defineProperty(globalThis, 'document', prevDoc)
   else Reflect.deleteProperty(globalThis, 'document')
