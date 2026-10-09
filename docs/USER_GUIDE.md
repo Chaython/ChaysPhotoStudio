@@ -24,6 +24,8 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Smart Objects and Smart Filters](#smart-objects-and-smart-filters)
 - [Layer Styles](#layer-styles)
 - [Remove Matte, Defringe and Trim Layer](#remove-matte-defringe-and-trim-layer)
+- [Layer Comps and alternate designs](#layer-comps-and-alternate-designs)
+- [Apply Image, Calculations and channels](#apply-image-calculations-and-channels)
 
 ### Filters
 
@@ -35,6 +37,8 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Transform, Puppet Warp and Crop](#transform-puppet-warp-and-crop)
 - [Brushes, cloning and healing](#brushes-cloning-and-healing)
 - [Content-Aware editing](#content-aware-editing)
+- [Tool groups and choosing the right tool](#tool-groups-and-choosing-the-right-tool)
+- [Paths, text and shapes](#paths-text-and-shapes)
 
 ### Color & files
 
@@ -42,6 +46,10 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [HDR Fill and feathered selections](#hdr-fill-and-feathered-selections)
 - [Match Color between documents](#match-color-between-documents)
 - [Saving, exporting and metadata](#saving-exporting-and-metadata)
+- [Proofing, print resolution and guides](#proofing-print-resolution-and-guides)
+- [Import formats and video frame extraction](#import-formats-and-video-frame-extraction)
+- [Layered exports, Save As and metadata](#layered-exports-save-as-and-metadata)
+- [High-depth workflows and guarded edits](#high-depth-workflows-and-guarded-edits)
 
 ### Workspace
 
@@ -51,10 +59,12 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 ### Advanced
 
 - [Plugins, automation and optional AI](#plugins-automation-and-optional-ai)
+- [Offline editing and desktop releases](#offline-editing-and-desktop-releases)
 
 ### Support
 
 - [Troubleshooting and known limits](#troubleshooting-and-known-limits)
+- [Large documents, performance and memory](#large-documents-performance-and-memory)
 
 ## Getting started
 
@@ -72,6 +82,8 @@ Create, edit, save and export a document.
 - The native project keeps editing structure; PNG and JPEG exports do not.
 - Check File → Recent & Recovery after an interruption.
 - Opening MP4, WebM or MKV prompts for a frame timestamp. Scrub the preview and choose Import frame to make an editable still image.
+- File → Place (Smart Object)… keeps supported imports separately editable.
+- Video import picks one still frame, not an editable video timeline.
 
 ## Workspace and panels
 
@@ -81,13 +93,15 @@ Find tools and customize the appearance of the studio.
 
 1. Choose Window → Layers, History, Channels, Metadata or other panels to reveal them.
 2. Rearrange panels to match your workflow.
-3. Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.
-4. Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.
-5. Choose Settings → Reset panel layout if a panel is difficult to locate.
+3. On desktop, dock panels left/right/top, group tabs or float windows; reveal hidden panels from Window.
+4. Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.
+5. Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.
+6. Choose Settings → Reset panel layout if a panel is difficult to locate.
 
 **Notes and tips:**
 
 - The top-toolbar Help button opens this manual without leaving the editor.
+- Eight-way bottom/corner docks and an All Tools search dialog are pending PR #81.
 
 ## Making and modifying selections
 
@@ -196,6 +210,8 @@ Keep a composition editable without overwriting originals.
 2. Create, duplicate or rearrange layers as needed.
 3. Use Layer → Layer Mask → Reveal Selection or Hide Selection to control visibility non-destructively.
 4. Use clipping masks when the visible area should follow the layer underneath.
+5. Use Copy/Paste Layer Style or Duplicate Into… for cross-document work.
+6. Use Layer Comps to save alternate visibility, position and appearance states.
 
 **Notes and tips:**
 
@@ -216,6 +232,7 @@ Transform and filter placed artwork with editable source content.
 
 - Offset can be used as an editable Smart Filter.
 - Plugin effects do not necessarily support Smart Filters.
+- Smart Object and Smart Filter behavior differs from Adobe native PSD; test interoperability.
 
 ## Layer Styles
 
@@ -319,6 +336,7 @@ Work at appropriate precision and simulate output colors.
 - Auto Tone, Auto Contrast, Auto Color and Match Color are not yet supported on 32-bit HDR documents.
 - In 32-bit HDR, Object Selection → Layer via Copy preserves scene-linear Float32 highlights for simple raster stacks. Complex effects cannot yet be extracted without risking precision loss.
 - 16-bit float editing requires native float16 Canvas2D readback and writeback. If a browser lacks either, the affected operation is stopped rather than converted silently to 8-bit.
+- High precision varies by operation and runtime; unsupported destructive high-depth edits should refuse rather than silently quantize.
 
 ## HDR Fill and feathered selections
 
@@ -384,10 +402,12 @@ Review earlier versions and recover unsaved work.
 2. Create named history snapshots when you need durable comparison states.
 3. Save projects regularly.
 4. Use File → Recent & Recovery after a browser crash or unexpected restart.
+5. Create named History snapshots with notes for milestones or comparisons.
 
 **Notes and tips:**
 
 - Autosave and recovery depend on local storage retention; clearing browser data may delete them.
+- Current main stores recovery in IndexedDB; save .zproj.json files outside the profile. Portable recovery exports are pending PR #86.
 
 ## Keyboard shortcuts and mobile
 
@@ -399,10 +419,12 @@ View or customize key bindings and work without a keyboard.
 2. Use standard shortcuts such as Ctrl/Cmd+Z for Undo and Ctrl/Cmd+D for Deselect.
 3. Choose Touch / mobile mode when using a small or touch-first device.
 4. Reset shortcut overrides if a custom binding conflicts.
+5. Repeatedly press shared tool letters (M, L, B, J, etc.) to cycle related tools.
 
 **Notes and tips:**
 
 - The Shortcuts dialog shows the current binding if it has been customized.
+- Main currently registers 48 tools; additional Pen and Type Mask tools are pending PR #82.
 
 ## Plugins, automation and optional AI
 
@@ -414,11 +436,14 @@ Extend workflows with plugins, scripts, batch jobs and configured AI providers.
 2. Use Window → Batch / Image Processor… for repetitive jobs.
 3. Use Window → Scripting Console… to automate supported commands.
 4. Use Generate / AI Tools to access locally configured or external AI services.
+5. Electron can use separately installed G'MIC/GEGL through Plugin Manager → Desktop Filters.
 
 **Notes and tips:**
 
 - Photoshop UXP and GIMP compatibility is partial.
 - Optional remote AI workflows can transmit content to outside providers.
+- GIMP Python/Script-Fu/C plugins and arbitrary Photoshop UXP native plugins are not drop-in supported.
+- Online generation may send prompts or image data to remote providers.
 
 ## Troubleshooting and known limits
 
@@ -436,3 +461,162 @@ Find a missing tool or diagnose a failed operation.
 
 - 32-bit HDR, complex PSD layer effects and ICC processing still have compatibility limits.
 - Project issues: https://github.com/Chaython/ChaysPhotoStudio/issues
+- Recognized RAW, HEIC/JXL/JP2 or design-document extensions do not guarantee a bundled decoder.
+- See docs/FEATURES_AND_FORMATS.md for platform-specific limits and pending PRs.
+
+## Tool groups and choosing the right tool
+
+Find related Photoshop-style tools and inspect their options.
+
+**Where:** Left toolbar / Tool Options / Edit → Customize Toolbar…
+
+1. Use Move (V), Marquee (M) and Lasso (L) for movement and geometric/freehand selection.
+2. Use Quick/Object Selection, Magic Wand (W), Selection Brush and Select & Mask for detailed subjects.
+3. Paint with Brush/Mixer/Pencil (B); retouch with Healing/Patch (J), Clone Stamp (S), Eraser (E) and tonal tools.
+4. Use Pen (P), Path/Direct Selection (A), Type (T), Shape (U), Hand (H) and Zoom (Z) for paths and navigation.
+5. Organize toolbar groups through Edit → Customize Toolbar… and key assignments through Keyboard Shortcuts.
+
+**Notes and tips:**
+
+- Main has 48 registered tools; shared hotkeys cycle tools.
+- The searchable All Tools page is pending PR #81.
+
+## Paths, text and shapes
+
+Create editable contours and typography rather than painting everything into raster pixels.
+
+**Where:** Pen / Paths panel / Type / Shape
+
+1. Click or drag with Pen (P) to place corner/smooth Bézier anchors; edit handles for curved segments.
+2. Use Path/Direct Selection (A) to edit saved paths in Window → Paths.
+3. Turn supported paths into selections, strokes, fills or editable shape layers.
+4. Use Type (T) for point/paragraph text and Shape (U) for rectangles, rounded rectangles, ellipses, stars or polygons.
+
+**Notes and tips:**
+
+- Freeform/Curvature Pen and Type Mask variants are pending PR #82.
+- Advanced OpenType settings and Photoshop PSD text round-trips are not exact.
+
+## Layer Comps and alternate designs
+
+Save several layout variations without duplicating the complete document.
+
+**Where:** Window → Layer Comps / Window → Layers
+
+1. Arrange layers, visibility, positions and supported appearances for the first design.
+2. Save the current state as a named Layer Comp.
+3. Switch comps to compare variants and export chosen comps when needed.
+
+**Notes and tips:**
+
+- Layer Comps store layer-state variants, not edit-history snapshots.
+
+## Apply Image, Calculations and channels
+
+Build channel-driven composites and masks.
+
+**Where:** Image → Apply Image… / Image → Calculations… / Window → Channels
+
+1. Use Apply Image… to blend another source document/layer/channel into the active target.
+2. Use Calculations… to combine channels, choosing a selection or saved channel destination.
+3. Inspect alpha/luminosity channels through Window → Channels and load them as selections.
+
+**Notes and tips:**
+
+- Keep a source copy before complex compositing.
+- Some 32-bit HDR blend combinations remain guarded.
+
+## Proofing, print resolution and guides
+
+Preview intended color output and make measured edits.
+
+**Where:** View → Proof Setup… / Proof Colors / Gamut Warning / Rulers
+
+1. Set document PPI for print-size metadata; PPI does not create pixel detail.
+2. Use View → Proof Setup… and Proof Colors for a display simulation.
+3. Enable Gamut Warning to locate potentially out-of-gamut colors.
+4. Show rulers, guides and grid; adjust units and snapping.
+
+**Notes and tips:**
+
+- ICC/CMYK proofing is an approximation, not certified print color matching.
+
+## Import formats and video frame extraction
+
+Choose import paths for raster, layered and media files.
+
+**Where:** File → Open… / Open as Layer… / Place (Smart Object)…
+
+1. Open a file as a new document, Open as Layer… to add to the current image, or Place… as a Smart Object.
+2. Open MP4/WebM/MKV to scrub a local preview, choose a timestamp and Import frame.
+3. Consult the feature/format reference to distinguish native codecs from previews and fallback extractors.
+
+**Notes and tips:**
+
+- File extension recognition does not guarantee decoding.
+- RAW development on main is largely preview-oriented; deeper development is in PRs #79/#84.
+- HEIC, JPEG XL and JPEG 2000 depend on operating-system/WebView codecs.
+
+## Layered exports, Save As and metadata
+
+Preserve work in the native project and deliver suitable formats.
+
+**Where:** File → Save Project / Export As… / Export Layers to Files…
+
+1. Save .zproj.json for editable projects, masks and supported document state.
+2. Choose PNG, JPEG, WebP, TIFF, BMP, TGA, QOI, PPM, ICO, OpenRaster or PSD from Export As….
+3. Use Export Layers to Files or Layer Comps export for multi-output deliverables.
+4. Review File Info metadata and stripping controls before sharing.
+
+**Notes and tips:**
+
+- PSD/ORA may approximate or rasterize effects.
+- TIFF 16-bit output depends on the supported document and export path.
+
+## High-depth workflows and guarded edits
+
+Avoid losing 16/32-bit pixel precision during editing.
+
+**Where:** File → New (color depth) / Image / Filter / Layer
+
+1. Create a suitable high-bit-depth document only when the runtime supports its pixel buffers.
+2. Prefer adjustment layers, layer masks and Smart Filters to destructive 8-bit processing.
+3. Use supported Float32 operations for merging, filling and transforming when available.
+4. If a tool refuses a high-depth edit, save the original and use a supported operation or separate SDR copy.
+
+**Notes and tips:**
+
+- Not every codec, plugin, filter or PSD export preserves float precision.
+- Unsafe high-depth destructive edits should be blocked instead of silently flattened.
+
+## Offline editing and desktop releases
+
+Choose a distribution that matches connectivity and OS needs.
+
+**Where:** GitHub Releases / File / Recent & Recovery
+
+1. Use the browser/PWA, bundled Electron desktop app, or lightweight Tauri WebView build.
+2. Default Tauri releases embed their frontend but require the OS WebView runtime to be present or provisioned.
+3. Save .zproj.json files outside the browser profile as backups.
+4. External AI, remote image URLs and release updates require connectivity.
+
+**Notes and tips:**
+
+- The separate Windows offline installer and WebView recovery/security work are pending PRs #85 and #86.
+- Electron uses a bundled localhost server and does not depend on GitHub Pages.
+
+## Large documents, performance and memory
+
+Keep large layered projects responsive.
+
+**Where:** Settings / Window → Layers / Filter
+
+1. Hide unneeded panels, reduce heavy live previews and close unused documents.
+2. Use bounded selections and nondestructive filters instead of repeating full-image operations.
+3. Review History snapshots and layer count when memory grows.
+4. Check WebGL2, browser codecs and pixel-worker support if a tool fails or falls back.
+
+**Notes and tips:**
+
+- Lazy panel/dialog loading reduces startup overhead but does not eliminate large-image memory costs.
+- Bug reports should include document size, bit depth, layer count and reproducible steps.
