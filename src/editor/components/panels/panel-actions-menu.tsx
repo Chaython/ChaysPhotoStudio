@@ -10,6 +10,14 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 
+/** Defer mutations that reparent the context menu trigger until Radix has
+ * finished selection and closing. Otherwise the original menu can survive
+ * and apply a stale "Dock bottom" item on the next right-click.
+ */
+function afterContextMenuClose(action: () => void) {
+  window.setTimeout(action, 0)
+}
+
 /**
  * Zero-footprint panel controls. Right-click panel chrome (tab/title/drag
  * handle) to arrange it; no visible ellipsis or action button is required.
@@ -33,7 +41,7 @@ export function PanelContextMenu({
     ? 'floating'
     : explicitSide ?? (def.home ? 'home' : 'right')
 
-  const move = (side: DockSide) => useEditorStore.getState().dockPanel(id, side)
+  const move = (side: DockSide) => afterContextMenuClose(() => useEditorStore.getState().dockPanel(id, side))
 
   return (
     <ContextMenu>
@@ -41,7 +49,7 @@ export function PanelContextMenu({
       <ContextMenuContent className="z-[90] min-w-52">
         {def.home && (
           <>
-            <ContextMenuItem className="gap-2 text-xs" onSelect={() => useEditorStore.getState().homePanel(id)}>
+            <ContextMenuItem className="gap-2 text-xs" onSelect={() => afterContextMenuClose(() => useEditorStore.getState().homePanel(id))}>
               <Home size={13} />
               <span className="flex-1">Return to default position</span>
               {current === 'home' && <Check size={12} className="text-primary" />}
@@ -54,7 +62,7 @@ export function PanelContextMenu({
           <>
             <ContextMenuItem
               className="gap-2 text-xs"
-              onSelect={() => useEditorStore.getState().collapsePanel(id, !floatingRect.collapsed)}
+              onSelect={() => afterContextMenuClose(() => useEditorStore.getState().collapsePanel(id, !floatingRect.collapsed))}
             >
               {floatingRect.collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
               <span className="flex-1">{floatingRect.collapsed ? 'Expand panel' : 'Collapse panel'}</span>
@@ -65,7 +73,7 @@ export function PanelContextMenu({
           <>
             <ContextMenuItem
               className="gap-2 text-xs"
-              onSelect={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
+              onSelect={() => afterContextMenuClose(() => useEditorStore.getState().floatPanel(id, def.defaultFloat))}
             >
               <Maximize2 size={13} />
               <span className="flex-1">Float panel</span>
