@@ -434,3 +434,11 @@ Find a missing tool or diagnose a failed operation.
 
 - 32-bit HDR, complex PSD layer effects and ICC processing still have compatibility limits.
 - Project issues: https://github.com/Chaython/ChaysPhotoStudio/issues
+
+
+## GIMP interoperability (OpenRaster)
+
+- **Open:** File → Open accepts GIMP's OpenRaster `.ora` alongside existing XCF `.xcf` documents. OpenRaster stores an editable PNG per paint layer; offsets, opacity, visibility and common blend modes are imported. Nested groups are imported as individually editable layers with their group names prefixed; group isolation and effects may not render identically.
+- **Export:** File → Export → **OpenRaster (GIMP/Krita layers)** writes a `.ora` archive with `mimetype`, `stack.xml`, PNG layer payloads, `mergedimage.png`, and `Thumbnails/thumbnail.png`. Open the result in GIMP or Krita. Complex effects, filters, masks and adjustment layers may be rasterized or omitted from editable layers; the merged composite is included as a visual reference.
+- **Also available:** GIMP `.gbr` brush assets and `.ggr` gradients, plus the existing XCF importer. This is file-format interoperability, **not** execution of GIMP's Script-Fu, Python PDB or C plugins in the browser.
+- **Round-trip caveats:** OpenRaster stores PNG layer pixels (8-bit RGBA), so high-bit depth and proprietary smart-layer metadata cannot round-trip losslessly. Save the native project separately to preserve native-specific editing features.
