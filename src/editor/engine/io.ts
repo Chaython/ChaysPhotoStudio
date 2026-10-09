@@ -37,7 +37,7 @@ interface DecodedCanvas {
  * the same file through an 8-bit compatibility preview. */
 async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
   const format = await sniffFormat(file)
-  if (format && CODEC_FORMATS.includes(format)) {
+  if ((format && CODEC_FORMATS.includes(format)) || /\.(mp4|webm|mkv)$/i.test(file.name)) {
     const decoded = await decodeFile(file)
     return {
       canvas: decoded.canvas,
@@ -76,7 +76,7 @@ export async function openFiles(files: File[], asLayer = false) {
       continue
     }
     try {
-      const metadata = !asLayer ? await readImageMetadata(file).catch(() => undefined) : undefined
+      const metadata = !asLayer && !/\.(mp4|webm|mkv)$/i.test(file.name) ? await readImageMetadata(file).catch(() => undefined) : undefined
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded, metadata); continue }
