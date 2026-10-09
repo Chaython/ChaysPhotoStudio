@@ -596,6 +596,7 @@ export const MENUS: MenuItem[][] = [
     // Native workspace chrome remains in its built-in location until moved;
     // revealPanel focuses it wherever the user has arranged it.
     { id: 'win-tools', label: 'Tools', run: () => store().revealPanel('tools') },
+    { id: 'win-all-tools', label: 'All Tools / Tool Search…', run: () => openDlg('all-tools') },
     { id: 'win-tool-options', label: 'Tool Options', run: () => store().revealPanel('tool-options') },
     { id: 'win-documents', label: 'Open Files', run: () => store().revealPanel('documents') },
     S(),
@@ -636,5 +637,6 @@ export const MENUS: MenuItem[][] = [
       run: () => window.open('https://github.com/sponsors/Chaython', '_blank', 'noopener'),
     },
     { id: 'help-shortcuts', label: 'Keyboard Shortcuts', run: () => openDlg('shortcuts') },
+    { id: 'help-all-tools', label: 'All Tools / Tool Search', run: () => openDlg('all-tools') },
   ],
 ]
