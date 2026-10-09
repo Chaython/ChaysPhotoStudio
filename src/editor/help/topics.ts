@@ -600,6 +600,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Bug reports should include document size, bit depth, layer count and reproducible steps."
     ]
   }
+]
 
 export function getHelpTopic(id: unknown): HelpTopic | undefined {
   return typeof id === 'string' ? HELP_TOPICS.find(t => t.id === id) : undefined
