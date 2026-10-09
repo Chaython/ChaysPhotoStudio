@@ -18,7 +18,8 @@ export const PHOTOPEA_RASTER_EXTENSIONS = [
 ] as const
 
 export const PHOTOPEA_RAW_EXTENSIONS = [
-  'dng', 'nef', 'cr2', 'cr3', 'arw', 'rw2', 'raf', 'orf', 'gpr', '3fr', 'fff',
+  'dng', 'nef', 'nrw', 'cr2', 'cr3', 'crw', 'arw', 'srf', 'sr2', 'rw2', 'raf', 'orf', 'gpr', '3fr', 'fff',
+  'pef', 'ptx', 'srw', 'x3f', 'iiq', 'mos', 'mef', 'mrw', 'k25', 'kdc', 'dcr', 'erf', 'bay', 'rwl',
 ] as const
 
 export const PHOTOPEA_ANIMATED_EXTENSIONS = [
@@ -28,6 +29,7 @@ export const PHOTOPEA_ANIMATED_EXTENSIONS = [
 // Chay's Photo Studio already supports several useful formats beyond that list.
 export const EXTRA_IMPORT_EXTENSIONS = [
   'qoi', 'pcx', 'dcx', 'pfm', 'jp2', 'j2k', 'j2c',
+  'sgi', 'rgb', 'rgba', 'bw', 'ras', 'sun', 'cur',
 ] as const
 
 const COMPLEX = new Set<string>(PHOTOPEA_COMPLEX_EXTENSIONS)
