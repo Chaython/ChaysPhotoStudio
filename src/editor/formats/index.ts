@@ -318,7 +318,8 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
       const base=fromRaw(parts[0].image,'exr')
       return {...base,documentLayers:parts.map((part,index)=>({
         kind:'raster' as const,name:part.name,
-        canvas:rawToCanvas(part.image),left:0,top:0,visible:index===0,
+        canvas:rawToCanvas(part.image),hdrPixels:part.image.rgbaFloat,
+        left:0,top:0,visible:index===0,
       })),warnings:['EXR has '+parts.length+' regular image parts. Layer previews may be reduced to the canvas working precision; retain the original EXR for HDR-authoritative samples.'],
       }
     }
