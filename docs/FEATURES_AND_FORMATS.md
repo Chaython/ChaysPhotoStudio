@@ -4,14 +4,14 @@ This guide documents **the current `main` branch**. It distinguishes an import e
 
 ## Feature availability at a glance
 
-The current tool registry has **48 tools** across Move, Selection, Sampling, Crop/Measurement, Painting, Retouching, Drawing/Type and Navigation. Several tools share a default shortcut and cycle on repeated presses. You can change shortcuts in **Help → Keyboard Shortcuts**. This number counts tools, not every menu command, layer effect or panel.
+The current tool registry has **52 tools** across Move, Selection, Sampling, Crop/Measurement, Painting, Retouching, Drawing/Type and Navigation. Several tools share a default shortcut and cycle on repeated presses. You can change shortcuts in **Help → Keyboard Shortcuts**. This number counts tools, not every menu command, layer effect or panel.
 
 | Area | Working functionality | Important limit |
 |---|---|---|
-| Workspace | Classic/custom and Photoshop-style layouts; top/left/right and floating panels; OLED/Dark/Light/Photoshop-inspired color themes; responsive touch mode | Eight independent corner/bottom docks and searchable All Tools dialog belong to unmerged PR #81 |
+| Workspace | Classic/custom and Photoshop-style layouts; eight dock destinations (left/right/top/bottom + four corners), floating panels and searchable All Tools dialog; multiple themes and touch mode | Some complex drag/drop and panel arrangements still need real browser verification |
 | Brushes | Brush, Pencil, Mixer, Erasers, History/Art History, procedural/imported brush tips, pen-pressure/tilt mappings, symmetry and dynamics | Some tips and third-party brush engines have limited fidelity |
 | Selection | Marquee (including single row/column), Lasso/Polygon/Magnetic, Magic Wand, Quick/Object Selection, Selection Brush, Color Range, Focus Area, Select Subject, Select & Mask | Subject/complex hair segmentation quality varies; optional AI engines are not always local |
-| Paths and text | Pen with editable Bézier anchors, Path/Direct Selection, editable text, shape layers and path-derived shapes | Additional Curvature/Freeform Pen and Type Mask tools are pending PR #82 |
+| Paths and text | Pen, Freeform Pen, Curvature Pen, Horizontal/Vertical Type Mask, Path/Direct Selection, editable text, shape layers and path-derived shapes | Advanced vertical typography, curve fitting and Photoshop round-trip fidelity remain limited |
 | Retouch | Clone/Pattern stamps, Healing/Spot Healing, Patch, Content-Aware Move/Fill, Red Eye, Color Replacement, Blur/Sharpen/Smudge, Dodge/Burn/Sponge | 16/32-bit destructive edits can require guarded paths; unsupported combinations should refuse rather than quantize |
 | Compositing | Layers, masks, adjustment layers, clipping, Blend-If/Layer Styles, groups, Smart Objects/Filters, Layer Comps, vector paths | Not every imported PSD/PSB live effect maps exactly onto the editor |
 | Layout and transform | Free Transform, Warp/Split Warp, Puppet Warp, crop/perspective crop, Smart Guides, rulers, canvas/layer alignment and distribution | 32-bit geometry and compound layer interactions have conservative safety restrictions |
@@ -72,7 +72,7 @@ The editor includes 16-bit-float and 32-bit scene-linear infrastructure, guarded
 
 When interoperability matters, test with a small representative project, reopen the exported file, and compare layers/effects/precision to the original.
 
-### Incoming work, not yet on `main`
+### Incoming format/codec work, not yet on `main`
 
 - [PR #79](https://github.com/Chaython/ChaysPhotoStudio/pull/79) — broader RAW development, OpenEXR/HDR, newer image codecs, FITS/DICOM and multi-page imports.
 - [PR #84](https://github.com/Chaython/ChaysPhotoStudio/pull/84) — RAW Smart Object workflow, lens corrections, extended EXR/DICOM decoding.
