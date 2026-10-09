@@ -64,10 +64,13 @@ def app_page(browser, size=(1440, 900)):
     page.on("pageerror", lambda error: errors.append(str(error)))
     resp = page.goto(APP_URL, wait_until="domcontentloaded", timeout=60000)
     check(resp is not None and resp.status == 200, "exported application did not return HTTP 200")
+    # Mobile deliberately renders drawers instead of desktop dock elements.
     page.wait_for_function(
-        "() => !!window.__zphotoStore && !!window.__zphotoEngine && !!document.querySelector('[data-panel-dock]')",
+        "() => !!window.__zphotoStore && !!window.__zphotoEngine",
         timeout=60000,
     )
+    if size[0] >= 768:
+        page.locator('[data-panel-dock="right"]').wait_for(state="visible", timeout=30000)
     page.wait_for_timeout(800)
     ACTIVE_PAGE = page
     check(not errors, f"uncaught JavaScript startup errors: {errors[:3]}")
@@ -190,8 +193,17 @@ def main():
                 page.wait_for_function("() => window.__zphotoStore.getState().panels.dockSide.documents === 'bottom-right'")
                 check("Open Files" in page.locator('[data-panel-dock="bottom-right"]').inner_text(),
                       "context menu changed store without moving the panel")
+                # Wait for Radix to complete the previous menu-close transition
+                # before opening the newly mounted panel's context menu.
+                page.wait_for_timeout(550)
                 dest = page.locator('[data-panel-dock="bottom-right"] [title*="Open Files"]').first
                 dest.click(button="right")
+                try:
+                    page.get_by_role("menuitem", name=re.compile(r"Float panel", re.I)).wait_for(state="visible", timeout=4000)
+                except Exception:
+                    print("  Menu items after re-docking:", page.locator('[role="menuitem"]').all_text_contents(), flush=True)
+                    print("  Context menu count:", page.locator('[role="menu"]').count(), flush=True)
+                    raise
                 page.get_by_role("menuitem", name=re.compile(r"Float panel", re.I)).click()
                 page.wait_for_function("() => !!window.__zphotoStore.getState().panels.floating.documents")
                 check("Open Files" not in page.locator('[data-panel-dock="bottom-right"]').inner_text(),
@@ -209,8 +221,10 @@ def main():
                 page.wait_for_function("() => window.__zphotoStore.getState().workspacePreset === 'classic'")
                 page.evaluate("() => window.__zphotoStore.getState().openDialog('all-tools')")
                 page.get_by_role("dialog").wait_for(state="visible", timeout=15000)
-                check("tool" in page.get_by_role("dialog").inner_text().lower(),
-                      "All Tools dialog rendered without searchable tools")
+                # This is a lazy-loaded dialog; the initial shell says "Loading dialog...".
+                page.get_by_role("textbox", name="Search all tools").wait_for(state="visible", timeout=30000)
+                check(page.get_by_role("list", name="Available tools").get_by_role("listitem").count() >= 10,
+                      "All Tools dialog did not render its registered tools")
 
             def png_import_undo_redo():
                 _, page, errors = app_page(browser)
