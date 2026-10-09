@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { inspectNativeOperation, listNativeGeglOperations } from '../../plugins/native-host'
 import { Search, RefreshCw } from 'lucide-react'
@@ -28,14 +28,14 @@ export function GimpNativeCatalog({ kind, available, onSelect }: Props) {
   const [error, setError] = useState('')
   const [help, setHelp] = useState('')
   const [selected, setSelected] = useState('')
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (kind !== 'gegl' || !available) return
     setLoading(true); setError('')
     try { setGegl(await listNativeGeglOperations()) }
     catch (e) { setError(e instanceof Error ? e.message : 'GEGL discovery failed') }
     finally { setLoading(false) }
-  }
-  useEffect(() => { void refresh() }, [kind, available])
+  }, [kind, available])
+  useEffect(() => { void refresh() }, [refresh])
   const entries = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (kind === 'gmic') return GMIC_PRESETS
