@@ -3,7 +3,9 @@
 interface NativeToolInfo { electron: boolean; gmic: boolean; gegl: boolean; gmicVersion?: string; geglVersion?: string }
 interface NativeApi {
   nativeTools?: {
-    info(): Promise<NativeToolInfo>
+    info(refresh?: boolean): Promise<NativeToolInfo>
+    listOperations(): Promise<string[]>
+    inspectOperation(kind: 'gegl' | 'gmic', operation: string): Promise<string>
     runGmic(payload: { image: string; args: string[] }): Promise<{ image: string; stderr?: string }>
     runGegl(payload: { image: string; operation: string; args?: string[] }): Promise<{ image: string; stderr?: string }>
   }
@@ -13,10 +15,10 @@ function api(): NativeApi['nativeTools'] | undefined {
   return (window as unknown as { chaysPhotoStudio?: NativeApi }).chaysPhotoStudio?.nativeTools
 }
 
-export async function nativeToolInfo(): Promise<NativeToolInfo> {
+export async function nativeToolInfo(refresh = false): Promise<NativeToolInfo> {
   const a = api()
   if (!a) return { electron: false, gmic: false, gegl: false }
-  try { return await a.info() } catch { return { electron: true, gmic: false, gegl: false } }
+  try { return await a.info(refresh) } catch { return { electron: true, gmic: false, gegl: false } }
 }
 
 export async function runNativeGmic(image: string, args: string[]): Promise<string> {
@@ -31,4 +33,18 @@ export async function runNativeGegl(image: string, operation: string, args: stri
   if (!a) throw new Error('Native GEGL is only available in the Electron desktop build')
   const r = await a.runGegl({ image, operation, args })
   return r.image
+}
+
+/** Installed GEGL operation names, not a speculative fixed list. */
+export async function listNativeGeglOperations(): Promise<string[]> {
+  const a = api()
+  if (!a) return []
+  return await a.listOperations()
+}
+
+/** Bounded, read-only native CLI help for a selected operation/command. */
+export async function inspectNativeOperation(kind: 'gegl' | 'gmic', operation: string): Promise<string> {
+  const a = api()
+  if (!a) throw new Error('Native filter inspection requires Electron')
+  return a.inspectOperation(kind, operation)
 }
