@@ -1,5 +1,5 @@
-// Scanline OpenEXR import: half/float/uint channels, NONE/ZIPS/ZIP compression.
-// Tiles, deep data and multipart files are rejected explicitly.
+// OpenEXR import: half/float/uint channels, NONE/RLE/ZIPS/ZIP compression.
+// Includes single-level tiled EXR. Deep, multipart and multiresolution modes are rejected.
 import type { RawImage } from './decoders'
 const readAscii = (b:Uint8Array,start:number,end:number) => new TextDecoder().decode(b.subarray(start,end))
 const maxPix=64*1024*1024
@@ -58,9 +58,11 @@ export async function decodeExr(bytes:Uint8Array):Promise<RawImage>{
  const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
  if(v.getUint32(0,true)!==20000630)throw Error('Invalid OpenEXR signature')
  const flags=v.getUint32(4,true)
- if((flags&0x200)!==0||(flags&0x800)!==0||(flags&0x1000)!==0)throw Error('Tiled, multipart or deep OpenEXR needs a dedicated decoder')
+ const tiled=(flags&0x200)!==0
+ if((flags&0x800)!==0||(flags&0x1000)!==0)throw Error('Multipart or deep OpenEXR needs a dedicated decoder')
  let pos=8
  let channels:ExrChannel[]=[],compression=-1,x0=0,y0=0,x1=-1,y1=-1
+ let tileWidth=0,tileHeight=0,levelMode=-1
  for(let attr=0;attr<1024;attr++){
    const [name,p]=str(bytes,pos,bytes.length);pos=p
    if(!name)break
@@ -70,6 +72,10 @@ export async function decodeExr(bytes:Uint8Array):Promise<RawImage>{
    if(size>bytes.length-pos)throw Error('Truncated OpenEXR attribute')
    const end=pos+size
    if(name==='compression'&&type==='compression'&&size>=1)compression=bytes[pos]
+   if(name==='tiles'&&type==='tiledesc'&&size>=9){
+     tileWidth=v.getUint32(pos,true);tileHeight=v.getUint32(pos+4,true)
+     levelMode=bytes[pos+8]&15
+   }
    if(name==='dataWindow'&&type==='box2i'&&size>=16){
      x0=v.getInt32(pos,true);y0=v.getInt32(pos+4,true)
      x1=v.getInt32(pos+8,true);y1=v.getInt32(pos+12,true)
@@ -93,8 +99,13 @@ export async function decodeExr(bytes:Uint8Array):Promise<RawImage>{
  if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width*height>maxPix)
    throw Error('Invalid OpenEXR data window')
  if(!channels.length||![0,1,2,3].includes(compression))throw Error('Unsupported OpenEXR compression/channel header (supported NONE/RLE/ZIPS/ZIP)')
+ if(tiled && (levelMode!==0||tileWidth<1||tileHeight<1||tileWidth>width*2||tileHeight>height*2))
+   throw Error('OpenEXR tiled import supports only a single resolution level with valid tile dimensions')
  const rowsPerBlock=compression===3?16:1
- const countBlocks=Math.ceil(height/rowsPerBlock)
+ const tilesAcross=tiled?Math.ceil(width/tileWidth):1
+ const tilesDown=tiled?Math.ceil(height/tileHeight):1
+ const countBlocks=tiled?tilesAcross*tilesDown:Math.ceil(height/rowsPerBlock)
+ if(countBlocks>131072)throw Error('OpenEXR chunk count exceeds safety limit')
  if(pos+countBlocks*8>bytes.length)throw Error('Truncated OpenEXR scanline offset table')
  const channelSamples=channels.reduce((s,c)=>s+c.bpp,0)
  const floatPixels=new Float32Array(width*height*4)
@@ -106,25 +117,39 @@ export async function decodeExr(bytes:Uint8Array):Promise<RawImage>{
  const found=channels.map(ch=>recognized(ch.name))
  for(let blockIndex=0;blockIndex<countBlocks;blockIndex++){
    const rawOffset=Number(v.getBigUint64(pos+blockIndex*8,true))
-   if(!Number.isSafeInteger(rawOffset)||rawOffset<0||rawOffset+8>bytes.length)throw Error('Invalid OpenEXR block offset')
-   const scanline=v.getInt32(rawOffset,true),packed=v.getUint32(rawOffset+4,true)
-   if(packed>bytes.length-rawOffset-8)throw Error('Truncated OpenEXR block')
-   const row=scanline-y0
-   if(row<0||row>=height)throw Error('Invalid OpenEXR scanline position')
-   const rows=Math.min(rowsPerBlock,height-row)
-   const expected=width*rows*channelSamples
-   const packedData=bytes.subarray(rawOffset+8,rawOffset+8+packed)
-   // EXR stores an uncompressed block when compression would not reduce its size.
+   if(!Number.isSafeInteger(rawOffset)||rawOffset<0||rawOffset+(tiled?20:8)>bytes.length)throw Error('Invalid OpenEXR block offset')
+   let left=0,top=0,chunkWidth=width,rows=1,packed=0,dataAt=rawOffset
+   if(tiled){
+     const tx=v.getInt32(rawOffset,true),ty=v.getInt32(rawOffset+4,true)
+     const lx=v.getInt32(rawOffset+8,true),ly=v.getInt32(rawOffset+12,true)
+     if(tx<0||tx>=tilesAcross||ty<0||ty>=tilesDown||lx!==0||ly!==0)
+       throw Error('OpenEXR tile coordinates or level are invalid')
+     left=tx*tileWidth;top=ty*tileHeight
+     chunkWidth=Math.min(tileWidth,width-left);rows=Math.min(tileHeight,height-top)
+     packed=v.getUint32(rawOffset+16,true)
+     dataAt=rawOffset+20
+   }else{
+     const scanline=v.getInt32(rawOffset,true)
+     top=scanline-y0
+     if(top<0||top>=height)throw Error('Invalid OpenEXR scanline position')
+     rows=Math.min(rowsPerBlock,height-top)
+     packed=v.getUint32(rawOffset+4,true)
+     dataAt=rawOffset+8
+   }
+   if(packed>bytes.length-dataAt)throw Error('Truncated OpenEXR block')
+   const expected=chunkWidth*rows*channelSamples
+   const packedData=bytes.subarray(dataAt,dataAt+packed)
+   // EXR may store blocks verbatim when compression does not save any bytes.
    if(packed>expected)throw Error('OpenEXR compressed block exceeds its unpacked size')
    const raw=compression===0||packed===expected?packedData:
      compression===1?unrle(packedData,expected):await unzip(packedData,expected)
-   if(raw.length!==expected)throw Error('OpenEXR scanline length mismatch')
+   if(raw.length!==expected)throw Error('OpenEXR chunk length mismatch')
    const pixels=new DataView(raw.buffer,raw.byteOffset,raw.byteLength)
    let p=0
    for(let ch=0;ch<channels.length;ch++){
      const desc=channels[ch],kind=found[ch]
-     for(let ry=0;ry<rows;ry++)for(let x=0;x<width;x++){
-       const dst=((row+ry)*width+x)*4
+     for(let ry=0;ry<rows;ry++)for(let x=0;x<chunkWidth;x++){
+       const dst=((top+ry)*width+left+x)*4
        const sample=desc.type===1?half(pixels.getUint16(p,true)):
          desc.type===2?pixels.getFloat32(p,true):pixels.getUint32(p,true)
        p+=desc.bpp
