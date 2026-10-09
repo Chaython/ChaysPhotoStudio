@@ -215,7 +215,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Fully opaque images, selections without eligible fringe pixels, and already-trimmed layers produce no new History entry.",
       "Editable Smart Objects can be rasterized by a successful matting operation; duplicate the layer first if you want to retain the original.",
       "16-bit matting requires browser support for float16 readback. Matting is not yet supported on 32-bit HDR documents.",
-      "Locked layers cannot be trimmed or matted."
+      "Locked layers cannot be trimmed or matted.",
+      "When native 16-bit pixel readback or writeback is unavailable, Matting leaves the source untouched and reports the unsupported operation."
     ]
   },
   {
@@ -285,7 +286,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Soft proofing changes the preview, not source image pixels.",
       "ICC LUT/CLUT support remains incomplete.",
       "Auto Tone, Auto Contrast, Auto Color and Match Color are not yet supported on 32-bit HDR documents.",
-      "In 32-bit HDR, Object Selection → Layer via Copy preserves scene-linear Float32 highlights for simple raster stacks. Complex effects cannot yet be extracted without risking precision loss."
+      "In 32-bit HDR, Object Selection → Layer via Copy preserves scene-linear Float32 highlights for simple raster stacks. Complex effects cannot yet be extracted without risking precision loss.",
+      "16-bit float editing requires native float16 Canvas2D readback and writeback. If a browser lacks either, the affected operation is stopped rather than converted silently to 8-bit."
     ]
   },
   {
