@@ -34,3 +34,11 @@ $env:CHAYS_GEGL_PATH = 'C:\Program Files\GEGL\bin\gegl.exe'
 ```
 
 Native filters are not executed in the renderer. Electron writes the current composite to a private temporary PNG, invokes the executable with `execFile` argument arrays (never a shell command string), reads the resulting PNG, removes the temporary directory, and imports the result as a new layer.
+
+### Browsing native filter capabilities
+
+In **Plugin Manager → Desktop Filters**, use the GEGL search box to inspect operations exposed by your installed GEGL binary (`gegl --list-all`). Selecting a result fills the operation field; inspecting it displays the local `gegl --info` metadata. The G’MIC list is a **curated CLI command set**, not the complete G’MIC-Qt filter catalog. Inspect a command using its local `gmic -h <command>` output and adjust arguments before applying it.
+
+Filter discovery and help queries are read-only, validated and bounded. Processing still runs through the existing Electron main-process bridge and produces a separate output layer. These features are not available in the browser, PWA, Tauri webview or extension builds without an equivalent trusted native bridge.
+
+For GIMP Python or Script-Fu source, open **Plugin Manager → GIMP Scripts**. The static analyzer lists recognized PDB calls, candidate editor equivalents, GEGL/G’MIC references and functions that require GIMP; it does **not** execute or automatically convert any imported script.
