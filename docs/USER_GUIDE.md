@@ -35,7 +35,6 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Transform, Puppet Warp and Crop](#transform-puppet-warp-and-crop)
 - [Brushes, cloning and healing](#brushes-cloning-and-healing)
 - [Content-Aware editing](#content-aware-editing)
-- [Freeform Pen, Curvature Pen and Type Mask](#freeform-pen-curvature-pen-and-type-mask)
 
 ### Color & files
 
@@ -121,19 +120,6 @@ Extend a selection according to colors in the visible image.
 
 - These commands preserve original feathered edges and create one undoable selection change.
 - When you need a fixed pixel-distance expansion, use Select → Modify → Expand.
-
-## Freeform Pen, Curvature Pen and Type Mask
-
-Create vector paths by drawing or clicking points, or turn text glyphs into a selection without altering pixels.
-
-**Where:** Toolbar → Pen flyout (P) / Type flyout (T), or All Tools when installed.
-
-1. Choose **Freeform Pen**, drag a contour, then press **Enter** to save its Bezier path or use the selected path action. Simplify controls how many anchors are retained. **Escape** cancels.
-2. Choose **Curvature Pen** and click to place automatically smoothed knots. **Alt-click** creates a corner. Click the first anchor to close, or press **Enter** to save the Work Path. Double-click commits the current path; **Backspace** removes the last knot.
-3. Choose **Horizontal Type Mask** or **Vertical Type Mask**, edit the text/font/size in Tool Options, and click the canvas to create a new selection. Choose New/Add/Subtract/Intersect, or use Shift/Alt while clicking to combine selections. No text layer is created.
-4. Customize P/T group hotkeys under **Keyboard Shortcuts**. Repeatedly pressing a shared letter cycles variants.
-
-**Notes and tips:** The editable vector path goes into the Paths panel when On Enter is set to Save Editable Path. Type Mask creates an alpha selection; it does not create an editable text object. Complex Photoshop text features such as full vertical typography and kerning remain separate parity work.
 
 ## Stroke Selection
 
