@@ -255,12 +255,15 @@ export function putImageData(c: HTMLCanvasElement, data: ImageData) {
 export function getProcessingPixelData(c: HTMLCanvasElement): PixelImage {
   if (canvasProfile(c).bitDepth === 16) {
     const hi = getFloat16ImageData(c)
-    if (hi?.data) {
-      const src = hi.data as ArrayLike<number>
-      const data = new Float32Array(src.length)
-      for (let i = 0; i < src.length; i++) data[i] = Number(src[i]) * 255
-      return { width: c.width, height: c.height, data, precision: 'float32' }
-    }
+    // Some Canvas2D implementations silently ignore the requested pixelFormat
+    // and return Uint8 ImageData. Never treat that as native float16 readback.
+    const genuine = hi?.data && hi.data.length === c.width * c.height * 4 &&
+      (hi.pixelFormat === 'rgba-float16' || hi.data.constructor?.name === 'Float16Array')
+    if (!genuine) throw new Error('Float16 pixel readback unavailable; refusing 8-bit fallback')
+    const src = hi.data as ArrayLike<number>
+    const data = new Float32Array(src.length)
+    for (let i = 0; i < src.length; i++) data[i] = Number(src[i]) * 255
+    return { width: c.width, height: c.height, data, precision: 'float32' }
   }
   return getImageData(c)
 }
@@ -272,6 +275,7 @@ export function putProcessingPixelData(c: HTMLCanvasElement, img: PixelImage): v
     const normalized = new Float32Array(img.data.length)
     for (let i = 0; i < img.data.length; i++) normalized[i] = img.data[i] / 255
     if (putFloat16Pixels(c, normalized, canvasProfile(c).colorSpace)) return
+    throw new Error('Float16 pixel writeback unavailable; refusing 8-bit fallback')
   }
   if (img instanceof ImageData) {
     putImageData(c, img)

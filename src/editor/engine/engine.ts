@@ -2274,8 +2274,8 @@ export class Engine {
       // not rasterize Smart Objects or advance History.
       const canvas = wasRaster ? target.canvas : prepareLayer(doc, layerContentForRasterization(target))
       if (!canvas) return false
-      if (doc.workingBitDepth === 16 && !getFloat16ImageData(canvas)) {
-        this.ui?.toast('Layer Matting needs float16 readback to retain 16-bit precision', 'error')
+      if (doc.workingBitDepth === 16 && canvasProfile(canvas).bitDepth !== 16) {
+        this.ui?.toast('Layer Matting needs a float16 source canvas to preserve precision', 'error')
         return false
       }
       const proxy = wasRaster ? target : { ...target, canvas, offsetX: 0, offsetY: 0 }
@@ -4205,6 +4205,35 @@ export class Engine {
     if (layer.kind === 'raster') {
       if (!layer.canvas || layer.canvas.width !== output.width || layer.canvas.height !== output.height) return false
     } else if (doc.width !== output.width || doc.height !== output.height) return false
+
+    if (doc.workingBitDepth === 16) {
+      // Stage float16 writeback before ANY modification to the original.
+      // A browser missing native Float16Array/ImageData support must leave the
+      // layer, editable source and History intact (never quantize to 8-bit).
+      if (!isFloatPixelImage(output)) return false
+      try {
+        const staging = createCanvas(output.width, output.height, {
+          bitDepth: 16, colorSpace: doc.workingColorSpace ?? 'srgb',
+        })
+        if (canvasProfile(staging).bitDepth !== 16)
+          throw new Error('Native float16 canvas unavailable')
+        putProcessingPixelData(staging, output)
+        if (layer.kind !== 'raster') this.rasterizeLayer(layer.id, { history: false, emit: false })
+        const live = this.layerById(layer.id)
+        if (!live?.canvas || live.locked) return false
+        // Snapshot storage is COW: replacing a canvas leaves frozen History
+        // buffers untouched without cloning the previous large image.
+        live.canvas = staging
+        live._hdrPreviewBefore = null
+        live._v++
+        invalidateFlat(doc)
+        return true
+      } catch (err) {
+        this.ui?.toast(err instanceof Error ? err.message : '16-bit pixel commit failed', 'error')
+        return false
+      }
+    }
+
     if (layer.kind !== 'raster') {
       this.rasterizeLayer(layer.id, { history: false, emit: false })
     }

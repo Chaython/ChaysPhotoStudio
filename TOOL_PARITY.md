@@ -107,6 +107,10 @@ The local inpainting kernel currently consumes and writes 8-bit Canvas2D image d
 
 Reopening an Adjustment Layer and submitting its existing settings no longer increments the layer version, marks the project dirty or writes a redundant History entry. Committed nested curve/LUT parameter objects are deep-cloned to avoid edits leaking in from scripting callers. Unknown filter names from action import or scripting are rejected before Smart Filter insertion or History updates.
 
+## 16-bit pixel readback and atomic write safeguards
+
+Canvas2D float16 processing now rejects implementations that cannot genuinely read or write Float16 ImageData. A returned 8-bit ImageData buffer can no longer masquerade as float16, and failed high-depth writes never silently clamp into 8-bit output. For destructive 16-bit pixel operations, the edited buffer is validated and written to a new float16 canvas before the live source is replaced. If writeback is unsupported, the original layer and History are left unchanged. Layer Matting also avoids an extra full-image readback before processing.
+
 ## Efficient centered image placement
 
 When inserting a smaller canvas as a centered layer, **Place Layer** no longer allocates an unused document-size canvas before creating the native-size backing buffer. The original centering offsets, authoring color profile and 32-bit Float32 pixel values remain unchanged. Headless tests cover allocation behavior, offsets and HDR pixel fidelity.
