@@ -17,7 +17,7 @@ import {
 const PULL_THRESHOLD = 14
 const EMPTY_DOCK_HIDE_DELAY = 650
 
-export type DockTabSide = 'left' | 'right' | 'top'
+export type DockTabSide = 'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 interface PullDrag {
   id: string
@@ -45,7 +45,7 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
   const dockSide = useEditorStore(s => s.panels.dockSide)
   if (mobile) return null
 
-  const sideLabel: Record<string, string> = { left: 'Left', right: 'Right', top: 'Top', Window: 'Window', Home: 'Home' }
+  const sideLabel: Record<string, string> = { left: 'Left', right: 'Right', top: 'Top', bottom: 'Bottom', 'top-left': 'Top left', 'top-right': 'Top right', 'bottom-left': 'Bottom left', 'bottom-right': 'Bottom right', Window: 'Window', Home: 'Home' }
 
   return (
     <DropdownMenu>
@@ -53,7 +53,7 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
         <button
           type="button"
           className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0"
-          title={`Arrange panels — move panels into the ${side === 'top' ? 'top strip' : side + ' dock'}`}
+          title={`Arrange panels — move panels into the ${side.includes('top') || side.includes('bottom') ? side.replaceAll('-', ' ') + ' strip' : side + ' dock'}`}
           aria-label={`Arrange panels for the ${side === 'top' ? 'top strip' : side + ' dock'}`}
         >
           <Plus size={13} />
@@ -61,7 +61,7 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
       </DropdownMenuTrigger>
       <DropdownMenuContent side="bottom" align={side === 'left' ? 'start' : 'end'} className="z-50 min-w-48 max-h-[70vh] overflow-y-auto">
         <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground select-none">
-          Move to {side === 'top' ? 'top strip' : `${side} dock`}
+          Move to {side.includes('top') || side.includes('bottom') ? `${side.replaceAll('-', ' ')} strip` : `${side} dock`}
         </div>
         {PANELS.map(p => {
           const at = floating[p.id] ? 'Window' : (dockSide[p.id] ?? (p.home ? 'Home' : 'right'))
