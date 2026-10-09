@@ -7,7 +7,7 @@
 
 import { createCanvas, ctx2d, canvasToBlob } from '../utils/canvas'
 
-export type ExportFormatId = 'png' | 'jpeg' | 'webp' | 'tiff' | 'bmp' | 'tga' | 'qoi' | 'ppm' | 'ico' | 'psd'
+export type ExportFormatId = 'png' | 'jpeg' | 'webp' | 'tiff' | 'bmp' | 'tga' | 'qoi' | 'ppm' | 'ico' | 'psd' | 'ora'
 
 // ============================================================
 // TIFF — baseline little-endian, RGB + unassociated alpha, strips
