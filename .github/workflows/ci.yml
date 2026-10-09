@@ -48,6 +48,9 @@ jobs:
       - name: Validate all editor tools
         run: bun run tools:validate
 
+      - name: Validate content-sized docks
+        run: bun run dock-sizing:validate
+
       - name: Validate camera, HDR, scientific and multi-page formats
         run: bun run formats:validate
 
