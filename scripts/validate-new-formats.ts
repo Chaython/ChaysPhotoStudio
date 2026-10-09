@@ -1,6 +1,6 @@
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
-import { decodeExr } from '../src/editor/formats/openexr'
+import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
 function check(v:unknown,description:string) { if(!v)throw new Error(description) }
@@ -157,6 +157,46 @@ tiledView.setUint32(4,0x202,true)
 tiledView.setBigUint64(tileTable,BigInt(tileStart),true)
 const tiledExr=await decodeExr(tiled)
 check(tiledExr.width===1&&tiledExr.rgbaFloat?.[0]===1&&tiledExr.rgbaFloat[1]===0.5,'OpenEXR tiled RGB')
+
+// EXR v2 multipart: two separately named 1x1 scanline parts, each with its
+// own chunk offset table and part-number-prefixed block.
+const chunkCount=(n:number)=>[n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]
+const multipartHeader:number[]=[]
+const appendAttr=(dest:number[],key:string,kind:string,data:number[])=>{
+ dest.push(...enc.encode(key),0,...enc.encode(kind),0,...chunkCount(data.length),...data)
+}
+for(const label of ['Beauty','Normals']){
+ appendAttr(multipartHeader,'channels','chlist',channel)
+ appendAttr(multipartHeader,'compression','compression',[0])
+ appendAttr(multipartHeader,'dataWindow','box2i',[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
+ appendAttr(multipartHeader,'name','string',Array.from(enc.encode(label)))
+ appendAttr(multipartHeader,'type','string',Array.from(enc.encode('scanlineimage')))
+ appendAttr(multipartHeader,'chunkCount','int',chunkCount(1))
+ multipartHeader.push(0)
+}
+multipartHeader.push(0)
+const mpTable=8+multipartHeader.length
+const mpPixels=Array.from(new Uint8Array(temp.buffer))
+const mpChunk=(partIndex:number,data:number[])=>[...chunkCount(partIndex),0,0,0,0,12,0,0,0,...data]
+const part0=mpChunk(0,mpPixels),part1=mpChunk(1,mpPixels)
+const mp=Uint8Array.from([
+ ...chunkCount(20000630),...chunkCount(0x1002),
+ ...multipartHeader,...new Uint8Array(16),...part0,...part1
+])
+const mpView=new DataView(mp.buffer)
+mpView.setBigUint64(mpTable,BigInt(mpTable+16),true)
+mpView.setBigUint64(mpTable+8,BigInt(mpTable+16+part0.length),true)
+const decodedParts=await decodeExrParts(mp)
+check(decodedParts.length===2 && decodedParts[0].name==='Beauty' && decodedParts[1].name==='Normals',
+  'EXR multipart part labels')
+check(decodedParts.every(p=>p.image.rgbaFloat?.[0]===1 && p.image.rgbaFloat[1]===0.5),
+  'EXR multipart floating pixels')
+try{
+ await decodeExr(mp)
+ throw Error('Single-image EXR entrypoint must not discard extra parts')
+}catch(err){
+ check(err instanceof Error && err.message.includes('multiple parts'), 'Multipart EXR must not silently discard parts')
+}
 
 // A lossless 16-bit correction path must preserve bit depth and input data.
 const sample16=new Uint16Array(5*5*4)
