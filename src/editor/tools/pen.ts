@@ -387,9 +387,9 @@ function commitFill(opts: Record<string, any>): boolean {
   return true
 }
 
-function commitPath() {
+function commitPath(toolId: 'pen' | 'pen-freeform' | 'pen-curvature' = 'pen') {
   if (anchors.length < 2) return // a single anchor can't select/stroke/fill
-  const opts = getOptions('pen')
+  const opts = getOptions(toolId)
   const action = opts.action ?? 'selection'
   let ok = false
   if (action === 'path') {
@@ -726,4 +726,172 @@ export const penTool: Tool = {
     ctx.stroke()
     ctx.restore()
   },
+}
+
+// ---------- Additional Photoshop Pen variants -------------------------------
+// Both variants share the Pen tool's editable anchor model, path actions and
+// overlays; they differ in *how* they create the Bezier geometry.
+
+function smoothAnchors() {
+  const n = anchors.length
+  for (let i = 0; i < n; i++) {
+    const a = anchors[i]
+    if (!a.pair) { a.inX = a.inY = a.outX = a.outY = 0; continue }
+    const prev = anchors[i - 1] ?? (closed ? anchors[n - 1] : a)
+    const next = anchors[i + 1] ?? (closed ? anchors[0] : a)
+    const dx = next.x - prev.x, dy = next.y - prev.y
+    // Catmull–Rom to Bezier: a tangent estimated from the neighboring knots.
+    // The two independent handles are scaled by the adjacent segment lengths,
+    // limiting overshoot when one segment is much shorter than the next.
+    const tangentLen = Math.hypot(dx, dy) || 1
+    const ux = dx / tangentLen, uy = dy / tangentLen
+    const before = prev === a ? 0 : Math.hypot(a.x - prev.x, a.y - prev.y) / 3
+    const after = next === a ? 0 : Math.hypot(next.x - a.x, next.y - a.y) / 3
+    a.inX = -ux * before; a.inY = -uy * before
+    a.outX = ux * after; a.outY = uy * after
+  }
+  engine.pokeOverlay()
+}
+
+function penVariantKeys(e: KeyboardEvent, toolId: 'pen-freeform' | 'pen-curvature') {
+  if (e.key === 'Enter') {
+    if (anchors.length >= 2) { commitPath(toolId); return true }
+    return false
+  }
+  if (e.key === 'Escape') {
+    if (anchors.length || freeformDrawing) { resetPath(); freeformDrawing = false; return true }
+    return false
+  }
+  if (e.key === 'Backspace' && anchors.length) {
+    e.preventDefault()
+    anchors.pop()
+    closed = false
+    activeAnchor = Math.min(activeAnchor, anchors.length - 1)
+    if (toolId === 'pen-curvature') smoothAnchors()
+    else engine.pokeOverlay()
+    return true
+  }
+  return false
+}
+
+type FreeformPoint = { x: number; y: number }
+let freeformDrawing = false
+let freeformPoints: FreeformPoint[] = []
+
+function perpendicularDist(p: FreeformPoint, a: FreeformPoint, b: FreeformPoint): number {
+  const dx = b.x - a.x, dy = b.y - a.y
+  const length2 = dx * dx + dy * dy
+  if (length2 < 0.0001) return Math.hypot(p.x - a.x, p.y - a.y)
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2))
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
+}
+
+/** Iterative Ramer–Douglas–Peucker: keeps natural corners without quadratic
+ * stack recursion. Input is sampled in document coordinates. */
+function simplifyFreeform(points: FreeformPoint[], epsilon: number): FreeformPoint[] {
+  if (points.length < 3) return points.slice()
+  const retained = new Uint8Array(points.length)
+  retained[0] = retained[points.length - 1] = 1
+  const pending: [number, number][] = [[0, points.length - 1]]
+  while (pending.length) {
+    const [start, end] = pending.pop()!
+    let best = -1, distance = epsilon
+    for (let i = start + 1; i < end; i++) {
+      const d = perpendicularDist(points[i], points[start], points[end])
+      if (d > distance) { best = i; distance = d }
+    }
+    if (best !== -1) {
+      retained[best] = 1
+      pending.push([start, best], [best, end])
+    }
+  }
+  return points.filter((_, i) => retained[i] === 1)
+}
+
+function putFreeformPoint(x: number, y: number, minStep: number) {
+  const last = freeformPoints[freeformPoints.length - 1]
+  if (last && Math.hypot(x - last.x, y - last.y) < minStep) return
+  // A hard cap bounds CPU/memory on sustained tablet pointer streams. Once
+  // reached, replace the final sample so the user's final endpoint is honored.
+  if (freeformPoints.length >= 4000) {
+    freeformPoints[freeformPoints.length - 1] = { x, y }
+    anchors[anchors.length - 1] = { x, y, inX: 0, inY: 0, outX: 0, outY: 0, pair: true }
+  } else {
+    freeformPoints.push({ x, y })
+    anchors.push({ x, y, inX: 0, inY: 0, outX: 0, outY: 0, pair: true })
+  }
+  activeAnchor = anchors.length - 1
+  engine.pokeOverlay()
+}
+
+export const freeformPenTool: Tool = {
+  id: 'pen-freeform',
+  cursor: 'crosshair',
+  onPointerDown(p) {
+    if (p.button !== 0 || !engine.activeDoc) return
+    resetPath()
+    freeformDrawing = true
+    freeformPoints = []
+    putFreeformPoint(p.docX, p.docY, 0)
+  },
+  onPointerMove(p) {
+    if (!freeformDrawing) return
+    const zoom = engine.activeDoc?.view.zoom || 1
+    putFreeformPoint(p.docX, p.docY, Math.max(0.5, 2 / zoom))
+  },
+  onPointerUp(p) {
+    if (!freeformDrawing) return
+    freeformDrawing = false
+    const zoom = engine.activeDoc?.view.zoom || 1
+    putFreeformPoint(p.docX, p.docY, 0)
+    const options = getOptions('pen-freeform')
+    const epsilon = Math.max(0.25, Number(options.smoothing ?? 3)) / zoom
+    const knots = simplifyFreeform(freeformPoints, epsilon)
+    freeformPoints = []
+    if (knots.length < 2) { resetPath(); return }
+    anchors = knots.map(pt => ({ ...pt, inX: 0, inY: 0, outX: 0, outY: 0, pair: true }))
+    closed = options.autoClose === true && anchors.length > 2
+    activeAnchor = anchors.length - 1
+    smoothAnchors()
+  },
+  onKeyDown(e) { return penVariantKeys(e, 'pen-freeform') },
+  onDeactivate() { freeformDrawing = false; freeformPoints = []; resetPath() },
+  renderOverlay(ctx, view, w, h, mouse) { penTool.renderOverlay?.(ctx, view, w, h, mouse) },
+  renderCursor(ctx, view, w, h, mouse) { penTool.renderCursor?.(ctx, view, w, h, mouse) },
+}
+
+export const curvaturePenTool: Tool = {
+  id: 'pen-curvature',
+  cursor: 'crosshair',
+  onPointerDown(p) {
+    if (p.button !== 0 || !engine.activeDoc) return
+    const zoom = engine.activeDoc.view.zoom || 1
+    if (!closed && anchors.length >= 3 &&
+      Math.hypot(p.docX - anchors[0].x, p.docY - anchors[0].y) * zoom <= CLOSE_PX) {
+      closed = true
+      activeAnchor = -1
+      smoothAnchors()
+      return
+    }
+    if (closed) resetPath()
+    if (anchors.length >= 2000) { toast('Curvature Pen: maximum 2000 points'); return }
+    const pos = snapNew(p.docX, p.docY)
+    anchors.push({ x: pos.x, y: pos.y, inX: 0, inY: 0, outX: 0, outY: 0, pair: !p.alt })
+    activeAnchor = anchors.length - 1
+    smoothAnchors()
+  },
+  onDoubleClick() {
+    // The browser dispatches pointerdown before dblclick: drop the
+    // duplicate last knot so a double-click cleanly ends the open path.
+    const n = anchors.length
+    if (n > 2 && Math.hypot(anchors[n - 1].x - anchors[n - 2].x, anchors[n - 1].y - anchors[n - 2].y) < 4 / (engine.activeDoc?.view.zoom || 1)) {
+      anchors.pop()
+      smoothAnchors()
+    }
+    if (anchors.length >= 2) commitPath('pen-curvature')
+  },
+  onKeyDown(e) { return penVariantKeys(e, 'pen-curvature') },
+  onDeactivate() { resetPath() },
+  renderOverlay(ctx, view, w, h, mouse) { penTool.renderOverlay?.(ctx, view, w, h, mouse) },
+  renderCursor(ctx, view, w, h, mouse) { penTool.renderCursor?.(ctx, view, w, h, mouse) },
 }

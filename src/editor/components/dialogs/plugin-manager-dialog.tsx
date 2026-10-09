@@ -37,6 +37,9 @@ import * as gradientPresets from '../../plugins/gradient-presets'
 import type { DialogProps } from './generic-dialogs'
 import { cn } from '@/lib/utils'
 import { nativeToolInfo, runNativeGegl, runNativeGmic } from '../../plugins/native-host'
+import { GimpNativeCatalog } from './gimp-native-catalog'
+import { GimpAnalysisTab } from './gimp-analysis-tab'
+import { GimpRuntimeTab } from './gimp-runtime-tab'
 import { dataUrlToCanvas } from '../../image-ops'
 import { getFlatComposite } from '../../engine/document'
 import type { PluginPermission } from '../../plugins/plugin-types'
@@ -48,7 +51,7 @@ function CompatibilityNote() {
       <CircleAlert size={13} className="mt-0.5 text-primary flex-shrink-0" />
       <p className="text-[10px] leading-snug text-muted-foreground">
         <span className="text-foreground font-medium">What can import:</span> GIMP brushes
-        (<span className="font-mono">.gbr</span>) and gradients (<span className="font-mono">.ggr</span>) parse
+        (<span className="font-mono">.gbr</span>), patterns (<span className="font-mono">.pat</span>), palettes (<span className="font-mono">.gpl</span>) and gradients (<span className="font-mono">.ggr</span>) parse
         natively, and Chay's Photo JS plugins run in a sandboxed worker.
         <span className="text-foreground font-medium"> Desktop bridges:</span> Electron can run installed G’MIC and GEGL filters through a sandboxed IPC bridge.{' '}
         <span className="text-foreground font-medium"> Legacy limits:</span> Photoshop <span className="font-mono">.8bf</span> and full GIMP PDB/Script-Fu require native compatibility runtimes and are reported rather than falsely claimed as drop-in compatible. Plugins are arbitrary JavaScript with pixel access:{' '}
@@ -541,7 +544,7 @@ function NativeFiltersTab() {
   const [geglArgs, setGeglArgs] = useState('')
   const [busy, setBusy] = useState(false)
   const pushToast = useEditorStore(s => s.pushToast)
-  const refresh = () => void nativeToolInfo().then(setInfo)
+  const refresh = () => void nativeToolInfo(true).then(setInfo).catch(() => {})
   useEffect(() => { refresh() }, [])
 
   const applyResult = async (dataUrl: string, name: string) => {
@@ -561,8 +564,8 @@ function NativeFiltersTab() {
     <div className="flex items-center justify-between rounded border border-border bg-panel/40 p-2.5"><div><div className="text-[11px] font-medium">Desktop native filter host</div><div className="text-[9px] text-muted-foreground">Available only in Electron. Commands execute in the main process with argv isolation and temporary PNG files.</div></div><Button size="sm" variant="ghost" onClick={refresh}><RefreshCw size={12}/></Button></div>
     {!info.electron && <div className="rounded border border-dashed border-border p-3 text-[10px] text-muted-foreground">Open the Electron build to use installed G’MIC/GEGL binaries. Browser and extension builds keep these controls disabled.</div>}
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-      <div className="rounded border border-border p-2.5"><div className="flex items-center justify-between"><span className="text-[11px] font-medium">G’MIC</span><span className={info.gmic?'text-emerald-400 text-[9px]':'text-muted-foreground text-[9px]'}>{info.gmic ? 'detected' : 'not found'}</span></div><div className="mt-1 truncate text-[9px] text-muted-foreground" title={info.gmicVersion}>{info.gmicVersion || 'Install gmic or set CHAYS_GMIC_PATH'}</div><input value={gmicArgs} onChange={e=>setGmicArgs(e.target.value)} className="mt-2 h-8 w-full rounded border border-border bg-background px-2 font-mono text-[10px]" placeholder="-fx_sharpen 1"/><Button className="mt-2" size="sm" disabled={!info.gmic||busy} onClick={()=>void runGmic()}><Play size={11} className="mr-1"/>Apply to composite</Button></div>
-      <div className="rounded border border-border p-2.5"><div className="flex items-center justify-between"><span className="text-[11px] font-medium">GEGL</span><span className={info.gegl?'text-emerald-400 text-[9px]':'text-muted-foreground text-[9px]'}>{info.gegl ? 'detected' : 'not found'}</span></div><div className="mt-1 truncate text-[9px] text-muted-foreground" title={info.geglVersion}>{info.geglVersion || 'Install gegl or set CHAYS_GEGL_PATH'}</div><input value={geglOp} onChange={e=>setGeglOp(e.target.value)} className="mt-2 h-8 w-full rounded border border-border bg-background px-2 font-mono text-[10px]" placeholder="unsharp-mask"/><input value={geglArgs} onChange={e=>setGeglArgs(e.target.value)} className="mt-1 h-8 w-full rounded border border-border bg-background px-2 font-mono text-[10px]" placeholder="radius=2 amount=0.7"/><Button className="mt-2" size="sm" disabled={!info.gegl||busy||!geglOp.trim()} onClick={()=>void runGegl()}><Play size={11} className="mr-1"/>Apply to composite</Button></div>
+      <div className="rounded border border-border p-2.5"><div className="flex items-center justify-between"><span className="text-[11px] font-medium">G’MIC</span><span className={info.gmic?'text-emerald-400 text-[9px]':'text-muted-foreground text-[9px]'}>{info.gmic ? 'detected' : 'not found'}</span></div><div className="mt-1 truncate text-[9px] text-muted-foreground" title={info.gmicVersion}>{info.gmicVersion || 'Install gmic or set CHAYS_GMIC_PATH'}</div><input value={gmicArgs} onChange={e=>setGmicArgs(e.target.value)} className="mt-2 h-8 w-full rounded border border-border bg-background px-2 font-mono text-[10px]" placeholder="-fx_sharpen 1"/><Button className="mt-2" size="sm" disabled={!info.gmic||busy} onClick={()=>void runGmic()}><Play size={11} className="mr-1"/>Apply to composite</Button><GimpNativeCatalog kind="gmic" available={info.gmic} onSelect={setGmicArgs}/></div>
+      <div className="rounded border border-border p-2.5"><div className="flex items-center justify-between"><span className="text-[11px] font-medium">GEGL</span><span className={info.gegl?'text-emerald-400 text-[9px]':'text-muted-foreground text-[9px]'}>{info.gegl ? 'detected' : 'not found'}</span></div><div className="mt-1 truncate text-[9px] text-muted-foreground" title={info.geglVersion}>{info.geglVersion || 'Install gegl or set CHAYS_GEGL_PATH'}</div><input value={geglOp} onChange={e=>setGeglOp(e.target.value)} className="mt-2 h-8 w-full rounded border border-border bg-background px-2 font-mono text-[10px]" placeholder="unsharp-mask"/><input value={geglArgs} onChange={e=>setGeglArgs(e.target.value)} className="mt-1 h-8 w-full rounded border border-border bg-background px-2 font-mono text-[10px]" placeholder="radius=2 amount=0.7"/><Button className="mt-2" size="sm" disabled={!info.gegl||busy||!geglOp.trim()} onClick={()=>void runGegl()}><Play size={11} className="mr-1"/>Apply to composite</Button><GimpNativeCatalog kind="gegl" available={info.gegl} onSelect={setGeglOp}/></div>
     </div>
     <div className="flex items-start gap-1.5 text-[9px] text-muted-foreground"><Terminal size={11} className="mt-0.5"/>Results are imported as a new layer, so native filters remain undoable/non-destructive to the source layer. Argument text is split into argv and never passed through a shell.</div>
   </div>
@@ -581,7 +584,7 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </DialogTitle>
       </DialogHeader>
       <Tabs defaultValue="plugins" className="py-1">
-        <TabsList className="grid w-full grid-cols-4 h-8">
+        <TabsList className="flex w-full flex-wrap h-auto min-h-8">
           <TabsTrigger value="plugins" className="text-[11px] gap-1.5">
             <Puzzle size={11} /> Plugins
           </TabsTrigger>
@@ -590,6 +593,12 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
           </TabsTrigger>
           <TabsTrigger value="gradients" className="text-[11px] gap-1.5">
             <Blend size={11} /> Gradients
+          </TabsTrigger>
+          <TabsTrigger value="gimp-analysis" className="text-[11px] gap-1.5">
+            <FileJson size={11} /> GIMP Scripts
+          </TabsTrigger>
+          <TabsTrigger value="gimp-runtime" className="text-[10px] gap-1">
+            <Terminal size={11} /> GIMP Runtime
           </TabsTrigger>
           <TabsTrigger value="native" className="text-[11px] gap-1.5">
             <Terminal size={11} /> Desktop Filters
@@ -603,6 +612,12 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </TabsContent>
         <TabsContent value="gradients" className="mt-3">
           <GradientsTab />
+        </TabsContent>
+        <TabsContent value="gimp-analysis" className="mt-3">
+          <GimpAnalysisTab />
+        </TabsContent>
+        <TabsContent value="gimp-runtime" className="mt-3">
+          <GimpRuntimeTab />
         </TabsContent>
         <TabsContent value="native" className="mt-3">
           <NativeFiltersTab />

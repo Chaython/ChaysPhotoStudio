@@ -1,3 +1,4 @@
+import { analyzeGimpScript } from './gimp-script-analyzer'
 import type { PluginCompatibilityReport, PluginManifest, StoredPlugin } from './plugin-types'
 
 const SUPPORTED_UXP = [
@@ -67,17 +68,14 @@ export function uxpManifestToPlugin(manifest: any, code: string, fallbackName: s
 }
 
 export function analyzeGimpPluginSource(text: string, name: string): PluginCompatibilityReport {
-  const lower = text.toLowerCase()
-  const supported: string[] = []
-  const unsupported: string[] = []
-  const warnings: string[] = []
-  if (lower.includes('gegl:')) supported.push('GEGL operation references')
-  if (lower.includes('gimp_image') || lower.includes('gimp-image')) supported.push('image/document concepts')
-  if (lower.includes('gimp_drawable') || lower.includes('gimp-drawable')) supported.push('drawable/layer concepts')
-  if (lower.includes('pdb') || lower.includes('gimp_procedure')) unsupported.push('full GIMP PDB/libgimp runtime')
-  if (/\.scm$/i.test(name) || lower.includes('script-fu')) unsupported.push('Script-Fu/TinyScheme runtime')
-  if (/\.py$/i.test(name) || lower.includes('gi.repository')) unsupported.push('GIMP Python GI runtime')
-  warnings.push('GIMP source compatibility is experimental. Use GEGL/G’MIC bridging where possible; full libgimp/PDB emulation is not yet available.')
-  const evidence = supported.length + unsupported.length
-  return { ecosystem: 'gimp', coverage: evidence ? Math.round(supported.length / evidence * 100) : 20, supported, unsupported, warnings }
+  const analysis = analyzeGimpScript(text, name)
+  const supported = analysis.operations.filter(o => o.status !== 'requires-gimp')
+    .map(o => o.name + ' — ' + o.explanation)
+  const unsupported = analysis.operations.filter(o => o.status === 'requires-gimp')
+    .map(o => o.name + ' — ' + o.explanation)
+  // A heuristic ratio of references, not a promise of executable compatibility.
+  const coverage = analysis.operations.length
+    ? Math.round(supported.length / analysis.operations.length * 100)
+    : 0
+  return { ecosystem: 'gimp', coverage, supported, unsupported, warnings: analysis.warnings }
 }

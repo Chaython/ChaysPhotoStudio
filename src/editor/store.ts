@@ -43,6 +43,15 @@ export interface PanelRect {
 
 // ---- floating panel layout persistence ---------------------------------------
 const PANEL_LAYOUT_KEY = 'zphoto-panel-layout'
+const WORKSPACE_PRESET_KEY = 'zphoto-workspace-preset'
+const CLASSIC_LAYOUT_BACKUP_KEY = 'zphoto-classic-layout-backup'
+export type WorkspacePreset = 'classic' | 'photoshop'
+
+function loadWorkspacePreset(): WorkspacePreset {
+  if (typeof window === 'undefined') return 'classic'
+  try { return localStorage.getItem(WORKSPACE_PRESET_KEY) === 'photoshop' ? 'photoshop' : 'classic' }
+  catch { return 'classic' }
+}
 export const DOCK_WIDTH_DEFAULT = 264
 export const DOCK_WIDTH_MIN = 220
 export const DOCK_WIDTH_MAX = 460
@@ -50,7 +59,8 @@ export const DOCK_WIDTH_MAX = 460
 export const TOP_HEIGHT_DEFAULT = 232
 export const TOP_HEIGHT_MIN = 120
 export const TOP_HEIGHT_MAX = 480
-export type DockSide = 'left' | 'right' | 'top'
+export type DockSide = 'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+export const HORIZONTAL_DOCKS: readonly DockSide[] = ['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right']
 export const NATIVE_PANEL_IDS = ['tools', 'tool-options', 'documents'] as const
 export type NativePanelId = typeof NATIVE_PANEL_IDS[number]
 export const isNativePanelId = (id: string): id is NativePanelId =>
@@ -58,7 +68,7 @@ export const isNativePanelId = (id: string): id is NativePanelId =>
 
 const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
-function loadPanelLayout(): {
+function loadPanelLayout(rawOverride: string | null = null): {
   floating: Record<string, PanelRect>
   zTop: number
   dockWidth: number
@@ -69,10 +79,11 @@ function loadPanelLayout(): {
   dockSide: Record<string, DockSide>
   topOrder: string[]
   topHeight: number
+  bottomHeight: number
 } | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = localStorage.getItem(PANEL_LAYOUT_KEY)
+    const raw = rawOverride ?? localStorage.getItem(PANEL_LAYOUT_KEY)
     if (!raw) return null
     const data = JSON.parse(raw) as {
       floating?: Record<string, Partial<PanelRect>>
@@ -85,6 +96,7 @@ function loadPanelLayout(): {
       dockSide?: Record<string, string>
       topOrder?: unknown
       topHeight?: number
+      bottomHeight?: number
     }
     const vw = window.innerWidth
     const vh = window.innerHeight
@@ -104,7 +116,7 @@ function loadPanelLayout(): {
     }
     const dockSide: Record<string, DockSide> = {}
     for (const [id, side] of Object.entries(data.dockSide ?? {})) {
-      if (side === 'left' || side === 'right' || side === 'top') dockSide[id] = side
+      if (side === 'left' || side === 'right' || HORIZONTAL_DOCKS.includes(side as DockSide)) dockSide[id] = side as DockSide
     }
     const topOrder = Array.isArray(data.topOrder)
       ? data.topOrder.filter((id): id is string => typeof id === 'string').slice(0, 32)
@@ -121,6 +133,7 @@ function loadPanelLayout(): {
       dockSide,
       topOrder: topOrder.filter(id => dockSide[id] === 'top'),
       topHeight: clampNum(Math.round(data.topHeight ?? TOP_HEIGHT_DEFAULT), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX),
+      bottomHeight: clampNum(Math.round(data.bottomHeight ?? 192), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX),
     }
   } catch {
     return null
@@ -141,6 +154,7 @@ function persistPanelLayout(panels: EditorStore['panels']) {
       dockSide: panels.dockSide,
       topOrder: panels.topOrder,
       topHeight: panels.topHeight,
+      bottomHeight: panels.bottomHeight,
     }))
   } catch {
     /* noop */
@@ -241,7 +255,27 @@ function persistToolbarLayout(sections: ToolbarSection[] | null) {
   } catch { /* noop */ }
 }
 
+function defaultPanelState(): EditorStore['panels'] {
+  return {
+    rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
+    colorPanelOpen: true, floating: {}, dockSide: {}, topOrder: [],
+    topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
+  }
+}
+
+/** Non-destructive template: save the existing layout before applying the preset. */
+function photoshopPanelState(current: EditorStore['panels']): EditorStore['panels'] {
+  return {
+    ...current,
+    rightTab: 'layers', leftTab: '', leftOpen: false,
+    floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
+    dockWidth: 318,
+  }
+}
+
 interface EditorStore {
+  workspacePreset: WorkspacePreset
+  setWorkspacePreset(preset: WorkspacePreset): void
   activeTool: ToolId
   toolOptions: Record<string, Record<string, any>>
   fgColor: string
@@ -291,6 +325,8 @@ interface EditorStore {
     topOrder: string[]
     /** top strip height in px (desktop) */
     topHeight: number
+    /** bottom strip height in px (desktop) */
+    bottomHeight: number
     /** monotonically increasing z counter for focus stacking */
     zTop: number
     /** right dock width in px (desktop) */
@@ -343,6 +379,7 @@ interface EditorStore {
   setDockWidth(px: number): void
   setLeftDockWidth(px: number): void
   setTopHeight(px: number): void
+  setBottomHeight(px: number): void
   resetPanelLayout(): void
   setViewPref(key: 'showRulers' | 'showGuides' | 'snapGuides' | 'showGrid' | 'snapGrid' | 'showGridLabels' | 'showPixelGrid', value: boolean): void
   setViewPref(key: 'rulerUnits', value: 'px' | 'in' | 'cm' | 'mm'): void
@@ -372,6 +409,7 @@ interface EditorStore {
 let toastSeq = 1
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
+  workspacePreset: loadWorkspacePreset(),
   activeTool: 'move',
   toolOptions: defaultOptions(),
   fgColor: '#ffffff',
@@ -399,20 +437,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   timelineActiveFrame: 0,
   timelineLoop: true,
   timelineFrames: [],
-  panels: {
-    rightTab: 'layers',
-    leftTab: '',
-    leftOpen: false,
-    leftWidth: DOCK_WIDTH_DEFAULT,
-    colorPanelOpen: true,
-    floating: {},
-    dockSide: {},
-    topOrder: [],
-    topHeight: TOP_HEIGHT_DEFAULT,
-    zTop: 0,
-    dockWidth: DOCK_WIDTH_DEFAULT,
-    ...(loadPanelLayout() ?? {}),
-  },
+  panels: { ...defaultPanelState(), ...(loadPanelLayout() ?? {}) },
   view: {
     // rulers ON by default for fresh users; anyone with persisted prefs
     // keeps their saved choice (the loader merges over these defaults)
@@ -433,6 +458,28 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
   shortcutOverrides: loadShortcutOverrides(),
   toolbarLayout: loadToolbarLayout(),
+
+  setWorkspacePreset: (preset) => set(s => {
+    if (preset === s.workspacePreset) return {}
+    let panels: EditorStore['panels']
+    if (preset === 'photoshop') {
+      // Snapshot the user's existing dock and floating layout, so the original
+      // workspace can be restored after experimenting with the preset.
+      try { localStorage.setItem(CLASSIC_LAYOUT_BACKUP_KEY, JSON.stringify(s.panels)) } catch { /* storage blocked */ }
+      panels = photoshopPanelState(s.panels)
+    } else {
+      let previous: ReturnType<typeof loadPanelLayout> = null
+      try {
+        const raw = localStorage.getItem(CLASSIC_LAYOUT_BACKUP_KEY)
+        if (raw) previous = loadPanelLayout(raw)
+        localStorage.removeItem(CLASSIC_LAYOUT_BACKUP_KEY)
+      } catch { /* storage blocked */ }
+      panels = { ...defaultPanelState(), ...(previous ?? {}) }
+    }
+    try { localStorage.setItem(WORKSPACE_PRESET_KEY, preset) } catch { /* storage blocked */ }
+    persistPanelLayout(panels)
+    return { workspacePreset: preset, panels }
+  }),
 
   setTool: (t) => { set({ activeTool: t }) },
   setToolOption: (tool, key, value) => set(s => {
@@ -595,7 +642,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     // explicitly docks/floats them; revealing one should not move it right.
     if (isNativePanelId(id) && !s.panels.dockSide[id]) return {}
     const side: DockSide = s.panels.dockSide[id] ?? 'right'
-    if (side === 'top') return {} // always visible in the top strip
+    if (HORIZONTAL_DOCKS.includes(side)) return {} // horizontal strips show their panels side by side
     const panels = {
       ...s.panels,
       rightTab: side === 'right' ? id : s.panels.rightTab,
@@ -696,15 +743,20 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { panels }
   }),
 
-  resetPanelLayout: () => set(() => {
-    try { localStorage.removeItem(PANEL_LAYOUT_KEY) } catch { /* noop */ }
-    return {
-      panels: {
-        rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
-        colorPanelOpen: true, floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT,
-        zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
-      },
-    }
+  setBottomHeight: (px) => set(s => {
+    const bottomHeight = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
+    if (bottomHeight === s.panels.bottomHeight) return {}
+    const panels = { ...s.panels, bottomHeight }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+
+  resetPanelLayout: () => set(s => {
+    const panels = s.workspacePreset === 'photoshop'
+      ? photoshopPanelState(defaultPanelState())
+      : defaultPanelState()
+    persistPanelLayout(panels)
+    return { panels }
   }),
   setViewPref: (key: 'showRulers' | 'showGuides' | 'snapGuides' | 'showGrid' | 'snapGrid' | 'showGridLabels' | 'showPixelGrid' | 'rulerUnits', value: boolean | 'px' | 'in' | 'cm' | 'mm') => set(s => {
     const view = { ...s.view, [key]: value }

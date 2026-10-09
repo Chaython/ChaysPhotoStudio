@@ -39,10 +39,20 @@ jobs:
       - name: Validate distribution metadata
         run: bun run dist:validate
 
+      - name: Parse lazy Electron GIMP host
+        run: node --check electron/gimp-runtime.cjs
+
+      - name: Validate GIMP compatibility analyzer
+        run: bun run gimp:validate
+
       - name: Validate all editor tools
         run: bun run tools:validate
+
       - name: Validate camera, HDR, scientific and multi-page formats
         run: bun run formats:validate
+
+      - name: Validate retouch stroke safety
+        run: bun run retouch-safety:validate
 
       - name: Validate Puppet Warp geometry
         run: bun run warp:validate

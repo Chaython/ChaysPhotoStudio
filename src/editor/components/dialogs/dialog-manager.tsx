@@ -20,7 +20,7 @@ export function DialogManager() {
             <DialogContent
               aria-describedby={undefined}
               className={
-                ['help-guide', 'select-mask', 'content-aware-fill', 'curves', 'levels', 'batch', 'script-console', 'camera-raw', 'color-range', 'ai-upscale', 'ai-generate', 'liquify', 'content-aware-scale', 'match-color', 'plugin-manager', 'shortcuts', 'customize-toolbar', 'transform'].includes(d.type)
+                ['help-guide', 'select-mask', 'content-aware-fill', 'curves', 'levels', 'batch', 'script-console', 'camera-raw', 'color-range', 'ai-upscale', 'ai-generate', 'liquify', 'content-aware-scale', 'match-color', 'plugin-manager', 'shortcuts', 'all-tools', 'customize-toolbar', 'transform'].includes(d.type)
                   ? (d.type === 'help-guide' ? 'max-w-4xl max-h-[90vh] overflow-y-auto zphoto-scroll' : 'max-w-2xl max-h-[85vh] overflow-y-auto zphoto-scroll')
                   : 'max-w-md max-h-[85vh] overflow-y-auto zphoto-scroll'
               }

@@ -7,6 +7,7 @@ Chay's Photo Studio is a web-first editor (Next.js, App Router), so it ships thr
 |---|---|---|
 | 🖥️ **Electron** | Full desktop app; embeds the Next.js standalone server + Chromium (works 100% offline, AI features included) | Power users, air-gapped machines, file associations ("Open with") |
 | 🪶 **Webview shell (Tauri)** | Lightweight native build using the OS webview; the static editor is **embedded by default** (no bundled Chromium) | Smaller desktop build, offline-capable |
+| 📴 **Offline Windows WebView installer** | Additional Tauri NSIS installer with the editor and full WebView2 offline installer embedded | Fresh/air-gapped Windows installations |
 | 🌐 **Self-hosted web** | `web-standalone.tar.gz` — the Next.js standalone server | Your own domain, intranets |
 | 📱 **PWA (installable web app)** | Install button on the welcome screen + manifest + service worker | Chrome/Edge "Install app", Android, iOS A2HS — no store needed |
 | 🧩 **Browser plugin** | Chrome MV3 extension (+ Firefox variant): right-click any image on the web → open it in Chay's Photo Studio | Browser-native workflow |
@@ -44,7 +45,7 @@ Distribute**, which:
 3. packages **Electron desktop builds** on native platform/architecture runners — Windows NSIS
    (`ChaysPhotoStudio-Setup-*.exe`) **and a no-install portable EXE**
    (`ChaysPhotoStudio-Portable-*-x64.exe`), macOS Intel + Apple Silicon DMGs, Linux AppImage + `.deb`
-4. builds the **Tauri webview shell** per OS (deb/AppImage, NSIS, dmg+app), embedding the static editor by default
+4. builds the **Tauri webview shell** per OS (deb/AppImage, NSIS, dmg+app), embedding the static editor by default; Windows additionally gets a separate `windows-offline-x64` NSIS build that embeds the WebView2 offline installer
 5. zips the **browser plugin** (Chrome + Firefox variants — editor bundled inside)
 6. publishes a **continuous GitHub Release** (prerelease, tagged
    `v{version}-b{run number}`) containing every asset + `SHA256SUMS.txt`
@@ -95,6 +96,21 @@ WEBVIEW_APP_URL=https://studio.example.com bun run webview:build  # optional rem
 tar -xzf web-standalone.tar.gz && PORT=3000 node server.js
 ```
 
+
+### Windows WebView: regular vs offline installer
+
+GitHub Releases provide **both** WebView installers (the artifact prefix differentiates them):
+
+- `webview-windows-x64--*.exe` — lightweight standard Tauri NSIS setup. Its WebView2 bootstrapper may need internet if the runtime is missing.
+- `webview-windows-offline-x64--*.exe` — an additional NSIS setup containing the static editor **and** Microsoft's complete WebView2 offline installer, so WebView2 installation and app launch do not need an internet connection. This adds approximately 127 MB.
+
+The offline variant always forces local embedded frontend assets even if the repository variable `WEBVIEW_APP_URL` points to a remote editor. The full WebView2 installer is downloaded **when building in GitHub Actions**, not during installation on the destination computer. Network-dependent AI providers, external resources, and update downloads still need connectivity.
+
+For a local offline Windows build, first run `node scripts/export-webapp.mjs plugin` and `node scripts/webview-config.mjs` with `WEBVIEW_APP_URL` unset, then from `webview/src-tauri` run:
+
+```sh
+bunx @tauri-apps/cli build --config tauri.conf.release.json --config tauri.conf.offline.json --bundles nsis
+```
 
 ### Windows Electron: installer vs portable
 
