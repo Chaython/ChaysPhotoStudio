@@ -63,6 +63,9 @@ jobs:
       - name: Validate portable recovery backups
         run: bun run recovery-backup:validate
 
+      - name: Validate user-initiated release checks
+        run: bun run update-check:validate
+
       - name: Validate worker error recovery
         run: bun run worker:validate
 
