@@ -3,6 +3,7 @@
 import type { RawImage } from './decoders'
 
 const MAX_PIXELS = 64 * 1024 * 1024
+const MAX_UNPACKED_CHUNK = 256 * 1024 * 1024
 const MAX_PARTS = 16
 const MAX_CHUNKS = 131072
 const ascii = (bytes: Uint8Array, from: number, to: number) =>
@@ -62,9 +63,20 @@ function unRle(bytes:Uint8Array, expected:number):Uint8Array {
 }
 async function inflate(src:Uint8Array,expected:number):Promise<Uint8Array> {
   if(typeof DecompressionStream==='undefined')throw Error('EXR ZIP requires browser DecompressionStream')
+  if(expected<0||expected>MAX_UNPACKED_CHUNK)throw Error('EXR ZIP chunk exceeds size limit')
   const stream=new Blob([src as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate'))
-  const raw=new Uint8Array(await new Response(stream).arrayBuffer())
-  if(raw.length!==expected)throw Error('Unexpected EXR ZIP unpacked size')
+  const reader=stream.getReader()
+  const raw=new Uint8Array(expected)
+  let at=0
+  try{
+    for(;;){
+      const {value,done}=await reader.read()
+      if(done)break
+      if(at+value.length>expected)throw Error('EXR ZIP expanded beyond expected length')
+      raw.set(value,at);at+=value.length
+    }
+  }finally{reader.releaseLock()}
+  if(at!==expected)throw Error('Unexpected EXR ZIP unpacked size')
   return undoPredictor(raw)
 }
 function toDisplay(v:number):number {
@@ -82,6 +94,7 @@ export async function decodeExrParts(bytes:Uint8Array):Promise<ExrDecodedPart[]>
   let pos=8
   const parts:ExrPart[]=[]
   let offsetIndex=0
+  let totalPixels=0
   while(parts.length<MAX_PARTS) {
     const data:{
       name:string;type:string;channels:ExrChannel[];compression:number;
@@ -130,6 +143,10 @@ export async function decodeExrParts(bytes:Uint8Array):Promise<ExrDecodedPart[]>
     const width=data.x1-data.x0+1,height=data.y1-data.y0+1
     if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||
        width*height>MAX_PIXELS)throw Error('Invalid EXR image dimensions')
+    totalPixels+=width*height
+    if(totalPixels>MAX_PIXELS)throw Error('EXR aggregate part geometry exceeds pixel budget')
+    if(data.channels.length>64||data.channels.reduce((n,c)=>n+c.bpp,0)*width*height>MAX_UNPACKED_CHUNK*4)
+      throw Error('EXR channel data exceeds decompression budget')
     if(![0,1,2,3].includes(data.compression))throw Error('EXR compression needs a PIZ/PXR24/B44/DWA decoder')
     const tiled=multi?data.type==='tiledimage':(flags&0x200)!==0
     if(multi && !['scanlineimage','tiledimage'].includes(data.type))
@@ -198,6 +215,7 @@ export async function decodeExrParts(bytes:Uint8Array):Promise<ExrDecodedPart[]>
         packed=view.getUint32(at+4,true);at+=8
       }
       const expected=w*h*bytesPerPixel
+      if(expected>MAX_UNPACKED_CHUNK)throw Error('EXR chunk unpacked size exceeds safety budget')
       if(packed>expected||packed>bytes.length-at)throw Error('Truncated or oversized EXR chunk')
       const payload=bytes.subarray(at,at+packed)
       const raw=part.compression===0||packed===expected?payload:
