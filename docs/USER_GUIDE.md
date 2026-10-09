@@ -427,17 +427,17 @@ Open camera RAW, HDR, modern codecs and scientific files while retaining editabl
 
 1. Use File → Open or File → Place to select RAW images. The Develop dialog includes exposure, white balance, demosaicing, highlight, denoising and custom lens correction fields.
 2. When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.
-3. Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Automatic camera/lens matching against a Lensfun database is not yet provided.
-4. OpenEXR supports scanline and single-level tiled images with NONE/RLE/ZIPS/ZIP compression; deep, multipart and multiresolution EXR remain unsupported.
+3. Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Import individual Lensfun XML calibration files on demand using Import Lensfun XML… in the Develop dialog; Match EXIF Lens requires unambiguous camera lens metadata. A full Lensfun WASM database is not bundled.
+4. OpenEXR supports regular single and multipart scanline/single-level tiled images with NONE/RLE/ZIPS/ZIP compression. Float32 HDR samples are retained per part; deep and multiresolution EXR remain unsupported.
 5. FITS and a limited subset of DICOM medical images import as display renderings. DICOM supports uncompressed, RLE Lossless, JPEG baseline, JPEG-LS and JPEG 2000 via available decoders; clinical values and measurements are not preserved.
-6. When TIFF, DCX, FITS or DICOM contains multiple images, choose one frame or import all frames as selectable layers.
+6. When TIFF, DCX, FITS, DICOM or multipart EXR contains multiple images, choose one frame/part or import all as selectable layers.
 
 **Notes and tips:**
 
 - Files larger than 64 MiB can be developed as ordinary raster images but their original RAW bytes are not embedded. RAW decoders may use a clearly labeled 8-bit camera preview if sensor decoding fails.
-- These lens corrections are manually calibrated coefficients, not verified manufacturer or Lensfun camera profiles. Save the project to retain RAW originals and recipes.
+- Imported Lensfun XML uses recorded calibration values with conservative EXIF matching; the full licensed database and WASM remapping engine are not bundled. Save the project to retain RAW originals and recipes.
 - DICOM support is only for graphic editing, never diagnosis or medical measurements. Rare compressed transfer syntaxes and ambiguous multifragment frame tables are rejected.
-- BPG has no vetted decoder. Deep/multipart EXR, multiresolution tile levels, PIZ/PXR24/B44 EXR compression and proprietary camera compression remain unsupported; actual camera samples require separate tests.
+- BPG has no vetted decoder. Deep EXR, multiresolution tile levels and PIZ/PXR24/B44 compression remain unsupported. A six-camera real RAW sensor matrix passed but newer vendor compression variants still need testing.
 
 ## Troubleshooting and known limits
 
