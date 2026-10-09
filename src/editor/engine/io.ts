@@ -12,12 +12,12 @@ import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
-const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim', 'sgi', 'sunras']
+const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim', 'sgi', 'sunras', 'exr', 'fits', 'dicom']
 
 /** sniff the first 64 bytes — enough for every magic-byte signature we know */
 async function sniffFormat(file: File): Promise<ImportFormatId | null> {
   try {
-    const head = new Uint8Array(await file.slice(0, 64).arrayBuffer())
+    const head = new Uint8Array(await file.slice(0, 256).arrayBuffer())
     return detectFormat(head)
   } catch {
     return null
@@ -97,6 +97,23 @@ export async function openFiles(files: File[], asLayer = false) {
           if ((decoded.warnings?.length ?? 0) > 3) store.pushToast(`${decoded.warnings!.length - 3} additional import warnings`, 'info')
           continue
         }
+      }
+      // Multi-page raster and scientific containers carry independent frames.
+      // Represent these as independently selectable layers instead of silently discarding pages.
+      if (!asLayer && ['tiff', 'pcx', 'fits', 'dicom'].includes(format ?? '')) {
+        const decoded = await decodeFile(file)
+        if (decoded.documentLayers?.length) {
+          addStructuredDocument(file.name, decoded, metadata)
+        } else {
+          engine.addCanvasDocument(decoded.canvas, file.name, {
+            sourceBitDepth: decoded.sourceBitDepth ?? 8,
+            workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
+            resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata),
+            metadata,
+          })
+        }
+        for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(warning, 'info')
+        continue
       }
       const decoded = await decodeToCanvas(file)
       if (publishedFormatKind(file.name) === 'raw') store.pushToast(`${file.name}: using embedded RAW preview (8-bit), not original sensor data`, 'info')
