@@ -60,7 +60,8 @@
     "hdr-object-layer:validate": "bun scripts/validate-hdr-object-layer.ts",
     "fill-coverage:validate": "bun scripts/validate-fill-coverage.ts",
     "heritage-formats:validate": "bun scripts/validate-heritage-raster.ts",
-    "formats:validate": "bun scripts/validate-heritage-raster.ts && bun scripts/validate-new-formats.ts"
+    "formats:validate": "bun scripts/validate-heritage-raster.ts && bun scripts/validate-new-formats.ts",
+    "raw-corpus:validate": "bun scripts/validate-camera-raw-corpus.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
