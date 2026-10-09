@@ -89,7 +89,7 @@ export function PatternsPanel() {
         <button
           className="rounded border border-border px-2 py-1 hover:bg-accent flex items-center gap-1"
           onClick={() => fileRef.current?.click()}
-          title="Import PNG, JPEG or WebP as a repeating pattern"
+          title="Import GIMP PAT, PNG, JPEG or WebP as a repeating pattern"
         >
           <ImagePlus size={12} /> Import
         </button>
@@ -97,7 +97,7 @@ export function PatternsPanel() {
           ref={fileRef}
           className="hidden"
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
+          accept=".pat,image/png,image/jpeg,image/webp,image/gif"
           multiple
           onChange={e => void importFiles(e.target.files)}
         />
@@ -165,7 +165,7 @@ export function PatternsPanel() {
       </div>
 
       <div className="text-[9px] leading-relaxed text-muted-foreground">
-        Imported tiles are resized to a maximum of 256 px and stored locally in your browser profile. Scale and offset remain controlled by the active tool.
+        GIMP .pat tiles and regular images are supported. Imported tiles are resized to a maximum of 256 px and stored locally in your browser profile. Scale and offset remain controlled by the active tool.
       </div>
     </div>
   )
