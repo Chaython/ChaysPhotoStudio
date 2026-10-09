@@ -1,3 +1,4 @@
+import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
 // RAW import controls applied before LibRaw demosaicing. Saves settings only,
 // never image files or camera-identifying metadata.
 export interface RawDevelopSettings {
@@ -7,10 +8,13 @@ export interface RawDevelopSettings {
   highlight: number
   denoise: number
   halfSize: boolean
+  smartObject: boolean
+  lensProfile: LensProfile
 }
 export const DEFAULT_RAW_SETTINGS: RawDevelopSettings = {
   exposureEv: 0, whiteBalance: 'camera', interpolation: 3,
   highlight: 0, denoise: 0, halfSize: false,
+  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE},
 }
 const storageKey = 'chaysstudio.raw-develop.v1'
 export function rawSettingsFromSaved(): RawDevelopSettings {
@@ -29,6 +33,8 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
     highlight:Number.isFinite(highlight)?Math.max(0,Math.min(9,Math.round(highlight))):0,
     denoise:Number.isFinite(denoise)?Math.max(0,Math.min(500,denoise)):0,
     halfSize:raw.halfSize===true,
+    smartObject:raw.smartObject!==false,
+    lensProfile:normalizeLensProfile(raw.lensProfile),
   }
 }
 
@@ -40,14 +46,14 @@ export async function chooseRawDevelopSettings(fileName:string):Promise<RawDevel
     dialog.setAttribute('aria-label','Develop camera RAW image')
     dialog.style.cssText=[
       'background:var(--card)','color:var(--card-foreground)','border:1px solid var(--border)',
-      'border-radius:12px','padding:20px','width:min(460px,calc(100vw - 24px))',
+      'border-radius:12px','padding:20px','width:min(520px,calc(100vw - 24px));max-height:90vh;overflow-y:auto',
       'box-shadow:0 20px 80px rgba(0,0,0,.35)',
     ].join(';')
     const heading=document.createElement('h3')
     heading.textContent='RAW Import / Develop'
     heading.style.cssText='font-size:16px;font-weight:600;margin-bottom:6px'
     const caption=document.createElement('p')
-    caption.textContent=fileName+' — 16-bit LibRaw development. Changes apply to the imported image; the source file is never modified.'
+    caption.textContent=fileName+' — 16-bit LibRaw development. Smart Objects retain the original RAW and settings for later re-development. Lens coefficients are custom user calibrations, not automatically matched camera profiles.'
     caption.style.cssText='font-size:12px;opacity:.8;overflow-wrap:anywhere;margin-bottom:12px'
     const form=document.createElement('div')
     form.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center'
@@ -76,6 +82,18 @@ export async function chooseRawDevelopSettings(fileName:string):Promise<RawDevel
     const denoise=field('Wavelet denoise (0–500)','number',String(current.denoise)) as HTMLInputElement
     denoise.min='0';denoise.max='500';denoise.step='1'
     const half=field('Resolution','select',current.halfSize?'half':'full',['full|Full resolution','half|Half resolution (faster)'])
+    const smart=field('Keep original RAW','select',current.smartObject?'yes':'no',['yes|Smart Object (editable)','no|Flatten on import'])
+    const lensName=field('Lens profile label','number',current.lensProfile.name) as HTMLInputElement
+    lensName.type='text'
+    lensName.placeholder='Camera / lens / focal length'
+    const k1=field('Distortion k1 (-0.5…0.5)','number',String(current.lensProfile.k1)) as HTMLInputElement
+    k1.step='0.001';k1.min='-0.5';k1.max='0.5'
+    const k2=field('Distortion k2 (-0.25…0.25)','number',String(current.lensProfile.k2)) as HTMLInputElement
+    k2.step='0.001';k2.min='-0.25';k2.max='0.25'
+    const tca=field('Color fringing (-0.05…0.05)','number',String(current.lensProfile.tca)) as HTMLInputElement
+    tca.step='0.0001';tca.min='-0.05';tca.max='0.05'
+    const vignette=field('Vignette correction (-0.6…0.6)','number',String(current.lensProfile.vignette)) as HTMLInputElement
+    vignette.step='0.01';vignette.min='-0.6';vignette.max='0.6'
     const actions=document.createElement('div')
     actions.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:16px'
     const cancel=document.createElement('button'),apply=document.createElement('button')
@@ -94,6 +112,8 @@ export async function chooseRawDevelopSettings(fileName:string):Promise<RawDevel
         highlight:highlight.valueAsNumber,
         denoise:denoise.valueAsNumber,
         halfSize:half.value==='half',
+        smartObject:smart.value==='yes',
+        lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,tca:tca.valueAsNumber,vignette:vignette.valueAsNumber},
       }):null
       if(result)try{localStorage.setItem(storageKey,JSON.stringify(result))}catch{}
       dialog.remove();resolve(result)
