@@ -543,7 +543,7 @@ function NativeFiltersTab() {
   const [geglArgs, setGeglArgs] = useState('')
   const [busy, setBusy] = useState(false)
   const pushToast = useEditorStore(s => s.pushToast)
-  const refresh = () => void nativeToolInfo().then(setInfo)
+  const refresh = () => void nativeToolInfo(true).then(setInfo).catch(() => {})
   useEffect(() => { refresh() }, [])
 
   const applyResult = async (dataUrl: string, name: string) => {
