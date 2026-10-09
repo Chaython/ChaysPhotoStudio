@@ -19,5 +19,5 @@ export const embeddedWebviewCsp = {
   'worker-src': "'self' blob:",
   // User-specified external image/AI endpoints require https, while local
   // ComfyUI and other opt-in services may be hosted on loopback interfaces.
-  'connect-src': "'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* ipc: http://ipc.localhost",
+  'connect-src': "'self' blob: data: https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* ipc: http://ipc.localhost",
 }
