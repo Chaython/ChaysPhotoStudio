@@ -241,13 +241,15 @@ function WidthDivider({ side, width, onWidth, onReset }: {
     if (!rafId.current) {
       rafId.current = requestAnimationFrame(() => {
         rafId.current = 0
-        if (pending.current !== null) onWidth(pending.current)
+        if (pending.current !== null) { const next = pending.current; pending.current = null; onWidth(next) }
       })
     }
   }
   const onUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!drag.current) return
     drag.current = null
+    if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = 0 }
+    if (pending.current !== null) { const next = pending.current; pending.current = null; onWidth(next) }
     setActive(false)
     try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* noop */ }
   }
@@ -269,7 +271,11 @@ function WidthDivider({ side, width, onWidth, onReset }: {
       onPointerMove={onMove}
       onPointerUp={onUp}
       onPointerCancel={onUp}
-      onDoubleClick={onReset}
+      onDoubleClick={() => {
+        if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = 0 }
+        pending.current = null
+        onReset()
+      }}
     />
   )
 }
