@@ -379,6 +379,10 @@ export function regionProcess(
     const sw = Math.max(0, sx1 - sx0)
     const sh = Math.max(0, sy1 - sy0)
 
+    // When the raster region is entirely outside the document selection,
+    // no pixel qualifies. Do not leave the previous brush falloff active.
+    if (sw === 0 || sh === 0) falloff.fill(0)
+
     // Everything outside document space is outside the active selection.
     if (dstY > 0) falloff.fill(0, 0, dstY * rw)
     if (dstY + sh < rh) falloff.fill(0, (dstY + sh) * rw, rw * rh)
