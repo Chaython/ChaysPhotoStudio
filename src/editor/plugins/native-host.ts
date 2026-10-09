@@ -3,7 +3,7 @@
 interface NativeToolInfo { electron: boolean; gmic: boolean; gegl: boolean; gmicVersion?: string; geglVersion?: string }
 interface NativeApi {
   nativeTools?: {
-    info(): Promise<NativeToolInfo>
+    info(refresh?: boolean): Promise<NativeToolInfo>
     listOperations(): Promise<string[]>
     inspectOperation(kind: 'gegl' | 'gmic', operation: string): Promise<string>
     runGmic(payload: { image: string; args: string[] }): Promise<{ image: string; stderr?: string }>
@@ -15,10 +15,10 @@ function api(): NativeApi['nativeTools'] | undefined {
   return (window as unknown as { chaysPhotoStudio?: NativeApi }).chaysPhotoStudio?.nativeTools
 }
 
-export async function nativeToolInfo(): Promise<NativeToolInfo> {
+export async function nativeToolInfo(refresh = false): Promise<NativeToolInfo> {
   const a = api()
   if (!a) return { electron: false, gmic: false, gegl: false }
-  try { return await a.info() } catch { return { electron: true, gmic: false, gegl: false } }
+  try { return await a.info(refresh) } catch { return { electron: true, gmic: false, gegl: false } }
 }
 
 export async function runNativeGmic(image: string, args: string[]): Promise<string> {
