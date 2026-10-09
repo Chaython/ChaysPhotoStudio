@@ -5,8 +5,8 @@ Chay's Photo Studio is a web-first editor (Next.js, App Router), so it ships thr
 
 | Channel | What it is | Best for |
 |---|---|---|
-| 🖥️ **Electron** | Full desktop app; embeds the Next.js standalone server + Chromium (works 100% offline, AI features included) | Power users, air-gapped machines, file associations ("Open with") |
-| 🪶 **Webview shell (Tauri)** | Lightweight native build using the OS webview; the static editor is **embedded by default** (no bundled Chromium) | Smaller desktop build, offline-capable |
+| 🖥️ **Electron** | Bundles Chromium and a local Next.js standalone server; editor loads without external hosting | Desktop editing, file associations and Windows portable; network AI/providers still require their services |
+| 🪶 **Webview shell (Tauri)** | Native OS webview (WebView2/WKWebView/WebKitGTK), embedded static editor by default | Smaller package; OS webview runtime and codecs must be present |
 | 🌐 **Self-hosted web** | `web-standalone.tar.gz` — the Next.js standalone server | Your own domain, intranets |
 | 📱 **PWA (installable web app)** | Install button on the welcome screen + manifest + service worker | Chrome/Edge "Install app", Android, iOS A2HS — no store needed |
 | 🧩 **Browser plugin** | Chrome MV3 extension (+ Firefox variant): right-click any image on the web → open it in Chay's Photo Studio | Browser-native workflow |
@@ -52,8 +52,8 @@ Distribute**, which:
 To publish a **stable release** (marked as *Latest*, no prerelease flag):
 
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.3.0
+git push origin v1.3.0
 ```
 
 A manual run (Actions → *Release — Build & Distribute* → *Run workflow*) publishes a
@@ -70,6 +70,8 @@ continuous-style release just like a push.
 ```bash
 bun run icons                 # icons for every channel
 bun run build                 # Next.js standalone build (self-contained)
+bun run dist:validate         # verify release metadata before packaging
+bun run help:validate         # validate generated in-app Help and user guide
 
 # Electron (requires the devDependency electron + electron-builder)
 bun run app:dev               # dev shell against http://localhost:3000
@@ -106,8 +108,26 @@ The Windows Electron job publishes **two choices** from the same application pay
   Run it from Downloads, an external drive, or any writable folder. It does not
   install/uninstall or register Windows file associations.
 
-The portable target is built directly by electron-builder; it extracts its runtime
-temporarily when launched and requires no administrator access.
+The portable target is built directly by electron-builder; it extracts its runtime temporarily when launched and generally needs no administrator access. A no-install executable is not the same as a fully isolated user-data profile: back up editable projects separately.
+
+### Default Tauri and proposed offline installer
+
+The default Tauri release bundles local static editor assets (`build/webapp-export`) and uses the **system WebView**; that is different from bundling a WebView2 runtime installer. A normal Windows NSIS installer may need internet to provision WebView2 when it is missing. The independent Windows NSIS **offline WebView2 installer** is in [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85), not yet merged into `main`. Its planned release asset prefix is `webview-windows-offline-x64--`; only use that filename after the PR has merged and produced a release.
+
+A separate [WebView hardening and recovery PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86) proposes an embedded-release CSP, native window state restoration, recovery-backup exports, an optional manual release checker and optional Authenticode signing. None are assumed to be in the latest stable build until merged. The required Windows code-signing secrets and updater keys are **not** supplied by the repository.
+
+### Offline versus online features
+
+| Feature | Network requirement |
+|---|---|
+| Bundled Electron / embedded Tauri editor UI and local image editing | No external server needed |
+| Existing WebView2 on Windows | Can run offline; a clean machine may need provisioning at install time |
+| Browser PWA first installation | Requires access to the website; later cache availability depends on the browser |
+| Local project files and IndexedDB recovery | Stored locally, but profile deletion can erase recovery data |
+| Remote images, Pollinations/custom AI generation, GitHub release updates | Requires network; content may be sent to external services |
+| Optional local ComfyUI / G'MIC / GEGL | Requires separate executable/service installation; ComfyUI static-WebView integration may be limited |
+
+For detailed format and privacy limitations, see [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md).
 
 ## 4. Installing the browser plugin (end users)
 
@@ -124,10 +144,7 @@ temporarily when launched and requires no administrator access.
 (Developer Dashboard → New item). **Firefox (addons.mozilla.org):** upload
 `chays-photo-studio-extension-firefox-*.zip` — same code, event-page background.
 
-The plugin is **self-contained and offline-capable**: the entire editor ships
-inside the extension, it needs no host permissions, and the context menu works
-everywhere. When AI generation is used, the free engine is called directly from
-the browser.
+The plugin is **self-contained and offline-capable** for local editing: the entire editor ships inside the extension. Opening a remote image still needs an accessible URL and browser permissions/CORS; remote AI generation contacts the selected external service and is **not available offline**.
 
 ## 5. PWA — "install as an app" from the browser
 
