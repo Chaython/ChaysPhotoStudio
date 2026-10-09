@@ -64,14 +64,14 @@ export async function decodeCameraRaw(buffer:ArrayBuffer,options?:RawDevelopSett
 export async function decodeModernWasm(buffer:ArrayBuffer,format:'jxl'|'heic'|'jxr'):Promise<RawImage>{
   let decoded:ImageData
   if(format==='jxl'){
-    const module=await import('@jsquash/jxl')
-    decoded=await module.decode(buffer)
+    const codecModule=await import('@jsquash/jxl')
+    decoded=await codecModule.decode(buffer)
   }else if(format==='heic'){
-    const module=await import('@discourse/heic')
-    decoded=await module.decode(buffer)
+    const codecModule=await import('@discourse/heic')
+    decoded=await codecModule.decode(buffer)
   }else{
-    const module=await import('@discourse/jxr')
-    decoded=await module.decode(buffer)
+    const codecModule=await import('@discourse/jxr')
+    decoded=await codecModule.decode(buffer)
   }
   return fromImageData(decoded)
 }
