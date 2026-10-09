@@ -21,6 +21,7 @@ import type { ExportFormatId } from './encoders'
 import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtension, publishedFormatKind, PHOTOPEA_IMPORT_ACCEPT } from './photopea-formats'
 import { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 import { decodeDds, decodeIcns, decodeIff } from './legacy-raster'
+import { decodeSgi, decodeSunRaster } from './heritage-raster'
 import type { ParsedDocumentLayer } from './document-parser-types'
 import type { ImageMetadata, LayerFX } from '../types'
 import { buildWritableXmp, embedRasterMetadata } from './metadata-write'
@@ -218,6 +219,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
       hasAlpha: scanAlpha(getImageData(canvas).data),
       format: fileExtension(sourceName),
       sourceBitDepth: 8,
+      warnings: ['Camera RAW preview only: the embedded image was extracted; original sensor pixels, exposure latitude, and RAW development controls are not available.'],
     }
   }
   let format = detectFormat(bytes)
@@ -264,6 +266,8 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
     case 'bmp': return fromRaw(decodeBmp(bytes), 'bmp')
     case 'ico': return fromRaw(await decodeIco(bytes), 'ico')
     case 'dds': return fromRaw(decodeDds(bytes), 'dds')
+    case 'sgi': return fromRaw(decodeSgi(bytes), 'sgi')
+    case 'sunras': return fromRaw(decodeSunRaster(bytes), 'sunras')
     case 'iff': return fromRaw(decodeIff(bytes), 'iff')
     case 'anim': return fromRaw(decodeIff(bytes), 'anim')
     case 'icns': {
