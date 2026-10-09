@@ -166,7 +166,8 @@ export function decodeSunRaster(bytes: Uint8Array): RawImage {
         } else {
           blue = raster[base]; green = raster[base + 1]; red = raster[base + 2]
         }
-        if (depth === 32) alpha = raster[pos] || 255 // zero denotes unused padding in old XRGB files
+        // The first byte is commonly unused XRGB padding; treating it as alpha
+        // would unexpectedly make otherwise opaque legacy images transparent.
       }
       rgba[dest] = red; rgba[dest + 1] = green; rgba[dest + 2] = blue; rgba[dest + 3] = alpha
     }
