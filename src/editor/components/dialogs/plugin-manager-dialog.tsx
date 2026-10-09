@@ -48,7 +48,7 @@ function CompatibilityNote() {
       <CircleAlert size={13} className="mt-0.5 text-primary flex-shrink-0" />
       <p className="text-[10px] leading-snug text-muted-foreground">
         <span className="text-foreground font-medium">What can import:</span> GIMP brushes
-        (<span className="font-mono">.gbr</span>) and gradients (<span className="font-mono">.ggr</span>) parse
+        (<span className="font-mono">.gbr</span>), patterns (<span className="font-mono">.pat</span>), palettes (<span className="font-mono">.gpl</span>) and gradients (<span className="font-mono">.ggr</span>) parse
         natively, and Chay's Photo JS plugins run in a sandboxed worker.
         <span className="text-foreground font-medium"> Desktop bridges:</span> Electron can run installed G’MIC and GEGL filters through a sandboxed IPC bridge.{' '}
         <span className="text-foreground font-medium"> Legacy limits:</span> Photoshop <span className="font-mono">.8bf</span> and full GIMP PDB/Script-Fu require native compatibility runtimes and are reported rather than falsely claimed as drop-in compatible. Plugins are arbitrary JavaScript with pixel access:{' '}
