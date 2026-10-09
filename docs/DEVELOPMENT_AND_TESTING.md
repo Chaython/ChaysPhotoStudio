@@ -18,7 +18,12 @@ bun run build
 node scripts/export-webapp.mjs plugin
 node scripts/webview-config.mjs
 bun run ext:build
+bun run formats:validate
+bun run dock-routing:validate
+bun run dock-sizing:validate
 ```
+
+Production Next.js builds use `next build --webpack` (including static export) while browser-side WASM codecs require the Emscripten/Node import fallback. Preserve lazy decoder imports and test standalone, extension and static targets when changing bundler settings.
 
 Static export files reside in `build/webapp-export`. The browser plugin reuses that export. The release WebView config points `frontendDist` to the same folder by default.
 
@@ -29,7 +34,7 @@ Static export files reside in `build/webapp-export`. The browser plugin reuses t
 | New/edit tool | `src/editor/constants/tools.ts`, `src/editor/types.ts`, `src/editor/tools/registry.ts`, specific file under `src/editor/tools/` | Tool definitions, options/defaults, shortcuts, pixel guards, idle rendering, `bun run tools:validate` |
 | New/edit keyboard shortcut | `src/editor/shortcuts.ts`, `src/editor/keyboard-shortcuts.ts`, Tool Definitions, `src/editor/store.ts` | Conflicts with fixed commands, tool cycling and persistence |
 | Menus / dialogs | `src/editor/constants/menus.ts`, `src/editor/components/dialogs/` | Enablement, keyboard access, lazy loading and touch layout |
-| Dock/panel | `src/editor/components/panels/`, `src/editor/store.ts`, `src/editor/components/shell/` | Layout persistence, pointer/drag targets, minimum window dimensions |
+| Dock/panel | `src/editor/components/panels/`, `src/editor/store.ts`, `src/editor/components/shell/` | Exclusive eight-way routing, content-fit sizes, persisted per-position manual overrides and migration from legacy layouts; run `dock-routing:validate` and `dock-sizing:validate`, and manually exercise resizing |
 | Raster/HDR engine | `src/editor/engine/`, `src/editor/image-ops/`, `src/editor/utils/canvas.ts` | 8-bit and 16/32-bit paths, safe no-ops, locked layers, history and worker cleanup |
 | Image import/export | `src/editor/formats/`, `src/editor/engine/io.ts` | Magic-byte detection, fallbacks, precision, metadata, layered round-trip |
 | Plugins / AI | `src/editor/plugins/`, `src/editor/ai/`, `src/editor/image-ops/generate.ts` | Permission boundaries, local vs network paths, missing-server handling |
@@ -48,7 +53,7 @@ Static export files reside in `build/webapp-export`. The browser plugin reuses t
 
 For an added tool, register its `ToolId`, Tool Definition, `TOOLS` registry entry, group/shortcut behavior, relevant tool UI options and user help **in the same PR**. The `bun run tools:validate` check verifies these are mutually consistent.
 
-For new formats, document *recognition*, *actual decode*, *retained structure*, *working precision* and *export* separately. A broad file-picker accept list does not prove universal compatibility. Include fixtures where redistribution permits, ideally with camera/model/compression details for RAW files.
+For new formats, document *recognition*, *actual decode*, *retained structure*, *working precision* and *export* separately. RAW compatibility requires real sensor tests separate from embedded JPEG preview fallback; use `bun run raw-corpus:validate -- fixtures/raw/corpus.json` with permission-cleared camera samples. See [RAW codec corpus](RAW_CODEC_CORPUS.md). A broad file-picker accept list does not prove universal compatibility. Include fixtures where redistribution permits, ideally with camera/model/compression details for RAW files.
 
 ## CI and regression tests
 
