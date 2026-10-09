@@ -39,6 +39,9 @@ jobs:
       - name: Validate distribution metadata
         run: bun run dist:validate
 
+      - name: Parse lazy Electron GIMP host
+        run: node --check electron/gimp-runtime.cjs
+
       - name: Validate GIMP compatibility analyzer
         run: bun run gimp:validate
 
