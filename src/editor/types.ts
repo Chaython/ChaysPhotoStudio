@@ -345,6 +345,14 @@ export interface Layer {
   _hdrPreviewBefore?: Float32Array | null
   offsetX?: number
   offsetY?: number
+  /** RAW sensor bytes remain untouched; redevelop modifies only the smart layer preview.
+   * Project serialization stores this object with its original lossless byte payload. */
+  rawSmart?: {
+    fileName: string
+    mimeType: string
+    dataBase64: string
+    settings: import('./formats/raw-develop').RawDevelopSettings
+  } | null
   /** native resolution source for smart layers */
   source: HTMLCanvasElement | null
   transform: TransformSpec | null
