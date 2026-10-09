@@ -26,7 +26,7 @@ try {
     width: 1, height: 1, pixelFormat: 'rgba-float16',
     data: new Float32Array([1.5, 0.25, 0.5, 0.75]),
   }
-  ctx.getImageData = () => floatReadback as typeof testImage
+  ctx.getImageData = () => floatReadback as unknown as typeof testImage
   const pixels = getProcessingPixelData(fake)
   assert.ok(pixels.data instanceof Float32Array)
   assert.equal(pixels.data[0], 1.5 * 255)
