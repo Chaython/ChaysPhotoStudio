@@ -1294,7 +1294,9 @@ export class Engine {
     }
     const label = (name || 'Object').trim().slice(0, 32) || 'Object'
     const layerName = label.charAt(0).toUpperCase() + label.slice(1)
-    const layer = newLayer('raster', layerName, doc.width, doc.height)
+    // A detected object is stored at native pixel size, not document size.
+    // Avoid allocating and immediately discarding a full-document canvas.
+    const layer = newLayer('raster', layerName, w, h)
     layer.canvas = region
     if (hdrRegion) {
       layer.hdrPixels = hdrRegion

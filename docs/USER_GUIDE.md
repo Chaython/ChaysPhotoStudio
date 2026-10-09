@@ -101,6 +101,7 @@ Select part of an image before painting, masking or editing it.
 **Notes and tips:**
 
 - Select → Modify → Expand grows an outline by a fixed pixel distance, unlike color matching.
+- Object Selection → Layer via Copy creates a native-size raster layer from the detected document region, retaining its position.
 
 ## Grow and Similar colors
 
@@ -313,6 +314,7 @@ Work at appropriate precision and simulate output colors.
 - Soft proofing changes the preview, not source image pixels.
 - ICC LUT/CLUT support remains incomplete.
 - Auto Tone, Auto Contrast, Auto Color and Match Color are not yet supported on 32-bit HDR documents.
+- In 32-bit HDR, Object Selection → Layer via Copy preserves scene-linear Float32 highlights for simple raster stacks. Complex effects cannot yet be extracted without risking precision loss.
 
 ## HDR Fill and feathered selections
 

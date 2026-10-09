@@ -58,7 +58,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Use Select → Deselect when done; Reselect can restore the last deselected selection."
     ],
     "tips": [
-      "Select → Modify → Expand grows an outline by a fixed pixel distance, unlike color matching."
+      "Select → Modify → Expand grows an outline by a fixed pixel distance, unlike color matching.",
+      "Object Selection → Layer via Copy creates a native-size raster layer from the detected document region, retaining its position."
     ]
   },
   {
@@ -283,7 +284,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Not every filter supports authoritative Float32 HDR.",
       "Soft proofing changes the preview, not source image pixels.",
       "ICC LUT/CLUT support remains incomplete.",
-      "Auto Tone, Auto Contrast, Auto Color and Match Color are not yet supported on 32-bit HDR documents."
+      "Auto Tone, Auto Contrast, Auto Color and Match Color are not yet supported on 32-bit HDR documents.",
+      "In 32-bit HDR, Object Selection → Layer via Copy preserves scene-linear Float32 highlights for simple raster stacks. Complex effects cannot yet be extracted without risking precision loss."
     ]
   },
   {

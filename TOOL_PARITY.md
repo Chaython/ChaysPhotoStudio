@@ -107,6 +107,10 @@ The local inpainting kernel currently consumes and writes 8-bit Canvas2D image d
 
 Reopening an Adjustment Layer and submitting its existing settings no longer increments the layer version, marks the project dirty or writes a redundant History entry. Committed nested curve/LUT parameter objects are deep-cloned to avoid edits leaking in from scripting callers. Unknown filter names from action import or scripting are rejected before Smart Filter insertion or History updates.
 
+## Native-size Object Layer allocation
+
+Object Layer extraction now creates the destination layer at the cropped object's width and height, instead of allocating a full-document backing canvas only to discard it. This lowers temporary canvas memory pressure for small detected objects on large photos. A regression test verifies that an HDR object copy does not create a full-document canvas.
+
 ## Object Selection Layer via Copy at 32-bit HDR
 
 **Object Selection → Layer via Copy** now crops genuine scene-linear Float32 composite pixels into a native-size raster layer when the document contains a simple supported HDR raster stack. Highlights above SDR white, alpha and document-space offsets survive intact; History gains one undoable layer insertion. Unsupported complex blend/effect stacks fail without editing the document instead of being flattened through the 8-bit display composite. SDR object extraction retains the document's working canvas profile.

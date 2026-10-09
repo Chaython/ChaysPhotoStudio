@@ -19,10 +19,11 @@ class FakeCanvas {
     }
   }
 }
+const created: FakeCanvas[] = []
 const prevDoc = Object.getOwnPropertyDescriptor(globalThis, 'document')
 const prevImage = Object.getOwnPropertyDescriptor(globalThis, 'ImageData')
 Object.defineProperty(globalThis, 'document', { configurable: true, value: {
-  createElement: () => new FakeCanvas(),
+  createElement: () => { const canvas = new FakeCanvas(); created.push(canvas); return canvas },
 }})
 Object.defineProperty(globalThis, 'ImageData', { configurable: true, value: FakeImageData })
 try {
@@ -53,6 +54,8 @@ try {
   assert.equal(result.offsetX, 1)
   assert.equal(result.offsetY, 1)
   assert.equal(result.hdrColorSpace, 'linear-srgb')
+  assert.equal(created.some(c => c.width === doc.width && c.height === doc.height), false,
+    'cropping a small object must not allocate a throwaway full-document canvas')
   assert.deepEqual(Array.from(result.hdrPixels!), [
     ...scene.slice((1 * 4 + 1) * 4, (1 * 4 + 3) * 4),
     ...scene.slice((2 * 4 + 1) * 4, (2 * 4 + 3) * 4),
