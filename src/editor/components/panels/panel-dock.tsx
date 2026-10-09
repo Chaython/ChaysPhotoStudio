@@ -4,8 +4,9 @@
 // chrome: tabs, actions, dragging, sizing and persistence are shared.
 import { useEffect, useRef, useState } from 'react'
 import { PanelLeft, PanelLeftClose, Plus, RotateCcw } from 'lucide-react'
-import { useEditorStore, DOCK_WIDTH_DEFAULT } from '../../store'
+import { useEditorStore } from '../../store'
 import { PANEL_MAP, PANELS } from './panel-registry'
+import { autoSideDockWidth } from './auto-dock-sizing'
 import { PanelContextMenu } from './panel-actions-menu'
 import { beginWindowDrag, DOCK_DROP_EVENT } from './floating-panels'
 import { cn } from '@/lib/utils'
@@ -231,7 +232,7 @@ function WidthDivider({ side, width, onWidth, onReset }: {
     if (e.button !== 0) return
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
-    drag.current = { startX: e.clientX, startWidth: width }
+    drag.current = { startX: e.clientX, startWidth: e.currentTarget.parentElement?.getBoundingClientRect().width || width }
     setActive(true)
   }
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -257,7 +258,7 @@ function WidthDivider({ side, width, onWidth, onReset }: {
       role="separator"
       aria-orientation="vertical"
       aria-label={`Resize ${side} panel dock`}
-      title="Drag to resize dock · double-click to reset"
+      title="Drag to resize dock · double-click to fit panel automatically"
       className={cn(
         side === 'left'
           ? 'absolute right-0 top-0 bottom-0 -mr-[3px] w-[6px]'
@@ -301,8 +302,11 @@ function PhotoshopRightDock() {
   const selectLower = (id: string) => { setLowerSelection(id); useEditorStore.getState().setRightPanelTab(id) }
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
-  const width = useEditorStore(s => s.panels.dockWidth)
+  const savedWidth = useEditorStore(s => s.panels.dockWidth)
+  const widthManual = useEditorStore(s => s.panels.dockWidthManual)
+  const width = widthManual ? savedWidth : autoSideDockWidth(PANEL_MAP[lower], true)
   const setWidth = useEditorStore(s => s.setDockWidth)
+  const resetWidth = useEditorStore(s => s.resetDockWidthAuto)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
   const upperTabs = PHOTOSHOP_UPPER_TABS
   // If a different registered panel is revealed, show it without hiding the
@@ -340,7 +344,7 @@ function PhotoshopRightDock() {
   return <aside data-panel-dock="right" data-photoshop-dock="true"
     className="relative hidden md:flex shrink-0 min-h-0 flex-col border-l border-border bg-panel panel-dock-drop"
     style={{width}} aria-label="Photoshop-style inspector panels">
-    <WidthDivider side="right" width={width} onWidth={setWidth} onReset={() => setWidth(318)}/>
+    <WidthDivider side="right" width={width} onWidth={setWidth} onReset={resetWidth}/>
     <div className="h-7 shrink-0 px-2 border-b flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
       <span>Color &amp; adjustments</span><AddPanelMenu side="right" mobile={false}/>
     </div>
@@ -363,8 +367,10 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
   const setTab = useEditorStore(s => s.setRightPanelTab)
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
-  const dockWidth = useEditorStore(s => s.panels.dockWidth)
+  const savedDockWidth = useEditorStore(s => s.panels.dockWidth)
+  const dockWidthManual = useEditorStore(s => s.panels.dockWidthManual)
   const setDockWidth = useEditorStore(s => s.setDockWidth)
+  const resetDockWidthAuto = useEditorStore(s => s.resetDockWidthAuto)
   const resetLayout = useEditorStore(s => s.resetPanelLayout)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
   const dropActive = useDockDrop('right', mobile)
@@ -372,6 +378,7 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
   const dockVisible = useDelayedDockPresence(mobile || rightCount > 0)
 
   const activePanel = PANEL_MAP[rightTab]
+  const dockWidth = dockWidthManual ? savedDockWidth : autoSideDockWidth(activePanel)
   const activeHere = !!activePanel && !floating[rightTab] && (mobile || resolvedDockSide(rightTab, dockSide) === 'right')
   const ActiveContent = activeHere ? activePanel.render : null
 
@@ -404,7 +411,7 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
           side="right"
           width={dockWidth}
           onWidth={setDockWidth}
-          onReset={() => setDockWidth(DOCK_WIDTH_DEFAULT)}
+          onReset={resetDockWidthAuto}
         />
       )}
 
@@ -491,8 +498,10 @@ function LeftRail() {
 
 function LeftDockOpen() {
   const leftTab = useEditorStore(s => s.panels.leftTab)
-  const leftWidth = useEditorStore(s => s.panels.leftWidth)
+  const savedLeftWidth = useEditorStore(s => s.panels.leftWidth)
+  const leftWidthManual = useEditorStore(s => s.panels.leftWidthManual)
   const setLeftDockWidth = useEditorStore(s => s.setLeftDockWidth)
+  const resetLeftDockWidthAuto = useEditorStore(s => s.resetLeftDockWidthAuto)
   const setLeftDockOpen = useEditorStore(s => s.setLeftDockOpen)
   const setTab = useEditorStore(s => s.setLeftPanelTab)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
@@ -501,6 +510,7 @@ function LeftDockOpen() {
   const dropActive = useDockDrop('left', false)
 
   const activePanel = PANEL_MAP[leftTab]
+  const leftWidth = leftWidthManual ? savedLeftWidth : autoSideDockWidth(activePanel)
   const ActiveContent = activePanel && !floating[leftTab] && resolvedDockSide(leftTab, dockSide) === 'left'
     ? activePanel.render
     : null
@@ -525,7 +535,7 @@ function LeftDockOpen() {
         side="left"
         width={leftWidth}
         onWidth={setLeftDockWidth}
-        onReset={() => setLeftDockWidth(DOCK_WIDTH_DEFAULT)}
+        onReset={resetLeftDockWidthAuto}
       />
 
       <DockTabs
