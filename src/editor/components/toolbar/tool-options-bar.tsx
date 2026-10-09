@@ -287,7 +287,7 @@ function GradientToolStopsControl({ value, onChange }: { value: unknown; onChang
   )
 }
 
-export /**
+/**
  * Keep partially typed values local until commit. Empty/invalid input reverts
  * to the last valid option instead of sending 0/NaN into the tool state.
  */
@@ -335,7 +335,7 @@ function ToolNumberInput({ control, value, onChange, className }: {
   />
 }
 
-function ControlRenderer({ control, value, onChange, compact = true }: {
+export function ControlRenderer({ control, value, onChange, compact = true }: {
   control: ControlDef
   value: any
   onChange: (v: any) => void
