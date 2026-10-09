@@ -400,21 +400,21 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     "id": "file-formats-raw",
     "title": "RAW, HDR, scientific and multi-page image files",
     "category": "Color & files",
-    "path": "File → Open / RAW Import / Develop",
-    "summary": "Import camera RAW, HDR, modern codecs and scientific formats with clear decode limitations.",
+    "path": "File → Open / Place / Layer → Redevelop RAW Smart Object…",
+    "summary": "Open camera RAW, HDR, modern codecs and scientific files while retaining editable RAW originals when feasible.",
     "steps": [
-      "Use File → Open to select images. Camera RAW imports open a development dialog with exposure, white balance, demosaicing, highlights, denoising and half-resolution options.",
-      "When LibRaw supports the camera, it decodes original sensor data and produces a 16-bit-per-channel image. If decoding fails, a camera-generated embedded preview may be imported with an explicit warning.",
-      "OpenEXR supports standard scanline images with uncompressed or ZIP scanline blocks; floating-point RGB values are retained when supported by the document engine.",
-      "HEIC/HEIF, JPEG XL, JPEG XR, JPEG-LS and JPEG 2000 use browser or lazy-loaded optional decoders. Some rare features, color models and compression modes may fail.",
-      "FITS astronomy images and uncompressed DICOM medical images import as display renderings. Original scientific/medical numeric data is not preserved.",
-      "When a TIFF, DCX, FITS or DICOM file contains multiple images, choose one frame or import all frames as individually selectable layers."
+      "Use File → Open or File → Place to select RAW images. The Develop dialog includes exposure, white balance, demosaicing, highlight, denoising and custom lens correction fields.",
+      "When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.",
+      "Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Automatic camera/lens matching against a Lensfun database is not yet provided.",
+      "OpenEXR supports scanline and single-level tiled images with NONE/RLE/ZIPS/ZIP compression; deep, multipart and multiresolution EXR remain unsupported.",
+      "FITS and a limited subset of DICOM medical images import as display renderings. DICOM supports uncompressed, RLE Lossless, JPEG baseline, JPEG-LS and JPEG 2000 via available decoders; clinical values and measurements are not preserved.",
+      "When TIFF, DCX, FITS or DICOM contains multiple images, choose one frame or import all frames as selectable layers."
     ],
     "tips": [
-      "RAW development controls operate during import. Save the original RAW separately; later raster edits cannot be converted back into camera RAW sensor data.",
-      "DICOM support is for graphics use only, not medical diagnosis or measurement. Do not rely on edited images for clinical decisions.",
-      "Specialized variants such as BPG, compressed DICOM, tiled/deep EXR and uncommon camera RAW compression are not universally supported.",
-      "Heavy WASM decoders load only when you open their file type; memory and availability depend on your browser or desktop runtime."
+      "Files larger than 64 MiB can be developed as ordinary raster images but their original RAW bytes are not embedded. RAW decoders may use a clearly labeled 8-bit camera preview if sensor decoding fails.",
+      "These lens corrections are manually calibrated coefficients, not verified manufacturer or Lensfun camera profiles. Save the project to retain RAW originals and recipes.",
+      "DICOM support is only for graphic editing, never diagnosis or medical measurements. Rare compressed transfer syntaxes and ambiguous multifragment frame tables are rejected.",
+      "BPG has no vetted decoder. Deep/multipart EXR, multiresolution tile levels, PIZ/PXR24/B44 EXR compression and proprietary camera compression remain unsupported; actual camera samples require separate tests."
     ]
   },
   {
