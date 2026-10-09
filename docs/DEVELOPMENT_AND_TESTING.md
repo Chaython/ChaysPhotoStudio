@@ -21,9 +21,12 @@ bun run ext:build
 bun run formats:validate
 bun run dock-routing:validate
 bun run dock-sizing:validate
+node scripts/validate-electron-asset-layout.mjs
 ```
 
 Production Next.js builds use `next build --webpack` (including static export) while browser-side WASM codecs require the Emscripten/Node import fallback. Preserve lazy decoder imports and test standalone, extension and static targets when changing bundler settings.
+
+Electron release verification checks for JS under `.next/static/chunks` and CSS anywhere under `.next/static`, covering both Webpack `.next/static/css` and Turbopack chunk CSS. It must still reject missing assets before the installer is published.
 
 Static export files reside in `build/webapp-export`. The browser plugin reuses that export. The release WebView config points `frontendDist` to the same folder by default.
 
