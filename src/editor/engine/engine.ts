@@ -1163,6 +1163,19 @@ export class Engine {
     this.emit()
   }
 
+  /**
+   * Read-only pixels that would be used by Rasterize Layer. Painting tools can
+   * inspect them before deciding to rasterize. Masks and layer styles are not
+   * baked twice because this matches rasterizeLayer's source path.
+   */
+  rasterizationPreviewCanvas(layerId: string): HTMLCanvasElement | null {
+    const doc = this.activeDoc
+    const layer = this.layerById(layerId)
+    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return null
+    if (layer.kind === 'raster') return layer.canvas
+    return prepareLayer(doc, layerContentForRasterization(layer)) ?? createCanvas(doc.width, doc.height)
+  }
+
   // ================================================== COW mutation helpers
   /** Call BEFORE mutating a layer's pixels — clones canvas so history stays intact. */
   mutateLayerPixels(layerId: string): Layer | null {

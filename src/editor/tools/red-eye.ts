@@ -7,23 +7,25 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, regionProcess, walkDabs, drawBrushCursor } from './shared'
+import type { DeferredRegionStroke } from './shared'
+import { getOptions, canUseByteRetouch, beginDeferredRegionStroke, deferredRegionProcess, walkDabs, drawBrushCursor } from './shared'
 import { clamp } from '../utils/canvas'
 
 let active = false
 let layerId: string | null = null
+let stroke: DeferredRegionStroke | null = null
 let last: { x: number; y: number } | null = null
 let changed = false
 
 function correct(x: number, y: number) {
-  if (!active || !layerId) return
+  if (!active || !layerId || !stroke) return
   const opts = getOptions('red-eye')
   const size = Math.max(8, Number(opts.size) || 60)
   const radius = size / 2
   const darken = clamp((Number(opts.darken) || 0) / 100, 0, 1)
   const threshold = clamp(Number(opts.threshold) || 0, 0, 100)
 
-  regionProcess(layerId, x, y, radius, (region, falloff, rw, rh) => {
+  const didChange = deferredRegionProcess(stroke, x, y, radius, (region, falloff, rw, rh) => {
     const d = region.data
     for (let i = 0; i < rw * rh; i++) {
       const f = falloff[i]
@@ -46,9 +48,9 @@ function correct(x: number, y: number) {
       d[j] = clamp(rr, 0, 255)
       d[j + 1] = clamp(gg, 0, 255)
       d[j + 2] = clamp(bb, 0, 255)
-      changed = true
     }
   }, 65)
+  if (didChange) changed = true
   engine.requestRender()
 }
 
@@ -57,6 +59,7 @@ function finish() {
   active = false
   last = null
   layerId = null
+  stroke = null
   if (changed) {
     changed = false
     engine.pushHistory('Red Eye Correction')
@@ -72,12 +75,13 @@ export const redEyeTool: Tool = {
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
     const layer = engine.activeLayer
-    if (!layer || layer.locked || layer.kind === 'adjustment') return
-    const l = engine.mutateLayerPixels(layer.id)
-    if (!l?.canvas) return
+    if (!layer || layer.locked || layer.kind === 'adjustment' || !canUseByteRetouch('Red Eye')) return
+    const nextStroke = beginDeferredRegionStroke(layer.id)
+    if (!nextStroke) return
     active = true
     changed = false
-    layerId = l.id
+    stroke = nextStroke
+    layerId = layer.id
     last = { x: p.docX, y: p.docY }
     correct(p.docX, p.docY)
   },
