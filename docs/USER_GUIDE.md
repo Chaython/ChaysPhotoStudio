@@ -436,10 +436,3 @@ Find a missing tool or diagnose a failed operation.
 
 - 32-bit HDR, complex PSD layer effects and ICC processing still have compatibility limits.
 - Project issues: https://github.com/Chaython/ChaysPhotoStudio/issues
-
-
-### All Tools and eight-way docking
-
-Open **Window → All Tools / Tool Search** (also in Settings) to see and filter every registered tool, its current shortcut, and activate it with one click. Pressing a shared tool letter repeatedly cycles through that letter's tools; change individual bindings in **Keyboard Shortcuts**.
-
-Desktop panels can be docked **Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left, or Bottom Right**, or floated. Right-click panel tabs/titles for the dock menu, or drag floating panel headers to edges and corners. The bottom strip is vertically resizable and its height, along with panel placement, survives reloads. Empty strips stay collapsed until used. Touch mode continues to use its panel drawer.
