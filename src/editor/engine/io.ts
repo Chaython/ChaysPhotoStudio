@@ -8,6 +8,7 @@ import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
 import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension, publishedFormatKind } from '../formats'
 import { metadataResolutionPpi, readImageMetadata } from '../formats/metadata'
+import { chooseImagePages } from '../formats/page-select'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
@@ -109,7 +110,22 @@ export async function openFiles(files: File[], asLayer = false) {
       if (!asLayer && ['tiff', 'pcx', 'fits', 'dicom'].includes(format ?? '')) {
         const decoded = await decodeFile(file)
         if (decoded.documentLayers?.length) {
-          addStructuredDocument(file.name, decoded, metadata)
+          const choice = await chooseImagePages(file.name, decoded.documentLayers.map(page => ({
+            name: page.name, canvas: page.canvas,
+          })))
+          if (choice === null) continue
+          if (choice === 'all') {
+            addStructuredDocument(file.name, decoded, metadata)
+          } else {
+            const chosen = decoded.documentLayers[choice]
+            if (!chosen?.canvas) throw new Error('Selected page has no image')
+            engine.addCanvasDocument(chosen.canvas, file.name + ' — ' + chosen.name, {
+              sourceBitDepth: decoded.sourceBitDepth ?? 8,
+              workingBitDepth: canvasProfile(chosen.canvas).bitDepth,
+              resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata),
+              metadata,
+            })
+          }
         } else {
           engine.addCanvasDocument(decoded.canvas, file.name, {
             sourceBitDepth: decoded.sourceBitDepth ?? 8,
