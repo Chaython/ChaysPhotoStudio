@@ -8,7 +8,7 @@ The current tool registry has **52 tools** across Move, Selection, Sampling, Cro
 
 | Area | Working functionality | Important limit |
 |---|---|---|
-| Workspace | Classic/custom and Photoshop-style layouts; eight dock destinations (left/right/top/bottom + four corners), floating panels and searchable All Tools dialog; multiple themes and touch mode | Some complex drag/drop and panel arrangements still need real browser verification |
+| Workspace | Classic/custom and Photoshop-style layouts; eight dock destinations (left/right/top/bottom + four corners), automatic content-fit dock sizing and independent manual overrides, floating panels and searchable All Tools dialog; multiple themes and touch mode | Some complex drag/drop and panel arrangements still need real browser verification |
 | Brushes | Brush, Pencil, Mixer, Erasers, History/Art History, procedural/imported brush tips, pen-pressure/tilt mappings, symmetry and dynamics | Some tips and third-party brush engines have limited fidelity |
 | Selection | Marquee (including single row/column), Lasso/Polygon/Magnetic, Magic Wand, Quick/Object Selection, Selection Brush, Color Range, Focus Area, Select Subject, Select & Mask | Subject/complex hair segmentation quality varies; optional AI engines are not always local |
 | Paths and text | Pen, Freeform Pen, Curvature Pen, Horizontal/Vertical Type Mask, Path/Direct Selection, editable text, shape layers and path-derived shapes | Advanced vertical typography, curve fitting and Photoshop round-trip fidelity remain limited |
@@ -49,8 +49,8 @@ The editor includes 16-bit-float and 32-bit scene-linear infrastructure, guarded
 | OpenRaster (.ora), XCF, Krita/Sketch/other project containers | Dedicated structured parsers for supported cases; otherwise embedded preview or raster fallback | Original editable effects and vector/text fidelity vary by container |
 | PDF, EPS/AI and design/document containers | Selected embedded images, objects/text and preview extraction | Not a full PDF/Illustrator/InDesign rendering or editing engine |
 | HEIC/HEIF, JPEG XL, JPEG 2000 | Runtime-native decode where available or suitable fallback/embedded preview | Browser/WebView codec availability varies; recognized extension ≠ decoder |
-| Camera RAW (DNG, NEF, CR2, CR3, ARW, RW2, RAF, ORF etc.) | Recognition plus preview/embedded JPEG or supported container fallback | **Not a complete RAW developer** on main; proprietary compressed mosaics and lens profiles are not comprehensively supported |
-| OpenEXR and specialized scientific/medical images | Limited, platform-dependent recognition/fallback in main | Tiled/deep/multipart EXR and compressed DICOM are not generally supported in main |
+| Camera RAW (DNG, NEF, CR2, CR3, ARW, RW2, RAF, ORF etc.) | Lazy LibRaw/WASM sensor decode, adjustable development settings, optional original-source RAW Smart Objects (up to 64 MiB), imported Lensfun XML calibration for unambiguous matches; embedded-preview fallback | Six selected camera samples passed sensor-decode checks; untested compression variants, exact color/orientation and RAW round-trip are not guaranteed. Oversized originals cannot be embedded |
+| OpenEXR and specialized scientific/medical images | Supported regular scanline/tiled and multipart EXR with NONE/RLE/ZIP/ZIPS compression; FITS; DICOM uncompressed and selected encapsulated RLE/JPEG/JPEG-LS/JPEG 2000 transfer syntaxes; multipage TIFF/DCX | Deep/multiresolution EXR, other compressors, additional DICOM variants, high-depth output and diagnostic accuracy are not guaranteed |
 | MP4, WebM, MKV | Local video preview and timestamp-based frame extraction | Only imports a still frame, not an editable video timeline |
 | Native `.zproj.json` | Editable project round-trip | Prefer this for work-in-progress; backups depend on the chosen storage location |
 
@@ -106,7 +106,7 @@ On current `main`, recovery snapshots live in IndexedDB. **Recent & Recovery** n
 ## Known compatibility limits
 
 - **Runtime differences:** WebGL2, WebGPU, Float16 rendering, canvas decoder support and the File System Access API vary by Chromium, Firefox, operating system and embedded WebView.
-- **RAW:** preview import is not mosaic-sensor development. Lens profiles, proprietary compression and nondestructive Smart Object redevelop remain incomplete on main.
+- **RAW:** LibRaw sensor development and redevelopable Smart Objects are available for supported files, but broad proprietary compression, Lensfun matching, color fidelity and 16/32-bit editing remain unverified. Unsupported sensor files may fall back to embedded JPEG previews.
 - **PSD/PSB:** proprietary effects, blend modes, Smart Objects, channels and high-depth combinations can behave differently than in Adobe Photoshop.
 - **PDF/design documents:** best-effort parsers do not guarantee exact fonts, vector geometry or multi-page layouts.
 - **AI:** local heuristics and optional ComfyUI/remote providers have different accuracy, costs, network requirements and file-transfer implications.
