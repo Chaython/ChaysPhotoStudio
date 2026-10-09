@@ -27,7 +27,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     "tips": [
       "The native project keeps editing structure; PNG and JPEG exports do not.",
       "Check File → Recent & Recovery after an interruption.",
-      "Opening MP4, WebM or MKV prompts for a frame timestamp. Scrub the preview and choose Import frame to make an editable still image."
+      "Opening MP4, WebM or MKV prompts for a frame timestamp. Scrub the preview and choose Import frame to make an editable still image.",
+      "File → Place (Smart Object)… keeps supported imports separately editable.",
+      "Video import picks one still frame, not an editable video timeline."
     ]
   },
   {
@@ -39,12 +41,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     "steps": [
       "Choose Window → Layers, History, Channels, Metadata or other panels to reveal them.",
       "Rearrange panels to match your workflow.",
+      "On desktop, dock panels left/right/top, group tabs or float windows; reveal hidden panels from Window.",
       "Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.",
       "Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.",
       "Choose Settings → Reset panel layout if a panel is difficult to locate."
     ],
     "tips": [
-      "The top-toolbar Help button opens this manual without leaving the editor."
+      "The top-toolbar Help button opens this manual without leaving the editor.",
+      "Eight-way bottom/corner docks and an All Tools search dialog are pending PR #81."
     ]
   },
   {
@@ -160,7 +164,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Use Window → Layers to adjust ordering, visibility, opacity and blending.",
       "Create, duplicate or rearrange layers as needed.",
       "Use Layer → Layer Mask → Reveal Selection or Hide Selection to control visibility non-destructively.",
-      "Use clipping masks when the visible area should follow the layer underneath."
+      "Use clipping masks when the visible area should follow the layer underneath.",
+      "Use Copy/Paste Layer Style or Duplicate Into… for cross-document work.",
+      "Use Layer Comps to save alternate visibility, position and appearance states."
     ],
     "tips": [
       "Applying a mask bakes its visibility into raster pixels; disable a mask instead to inspect content."
@@ -180,7 +186,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     ],
     "tips": [
       "Offset can be used as an editable Smart Filter.",
-      "Plugin effects do not necessarily support Smart Filters."
+      "Plugin effects do not necessarily support Smart Filters.",
+      "Smart Object and Smart Filter behavior differs from Adobe native PSD; test interoperability."
     ]
   },
   {
@@ -289,7 +296,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "ICC LUT/CLUT support remains incomplete.",
       "Auto Tone, Auto Contrast, Auto Color and Match Color are not yet supported on 32-bit HDR documents.",
       "In 32-bit HDR, Object Selection → Layer via Copy preserves scene-linear Float32 highlights for simple raster stacks. Complex effects cannot yet be extracted without risking precision loss.",
-      "16-bit float editing requires native float16 Canvas2D readback and writeback. If a browser lacks either, the affected operation is stopped rather than converted silently to 8-bit."
+      "16-bit float editing requires native float16 Canvas2D readback and writeback. If a browser lacks either, the affected operation is stopped rather than converted silently to 8-bit.",
+      "High precision varies by operation and runtime; unsupported destructive high-depth edits should refuse rather than silently quantize."
     ]
   },
   {
@@ -359,10 +367,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Use Undo/Redo for recent edits and open Window → History to revisit them.",
       "Create named history snapshots when you need durable comparison states.",
       "Save projects regularly.",
-      "Use File → Recent & Recovery after a browser crash or unexpected restart."
+      "Use File → Recent & Recovery after a browser crash or unexpected restart.",
+      "Create named History snapshots with notes for milestones or comparisons."
     ],
     "tips": [
-      "Autosave and recovery depend on local storage retention; clearing browser data may delete them."
+      "Autosave and recovery depend on local storage retention; clearing browser data may delete them.",
+      "Current main stores recovery in IndexedDB; save .zproj.json files outside the profile. Portable recovery exports are pending PR #86."
     ]
   },
   {
@@ -375,10 +385,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Open Help → Keyboard Shortcuts to view and change current bindings.",
       "Use standard shortcuts such as Ctrl/Cmd+Z for Undo and Ctrl/Cmd+D for Deselect.",
       "Choose Touch / mobile mode when using a small or touch-first device.",
-      "Reset shortcut overrides if a custom binding conflicts."
+      "Reset shortcut overrides if a custom binding conflicts.",
+      "Repeatedly press shared tool letters (M, L, B, J, etc.) to cycle related tools."
     ],
     "tips": [
-      "The Shortcuts dialog shows the current binding if it has been customized."
+      "The Shortcuts dialog shows the current binding if it has been customized.",
+      "Main currently registers 48 tools; additional Pen and Type Mask tools are pending PR #82."
     ]
   },
   {
@@ -391,11 +403,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Open Plugins or Settings → Plugin Manager to inspect extensions.",
       "Use Window → Batch / Image Processor… for repetitive jobs.",
       "Use Window → Scripting Console… to automate supported commands.",
-      "Use Generate / AI Tools to access locally configured or external AI services."
+      "Use Generate / AI Tools to access locally configured or external AI services.",
+      "Electron can use separately installed G'MIC/GEGL through Plugin Manager → Desktop Filters."
     ],
     "tips": [
       "Photoshop UXP and GIMP compatibility is partial.",
-      "Optional remote AI workflows can transmit content to outside providers."
+      "Optional remote AI workflows can transmit content to outside providers.",
+      "GIMP Python/Script-Fu/C plugins and arbitrary Photoshop UXP native plugins are not drop-in supported.",
+      "Online generation may send prompts or image data to remote providers."
     ]
   },
   {
@@ -413,10 +428,179 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     ],
     "tips": [
       "32-bit HDR, complex PSD layer effects and ICC processing still have compatibility limits.",
-      "Project issues: https://github.com/Chaython/ChaysPhotoStudio/issues"
+      "Project issues: https://github.com/Chaython/ChaysPhotoStudio/issues",
+      "Recognized RAW, HEIC/JXL/JP2 or design-document extensions do not guarantee a bundled decoder.",
+      "See docs/FEATURES_AND_FORMATS.md for platform-specific limits and pending PRs."
+    ]
+  },
+  {
+    "id": "tool-overview",
+    "title": "Tool groups and choosing the right tool",
+    "category": "Tools",
+    "path": "Left toolbar / Tool Options / Edit → Customize Toolbar…",
+    "summary": "Find related Photoshop-style tools and inspect their options.",
+    "steps": [
+      "Use Move (V), Marquee (M) and Lasso (L) for movement and geometric/freehand selection.",
+      "Use Quick/Object Selection, Magic Wand (W), Selection Brush and Select & Mask for detailed subjects.",
+      "Paint with Brush/Mixer/Pencil (B); retouch with Healing/Patch (J), Clone Stamp (S), Eraser (E) and tonal tools.",
+      "Use Pen (P), Path/Direct Selection (A), Type (T), Shape (U), Hand (H) and Zoom (Z) for paths and navigation.",
+      "Organize toolbar groups through Edit → Customize Toolbar… and key assignments through Keyboard Shortcuts."
+    ],
+    "tips": [
+      "Main has 48 registered tools; shared hotkeys cycle tools.",
+      "The searchable All Tools page is pending PR #81."
+    ]
+  },
+  {
+    "id": "paths-type",
+    "title": "Paths, text and shapes",
+    "category": "Tools",
+    "path": "Pen / Paths panel / Type / Shape",
+    "summary": "Create editable contours and typography rather than painting everything into raster pixels.",
+    "steps": [
+      "Click or drag with Pen (P) to place corner/smooth Bézier anchors; edit handles for curved segments.",
+      "Use Path/Direct Selection (A) to edit saved paths in Window → Paths.",
+      "Turn supported paths into selections, strokes, fills or editable shape layers.",
+      "Use Type (T) for point/paragraph text and Shape (U) for rectangles, rounded rectangles, ellipses, stars or polygons."
+    ],
+    "tips": [
+      "Freeform/Curvature Pen and Type Mask variants are pending PR #82.",
+      "Advanced OpenType settings and Photoshop PSD text round-trips are not exact."
+    ]
+  },
+  {
+    "id": "layer-comps",
+    "title": "Layer Comps and alternate designs",
+    "category": "Layers",
+    "path": "Window → Layer Comps / Window → Layers",
+    "summary": "Save several layout variations without duplicating the complete document.",
+    "steps": [
+      "Arrange layers, visibility, positions and supported appearances for the first design.",
+      "Save the current state as a named Layer Comp.",
+      "Switch comps to compare variants and export chosen comps when needed."
+    ],
+    "tips": [
+      "Layer Comps store layer-state variants, not edit-history snapshots."
+    ]
+  },
+  {
+    "id": "channel-calculations",
+    "title": "Apply Image, Calculations and channels",
+    "category": "Layers",
+    "path": "Image → Apply Image… / Image → Calculations… / Window → Channels",
+    "summary": "Build channel-driven composites and masks.",
+    "steps": [
+      "Use Apply Image… to blend another source document/layer/channel into the active target.",
+      "Use Calculations… to combine channels, choosing a selection or saved channel destination.",
+      "Inspect alpha/luminosity channels through Window → Channels and load them as selections."
+    ],
+    "tips": [
+      "Keep a source copy before complex compositing.",
+      "Some 32-bit HDR blend combinations remain guarded."
+    ]
+  },
+  {
+    "id": "proofing-resolution",
+    "title": "Proofing, print resolution and guides",
+    "category": "Color & files",
+    "path": "View → Proof Setup… / Proof Colors / Gamut Warning / Rulers",
+    "summary": "Preview intended color output and make measured edits.",
+    "steps": [
+      "Set document PPI for print-size metadata; PPI does not create pixel detail.",
+      "Use View → Proof Setup… and Proof Colors for a display simulation.",
+      "Enable Gamut Warning to locate potentially out-of-gamut colors.",
+      "Show rulers, guides and grid; adjust units and snapping."
+    ],
+    "tips": [
+      "ICC/CMYK proofing is an approximation, not certified print color matching."
+    ]
+  },
+  {
+    "id": "image-imports",
+    "title": "Import formats and video frame extraction",
+    "category": "Color & files",
+    "path": "File → Open… / Open as Layer… / Place (Smart Object)…",
+    "summary": "Choose import paths for raster, layered and media files.",
+    "steps": [
+      "Open a file as a new document, Open as Layer… to add to the current image, or Place… as a Smart Object.",
+      "Open MP4/WebM/MKV to scrub a local preview, choose a timestamp and Import frame.",
+      "Consult the feature/format reference to distinguish native codecs from previews and fallback extractors."
+    ],
+    "tips": [
+      "File extension recognition does not guarantee decoding.",
+      "RAW development on main is largely preview-oriented; deeper development is in PRs #79/#84.",
+      "HEIC, JPEG XL and JPEG 2000 depend on operating-system/WebView codecs."
+    ]
+  },
+  {
+    "id": "format-exports",
+    "title": "Layered exports, Save As and metadata",
+    "category": "Color & files",
+    "path": "File → Save Project / Export As… / Export Layers to Files…",
+    "summary": "Preserve work in the native project and deliver suitable formats.",
+    "steps": [
+      "Save .zproj.json for editable projects, masks and supported document state.",
+      "Choose PNG, JPEG, WebP, TIFF, BMP, TGA, QOI, PPM, ICO, OpenRaster or PSD from Export As….",
+      "Use Export Layers to Files or Layer Comps export for multi-output deliverables.",
+      "Review File Info metadata and stripping controls before sharing."
+    ],
+    "tips": [
+      "PSD/ORA may approximate or rasterize effects.",
+      "TIFF 16-bit output depends on the supported document and export path."
+    ]
+  },
+  {
+    "id": "hdr-precision",
+    "title": "High-depth workflows and guarded edits",
+    "category": "Color & files",
+    "path": "File → New (color depth) / Image / Filter / Layer",
+    "summary": "Avoid losing 16/32-bit pixel precision during editing.",
+    "steps": [
+      "Create a suitable high-bit-depth document only when the runtime supports its pixel buffers.",
+      "Prefer adjustment layers, layer masks and Smart Filters to destructive 8-bit processing.",
+      "Use supported Float32 operations for merging, filling and transforming when available.",
+      "If a tool refuses a high-depth edit, save the original and use a supported operation or separate SDR copy."
+    ],
+    "tips": [
+      "Not every codec, plugin, filter or PSD export preserves float precision.",
+      "Unsafe high-depth destructive edits should be blocked instead of silently flattened."
+    ]
+  },
+  {
+    "id": "offline-desktop",
+    "title": "Offline editing and desktop releases",
+    "category": "Advanced",
+    "path": "GitHub Releases / File / Recent & Recovery",
+    "summary": "Choose a distribution that matches connectivity and OS needs.",
+    "steps": [
+      "Use the browser/PWA, bundled Electron desktop app, or lightweight Tauri WebView build.",
+      "Default Tauri releases embed their frontend but require the OS WebView runtime to be present or provisioned.",
+      "Save .zproj.json files outside the browser profile as backups.",
+      "External AI, remote image URLs and release updates require connectivity."
+    ],
+    "tips": [
+      "The separate Windows offline installer and WebView recovery/security work are pending PRs #85 and #86.",
+      "Electron uses a bundled localhost server and does not depend on GitHub Pages."
+    ]
+  },
+  {
+    "id": "performance",
+    "title": "Large documents, performance and memory",
+    "category": "Support",
+    "path": "Settings / Window → Layers / Filter",
+    "summary": "Keep large layered projects responsive.",
+    "steps": [
+      "Hide unneeded panels, reduce heavy live previews and close unused documents.",
+      "Use bounded selections and nondestructive filters instead of repeating full-image operations.",
+      "Review History snapshots and layer count when memory grows.",
+      "Check WebGL2, browser codecs and pixel-worker support if a tool fails or falls back."
+    ],
+    "tips": [
+      "Lazy panel/dialog loading reduces startup overhead but does not eliminate large-image memory costs.",
+      "Bug reports should include document size, bit depth, layer count and reproducible steps."
     ]
   }
-]
+
 export function getHelpTopic(id: unknown): HelpTopic | undefined {
   return typeof id === 'string' ? HELP_TOPICS.find(t => t.id === id) : undefined
 }
