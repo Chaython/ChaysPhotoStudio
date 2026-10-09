@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEditorStore } from '../../store'
 import { PANEL_MAP } from './panel-registry'
+import { horizontalDockPanelWidth } from './auto-dock-sizing'
 import { PanelContextMenu } from './panel-actions-menu'
 import { AddPanelMenu, useDockDrop } from './panel-dock'
 import { beginWindowDrag } from './floating-panels'
@@ -88,9 +89,7 @@ function TopPanelBox({ id, hasDoc, manualHeight }: { id: string; hasDoc: boolean
   // and 232px dock height wasted most of the canvas. Compact modules
   // follow intrinsic width, bounded by the viewport as their content grows.
   const compact = id === 'documents' || id === 'tool-options'
-  const width = compact
-    ? { width: 'max-content', minWidth: id === 'documents' ? 180 : 260, maxWidth: 'min(72vw, 940px)' }
-    : { width: def.topWidth ?? Math.max(200, Math.min(360, def.defaultFloat.w)) }
+  const width = horizontalDockPanelWidth(id, def.topWidth ?? Math.max(200, Math.min(360, def.defaultFloat.w)))
 
   return (
     <div role="listitem" className={cn("flex flex-col border-r border-border/60 flex-shrink-0 bg-panel", manualHeight && "h-full")} style={width}>
