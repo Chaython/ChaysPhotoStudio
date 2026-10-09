@@ -17,6 +17,12 @@ The same manual is also readable on GitHub: **[User Guide](docs/USER_GUIDE.md)**
 
 The GitHub Pages site serves the editor itself. The commands below are only for running a local development copy.
 
+## Photoshop-style workspace template
+
+On desktop, open the **Workspace** selector in the top-right menu bar (or **Settings → Workspace**) and choose **Photoshop-style**. This optional template keeps the existing editing engine and tools, but arranges a compact left toolbar, top options bar, document tabs, central canvas, and a split right inspector with Color/Adjustments/Properties above Layers/Channels/Paths/History.
+
+Choose **Classic / custom** to restore the panel layout that was active before you switched. Each workspace persists across reloads; resetting panel layout resets the currently selected template. The Photoshop-style appearance is an original approximation, not an Adobe product or exact asset copy. The compact touch/mobile interface is unchanged.
+
 ## Quick start (local development)
 
 ```bash
