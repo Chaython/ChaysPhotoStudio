@@ -10,6 +10,7 @@ import { PanelContextMenu } from './panel-actions-menu'
 import { beginWindowDrag, DOCK_DROP_EVENT } from './floating-panels'
 import { cn } from '@/lib/utils'
 import { engine } from '../../engine/engine'
+import { resolvePanelDockSide } from './dock-resolution'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -88,10 +89,8 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
   )
 }
 
-function resolvedDockSide(id: string, dockSide: Record<string, string>): 'left' | 'right' | 'top' | null {
-  const explicit = dockSide[id]
-  if (explicit === 'left' || explicit === 'right' || explicit === 'top') return explicit
-  return PANEL_MAP[id]?.home ? null : 'right'
+function resolvedDockSide(id: string, dockSide: Record<string, string>) {
+  return resolvePanelDockSide(id, dockSide, !!PANEL_MAP[id]?.home)
 }
 
 function dockedPanels(side: 'left' | 'right', floating: Record<string, unknown>, dockSide: Record<string, string>) {

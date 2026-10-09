@@ -25,9 +25,14 @@ Policy to **embedded** builds only. The dev server and deliberately configured
 
 The CSP is built in `scripts/webview-csp.mjs` and injected by
 `scripts/webview-config.mjs` for **embedded releases**. Local scripts,
-fonts, assets and blob workers are allowed. Remote scripts and embedded
-objects are blocked. HTTPS connections/media/images and user-configured
+fonts, assets and blob workers are allowed. Remote scripts are blocked
+**except** the pinned `https://cdn.jsdelivr.net/pyodide/v0.27.7/full/` path used
+when a user explicitly enables/runs the embedded Python interpreter.
+Objects remain blocked. HTTPS connections/media/images and user-configured
 loopback services are allowed for remote image import and optional AI.
+The CDN runtime has no integrity/SRI attestation in the app, so this narrow
+exception is a documented trust trade-off, not equivalent to bundling the
+interpreter locally.
 
 **Compatibility exception:** `script-src` still allows `unsafe-eval`
 because the opt-in plugin worker uses `new Function` to load script plugins.

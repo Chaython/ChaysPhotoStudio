@@ -82,13 +82,18 @@ for (const required of [
 
 // Only embedded release builds receive this policy. Never re-enable remote
 // scripts or embedded objects without a reviewed compatibility/safety reason.
+const approvedPyodide = 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/'
+const interpreters = fs.readFileSync(path.join(ROOT, 'src/editor/plugins/embedded-interpreters.ts'), 'utf8')
+const scriptSources = embeddedWebviewCsp['script-src'].split(/\s+/)
+const remoteScripts = scriptSources.filter(s => s.startsWith('https:') || s.startsWith('http:'))
 if (embeddedWebviewCsp['default-src'] !== "'self'" ||
     embeddedWebviewCsp['object-src'] !== "'none'" ||
     !embeddedWebviewCsp['worker-src'].includes('blob:') ||
-    /https?:|\*/.test(embeddedWebviewCsp['script-src'])) {
-  fail('embedded WebView CSP has unexpected script/object or worker permissions')
+    remoteScripts.length !== 1 || remoteScripts[0] !== approvedPyodide ||
+    !interpreters.includes(approvedPyodide)) {
+  fail('WebView CSP must allow exactly the pinned opt-in Pyodide runtime and no other remote scripts')
 } else {
-  ok('embedded WebView release CSP is restricted to local scripts')
+  ok('embedded WebView CSP allows only local scripts and explicit pinned Pyodide')
 }
 
 const webviewConfigScript = fs.readFileSync(path.join(ROOT, 'scripts/webview-config.mjs'), 'utf8')
