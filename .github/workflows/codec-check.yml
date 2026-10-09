@@ -27,6 +27,8 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs: sync RAW and format help guide"
+            git fetch origin format-audit-sgi-sunras-raw-clarity
+            git rebase origin/format-audit-sgi-sunras-raw-clarity
             git push origin HEAD:format-audit-sgi-sunras-raw-clarity
           fi
       - name: Typecheck
