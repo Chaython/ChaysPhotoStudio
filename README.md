@@ -21,7 +21,11 @@ The GitHub Pages site serves the editor itself. The commands below are only for 
 
 On desktop, open the **Workspace** selector in the top-right menu bar (or **Settings → Workspace**) and choose **Photoshop-style**. This optional template keeps the existing editing engine and tools, but arranges a compact left toolbar, top options bar, document tabs, central canvas, and a split right inspector with Color/Adjustments/Properties above Layers/Channels/Paths/History.
 
-Choose **Classic / custom** to restore the panel layout that was active before you switched. Each workspace persists across reloads; resetting panel layout resets the currently selected template. The Photoshop-style appearance is an original approximation, not an Adobe product or exact asset copy. The compact touch/mobile interface is unchanged.
+Choose **Classic / custom** to restore the panel layout that was active before you switched. Each workspace persists across reloads; resetting panel layout resets the currently selected template. **The color theme is separate**: Dark, Light, OLED black, and Photoshop-inspired colors remain available in Settings → Theme. Neither the template nor the fourth palette replaces the original UI. The Photoshop-style appearance is an original approximation, not an Adobe product or exact asset copy. The compact touch/mobile interface is unchanged.
+
+## Import a still frame from a video
+
+Open or drop an MP4, WebM, or MKV file. Instead of importing an arbitrary early frame, the editor displays a local video preview with playback, a timeline scrubber, and a timestamp entry in seconds. Choose **Import frame** to bring that still frame into the editor; **Cancel** or **Escape** leaves your document unchanged. Importing a movie as a full editable video timeline is not supported. Video playback and seeking depend on the browser's installed codec/container support. The file remains local and the temporary object URL is revoked when the picker closes.
 
 ## Quick start (local development)
 
