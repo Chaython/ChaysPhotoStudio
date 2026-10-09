@@ -107,7 +107,8 @@ function TopPanelBox({ id, hasDoc, manualHeight }: { id: string; hasDoc: boolean
           <span className="text-[11px] font-medium truncate flex-1 pl-0.5">{def.label}</span>
         </div>
       </PanelContextMenu>
-      <div className={cn("min-h-0 overflow-auto zphoto-scroll", manualHeight ? "flex-1" : id === "documents" ? "shrink-0" : "max-h-[min(38vh,420px)]")}>
+      <div className={cn("min-h-0 overflow-auto zphoto-scroll", manualHeight ? "flex-1" : id === "documents" ? "shrink-0" : "max-h-[min(38vh,420px)]")}
+        style={!manualHeight && !compact ? { minHeight: "min(128px, 28vh)" } : undefined}>
         {hasDoc || def.home ? <Content /> : (
           <div className="p-3 text-[11px] text-muted-foreground text-center leading-relaxed">
             Open an image or create a document to start editing.
