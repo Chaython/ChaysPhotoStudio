@@ -3861,19 +3861,28 @@ export class Engine {
       this.emit()
       return
     }
+    // Resolve selection coverage before rasterizing, cloning or writing History.
+    const region = doc.selection ? this.selectedPixelRegion(doc, layer) : null
+    if (doc.selection) {
+      if (!region || !this.selectionRegionAlpha(doc.selection.mask, region).some(a => a > 0)) return
+    } else if (layer.kind === 'raster' &&
+        (!layer.canvas || !hasHdrFillCoverage(layer.canvas.width, layer.canvas.height,
+          layer.offsetX ?? 0, layer.offsetY ?? 0, doc.width, doc.height, null))) return
     const l = this.mutateLayerPixels(layer.id)
     if (!l?.canvas) return
     const c = ctx2d(l.canvas)
     const sx = -(l.offsetX ?? 0), sy = -(l.offsetY ?? 0)
     c.save()
-    if (doc.selection) {
-      const tmp = createCanvas(doc.width, doc.height)
+    if (doc.selection && region) {
+      // Clip the scratch image to the selection rather than allocating
+      // a document-sized canvas on every small/feathered Fill operation.
+      const tmp = createCanvas(region.w, region.h, canvasProfile(l.canvas))
       const tc = ctx2d(tmp)
       tc.fillStyle = color
-      tc.fillRect(0, 0, doc.width, doc.height)
+      tc.fillRect(0, 0, region.w, region.h)
       tc.globalCompositeOperation = 'destination-in'
-      tc.drawImage(doc.selection.mask, 0, 0)
-      c.drawImage(tmp, sx, sy)
+      tc.drawImage(doc.selection.mask, -region.x, -region.y)
+      c.drawImage(tmp, region.x + sx, region.y + sy)
     } else {
       c.fillStyle = color
       c.fillRect(sx, sy, doc.width, doc.height)

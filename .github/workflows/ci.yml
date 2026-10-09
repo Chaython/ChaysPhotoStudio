@@ -96,6 +96,9 @@ jobs:
       - name: Validate scene-linear HDR Fill
         run: bun run hdr-fill:validate
 
+      - name: Validate bounded Fill coverage
+        run: bun run fill-coverage:validate
+
       - name: Typecheck
         run: bunx tsc --noEmit
 

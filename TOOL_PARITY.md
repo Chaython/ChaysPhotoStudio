@@ -107,6 +107,10 @@ The local inpainting kernel currently consumes and writes 8-bit Canvas2D image d
 
 Reopening an Adjustment Layer and submitting its existing settings no longer increments the layer version, marks the project dirty or writes a redundant History entry. Committed nested curve/LUT parameter objects are deep-cloned to avoid edits leaking in from scripting callers. Unknown filter names from action import or scripting are rejected before Smart Filter insertion or History updates.
 
+## Bounded Fill selections and no-op safety
+
+8/16-bit **Edit → Fill** now checks document-space selection coverage before modifying the layer. Empty masks and completely off-canvas raster layers are no-ops, with no rasterization or History entry. A selected area is filled using a scratch canvas clipped to the selected bounds, instead of creating an entire document-sized RGBA canvas for every small selection. The scratch canvas retains the active layer's working color profile (including float16 where supported), and correctly offsets the selected pixels into the backing layer. 32-bit Fill retains its scene-linear Float32 path.
+
 ## Safe Layer Matting and Trim Layer
 
 **Layer → Matting** now computes Remove White/Black Matte and Defringe on detached pixels and only rasterizes/commits if the output actually changes. This prevents empty operations and failures from modifying Smart Objects or History; a successful operation is a single undoable entry. On 16-bit layers matting requires native float16 readback rather than silently degrading to 8-bit. **Trim Layer to Content** checks locks before processing and increments the layer version only once.
