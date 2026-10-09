@@ -106,7 +106,7 @@ function concatFragments(parts:Uint8Array[]):Uint8Array{
  return out
 }
 
-export function decodeDicom(bytes:Uint8Array):DicomImage {
+export async function decodeDicom(bytes:Uint8Array):Promise<DicomImage> {
   if(bytes.length<132||ascii(bytes,128,4)!=='DICM') throw Error('Only DICOM Part 10 files with DICM preamble are supported')
   const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
   let p=132,syntax='1.2.840.10008.1.2.1'
@@ -118,16 +118,21 @@ export function decodeDicom(bytes:Uint8Array):DicomImage {
   }
   const implicit=syntax==='1.2.840.10008.1.2'
   const rle=syntax==='1.2.840.10008.1.2.5'
-  if(!implicit&&syntax!=='1.2.840.10008.1.2.1'&&!rle)throw Error('Unsupported DICOM transfer syntax: '+syntax)
+  const jpegLs=['1.2.840.10008.1.2.4.80','1.2.840.10008.1.2.4.81'].includes(syntax)
+  const jpeg2000=['1.2.840.10008.1.2.4.90','1.2.840.10008.1.2.4.91'].includes(syntax)
+  const jpegBaseline=syntax==='1.2.840.10008.1.2.4.50'
+  const encapsulated=rle||jpegLs||jpeg2000||jpegBaseline
+  if(!implicit&&syntax!=='1.2.840.10008.1.2.1'&&!encapsulated)
+    throw Error('Unsupported DICOM transfer syntax: '+syntax)
   let w=0,h=0,bits=0,stored=0,signed=false,channels=1,planar=0,photometric='MONOCHROME2',count=1
   let wc:number|undefined,ww:number|undefined,start=-1,length=0
   const numberText=(pos:number,len:number)=>Number(ascii(bytes,pos,len).split('\\')[0].trim())
   for(let n=0;n<100000 && p+8<=bytes.length;n++){
     const group=v.getUint16(p,true),tag=v.getUint16(p+2,true)
     const vr=implicit?'':ascii(bytes,p+4,2)
-    if(group===0x7fe0 && tag===0x0010 && rle){
+    if(group===0x7fe0 && tag===0x0010 && encapsulated){
       const pixelStart=p+(vr==='OB'||vr==='OW'||vr==='UN'?12:8)
-      if(pixelStart>bytes.length||v.getUint32(p+8,true)!==0xffffffff)throw Error('DICOM RLE requires undefined-length encapsulated pixel data')
+      if(pixelStart>bytes.length||v.getUint32(p+8,true)!==0xffffffff)throw Error('Compressed DICOM requires undefined-length encapsulated pixel data')
       start=pixelStart;length=bytes.length-start;break
     }
     const e=readEntry(v,p,vr,implicit)
@@ -154,16 +159,46 @@ export function decodeDicom(bytes:Uint8Array):DicomImage {
   if(channels===1&&!['MONOCHROME1','MONOCHROME2'].includes(photometric))throw Error('Unsupported DICOM photometric interpretation')
   if(!Number.isSafeInteger(count)||count<1)throw Error('Invalid DICOM frame count')
   const pixels=w*h,size=pixels*channels*(bits/8)
-  if(!rle&&size*count>length)throw Error('Truncated DICOM pixel payload')
-  if(rle&&count>24)throw Error('DICOM RLE frame count exceeds 24-frame import limit')
-  const rleFrames=rle?readRleFrames(bytes,start,count):[]
+  if(!encapsulated&&size*count>length)throw Error('Truncated DICOM pixel payload')
+  if(encapsulated&&count>24)throw Error('Encapsulated DICOM frame count exceeds 24-frame import limit')
+  const compressedFrames=encapsulated?readRleFrames(bytes,start,count):[]
   const frames:RawImage[]=[]
   const limit=Math.min(count,24)
   for(let f=0;f<limit;f++){
     const offset=start+f*size
-    const frameBytes=rle?decodeRleFrame(rleFrames[f],pixels,channels,bits):bytes
+    const frameBytes=rle?decodeRleFrame(compressedFrames[f],pixels,channels,bits):bytes
     const frameOffset=rle?0:offset
     const frameView=rle?new DataView(frameBytes.buffer,frameBytes.byteOffset,frameBytes.byteLength):v
+    if(jpegLs||jpeg2000||jpegBaseline){
+      const encoded=compressedFrames[f]
+      let image:RawImage
+      if(jpegLs){
+        const {decodeJpegLs}=await import('./wasm-codecs')
+        image=await decodeJpegLs(encoded.slice().buffer)
+      }else if(jpeg2000){
+        const {decodeJpeg2000}=await import('./wasm-codecs')
+        image=await decodeJpeg2000(encoded.slice().buffer)
+      }else{
+        const bitmap=await createImageBitmap(new Blob([encoded as BlobPart],{type:'image/jpeg'}))
+        try{
+          if(bitmap.width!==w||bitmap.height!==h)throw Error('DICOM JPEG frame dimensions differ from metadata')
+          const canvas=document.createElement('canvas')
+          canvas.width=w;canvas.height=h
+          const context=canvas.getContext('2d',{willReadFrequently:true})
+          if(!context)throw Error('DICOM JPEG canvas context unavailable')
+          context.drawImage(bitmap,0,0)
+          image={width:w,height:h,rgba:new Uint8ClampedArray(context.getImageData(0,0,w,h).data) as Uint8ClampedArray<ArrayBuffer>,sourceBitDepth:8}
+        }finally{bitmap.close()}
+      }
+      if(image.width!==w||image.height!==h)throw Error('Compressed DICOM frame dimensions differ from metadata')
+      if(channels===1&&photometric==='MONOCHROME1'){
+        for(let i=0;i<image.rgba.length;i+=4){
+          image.rgba[i]=255-image.rgba[i];image.rgba[i+1]=255-image.rgba[i+1];image.rgba[i+2]=255-image.rgba[i+2]
+        }
+      }
+      frames.push(image)
+      continue
+    }
     let rgba:Uint8ClampedArray
     if(channels===3){
       rgba=new Uint8ClampedArray(pixels*4)
@@ -191,6 +226,7 @@ export function decodeDicom(bytes:Uint8Array):DicomImage {
   }
   return {image:frames[0],frames,warnings:[
     'DICOM is imported as a display rendering for graphic editing, not for diagnosis. Do not rely on this rendering for clinical decisions.',
+    ...(encapsulated?['Imported '+syntax+' compressed frames as display RGB(A); calibrated source samples are not preserved.']:[]),
     ...(count>limit?['Only first '+limit+' of '+count+' DICOM frames imported.']:[]),
   ]}
 }
