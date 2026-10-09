@@ -411,6 +411,8 @@ Extend workflows with plugins, scripts, batch jobs and configured AI providers.
 **Where:** Plugins / Window → Batch / Scripting Console… / Generate
 
 1. Open Plugins or Settings → Plugin Manager to inspect extensions.
+   - **GIMP Scripts:** open a `.py` / `.scm` / `.gmic` source file and inspect possible manual mappings; no source code is executed.
+   - **Desktop Filters:** in Electron, browse installed GEGL operations or curated G’MIC CLI commands. Inspect native help and send the chosen command to a new editable output layer.
 2. Use Window → Batch / Image Processor… for repetitive jobs.
 3. Use Window → Scripting Console… to automate supported commands.
 4. Use Generate / AI Tools to access locally configured or external AI services.
