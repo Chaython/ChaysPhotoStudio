@@ -1,8 +1,6 @@
 // Tool registry — aggregates every tool module
 import type { Tool, ToolId } from '../types'
 import { moveTool } from './move'
-import { freeformPenTool, curvaturePenTool } from './pen'
-import { horizontalTypeMaskTool, verticalTypeMaskTool } from './type-mask'
 import { marqueeRectTool, marqueeEllipseTool, marqueeRowTool, marqueeColumnTool } from './marquee'
 import { lassoTool } from './lasso'
 import { polygonLassoTool } from './polygon-lasso'
@@ -77,11 +75,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'burn': burnTool,
   'sponge': spongeTool,
   'text': textTool,
-  'type-mask-horizontal': horizontalTypeMaskTool,
-  'type-mask-vertical': verticalTypeMaskTool,
   'pen': penTool,
-  'pen-freeform': freeformPenTool,
-  'pen-curvature': curvaturePenTool,
   'path-select': pathSelectTool,
   'direct-select': directSelectTool,
   'shape': shapeTool,
