@@ -116,6 +116,7 @@ bun run dist:all         # Shared icons, web build, Electron & extensions (not T
 | [**Feature & Format Reference**](docs/FEATURES_AND_FORMATS.md) | Formats, bit depth, runtime limitations and feature overview |
 | [**Tool Parity Audit**](TOOL_PARITY.md) | Detailed implementation status and remaining parity work |
 | [**Distribution Guide**](DISTRIBUTION.md) | Native builds, release artifacts, optional configuration and packaging |
+| [**Development & Testing**](docs/DEVELOPMENT_AND_TESTING.md) | Source-of-truth files, validation scripts, CI and release smoke tests |
 | [**Changelog**](CHANGELOG.md) | Historical changes; upcoming PRs are not treated as released |
 
 **Documentation maintenance:** Edit `src/editor/help/topics.ts` rather than directly changing the generated User Guide; run `bun run help:generate` and `bun run help:validate`. Feature claims should reflect merged code or be explicitly labeled pending.
