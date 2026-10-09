@@ -42,6 +42,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [HDR Fill and feathered selections](#hdr-fill-and-feathered-selections)
 - [Match Color between documents](#match-color-between-documents)
 - [Saving, exporting and metadata](#saving-exporting-and-metadata)
+- [RAW, HDR, scientific and multi-page image files](#raw-hdr-scientific-and-multi-page-image-files)
 
 ### Workspace
 
@@ -417,6 +418,26 @@ Extend workflows with plugins, scripts, batch jobs and configured AI providers.
 
 - Photoshop UXP and GIMP compatibility is partial.
 - Optional remote AI workflows can transmit content to outside providers.
+
+## RAW, HDR, scientific and multi-page image files
+
+Import camera RAW, HDR, modern codecs and scientific formats with clear decode limitations.
+
+**Where:** File → Open / RAW Import / Develop
+
+1. Use File → Open to select images. Camera RAW imports open a development dialog with exposure, white balance, demosaicing, highlights, denoising and half-resolution options.
+2. When LibRaw supports the camera, it decodes original sensor data and produces a 16-bit-per-channel image. If decoding fails, a camera-generated embedded preview may be imported with an explicit warning.
+3. OpenEXR supports standard scanline images with uncompressed or ZIP scanline blocks; floating-point RGB values are retained when supported by the document engine.
+4. HEIC/HEIF, JPEG XL, JPEG XR, JPEG-LS and JPEG 2000 use browser or lazy-loaded optional decoders. Some rare features, color models and compression modes may fail.
+5. FITS astronomy images and uncompressed DICOM medical images import as display renderings. Original scientific/medical numeric data is not preserved.
+6. When a TIFF, DCX, FITS or DICOM file contains multiple images, choose one frame or import all frames as individually selectable layers.
+
+**Notes and tips:**
+
+- RAW development controls operate during import. Save the original RAW separately; later raster edits cannot be converted back into camera RAW sensor data.
+- DICOM support is for graphics use only, not medical diagnosis or measurement. Do not rely on edited images for clinical decisions.
+- Specialized variants such as BPG, compressed DICOM, tiled/deep EXR and uncommon camera RAW compression are not universally supported.
+- Heavy WASM decoders load only when you open their file type; memory and availability depend on your browser or desktop runtime.
 
 ## Troubleshooting and known limits
 
