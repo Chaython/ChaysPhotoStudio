@@ -380,6 +380,27 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Offline Windows NSIS validation. A clean air-gapped VM installation
+      # test is still separate.
+      - name: Validate offline Windows NSIS payload
+        if: runner.os == 'Windows' && matrix.offline == true
+        shell: pwsh
+        run: |
+          $installer = @(Get-ChildItem 'webview/src-tauri/target/release/bundle/nsis' -Filter '*.exe' -File)
+          if ($installer.Count -ne 1) { throw "Expected exactly one offline NSIS installer" }
+          # The Microsoft WebView2 offline installer is >100 MB. This check
+          # catches accidental regression to the tiny online bootstrapper.
+          if ($installer[0].Length -lt 95000000) { throw "Offline installer unexpectedly small: $($installer[0].Length) bytes" }
+          Write-Host "Offline NSIS payload size: $([math]::Round($installer[0].Length / 1MB, 1)) MiB"
+
+      - name: Sign Windows WebView installers (optional)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+        run: ./scripts/sign-windows-webview.ps1
+
       - name: Archive macOS .app bundle
         if: runner.os == 'macOS'
         shell: bash
