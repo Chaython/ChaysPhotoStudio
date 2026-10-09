@@ -30,6 +30,7 @@ interface DecodedCanvas {
   workingBitDepth: 8 | 16 | 32
   resolutionPpi?: number
   hdrPixels?: Float32Array
+  warnings?: string[]
 }
 
 /** Decode while retaining source precision. Custom high-depth codecs create
@@ -41,7 +42,12 @@ async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
   // Do not silently hide that the embedded camera preview is only 8-bit.
   if (publishedFormatKind(file.name) === 'raw') {
     const decoded = await decodeFile(file)
-    return { canvas: decoded.canvas, sourceBitDepth: 8, workingBitDepth: 8 }
+    return {
+      canvas: decoded.canvas,
+      sourceBitDepth: decoded.sourceBitDepth ?? 8,
+      workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
+      warnings: decoded.warnings,
+    }
   }
   if (format && CODEC_FORMATS.includes(format)) {
     const decoded = await decodeFile(file)
@@ -116,7 +122,7 @@ export async function openFiles(files: File[], asLayer = false) {
         continue
       }
       const decoded = await decodeToCanvas(file)
-      if (publishedFormatKind(file.name) === 'raw') store.pushToast(`${file.name}: using embedded RAW preview (8-bit), not original sensor data`, 'info')
+      for (const warning of (decoded.warnings ?? [])) store.pushToast(`${file.name}: ${warning}`, 'info')
       if (asLayer && engine.activeDoc) {
         engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''), { hdrPixels: engine.activeDoc?.workingBitDepth === 32 ? decoded.hdrPixels : undefined })
         if (decoded.sourceBitDepth > 8) {
