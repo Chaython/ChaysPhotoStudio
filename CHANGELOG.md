@@ -6,6 +6,7 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 - Added broader LibRaw camera decoding and source-embedded redevelopable RAW Smart Objects, optional Lensfun XML calibration, supported multipart/tiled OpenEXR, selected compressed DICOM, FITS and multipage image imports. Six pinned camera samples passed sensor decoding; other variants require testing.
 - Fixed a CharLS WASM browser build blocker using the Webpack production/static path, plus invalid/duplicate Lensfun focal interpolation.
+- Corrected the Electron release payload checker so legitimate Webpack `.next/static/css` assets no longer cause all-platform packaging failures; it continues to reject incomplete JS/CSS payloads.
 - Fixed eight-way dock routing and the opt-in Python interpreter CSP exception; added content-fit dock sizing with independent saved manual sizes, double-click auto-fit and legacy layout migration.
 
 
