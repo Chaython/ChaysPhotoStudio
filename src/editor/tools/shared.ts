@@ -226,6 +226,97 @@ function borrowRegionFalloff(length: number): Float32Array {
   return new Float32Array(length)
 }
 
+/**
+ * The byte/Canvas2D retouch algorithms must not operate on high precision
+ * documents: getImageData() would quantize 16-bit float or scene-linear HDR.
+ * Reject BEFORE mutating or rasterizing a layer.
+ */
+export function canUseByteRetouch(tool: string): boolean {
+  const doc = engine.activeDoc
+  if (!doc) return false
+  if (doc.workingBitDepth === 8) return true
+  useEditorStore.getState().pushToast(
+    `${tool} currently requires an 8-bit document; ${doc.workingBitDepth}-bit pixels were left unchanged.`,
+    'info',
+  )
+  return false
+}
+
+export interface DeferredRegionStroke {
+  readonly layerId: string
+  readonly docId: string
+  readonly preview: HTMLCanvasElement
+  readonly offsetX: number
+  readonly offsetY: number
+  committed: boolean
+}
+
+/** Start a stroke without cloning pixels, recording history, or rasterizing. */
+export function beginDeferredRegionStroke(layerId: string): DeferredRegionStroke | null {
+  const doc = engine.activeDoc
+  const layer = engine.layerById(layerId)
+  if (!doc || !layer || layer.locked || doc.workingBitDepth !== 8) return null
+  const preview = engine.rasterizationPreviewCanvas(layerId)
+  if (!preview) return null
+  return {
+    layerId, docId: doc.id, preview,
+    offsetX: layer.kind === 'raster' ? (layer.offsetX ?? 0) : 0,
+    offsetY: layer.kind === 'raster' ? (layer.offsetY ?? 0) : 0,
+    committed: false,
+  }
+}
+
+export function deferredStrokePixel(stroke: DeferredRegionStroke, x: number, y: number): [number, number, number] | null {
+  if (engine.activeDoc?.id !== stroke.docId) return null
+  const layer = engine.layerById(stroke.layerId)
+  const canvas = stroke.committed ? layer?.canvas : stroke.preview
+  const ox = stroke.committed ? (layer?.offsetX ?? 0) : stroke.offsetX
+  const oy = stroke.committed ? (layer?.offsetY ?? 0) : stroke.offsetY
+  if (!canvas) return null
+  const px = Math.round(x - ox), py = Math.round(y - oy)
+  if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) return null
+  const d = ctx2d(canvas).getImageData(px, py, 1, 1).data
+  return d[3] ? [d[0], d[1], d[2]] : null
+}
+
+/** A stroke becomes destructive only after its first actual pixel difference. */
+export function deferredRegionProcess(
+  stroke: DeferredRegionStroke,
+  cx: number, cy: number, radius: number,
+  fn: (region: ImageData, falloff: Float32Array, rw: number, rh: number) => void,
+  hardness = 55,
+): boolean {
+  if (engine.activeDoc?.id !== stroke.docId) return false
+  const current = engine.layerById(stroke.layerId)
+  if (!current || current.locked) return false
+  const canvas = stroke.committed ? current.canvas : stroke.preview
+  if (!canvas) return false
+  return regionProcess(stroke.layerId, cx, cy, radius, fn, hardness, undefined, {
+    canvas,
+    offsetX: stroke.committed ? (current.offsetX ?? 0) : stroke.offsetX,
+    offsetY: stroke.committed ? (current.offsetY ?? 0) : stroke.offsetY,
+    onWrite(region, x0, y0) {
+      if (!stroke.committed) {
+        // Rasterize only on the first *real* edit, folding conversion into
+        // the same History entry as the stroke.
+        if (current.kind !== 'raster') engine.rasterizeLayer(stroke.layerId, { history: false, emit: false })
+        const mutable = engine.mutateLayerPixels(stroke.layerId)
+        if (!mutable?.canvas) return
+        stroke.committed = true
+      }
+      const live = engine.layerById(stroke.layerId)?.canvas
+      if (live) ctx2d(live).putImageData(region, x0, y0)
+    },
+  })
+}
+
+interface RegionTarget {
+  canvas: HTMLCanvasElement
+  offsetX: number
+  offsetY: number
+  onWrite(region: ImageData, x0: number, y0: number): void
+}
+
 /** apply region-based pixel processing with soft falloff (used by blur/dodge/etc.)
  *  cx/cy are DOC coordinates — translated into the layer's canvas space. */
 export function regionProcess(
@@ -233,24 +324,29 @@ export function regionProcess(
   fn: (region: ImageData, falloff: Float32Array, rw: number, rh: number) => void,
   hardness = 55,
   brushShape?: { extent?: number; alpha: (dx: number, dy: number) => number },
-) {
+  target?: RegionTarget,
+): boolean {
   const layer = engine.layerById(layerId)
   const doc = engine.activeDoc
-  if (!layer?.canvas || !doc) return
+  if (!layer || !doc || doc.workingBitDepth !== 8) return false
+  const canvas = target?.canvas ?? layer.canvas
+  if (!canvas) return false
   const baseR = Math.max(1, radius)
   const extent = Math.max(1, Number(brushShape?.extent) || 1)
   const r = Math.max(1, Math.ceil(baseR * extent))
-  const ox = layer.kind === 'raster' ? (layer.offsetX ?? 0) : 0
-  const oy = layer.kind === 'raster' ? (layer.offsetY ?? 0) : 0
+  const ox = target?.offsetX ?? (layer.kind === 'raster' ? (layer.offsetX ?? 0) : 0)
+  const oy = target?.offsetY ?? (layer.kind === 'raster' ? (layer.offsetY ?? 0) : 0)
   const ccx = cx - ox, ccy = cy - oy
-  const x0 = clamp(Math.floor(ccx - r), 0, layer.canvas.width - 1)
-  const y0 = clamp(Math.floor(ccy - r), 0, layer.canvas.height - 1)
-  const x1 = clamp(Math.ceil(ccx + r), 0, layer.canvas.width)
-  const y1 = clamp(Math.ceil(ccy + r), 0, layer.canvas.height)
+  // A stroke fully outside the backing canvas must never repaint its last pixel.
+  const x0 = clamp(Math.floor(ccx - r), 0, canvas.width)
+  const y0 = clamp(Math.floor(ccy - r), 0, canvas.height)
+  const x1 = clamp(Math.ceil(ccx + r), 0, canvas.width)
+  const y1 = clamp(Math.ceil(ccy + r), 0, canvas.height)
   const rw = x1 - x0, rh = y1 - y0
-  if (rw <= 0 || rh <= 0) return
-  const c = ctx2d(layer.canvas)
+  if (rw <= 0 || rh <= 0) return false
+  const c = ctx2d(canvas)
   const region = c.getImageData(x0, y0, rw, rh)
+  const before = new Uint8ClampedArray(region.data)
   const falloff = borrowRegionFalloff(rw * rh)
   const ownsScratch = falloff.buffer === regionFalloffScratch.buffer
   const inner = clamp(hardness / 100, 0, 0.98)
@@ -306,7 +402,15 @@ export function regionProcess(
 
   try {
     fn(region, falloff, rw, rh)
-    c.putImageData(region, x0, y0)
+    const data = region.data
+    let modified = false
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] !== before[i]) { modified = true; break }
+    }
+    if (!modified) return false
+    if (target) target.onWrite(region, x0, y0)
+    else c.putImageData(region, x0, y0)
+    return true
   } finally {
     if (ownsScratch) regionFalloffBusy = false
   }
