@@ -65,6 +65,8 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
   const scTick = useEditorStore(s => s.shortcutOverrides) // TASK 17 — live shortcut labels
   const openDialog = useEditorStore(s => s.openDialog)
   const resetLayout = useEditorStore(s => s.resetPanelLayout)
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const setWorkspacePreset = useEditorStore(s => s.setWorkspacePreset)
   void menus // plugin installs/imports also bump renderTick → the dynamic Plugins menu stays fresh
   void scTick
 
@@ -111,6 +113,18 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
           <ThemeIcon size={14} />
         </button>
 
+        {!mobileMode && <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="flex items-center gap-1 px-2 h-6 rounded hover:bg-accent text-[11px] text-muted-foreground hover:text-foreground" title="Choose workspace template" aria-label="Workspace template">
+              <LayoutGrid size={13} /><span className="hidden 2xl:inline">{workspacePreset === 'photoshop' ? 'Photoshop-style' : 'Classic'}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="end" className="min-w-52">
+            <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace template</div>
+            <DropdownMenuItem onClick={() => setWorkspacePreset('photoshop')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Photoshop-style</span>{workspacePreset === 'photoshop' && <Check size={13} />}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setWorkspacePreset('classic')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Classic / custom</span>{workspacePreset === 'classic' && <Check size={13} />}</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -132,6 +146,10 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => setTheme('oled')}>
               <Contrast size={13} /><span className="flex-1">OLED black / high contrast</span>{theme === 'oled' && <Check size={13} />}
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace</div>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => setWorkspacePreset('photoshop')}><LayoutGrid size={13} /><span className="flex-1">Photoshop-style workspace</span>{workspacePreset === 'photoshop' && <Check size={13} />}</DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => setWorkspacePreset('classic')}><LayoutGrid size={13} /><span className="flex-1">Classic / custom workspace</span>{workspacePreset === 'classic' && <Check size={13} />}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('help-guide')}>
               <CircleHelp size={13}/><span className="flex-1">Help & User Guide</span>
