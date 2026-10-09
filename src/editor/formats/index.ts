@@ -186,6 +186,9 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
 export async function decodeFile(file: File | Blob, options?: { rawSettings?: RawDevelopSettings }): Promise<DecodedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const sourceName = (file as File).name || ''
+  if (fileExtension(sourceName) === 'bpg') {
+    throw new Error('BPG decoding is unavailable: no reviewed decoder is bundled. Recognition does not imply image decoding support.')
+  }
   // Dedicated structured parsers keep editable objects/layers for supported
   // document containers. A composite preview is still attached for Place,
   // Open-as-Layer and callers that only understand a canvas.
