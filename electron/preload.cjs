@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('chaysPhotoStudio', {
     list: () => ipcRenderer.invoke('chays:gimp:list'),
     inspect: (name) => ipcRenderer.invoke('chays:gimp:inspect', name),
     run: (payload) => ipcRenderer.invoke('chays:gimp:run', payload),
+    runScript: (payload) => ipcRenderer.invoke('chays:gimp:script', payload),
   },
   nativeTools: {
     info: (refresh = false) => ipcRenderer.invoke('chays:native-tools:info', refresh),
