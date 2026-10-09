@@ -297,11 +297,24 @@ export function EditorApp() {
                 </div>
               </>
             )}
-            {!mobileMode && <TopDock />}
+            {!mobileMode && (
+              <div className="hidden md:flex min-w-0 shrink-0">
+                <TopDock side="top-left" />
+                <div className="min-w-0 flex-1"><TopDock /></div>
+                <TopDock side="top-right" />
+              </div>
+            )}
             {hasDoc ? <CanvasWorkspace mobile={mobileMode} /> : (
               <div className="flex-1 flex flex-col min-h-0">
                 <WelcomeScreen />
                 {mobileMode && <MobileStatusBar />}
+              </div>
+            )}
+            {!mobileMode && (
+              <div className="hidden md:flex min-w-0 shrink-0">
+                <TopDock side="bottom-left" />
+                <div className="min-w-0 flex-1"><TopDock side="bottom" /></div>
+                <TopDock side="bottom-right" />
               </div>
             )}
           </div>

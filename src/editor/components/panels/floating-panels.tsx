@@ -74,29 +74,39 @@ interface DockZone {
 /** which dock would the pointer (x, y) drop into? Every panel — including
  *  Color — can dock into any area (right / left / top / floating). */
 function dockZoneAt(x: number, y: number, _id: string): DockZone | null {
-  const inRect = (r: DOMRect) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
-  const right = document.querySelector('[data-panel-dock="right"]')?.getBoundingClientRect()
-  if (right && inRect(right)) return { side: 'right', strip: null }
-  const left = document.querySelector('[data-panel-dock="left"]')?.getBoundingClientRect()
-  if (left && inRect(left)) return { side: 'left', strip: null }
-  const top = document.querySelector('[data-panel-dock="top"]')?.getBoundingClientRect()
-  if (top) {
-    if (top.height >= 8 && inRect(top)) return { side: 'top', strip: null }
-    // empty strip (zero-height anchor) — extend the target 64px down into
-    // the canvas so "drag to the top of the canvas" is an obvious gesture
-    if (top.height < 8 && x >= top.left && x <= top.right && y >= top.top && y <= top.top + EDGE_STRIP_W) {
-      return { side: 'top', strip: new DOMRect(top.left, top.top, top.width, EDGE_STRIP_W) }
-    }
-  }
   const ws = document.querySelector('[data-workspace]')?.getBoundingClientRect()
-  // Empty side docks auto-hide. Keep both edge strips as persistent drop zones
-  // so a floating panel can recreate either dock without an existing container.
-  if (ws && (!left || left.width < 60) && x >= ws.left && x <= ws.left + EDGE_STRIP_W && y >= ws.top && y <= ws.bottom) {
-    return { side: 'left', strip: new DOMRect(ws.left, ws.top, EDGE_STRIP_W, ws.height) }
+  const inRect = (r: DOMRect) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+  const existing = (side: DockSide) => document.querySelector(`[data-panel-dock="${side}"]`)?.getBoundingClientRect()
+  // Corner zones take priority, including where they overlap a full-width dock.
+  if (ws) {
+    const w = Math.min(110, Math.max(56, ws.width * .22))
+    const h = Math.min(100, Math.max(52, ws.height * .20))
+    const corners: { side: DockSide; r: DOMRect }[] = [
+      { side: 'top-left', r: new DOMRect(ws.left, ws.top, w, h) },
+      { side: 'top-right', r: new DOMRect(ws.right-w, ws.top, w, h) },
+      { side: 'bottom-left', r: new DOMRect(ws.left, ws.bottom-h, w, h) },
+      { side: 'bottom-right', r: new DOMRect(ws.right-w, ws.bottom-h, w, h) },
+    ]
+    for (const {side,r} of corners) if (inRect(r)) return {side, strip:r}
   }
-  if (ws && (!right || right.width < 60) && x >= ws.right - EDGE_STRIP_W && x <= ws.right && y >= ws.top && y <= ws.bottom) {
-    return { side: 'right', strip: new DOMRect(ws.right - EDGE_STRIP_W, ws.top, EDGE_STRIP_W, ws.height) }
+  for (const side of ['top-left','top-right','bottom-left','bottom-right'] as DockSide[]) {
+    const rect = existing(side)
+    if (rect && rect.width && rect.height && inRect(rect)) return {side, strip:null}
   }
+  for (const side of ['right','left','top','bottom'] as DockSide[]) {
+    const rect = existing(side)
+    if (rect && rect.height >= 8 && rect.width >= 8 && inRect(rect)) return {side, strip:null}
+  }
+  if (!ws) return null
+  const edge = 64
+  if (x >= ws.left && x <= ws.right && y >= ws.top && y <= ws.top+edge)
+    return {side:'top',strip:new DOMRect(ws.left,ws.top,ws.width,edge)}
+  if (x >= ws.left && x <= ws.right && y >= ws.bottom-edge && y <= ws.bottom)
+    return {side:'bottom',strip:new DOMRect(ws.left,ws.bottom-edge,ws.width,edge)}
+  if (y >= ws.top && y <= ws.bottom && x >= ws.left && x <= ws.left+edge)
+    return {side:'left',strip:new DOMRect(ws.left,ws.top,edge,ws.height)}
+  if (y >= ws.top && y <= ws.bottom && x >= ws.right-edge && x <= ws.right)
+    return {side:'right',strip:new DOMRect(ws.right-edge,ws.top,edge,ws.height)}
   return null
 }
 
@@ -432,7 +442,7 @@ const DockStripIndicator = memo(function DockStripIndicator() {
   useEffect(() => {
     const onDropEvt = (e: Event) => {
       const d = (e as CustomEvent).detail
-      setZone(d?.active && d?.strip && (d.side === 'left' || d.side === 'right' || d.side === 'top')
+      setZone(d?.active && d?.strip && typeof d.side === 'string'
         ? { strip: d.strip, side: d.side }
         : null)
     }
@@ -457,7 +467,7 @@ const DockStripIndicator = memo(function DockStripIndicator() {
             : 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap px-2 py-1 rounded bg-primary/20 border border-primary/60 text-primary text-[11px] font-medium shadow-lg'
         }
       >
-        {zone.side === 'top' ? 'Dock top' : zone.side === 'right' ? 'Dock right' : 'Dock left'}
+        {'Dock ' + zone.side.replaceAll('-', ' ')}
       </div>
     </div>
   )

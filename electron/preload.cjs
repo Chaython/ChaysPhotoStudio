@@ -20,8 +20,18 @@ contextBridge.exposeInMainWorld('chaysPhotoStudio', {
   },
   // Desktop-only native image-processing bridge. The renderer never receives
   // process/child_process access; it can only invoke these audited commands.
+  // GIMP is never probed at startup; these are explicit, on-demand IPC calls.
+  gimpRuntime: {
+    info: () => ipcRenderer.invoke('chays:gimp:info'),
+    list: () => ipcRenderer.invoke('chays:gimp:list'),
+    inspect: (name) => ipcRenderer.invoke('chays:gimp:inspect', name),
+    run: (payload) => ipcRenderer.invoke('chays:gimp:run', payload),
+    runScript: (payload) => ipcRenderer.invoke('chays:gimp:script', payload),
+  },
   nativeTools: {
-    info: () => ipcRenderer.invoke('chays:native-tools:info'),
+    info: (refresh = false) => ipcRenderer.invoke('chays:native-tools:info', refresh),
+    listOperations: () => ipcRenderer.invoke('chays:native-tools:catalog', 'gegl'),
+    inspectOperation: (kind, operation) => ipcRenderer.invoke('chays:native-tools:inspect', { kind, operation }),
     runGmic: (payload) => ipcRenderer.invoke('chays:native-tools:gmic', payload),
     runGegl: (payload) => ipcRenderer.invoke('chays:native-tools:gegl', payload),
   },

@@ -1,4 +1,4 @@
-// GIMP asset import — binary .gbr (brush) and text .ggr (gradient) parsers.
+// GIMP asset import — .gbr brushes, .pat patterns, .gpl palettes and .ggr gradients.
 // True GIMP *plugins* (Script-Fu / C / Python) and Photoshop .8bf filters are
 // native binaries that cannot run in a browser; GIMP *assets* are open,
 // documented formats we parse natively.
@@ -6,7 +6,9 @@ import { createCanvas, ctx2d } from '../utils/canvas'
 
 const MAX_DIM = 8192
 
-function readU32LE(v: DataView, off: number): number { return v.getUint32(off, true) }
+function readU32BE(v: DataView, off: number): number { return v.getUint32(off, false) }
+const MAX_PIXELS = 16_777_216
+
 
 /** parsed GIMP gradient (.ggr) — canonical stops in 0..1 space */
 export interface GradientStop { pos: number; r: number; g: number; b: number; a: number }
@@ -21,75 +23,130 @@ export interface ParsedBrush {
   canvas: HTMLCanvasElement
 }
 
-/** Parse a GIMP Brush (.gbr) — v2 (grayscale+mask, 2 bytes/px) and v3 (RGBA or 1-byte). */
+/** GIMP .gbr uses *big-endian* integers, a 'GIMP' magic and a NUL-terminated
+ * UTF-8 name within header_size. v2 accepts gray mask (1 byte) and RGBA (4).
+ * CinePaint v3 uses pixel format 18 (gray half float). */
 export function parseGbr(buf: ArrayBuffer): ParsedBrush {
   const v = new DataView(buf)
-  if (buf.byteLength < 28) throw new Error('Truncated brush file')
-  const headerSize = readU32LE(v, 0)
-  const version = readU32LE(v, 4)
-  if (version !== 2 && version !== 3) throw new Error(`Unsupported GBR version ${version} (need 2 or 3)`)
-  const width = readU32LE(v, 8)
-  const height = readU32LE(v, 12)
-  // bytes-per-pixel field at 16 (informational)
-  const magic = String.fromCharCode(v.getUint8(20), v.getUint8(21), v.getUint8(22))
-  if (magic !== 'GBR') throw new Error('Not a GIMP brush file (bad GBR magic)')
-  const spacing = readU32LE(v, 24)
-  if (width === 0 || height === 0 || width > MAX_DIM || height > MAX_DIM) {
-    throw new Error(`Brush dimensions out of range (${width}×${height})`)
+  if (buf.byteLength < 29) throw new Error('Truncated GIMP brush header')
+  const headerSize = readU32BE(v, 0)
+  const version = readU32BE(v, 4)
+  const width = readU32BE(v, 8)
+  const height = readU32BE(v, 12)
+  const depth = readU32BE(v, 16)
+  const magic = String.fromCharCode(...new Uint8Array(buf, 20, 4))
+  const spacing = readU32BE(v, 24)
+  if (magic !== 'GIMP' || (version !== 2 && version !== 3)) throw new Error('Unsupported GIMP brush header/version')
+  if (headerSize < 29 || headerSize > Math.min(buf.byteLength, 4096)) throw new Error('Invalid GIMP brush header size')
+  if (!width || !height || width > MAX_DIM || height > MAX_DIM || width * height > MAX_PIXELS) throw new Error('GIMP brush dimensions exceed safety limits')
+  const bytes = version === 3 && depth === 18 ? 2 : depth
+  if ((version === 3 && depth !== 18) || (version === 2 && depth !== 1 && depth !== 4)) {
+    throw new Error(`Unsupported GIMP brush pixel format ${depth}`)
   }
-
-  let off = 28
-  if (headerSize > 28 && off < headerSize) off = headerSize
-
-  // v3: color depth field (u32) before the name
-  let colorDepth = 0
-  if (version === 3) {
-    if (off + 4 > buf.byteLength) throw new Error('Truncated brush header')
-    colorDepth = readU32LE(v, off)
-    off += 4
-  }
-
-  // name: u32 length + chars (pascal string), then body
-  let name = 'GIMP Brush'
-  if (off + 4 <= buf.byteLength) {
-    const nameLen = readU32LE(v, off)
-    off += 4
-    if (nameLen > 0 && nameLen < 4096 && off + nameLen <= buf.byteLength) {
-      name = new TextDecoder().decode(new Uint8Array(buf, off, nameLen)).replace(/\0[\s\S]*$/, '') || name
-      off += nameLen
-    }
-  }
-
   const px = width * height
+  if (px * bytes > buf.byteLength - headerSize) throw new Error('Truncated GIMP brush pixels')
+  const nameBytes = new Uint8Array(buf, 28, headerSize - 28)
+  const terminator = nameBytes.indexOf(0)
+  const name = new TextDecoder().decode(nameBytes.subarray(0, terminator < 0 ? nameBytes.length : terminator)) || 'GIMP Brush'
   const canvas = createCanvas(width, height)
   const ctx = ctx2d(canvas)
   const img = ctx.createImageData(width, height)
   const d = img.data
-
-  if (version === 2) {
-    // 2 bytes per pixel: grayscale value + mask (alpha)
-    if (off + px * 2 > buf.byteLength) throw new Error('Truncated brush body (v2 needs 2 bytes/px)')
-    const u8 = new Uint8Array(buf)
-    for (let i = 0; i < px; i++) {
-      const g = u8[off + i * 2]
-      const a = u8[off + i * 2 + 1]
-      d[i * 4] = g; d[i * 4 + 1] = g; d[i * 4 + 2] = g; d[i * 4 + 3] = a
+  const src = new Uint8Array(buf, headerSize, px * bytes)
+  for (let i = 0; i < px; i++) {
+    const at = i * 4
+    if (depth === 4 && version === 2) {
+      d[at] = src[at]; d[at + 1] = src[at + 1]; d[at + 2] = src[at + 2]; d[at + 3] = src[at + 3]
+    } else {
+      let alpha: number
+      if (version === 3) {
+        const h = v.getUint16(headerSize + i * 2, false)
+        const exponent = (h >>> 10) & 31
+        const fraction = h & 1023
+        const value = exponent === 31 ? 0 : exponent === 0
+          ? fraction * 2 ** -24
+          : (1 + fraction / 1024) * 2 ** (exponent - 15)
+        alpha = Math.round(Math.max(0, Math.min(1, (h & 0x8000) ? -value : value)) * 255)
+      } else {
+        alpha = src[i]
+      }
+      d[at] = 255; d[at + 1] = 255; d[at + 2] = 255; d[at + 3] = alpha
     }
-  } else if (colorDepth === 4) {
-    if (off + px * 4 > buf.byteLength) throw new Error('Truncated brush body (v3 RGBA)')
-    d.set(new Uint8Array(buf, off, px * 4))
-  } else if (colorDepth === 1) {
-    if (off + px > buf.byteLength) throw new Error('Truncated brush body (v3 grayscale)')
-    const u8 = new Uint8Array(buf)
-    for (let i = 0; i < px; i++) {
-      const g = u8[off + i]
-      d[i * 4] = g; d[i * 4 + 1] = g; d[i * 4 + 2] = g; d[i * 4 + 3] = g
-    }
-  } else {
-    throw new Error(`Unsupported brush color depth ${colorDepth}`)
   }
   ctx.putImageData(img, 0, 0)
   return { name, spacing, width, height, canvas }
+}
+
+export interface ParsedGimpPattern { name: string; width: number; height: number; canvas: HTMLCanvasElement }
+
+/** Parse genuine GIMP .pat tiles (not Photoshop's unrelated .pat format). */
+export function parseGimpPattern(buf: ArrayBuffer): ParsedGimpPattern {
+  const v = new DataView(buf)
+  if (buf.byteLength < 25) throw new Error('Truncated GIMP pattern')
+  const headerSize = readU32BE(v, 0)
+  const version = readU32BE(v, 4)
+  const width = readU32BE(v, 8)
+  const height = readU32BE(v, 12)
+  const bpp = readU32BE(v, 16)
+  const magic = String.fromCharCode(...new Uint8Array(buf, 20, 4))
+  if (version !== 1 || magic !== 'GPAT') throw new Error('Not a supported GIMP .pat pattern')
+  if (headerSize < 25 || headerSize > Math.min(buf.byteLength, 4096)) throw new Error('Invalid GIMP pattern header')
+  if (!width || !height || width > MAX_DIM || height > MAX_DIM || width * height > MAX_PIXELS) throw new Error('GIMP pattern dimensions exceed safety limits')
+  if (![1, 2, 3, 4].includes(bpp)) throw new Error('Unsupported GIMP pattern color depth')
+  const count = width * height
+  if (count * bpp > buf.byteLength - headerSize) throw new Error('Truncated GIMP pattern pixels')
+  const nameBytes = new Uint8Array(buf, 24, headerSize - 24)
+  const nul = nameBytes.indexOf(0)
+  const name = new TextDecoder().decode(nameBytes.subarray(0, nul < 0 ? nameBytes.length : nul)) || 'GIMP Pattern'
+  const canvas = createCanvas(width, height)
+  const ctx = ctx2d(canvas)
+  const img = ctx.createImageData(width, height)
+  const data = img.data
+  const pixels = new Uint8Array(buf, headerSize, count * bpp)
+  for (let i = 0; i < count; i++) {
+    const at = i * 4, src = i * bpp
+    if (bpp <= 2) {
+      data[at] = pixels[src]; data[at + 1] = pixels[src]; data[at + 2] = pixels[src]
+      data[at + 3] = bpp === 2 ? pixels[src + 1] : 255
+    } else {
+      data[at] = pixels[src]; data[at + 1] = pixels[src + 1]; data[at + 2] = pixels[src + 2]
+      data[at + 3] = bpp === 4 ? pixels[src + 3] : 255
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+  return { name, width, height, canvas }
+}
+
+export interface GimpPaletteColor { name: string; hex: string }
+export interface ParsedGimpPalette { name: string; columns: number; colors: GimpPaletteColor[] }
+
+/** Parse both classic and version 2 GIMP .gpl RGB palettes. */
+export function parseGimpPalette(text: string, fallbackName = 'GIMP Palette'): ParsedGimpPalette {
+  if (text.length > 2_000_000) throw new Error('GIMP palette exceeds size limit')
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/)
+  if (lines[0]?.trim() !== 'GIMP Palette') throw new Error('Not a GIMP .gpl palette')
+  let name = fallbackName, columns = 0
+  const colors: GimpPaletteColor[] = []
+  for (const raw of lines.slice(1)) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    if (/^Name:\s*/i.test(line) && colors.length === 0) { name = line.replace(/^Name:\s*/i, '').trim() || fallbackName; continue }
+    if (/^Columns:\s*/i.test(line) && colors.length === 0) {
+      const value = line.replace(/^Columns:\s*/i, '').trim()
+      if (!/^\d+$/.test(value) || Number(value) > 255) throw new Error('Invalid GIMP palette column count')
+      columns = Number(value)
+      continue
+    }
+    const match = line.match(/^(\d+)\s+(\d+)\s+(\d+)(?:\s+(.*))?$/)
+    if (!match) throw new Error('Malformed GIMP palette color: ' + line.slice(0, 80))
+    const nums = match.slice(1, 4).map(Number)
+    if (nums.some(n => n > 255)) throw new Error('GIMP palette colors must be 0–255')
+    const hex = '#' + nums.map(n => n.toString(16).padStart(2, '0')).join('')
+    colors.push({ hex, name: match[4]?.trim() || hex })
+    if (colors.length > 4096) throw new Error('GIMP palette has too many colors')
+  }
+  if (colors.length === 0) throw new Error('GIMP palette has no colors')
+  return { name, columns, colors }
 }
 
 /** Parse a GIMP Gradient (.ggr) — text format: 3 positions + left rgba + right rgba + type + coloring per segment. */
