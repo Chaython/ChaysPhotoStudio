@@ -1,3 +1,4 @@
+import { chooseLensfunCurve, type CameraExif } from '../src/editor/formats/lensfun-xml'
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
@@ -267,4 +268,13 @@ cv.setUint32(4,4100,true);cv.setUint32(8,4234,true)
 dcx.set(pcx(10,20,30),4100);dcx.set(pcx(40,50,60),4234)
 check(dcxPageOffsets(dcx).length===2,'DCX pages')
 check(decodePcx(dcx,0).rgba[0]===10 && decodePcx(dcx,1).rgba[0]===40,'DCX page selection')
-console.log('Scientific, DICOM-RLE, EXR scanline/tiled/RLE, 16-bit lens and multipage TIFF/DCX tests passed')
+
+// Lensfun duplicate focal records used to divide by zero and generate NaNs.
+const lensExif: CameraExif = {maker:'Test', model:'Body',lens:'50mm',focal:50,aperture:4,distance:1000}
+check(chooseLensfunCurve([{model:'poly3',focal:50,k1:0.1}],lensExif)?.k1===0.1,'Exact Lensfun focal curve')
+check(chooseLensfunCurve([{model:'poly3',focal:50,k1:0.1},{model:'poly3',focal:50,k1:0.2}],lensExif)===undefined,'Ambiguous same-focal records are rejected')
+const sampleCurve=chooseLensfunCurve([{model:'poly3',focal:20,k1:0.1},{model:'poly3',focal:80,k1:0.3}],lensExif)
+check(sampleCurve && Math.abs((sampleCurve.k1??0)-0.2)<1e-8,'Lensfun focal interpolation stays finite')
+check(chooseLensfunCurve([{model:'poly3',focal:60,k1:0.3}],lensExif)===undefined,'Lensfun never extrapolates beyond known focal calibrations')
+check(chooseLensfunCurve([{model:'poly3',focal:20,k1:0.1},{model:'ptlens',focal:80,a:0.1}],lensExif)===undefined,'Lensfun does not mix incompatible curve models')
+console.log('Scientific, DICOM-RLE, EXR, Lensfun calibration and multipage TIFF/DCX tests passed')
