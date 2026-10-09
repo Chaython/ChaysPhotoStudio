@@ -45,7 +45,7 @@ For GIMP Python or Script-Fu source, open **Plugin Manager → GIMP Scripts**. T
 
 ## Optional GIMP 3 runtime — on demand
 
-**Plugin Manager → GIMP Runtime** detects an installed GIMP 3 only when its tab is opened, discovers procedures only when requested, and runs the selected procedure only when Execute is pressed. GIMP Python, Script-Fu and compiled plug-ins registered in the GIMP PDB can be invoked when they support noninteractive operation and supported parameters. Composite PNG results are imported as a new layer.
+**Plugin Manager → GIMP Runtime** detects an installed GIMP 3 only when **Detect GIMP 3** is clicked, discovers procedures only when requested, and runs the selected procedure only when Execute is pressed. GIMP Python, Script-Fu and compiled plug-ins registered in the GIMP PDB can be invoked when they support noninteractive operation and supported parameters. Composite PNG results are imported as a new layer.
 
 Configure a portable GIMP on Windows before launching the editor:
 
