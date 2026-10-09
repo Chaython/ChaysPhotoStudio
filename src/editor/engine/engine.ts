@@ -3938,6 +3938,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment' || !imageOps.ADJUSTMENTS[type]) return false
+    if (!this.canCommitHdrRasterOp(doc, layer, typeLabel(type))) return false
     if (doc.workingBitDepth === 32 && !imageOps.HDR_SAFE_ADJUSTMENTS.has(type)) {
       this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
       return false
@@ -3970,6 +3971,7 @@ export class Engine {
       this.addSmartFilter(layerId, type, params)
       return true
     }
+    if (!this.canCommitHdrRasterOp(doc, layer, filterLabel(type))) return false
     try {
       const img = this.processingCopyForLayer(doc, layer)
       if (!img) return false
@@ -4138,6 +4140,14 @@ export class Engine {
   // api, invert shortcut). Small images (< 0.3 MP) and any worker failure run sync
   // automatically inside the wrapper — identical observable behavior.
 
+  /** Destructive HDR operations must not rasterize editable source layers
+   * through the display preview and present it as high-precision image data. */
+  private canCommitHdrRasterOp(doc: PsDocument, layer: Layer, label: string): boolean {
+    if (doc.workingBitDepth !== 32 || layer.kind === 'raster') return true
+    this.ui?.toast(`${label} requires a raster layer in 32-bit HDR; rasterize explicitly first`, 'error')
+    return false
+  }
+
   /** Compute synchronously from detached pixels; errors are not live edits. */
   private processingCopyForLayer(doc: PsDocument, layer: Layer): PixelImage | null {
     const canvas = layer.kind === 'raster' ? layer.canvas
@@ -4161,7 +4171,8 @@ export class Engine {
    * and after the target document and History have been revalidated. */
   private commitComputedPixelOp(layer: Layer, output: PixelImage): boolean {
     const doc = this.activeDoc
-    if (!doc || !doc.layers.includes(layer) || layer.locked) return false
+    if (!doc || !doc.layers.includes(layer) || layer.locked ||
+        (doc.workingBitDepth === 32 && layer.kind !== 'raster')) return false
     // Reject invalid output before cloning/rasterizing the live layer.
     if (layer.kind === 'raster') {
       if (!layer.canvas || layer.canvas.width !== output.width || layer.canvas.height !== output.height) return false
@@ -4181,6 +4192,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.kind === 'adjustment' || layer.locked) return false
+    if (!this.canCommitHdrRasterOp(doc, layer, label)) return false
     if (doc.workingBitDepth !== 8 &&
         (spec.kind === 'auto-tone' || spec.kind === 'auto-contrast' || spec.kind === 'auto-color')) {
       this.ui?.toast('Automatic histogram corrections currently require an 8-bit document', 'error')
@@ -4215,6 +4227,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    if (!this.canCommitHdrRasterOp(doc, layer, typeLabel(type))) return
     if (doc.workingBitDepth === 32 && !imageOps.HDR_SAFE_ADJUSTMENTS.has(type)) {
       this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
       return
@@ -4254,6 +4267,7 @@ export class Engine {
       this.addSmartFilter(layerId, type, params)
       return
     }
+    if (!this.canCommitHdrRasterOp(doc, layer, filterLabel(type))) return
     const layerVersion = layer._v
     const historyAnchor = doc.history.states[doc.history.index]
     const sourceEpoch = doc._epoch

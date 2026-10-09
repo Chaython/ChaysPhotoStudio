@@ -199,7 +199,31 @@ try {
   await editor.applyFilterToLayerAsync('layer', 'smart-sharpen', {})
   assert.equal(layer._v, versionBeforeHdrRejection,
     'unsupported HDR operations must reject before raster mutation')
-  console.log('Selection race, async pixel commits, locked layers and unsupported HDR guards passed')
+  const editable = {
+    id: 'vector-shape', name: 'Vector Shape', kind: 'shape', locked: false, _v: 1,
+    smartFilters: [], visible: true, opacity: 100,
+  } as unknown as PsDocument['layers'][number]
+  doc.layers.push(editable)
+  const beforeVectorJobs = DeferredWorker.jobs.length
+  const beforeVectorHistory = doc.history.index
+  const vectorVersion = editable._v
+  assert.equal(editor.applyAdjustmentToLayer(editable.id, 'exposure', { exposure: 1 }), false,
+    'direct HDR exposure cannot silently rasterize a shape from preview pixels')
+  assert.equal(editor.applyFilterToLayer(editable.id, 'offset',
+    { horizontal: 1, vertical: 0, edgeMode: 'wrap' }), false)
+  assert.equal(await editor.applyRegionOpAsync(editable.id, {
+    kind: 'filter', type: 'offset', params: { horizontal: 1, vertical: 0, edgeMode: 'wrap' },
+  }, 'Offset'), false)
+  await editor.applyAdjustmentToLayerAsync(editable.id, 'exposure', { exposure: 1 })
+  await editor.applyFilterToLayerAsync(editable.id, 'offset', {
+    horizontal: 1, vertical: 0, edgeMode: 'wrap',
+  })
+  assert.equal(DeferredWorker.jobs.length, beforeVectorJobs,
+    'HDR editable source operations must reject before worker dispatch')
+  assert.equal(doc.history.index, beforeVectorHistory)
+  assert.equal(editable.kind, 'shape', 'HDR vector shape must remain editable')
+  assert.equal(editable._v, vectorVersion)
+  console.log('Selection race, pixel commits, layer locks and HDR source precision guards passed')
 } finally {
   if (descriptorWorker) Object.defineProperty(globalThis, 'Worker', descriptorWorker)
   else Reflect.deleteProperty(globalThis, 'Worker')
