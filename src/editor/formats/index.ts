@@ -25,6 +25,7 @@ import { decodeSgi, decodeSunRaster } from './heritage-raster'
 import { decodeFits } from './scientific-fits'
 import { decodeDicom } from './scientific-dicom'
 import { decodeExr } from './openexr'
+import type { RawDevelopSettings } from './raw-develop'
 import type { ParsedDocumentLayer } from './document-parser-types'
 import type { ImageMetadata, LayerFX } from '../types'
 import { buildWritableXmp, embedRasterMetadata } from './metadata-write'
@@ -182,7 +183,7 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
  *  Native-decodable formats (png/jpeg/gif/webp/avif/svg) go through
  *  createImageBitmap/<img>; anything the browser can't do (16-bit
  *  TIFF, PSD, TGA, PNM, QOI, PCX, ICO-DIB) is decoded here. */
-export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
+export async function decodeFile(file: File | Blob, options?: { rawSettings?: RawDevelopSettings }): Promise<DecodedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const sourceName = (file as File).name || ''
   // Dedicated structured parsers keep editable objects/layers for supported
@@ -216,7 +217,7 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   if (publishedFormatKind(sourceName) === 'raw') {
     try {
       const { decodeCameraRaw } = await import('./wasm-codecs')
-      const rendered = fromRaw(await decodeCameraRaw(bytes.buffer as ArrayBuffer), fileExtension(sourceName))
+      const rendered = fromRaw(await decodeCameraRaw(bytes.buffer as ArrayBuffer, options?.rawSettings), fileExtension(sourceName))
       rendered.warnings = ['Decoded original RAW sensor image through LibRaw. 16-bit precision is retained where supported.']
       return rendered
     } catch (rawError) {
