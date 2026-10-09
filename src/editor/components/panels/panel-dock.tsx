@@ -285,16 +285,32 @@ function DropOverlay({ side }: { side: 'left' | 'right' }) {
 }
 
 /** Photoshop-inspired two-stack inspector: real registered panels, no mock controls. */
+const PHOTOSHOP_UPPER_TABS = ['color', 'adjustments', 'properties', 'navigator', 'histogram']
+const PHOTOSHOP_LOWER_TABS = ['layers', 'channels', 'paths', 'history', 'actions']
+
 function PhotoshopRightDock() {
   const [upper, setUpper] = useState('color')
   const [lower, setLower] = useState('layers')
+  const rightTab = useEditorStore(s => s.panels.rightTab)
+  // Window → Reveal Panel and the + menu still work in the split inspector.
+  useEffect(() => {
+    if (!PANEL_MAP[rightTab]) return
+    if (PHOTOSHOP_UPPER_TABS.includes(rightTab)) setUpper(rightTab)
+    else setLower(rightTab)
+  }, [rightTab])
+  const selectUpper = (id: string) => { setUpper(id); useEditorStore.getState().setRightPanelTab(id) }
+  const selectLower = (id: string) => { setLower(id); useEditorStore.getState().setRightPanelTab(id) }
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
   const width = useEditorStore(s => s.panels.dockWidth)
   const setWidth = useEditorStore(s => s.setDockWidth)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
-  const upperTabs = ['color', 'swatches', 'adjustments', 'properties', 'navigator', 'histogram'].filter(id => id !== 'swatches')
-  const lowerTabs = ['layers', 'channels', 'paths', 'history', 'actions']
+  const upperTabs = PHOTOSHOP_UPPER_TABS
+  // If a different registered panel is revealed, show it without hiding the
+  // standard Photoshop-style groups or making it inaccessible.
+  const lowerTabs = PHOTOSHOP_LOWER_TABS.includes(lower)
+    ? PHOTOSHOP_LOWER_TABS
+    : [...PHOTOSHOP_LOWER_TABS, lower]
   const tabs = (ids: string[], active: string, choose: (id: string) => void) => (
     <div className="flex h-8 shrink-0 overflow-x-auto border-b border-border/70 bg-panel zphoto-scroll" role="tablist">
       {ids.map(id => {
@@ -330,13 +346,13 @@ function PhotoshopRightDock() {
       <span>Color &amp; adjustments</span><AddPanelMenu side="right" mobile={false}/>
     </div>
     <section className="flex min-h-0 flex-col" style={{flex:'0 0 42%'}}>
-      {tabs(upperTabs, upper, setUpper)}
+      {tabs(upperTabs, upper, selectUpper)}
       <div className="flex flex-1 min-h-0 flex-col overflow-auto zphoto-scroll">{content(upper)}</div>
     </section>
     <div className="h-1 border-y border-border/80 bg-background shrink-0" aria-hidden/>
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="h-6 border-b px-2 flex items-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Layers &amp; history</div>
-      {tabs(lowerTabs, lower, setLower)}
+      {tabs(lowerTabs, lower, selectLower)}
       <div className="flex-1 flex min-h-0 flex-col overflow-auto zphoto-scroll">{content(lower)}</div>
     </section>
   </aside>
