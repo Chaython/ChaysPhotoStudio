@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { analyzeGimpScript, type GimpScriptAnalysis } from '../../plugins/gimp-script-analyzer'
 import { Button } from '@/components/ui/button'
 import { FileCode2, Upload } from 'lucide-react'
+import { GimpEmbeddedRunner } from './gimp-embedded-runner'
 
 const MAX_SOURCE_BYTES = 2_000_000
 
@@ -41,6 +42,7 @@ export function GimpAnalysisTab() {
       <textarea aria-label="GIMP script source" value={source} onChange={e => { setSource(e.target.value); setResult(null) }}
         placeholder="Paste a GIMP script, or open a .py/.scm file…" rows={6} spellCheck={false}
         className="w-full rounded border border-border bg-background p-2 font-mono text-[10px]"/>
+      <GimpEmbeddedRunner source={source} filename={filename}/>
       {error && <p role="alert" className="text-destructive text-[10px]">{error}</p>}
       {result && (
         <>
