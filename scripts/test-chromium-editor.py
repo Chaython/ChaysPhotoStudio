@@ -208,13 +208,19 @@ def main():
                 try:
                     page.get_by_role("menuitem", name=re.compile(r"Float panel", re.I)).wait_for(state="visible", timeout=4000)
                 except Exception:
-                    print("  Open Files DOM:", dest.evaluate("(el) => ({outer:el.outerHTML.slice(0,700),connected:el.isConnected,box:el.getBoundingClientRect().toJSON()})"), flush=True)
-                    print("  Context events:", page.evaluate("() => window.__contextEvents"), flush=True)
-                    print("  Menu items after re-docking:", page.locator('[role="menuitem"]').all_text_contents(), flush=True)
-                    print("  Context menu count:", page.locator('[role="menu"]').count(), flush=True)
-                    dest.dispatch_event("contextmenu", {"button": 2, "bubbles": True, "cancelable": True})
-                    page.wait_for_timeout(300)
-                    print("  Menu after explicit event:", page.locator('[role="menuitem"]').all_text_contents(), flush=True)
+                    print("  Context diagnostics:", page.evaluate("""() => ({
+                      events: window.__contextEvents,
+                      dockSide: window.__zphotoStore.getState().panels.dockSide.documents,
+                      floating: !!window.__zphotoStore.getState().panels.floating.documents,
+                      titles: Array.from(document.querySelectorAll('[title*="Open Files"]'))
+                        .map(el => ({title: el.getAttribute('title'),
+                          dock: el.closest('[data-panel-dock]')?.getAttribute('data-panel-dock'),
+                          outer: el.outerHTML.slice(0, 320),
+                          x: el.getBoundingClientRect().x, y: el.getBoundingClientRect().y})),
+                      menuCount: document.querySelectorAll('[role="menu"]').length,
+                      availableMenuItems: Array.from(document.querySelectorAll('[role="menuitem"]'))
+                        .map(el => el.textContent?.trim()).slice(-15),
+                    })"""), flush=True)
                     raise
                 page.get_by_role("menuitem", name=re.compile(r"Float panel", re.I)).click()
                 page.wait_for_function("() => !!window.__zphotoStore.getState().panels.floating.documents")
