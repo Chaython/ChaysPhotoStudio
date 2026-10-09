@@ -3,26 +3,45 @@
 // Every panel follows the same lifecycle: dock left/right/top or float as a window.
 // NOTE: this module imports panel components (which import the store) — keep it
 // free of store imports to avoid a circular dependency.
-import { createElement, type ComponentType } from 'react'
+import { createElement, lazy, Suspense, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders, Wrench, Files, LayoutList, Tags,
 } from 'lucide-react'
-import { LayersPanel } from './layers-panel'
-import { HistoryPanel, NavigatorPanel, HistogramPanel } from './history-navigator-histogram'
-import { ColorPanel } from './color-panel'
-import { ChannelsPanel, AdjustmentsPanel, ActionsPanel, PropertiesPanel } from './channels-actions-properties'
-import { TimelinePanel } from './timeline-panel'
-import { CloneSourcePanel } from './clone-source-panel'
-import { InfoPanel } from './info-panel'
-import { MetadataPanel } from './metadata-panel'
-import { PathsPanel } from './paths-panel'
-import { PatternsPanel } from './patterns-panel'
-import { ToolPresetsPanel } from './tool-presets-panel'
-import { LayerCompsPanel } from './layer-comps-panel'
 import { Toolbar } from '../toolbar/toolbar'
 import { ToolOptionsBar } from '../toolbar/tool-options-bar'
 import { DocumentTabs } from '../workspace/document-tabs'
+
+// Only the selected tab is mounted. Loading its module on first activation keeps
+// expensive canvases, metadata parsers and panel effects out of initial startup.
+function deferredPanel(load: () => Promise<{ default: ComponentType }>): ComponentType {
+  const Loaded = lazy(load)
+  return function DeferredPanel() {
+    return createElement(
+      Suspense,
+      { fallback: createElement('div', { role: 'status', className: 'p-3 text-xs text-muted-foreground' }, 'Loading panel…') },
+      createElement(Loaded),
+    )
+  }
+}
+
+const LayersPanel = deferredPanel(() => import('./layers-panel').then(m => ({ default: m.LayersPanel })))
+const HistoryPanel = deferredPanel(() => import('./history-navigator-histogram').then(m => ({ default: m.HistoryPanel })))
+const NavigatorPanel = deferredPanel(() => import('./history-navigator-histogram').then(m => ({ default: m.NavigatorPanel })))
+const HistogramPanel = deferredPanel(() => import('./history-navigator-histogram').then(m => ({ default: m.HistogramPanel })))
+const ColorPanel = deferredPanel(() => import('./color-panel').then(m => ({ default: m.ColorPanel })))
+const ChannelsPanel = deferredPanel(() => import('./channels-actions-properties').then(m => ({ default: m.ChannelsPanel })))
+const AdjustmentsPanel = deferredPanel(() => import('./channels-actions-properties').then(m => ({ default: m.AdjustmentsPanel })))
+const ActionsPanel = deferredPanel(() => import('./channels-actions-properties').then(m => ({ default: m.ActionsPanel })))
+const PropertiesPanel = deferredPanel(() => import('./channels-actions-properties').then(m => ({ default: m.PropertiesPanel })))
+const TimelinePanel = deferredPanel(() => import('./timeline-panel').then(m => ({ default: m.TimelinePanel })))
+const CloneSourcePanel = deferredPanel(() => import('./clone-source-panel').then(m => ({ default: m.CloneSourcePanel })))
+const InfoPanel = deferredPanel(() => import('./info-panel').then(m => ({ default: m.InfoPanel })))
+const MetadataPanel = deferredPanel(() => import('./metadata-panel').then(m => ({ default: m.MetadataPanel })))
+const PathsPanel = deferredPanel(() => import('./paths-panel').then(m => ({ default: m.PathsPanel })))
+const PatternsPanel = deferredPanel(() => import('./patterns-panel').then(m => ({ default: m.PatternsPanel })))
+const ToolPresetsPanel = deferredPanel(() => import('./tool-presets-panel').then(m => ({ default: m.ToolPresetsPanel })))
+const LayerCompsPanel = deferredPanel(() => import('./layer-comps-panel').then(m => ({ default: m.LayerCompsPanel })))
 
 export type PanelId =
   | 'color' | 'layers' | 'channels' | 'history' | 'actions'
