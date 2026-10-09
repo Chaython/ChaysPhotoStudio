@@ -49,10 +49,10 @@ See [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md) for categorized i
 
 - **Native Chay plugins:** manifest/script extensions with a permission model and worker-based execution. Only install extensions you trust.
 - **Photoshop UXP compatibility:** practical selected manifest, `batchPlay` and command APIs; not a complete UXP runtime and not binary Photoshop `.8bf` support.
-- **GIMP compatibility:** imported brush `.gbr` and gradient `.ggr`; optional **G'MIC/GEGL** executable integration in Electron. GEGL/G'MIC are not bundled and require separate desktop installations. Arbitrary Python/Script-Fu/C GIMP plugins are not drop-in executable.
+- **GIMP compatibility:** `.gbr` brush/`.ggr` gradient assets, filter discovery and script analysis. Electron can invoke **GIMP 3 PDB procedures** and supported Python/Script-Fu source **on demand** through a separate installed GIMP, alongside optional G'MIC/GEGL programs. The embedded Scheme subset or opt-in Pyodide runtime runs only when selected; neither emulates the full GIMP API.
 - **AI helpers:** local selection/subject, masks, cleanup and image analysis; optional ComfyUI workflows if independently configured; remote Pollinations/custom image generation requires internet and may transmit prompts or image data.
 
-The expanded GIMP asset/filter browser and script analyzer are proposed in [PR #83](https://github.com/Chaython/ChaysPhotoStudio/pull/83); they are not part of the current main branch. See the [user guide](docs/USER_GUIDE.md#plugins-automation-and-optional-ai) for common workflows.
+Expanded GIMP compatibility was merged in [PR #83](https://github.com/Chaython/ChaysPhotoStudio/pull/83). Native GIMP commands are **Electron-only** and require a trusted installed GIMP 3; the Pyodide interpreter is downloaded only when explicitly requested and therefore needs internet on first use. See the [user guide](docs/USER_GUIDE.md#plugins-automation-and-optional-ai) for common workflows.
 
 ## Install, build and run
 
@@ -62,10 +62,10 @@ The editor is distributed via web/PWA, Electron desktop (including Windows porta
 |---|---|---|
 | **Web / PWA** | PWA caches the shell after installation | First load needs a hosted page; cached content and browser storage can be cleared |
 | **Electron** | Bundled Next.js standalone server and Chromium | Runs a local server internally; does not require an external hosted editor |
-| **Tauri WebView** | Default releases embed the static frontend | Uses installed OS WebView2/WKWebView/WebKitGTK; optional remote thin-shell needs internet |
+| **Tauri WebView** | Default releases embed the static frontend | Uses OS WebView2/WKWebView/WebKitGTK; a separate Windows offline-runtime installer is also built |
 | **Browser plugin** | Bundled static app in extension | Right-click images for import, subject to remote image access/CORS |
 
-The extra Windows **offline WebView2 installer** is proposed in [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85). The CSP, native window persistence, recovery exports and manual update checker are proposed in [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86). Neither should be confused with current released builds until merged.
+The **additional Windows WebView2 offline installer** is now configured in `main` ([PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85)); its release filename starts `webview-windows-offline-x64--` once the release job successfully publishes it. CSP, native window persistence, recovery exports and a manual update checker remain proposed in [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86).
 
 ### Local development
 
