@@ -125,7 +125,14 @@ export function matchLensfun(meta:ImageMetadata|undefined):LensfunCalibration|nu
   // Ambiguous lens strings must not select a plausible but wrong calibration.
   if(candidates.length!==1)return null
   const lens=candidates[0]
-  const vignetteSamples=lens.curves.vignetting.filter(c=>!c.aperture||!exif.aperture||Math.abs(c.aperture-exif.aperture)<=0.6)
+  // Vignetting depends strongly on aperture and subject distance; unlike
+  // distortion, it must never pick an arbitrary calibration when EXIF is absent.
+  const closeVignettes=exif.aperture>0?
+    lens.curves.vignetting.filter(c=>c.aperture!==undefined&&
+      Math.abs(c.aperture-exif.aperture)<=0.35):[]
+  const farDistance=closeVignettes.filter(c=>!c.distance||c.distance>=100)
+  const vignetteSamples=farDistance.length?farDistance:closeVignettes.filter(c=>
+    c.distance!==undefined && Math.abs(c.distance-exif.distance)<=Math.max(0.25,exif.distance*0.15))
   return {source:'lensfun-xml',maker:lens.maker,lens:lens.model,crop:lens.crop,
     focal:exif.focal,distortion:chooseCurve(lens.curves.distortion,exif),
     tca:chooseCurve(lens.curves.tca,exif),
