@@ -29,7 +29,7 @@ Actions → *Variables*):
 |---|---|---|
 | `WEBVIEW_APP_URL` | Optional Tauri thin-shell URL override | unset — Tauri embeds `build/webapp-export` |
 
-The **browser plugin and default Tauri release are self-contained**. GitHub Pages
+The **browser plugin and default Tauri release are self-contained**. Release-only WebView CSP and native window position/size restoration are configured, while [the offline audit](docs/WEBVIEW_OFFLINE_AUDIT.md) documents limits such as online AI and manual recovery exports. GitHub Pages
 publishes the static live editor automatically from default-branch builds. The
 repository's one-time Pages setting must use **Settings → Pages → Build and
 deployment → Source → GitHub Actions**.
@@ -65,6 +65,15 @@ continuous-style release just like a push.
 > will warn on unsigned installers until enough installs or an EV/OV certificate
 > is used.
 
+### Optional Windows WebView Authenticode signing
+
+The WebView release job can sign NSIS installers when both Actions secrets are supplied:
+`WINDOWS_CODESIGN_PFX_BASE64` (base64-encoded PFX certificate file) and
+`WINDOWS_CODESIGN_PFX_PASSWORD` (its password). Without them, release builds
+remain unsigned. The signer checks the resulting Authenticode signature before
+uploading artifacts. **This is not a signed automatic updater**; separate Tauri
+updater keys and an update feed would be needed.
+
 ## 3. Building each channel locally
 
 ```bash
@@ -88,7 +97,8 @@ bun run ext:build            # generates icons, static export, then Chrome + Fir
 
 # Tauri webview shell (requires Rust; uses the OS webview)
 bun run webview:dev                                  # devUrl: localhost:3000
-bun run webview:build                                # static editor embedded; offline-capable
+bun run webview:build                                # static editor embedded; release CSP and native window-state restoration
+bun run webview-offline:validate                     # inspect exported HTML references for missing/offsite assets
 WEBVIEW_APP_URL=https://studio.example.com bun run webview:build  # optional remote thin shell
 
 # Self-hosting the web bundle
