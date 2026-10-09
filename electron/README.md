@@ -12,6 +12,8 @@
   Windows "Open with" are read in the main process and relayed to the renderer
   as `chays:open-file` events → the app's normal `openFiles()` pipeline.
 
+**Offline model:** Electron bundles the app and the localhost server, not every external AI endpoint or optional filter tool. Opening/saving local projects works without GitHub Pages; remote AI calls and external image URLs still require network access. For format and HDR restrictions, see [Feature & Format Reference](../docs/FEATURES_AND_FORMATS.md).
+
 Full build/sign/release instructions: see [`DISTRIBUTION.md`](../DISTRIBUTION.md).
 
 ## Windows portable build
