@@ -59,7 +59,8 @@ export const DOCK_WIDTH_MAX = 460
 export const TOP_HEIGHT_DEFAULT = 232
 export const TOP_HEIGHT_MIN = 120
 export const TOP_HEIGHT_MAX = 480
-export type DockSide = 'left' | 'right' | 'top'
+export type DockSide = 'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+export const HORIZONTAL_DOCKS: readonly DockSide[] = ['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right']
 export const NATIVE_PANEL_IDS = ['tools', 'tool-options', 'documents'] as const
 export type NativePanelId = typeof NATIVE_PANEL_IDS[number]
 export const isNativePanelId = (id: string): id is NativePanelId =>
@@ -78,6 +79,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
   dockSide: Record<string, DockSide>
   topOrder: string[]
   topHeight: number
+  bottomHeight: number
 } | null {
   if (typeof window === 'undefined') return null
   try {
@@ -94,6 +96,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
       dockSide?: Record<string, string>
       topOrder?: unknown
       topHeight?: number
+      bottomHeight?: number
     }
     const vw = window.innerWidth
     const vh = window.innerHeight
@@ -113,7 +116,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
     }
     const dockSide: Record<string, DockSide> = {}
     for (const [id, side] of Object.entries(data.dockSide ?? {})) {
-      if (side === 'left' || side === 'right' || side === 'top') dockSide[id] = side
+      if (side === 'left' || side === 'right' || HORIZONTAL_DOCKS.includes(side as DockSide)) dockSide[id] = side as DockSide
     }
     const topOrder = Array.isArray(data.topOrder)
       ? data.topOrder.filter((id): id is string => typeof id === 'string').slice(0, 32)
@@ -130,6 +133,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
       dockSide,
       topOrder: topOrder.filter(id => dockSide[id] === 'top'),
       topHeight: clampNum(Math.round(data.topHeight ?? TOP_HEIGHT_DEFAULT), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX),
+      bottomHeight: clampNum(Math.round(data.bottomHeight ?? 192), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX),
     }
   } catch {
     return null
@@ -150,6 +154,7 @@ function persistPanelLayout(panels: EditorStore['panels']) {
       dockSide: panels.dockSide,
       topOrder: panels.topOrder,
       topHeight: panels.topHeight,
+      bottomHeight: panels.bottomHeight,
     }))
   } catch {
     /* noop */
@@ -254,7 +259,7 @@ function defaultPanelState(): EditorStore['panels'] {
   return {
     rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
     colorPanelOpen: true, floating: {}, dockSide: {}, topOrder: [],
-    topHeight: TOP_HEIGHT_DEFAULT, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
+    topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
   }
 }
 
@@ -263,7 +268,7 @@ function photoshopPanelState(current: EditorStore['panels']): EditorStore['panel
   return {
     ...current,
     rightTab: 'layers', leftTab: '', leftOpen: false,
-    floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT,
+    floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
     dockWidth: 318,
   }
 }
@@ -320,6 +325,8 @@ interface EditorStore {
     topOrder: string[]
     /** top strip height in px (desktop) */
     topHeight: number
+    /** bottom strip height in px (desktop) */
+    bottomHeight: number
     /** monotonically increasing z counter for focus stacking */
     zTop: number
     /** right dock width in px (desktop) */
@@ -372,6 +379,7 @@ interface EditorStore {
   setDockWidth(px: number): void
   setLeftDockWidth(px: number): void
   setTopHeight(px: number): void
+  setBottomHeight(px: number): void
   resetPanelLayout(): void
   setViewPref(key: 'showRulers' | 'showGuides' | 'snapGuides' | 'showGrid' | 'snapGrid' | 'showGridLabels' | 'showPixelGrid', value: boolean): void
   setViewPref(key: 'rulerUnits', value: 'px' | 'in' | 'cm' | 'mm'): void
@@ -634,7 +642,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     // explicitly docks/floats them; revealing one should not move it right.
     if (isNativePanelId(id) && !s.panels.dockSide[id]) return {}
     const side: DockSide = s.panels.dockSide[id] ?? 'right'
-    if (side === 'top') return {} // always visible in the top strip
+    if (HORIZONTAL_DOCKS.includes(side)) return {} // horizontal strips show their panels side by side
     const panels = {
       ...s.panels,
       rightTab: side === 'right' ? id : s.panels.rightTab,
@@ -731,6 +739,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const topHeight = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
     if (topHeight === s.panels.topHeight) return {}
     const panels = { ...s.panels, topHeight }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+
+  setBottomHeight: (px) => set(s => {
+    const bottomHeight = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
+    if (bottomHeight === s.panels.bottomHeight) return {}
+    const panels = { ...s.panels, bottomHeight }
     persistPanelLayout(panels)
     return { panels }
   }),

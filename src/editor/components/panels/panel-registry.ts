@@ -1,6 +1,6 @@
 'use client'
 // Panel registry — single source of truth for dockable/floating editor panels.
-// Every panel follows the same lifecycle: dock left/right/top or float as a window.
+// Every panel follows the same lifecycle: dock into eight edge/corner positions or float as a window.
 // NOTE: this module imports panel components (which import the store) — keep it
 // free of store imports to avoid a circular dependency.
 import { createElement, lazy, Suspense, type ComponentType } from 'react'

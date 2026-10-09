@@ -77,6 +77,9 @@ export function PanelContextMenu({
         <DockItem id={id} label="Dock left" side="left" current={current} onSelect={() => move('left')} />
         <DockItem id={id} label="Dock right" side="right" current={current} onSelect={() => move('right')} />
         <DockItem id={id} label="Dock top" side="top" current={current} onSelect={() => move('top')} />
+        {(['bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map(side => (
+          <DockItem key={side} id={id} label={`Dock ${side.replaceAll('-', ' ')}`} side={side} current={current} onSelect={() => move(side)} />
+        ))}
       </ContextMenuContent>
     </ContextMenu>
   )
