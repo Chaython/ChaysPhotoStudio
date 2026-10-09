@@ -214,16 +214,29 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   // baseline RGB TIFF. Route them to the RAW/embedded-preview path before the
   // TIFF codec gets a chance to misclassify them.
   if (publishedFormatKind(sourceName) === 'raw') {
-    const canvas = await decodePublishedFormatPreview(file, sourceName)
-    return {
-      canvas,
-      width: canvas.width,
-      height: canvas.height,
-      hasAlpha: scanAlpha(getImageData(canvas).data),
-      format: fileExtension(sourceName),
-      sourceBitDepth: 8,
-      warnings: ['Camera RAW preview only: the embedded image was extracted; original sensor pixels, exposure latitude, and RAW development controls are not available.'],
+    try {
+      const { decodeCameraRaw } = await import('./wasm-codecs')
+      const rendered = fromRaw(await decodeCameraRaw(bytes.buffer as ArrayBuffer), fileExtension(sourceName))
+      rendered.warnings = ['Decoded original RAW sensor image through LibRaw. 16-bit precision is retained where supported.']
+      return rendered
+    } catch (rawError) {
+      const canvas = await decodePublishedFormatPreview(file, sourceName)
+      return {
+        canvas, width: canvas.width, height: canvas.height,
+        hasAlpha: scanAlpha(getImageData(canvas).data),
+        format: fileExtension(sourceName), sourceBitDepth: 8,
+        warnings: ['RAW sensor decoding failed (' +
+          (rawError instanceof Error ? rawError.message : String(rawError)) +
+          '). Imported an embedded 8-bit preview instead.'],
+      }
     }
+  }
+  if (['jls', 'jxr', 'wdp', 'hdp'].includes(fileExtension(sourceName))) {
+    const wasm = await import('./wasm-codecs')
+    const ext = fileExtension(sourceName)
+    const decoded = ext === 'jls' ? await wasm.decodeJpegLs(bytes.buffer as ArrayBuffer)
+      : await wasm.decodeModernWasm(bytes.buffer as ArrayBuffer, 'jxr')
+    return fromRaw(decoded, ext)
   }
   let format = detectFormat(bytes)
   if (!format) format = formatFromMime(file.type)
@@ -296,6 +309,10 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
     case 'ico': return fromRaw(await decodeIco(bytes), 'ico')
     case 'dds': return fromRaw(decodeDds(bytes), 'dds')
     case 'exr': return fromRaw(await decodeExr(bytes), 'exr')
+    case 'jp2': {
+      const { decodeJpeg2000 } = await import('./wasm-codecs')
+      return fromRaw(await decodeJpeg2000(bytes.buffer as ArrayBuffer), 'jp2')
+    }
     case 'fits':
     case 'dicom': {
       const parsed = format === 'fits' ? decodeFits(bytes) : decodeDicom(bytes)
@@ -346,14 +363,19 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
     }
     default: {
       // png / jpeg / gif / webp / avif / svg — native
-      const canvas = await decodeNativeCanvas(file, format)
-      return {
-        canvas,
-        width: canvas.width,
-        height: canvas.height,
-        hasAlpha: scanAlpha(getImageData(canvas).data),
-        format,
-        sourceBitDepth: 8,
+      try {
+        const canvas = await decodeNativeCanvas(file, format)
+        return {
+          canvas, width: canvas.width, height: canvas.height,
+          hasAlpha: scanAlpha(getImageData(canvas).data),
+          format, sourceBitDepth: 8,
+        }
+      } catch (nativeError) {
+        if (format === 'jxl' || format === 'heic') {
+          const { decodeModernWasm } = await import('./wasm-codecs')
+          return fromRaw(await decodeModernWasm(bytes.buffer as ArrayBuffer, format), format)
+        }
+        throw nativeError
       }
     }
   }
