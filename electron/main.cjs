@@ -240,9 +240,9 @@ function execFileP(file, args, opts = {}) {
 async function findNativeTool(kind) {
   for (const candidate of commandCandidates(kind)) {
     try {
-      const args = kind === 'gmic' ? ['-version'] : ['--version']
+      const args = kind === 'gmic' ? ['-version'] : ['--help']
       const r = await execFileP(candidate, args, { timeout: 10000 })
-      const version = (r.stdout || r.stderr).split(/\r?\n/).find(Boolean) || candidate
+      const version = kind === 'gegl' ? 'GEGL CLI detected' : ((r.stdout || r.stderr).split(/\r?\n/).find(Boolean) || candidate)
       return { path: candidate, version: version.trim() }
     } catch { /* try next */ }
   }
@@ -287,7 +287,7 @@ async function installNativeToolIpc() {
     }
     return cached
   }
-  ipcMain.handle('chays:native-tools:info', () => info())
+  ipcMain.handle('chays:native-tools:info', (_event, refresh) => info(refresh === true))
   // Read-only filter discovery. The renderer cannot choose executable paths or
   // arbitrary flags; command/operation names are validated before inspection.
   ipcMain.handle('chays:native-tools:catalog', async (_event, kind) => {
