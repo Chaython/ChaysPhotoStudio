@@ -11,7 +11,8 @@ export interface HelpTopic {
   tips: readonly string[]
 }
 export const HELP_CATEGORIES: readonly HelpCategory[] = ["Basics","Selections","Layers","Filters","Tools","Color & files","Workspace","Advanced","Support"]
-export const HELP_TOPICS: readonly HelpTopic[] = [
+export const HELP_TOPICS: readonly HelpTopic[] = 
+[
   {
     "id": "getting-started",
     "title": "Getting started",
@@ -417,6 +418,27 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Supported GIMP 3 Python/Script-Fu procedures run only in a separately installed GIMP through Electron; no arbitrary GIMP native host runs in the web browser.",
       "Pyodide downloads its runtime only on explicit use and is not guaranteed offline.",
       "Only run trusted GIMP scripts; native processes have normal OS permissions."
+    ]
+  },
+  {
+    "id": "file-formats-raw",
+    "title": "RAW, HDR, scientific and multi-page image files",
+    "category": "Color & files",
+    "path": "File → Open / RAW Import / Develop",
+    "summary": "Import camera RAW, HDR, modern codecs and scientific formats with clear decode limitations.",
+    "steps": [
+      "Use File → Open to select images. Camera RAW imports open a development dialog with exposure, white balance, demosaicing, highlights, denoising and half-resolution options.",
+      "When LibRaw supports the camera, it decodes original sensor data and produces a 16-bit-per-channel image. If decoding fails, a camera-generated embedded preview may be imported with an explicit warning.",
+      "OpenEXR supports standard scanline images with uncompressed or ZIP scanline blocks; floating-point RGB values are retained when supported by the document engine.",
+      "HEIC/HEIF, JPEG XL, JPEG XR, JPEG-LS and JPEG 2000 use browser or lazy-loaded optional decoders. Some rare features, color models and compression modes may fail.",
+      "FITS astronomy images and uncompressed DICOM medical images import as display renderings. Original scientific/medical numeric data is not preserved.",
+      "When a TIFF, DCX, FITS or DICOM file contains multiple images, choose one frame or import all frames as individually selectable layers."
+    ],
+    "tips": [
+      "RAW development controls operate during import. Save the original RAW separately; later raster edits cannot be converted back into camera RAW sensor data.",
+      "DICOM support is for graphics use only, not medical diagnosis or measurement. Do not rely on edited images for clinical decisions.",
+      "Specialized variants such as BPG, compressed DICOM, tiled/deep EXR and uncommon camera RAW compression are not universally supported.",
+      "Heavy WASM decoders load only when you open their file type; memory and availability depend on your browser or desktop runtime."
     ]
   },
   {

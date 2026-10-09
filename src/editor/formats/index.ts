@@ -9,7 +9,7 @@
 // ============================================================
 import { createCanvas, ctx2d, canvasToBlob, getImageData, getFloat16ImageData, hexToRgb } from '../utils/canvas'
 import {
-  detectFormat, decodeTiff, decodeTga, decodePnm, decodePfm, decodeRadianceHdr, decodeQoi, decodePcx, decodeBmp, decodeIco,
+  detectFormat, decodeTiff, tiffPageOffsets, decodeTga, decodePnm, decodePfm, decodeRadianceHdr, decodeQoi, decodePcx, dcxPageOffsets, decodeBmp, decodeIco,
   rawToCanvas, scanAlpha,
 } from './decoders'
 import {
@@ -21,6 +21,11 @@ import type { ExportFormatId } from './encoders'
 import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtension, publishedFormatKind, PHOTOPEA_IMPORT_ACCEPT } from './photopea-formats'
 import { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 import { decodeDds, decodeIcns, decodeIff } from './legacy-raster'
+import { decodeSgi, decodeSunRaster } from './heritage-raster'
+import { decodeFits } from './scientific-fits'
+import { decodeDicom } from './scientific-dicom'
+import { decodeExr } from './openexr'
+import type { RawDevelopSettings } from './raw-develop'
 import type { ParsedDocumentLayer } from './document-parser-types'
 import type { ImageMetadata, LayerFX } from '../types'
 import { buildWritableXmp, embedRasterMetadata } from './metadata-write'
@@ -178,23 +183,9 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
  *  Native-decodable formats (png/jpeg/gif/webp/avif/svg) go through
  *  createImageBitmap/<img>; anything the browser can't do (16-bit
  *  TIFF, PSD, TGA, PNM, QOI, PCX, ICO-DIB) is decoded here. */
-export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
-  const sourceName = (file as File).name || ''
-  // Do not read an entire movie into JS memory just to select one frame.
-  // The browser's <video> element can seek directly from the Blob URL.
-  if (publishedFormatKind(sourceName) === 'video' || (!sourceName && file.type.startsWith('video/'))) {
-    const { decodeVideoFrame } = await import('./photopea-formats')
-    const canvas = await decodeVideoFrame(file)
-    return {
-      canvas,
-      width: canvas.width,
-      height: canvas.height,
-      hasAlpha: scanAlpha(getImageData(canvas).data),
-      format: fileExtension(sourceName) || file.type || 'video',
-      sourceBitDepth: 8,
-    }
-  }
+export async function decodeFile(file: File | Blob, options?: { rawSettings?: RawDevelopSettings }): Promise<DecodedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
+  const sourceName = (file as File).name || ''
   // Dedicated structured parsers keep editable objects/layers for supported
   // document containers. A composite preview is still attached for Place,
   // Open-as-Layer and callers that only understand a canvas.
@@ -224,15 +215,29 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   // baseline RGB TIFF. Route them to the RAW/embedded-preview path before the
   // TIFF codec gets a chance to misclassify them.
   if (publishedFormatKind(sourceName) === 'raw') {
-    const canvas = await decodePublishedFormatPreview(file, sourceName)
-    return {
-      canvas,
-      width: canvas.width,
-      height: canvas.height,
-      hasAlpha: scanAlpha(getImageData(canvas).data),
-      format: fileExtension(sourceName),
-      sourceBitDepth: 8,
+    try {
+      const { decodeCameraRaw } = await import('./wasm-codecs')
+      const rendered = fromRaw(await decodeCameraRaw(bytes.buffer as ArrayBuffer, options?.rawSettings), fileExtension(sourceName))
+      rendered.warnings = ['Decoded original RAW sensor image through LibRaw. 16-bit precision is retained where supported.']
+      return rendered
+    } catch (rawError) {
+      const canvas = await decodePublishedFormatPreview(file, sourceName)
+      return {
+        canvas, width: canvas.width, height: canvas.height,
+        hasAlpha: scanAlpha(getImageData(canvas).data),
+        format: fileExtension(sourceName), sourceBitDepth: 8,
+        warnings: ['RAW sensor decoding failed (' +
+          (rawError instanceof Error ? rawError.message : String(rawError)) +
+          '). Imported an embedded 8-bit preview instead.'],
+      }
     }
+  }
+  if (['jls', 'jxr', 'wdp', 'hdp'].includes(fileExtension(sourceName))) {
+    const wasm = await import('./wasm-codecs')
+    const ext = fileExtension(sourceName)
+    const decoded = ext === 'jls' ? await wasm.decodeJpegLs(bytes.buffer as ArrayBuffer)
+      : await wasm.decodeModernWasm(bytes.buffer as ArrayBuffer, 'jxr')
+    return fromRaw(decoded, ext)
   }
   let format = detectFormat(bytes)
   if (!format) format = formatFromMime(file.type)
@@ -268,16 +273,63 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
   }
 
   switch (format) {
-    case 'tiff': return fromRaw(await decodeTiff(bytes), 'tiff')
+    case 'tiff': {
+      const pages = tiffPageOffsets(bytes)
+      if (pages.length < 2) return fromRaw(await decodeTiff(bytes), 'tiff')
+      const decoded = await Promise.all(pages.map((_, page) => decodeTiff(bytes, page)))
+      const first = fromRaw(decoded[0], 'tiff')
+      return {
+        ...first,
+        documentLayers: decoded.map((page, index) => ({
+          kind: 'raster' as const, name: 'TIFF page ' + (index + 1),
+          canvas: rawToCanvas(page), left: 0, top: 0, visible: index === 0,
+        })),
+        warnings: ['Imported ' + pages.length + ' TIFF pages as separate layers. Toggle page visibility in Layers.'],
+      }
+    }
     case 'tga': return fromRaw(decodeTga(bytes), 'tga')
     case 'ppm': return fromRaw(decodePnm(bytes), 'ppm')
     case 'pfm': return fromRaw(decodePfm(bytes), 'pfm')
     case 'hdr': return fromRaw(decodeRadianceHdr(bytes), 'hdr')
     case 'qoi': return fromRaw(decodeQoi(bytes), 'qoi')
-    case 'pcx': return fromRaw(decodePcx(bytes), 'pcx')
+    case 'pcx': {
+      const pages = dcxPageOffsets(bytes)
+      if (pages.length < 2) return fromRaw(decodePcx(bytes), 'pcx')
+      const decoded = pages.map((_, index) => decodePcx(bytes, index))
+      const first = fromRaw(decoded[0], 'pcx')
+      return {
+        ...first,
+        documentLayers: decoded.map((page, index) => ({
+          kind: 'raster' as const, name: 'DCX page ' + (index + 1),
+          canvas: rawToCanvas(page), left: 0, top: 0, visible: index === 0,
+        })),
+        warnings: ['Imported ' + pages.length + ' DCX pages as separate layers. Toggle page visibility in Layers.'],
+      }
+    }
     case 'bmp': return fromRaw(decodeBmp(bytes), 'bmp')
     case 'ico': return fromRaw(await decodeIco(bytes), 'ico')
     case 'dds': return fromRaw(decodeDds(bytes), 'dds')
+    case 'exr': return fromRaw(await decodeExr(bytes), 'exr')
+    case 'jp2': {
+      const { decodeJpeg2000 } = await import('./wasm-codecs')
+      return fromRaw(await decodeJpeg2000(bytes.buffer as ArrayBuffer), 'jp2')
+    }
+    case 'fits':
+    case 'dicom': {
+      const parsed = format === 'fits' ? decodeFits(bytes) : decodeDicom(bytes)
+      const first = fromRaw(parsed.image, format)
+      return {
+        ...first,
+        documentLayers: parsed.frames.length > 1 ? parsed.frames.map((frame, i) => ({
+          kind: 'raster' as const,
+          name: (format === 'fits' ? 'FITS slice ' : 'DICOM frame ') + (i + 1),
+          canvas: rawToCanvas(frame), left: 0, top: 0, visible: i === 0,
+        })) : undefined,
+        warnings: parsed.warnings,
+      }
+    }
+    case 'sgi': return fromRaw(decodeSgi(bytes), 'sgi')
+    case 'sunras': return fromRaw(decodeSunRaster(bytes), 'sunras')
     case 'iff': return fromRaw(decodeIff(bytes), 'iff')
     case 'anim': return fromRaw(decodeIff(bytes), 'anim')
     case 'icns': {
@@ -312,14 +364,19 @@ export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
     }
     default: {
       // png / jpeg / gif / webp / avif / svg — native
-      const canvas = await decodeNativeCanvas(file, format)
-      return {
-        canvas,
-        width: canvas.width,
-        height: canvas.height,
-        hasAlpha: scanAlpha(getImageData(canvas).data),
-        format,
-        sourceBitDepth: 8,
+      try {
+        const canvas = await decodeNativeCanvas(file, format)
+        return {
+          canvas, width: canvas.width, height: canvas.height,
+          hasAlpha: scanAlpha(getImageData(canvas).data),
+          format, sourceBitDepth: 8,
+        }
+      } catch (nativeError) {
+        if (format === 'jxl' || format === 'heic') {
+          const { decodeModernWasm } = await import('./wasm-codecs')
+          return fromRaw(await decodeModernWasm(bytes.buffer as ArrayBuffer, format), format)
+        }
+        throw nativeError
       }
     }
   }

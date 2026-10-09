@@ -122,6 +122,22 @@ fileAssociations:
     name: Photoshop document
     description: Adobe Photoshop document
     role: Editor
+  - ext: [dng, cr2, cr3, nef, arw, raf, rw2, orf]
+    name: Camera RAW image
+    description: Camera RAW photo
+    role: Editor
+  - ext: [exr, hdr, pfm]
+    name: HDR image
+    description: High dynamic range raster image
+    role: Editor
+  - ext: [heic, heif, jxl, jp2, jxr, jls]
+    name: Modern image format
+    description: Modern image container
+    role: Editor
+  - ext: [fits, fit, fts, dcm, dicom]
+    name: Scientific image
+    description: Scientific or medical image
+    role: Editor
 
 compression: normal
 publish: null # releases are attached by the GitHub workflow

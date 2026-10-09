@@ -6,18 +6,20 @@ import { newLayer } from './document'
 import type { HistoryState, ImageMetadata, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
 import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
-import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension } from '../formats'
+import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension, publishedFormatKind } from '../formats'
 import { metadataResolutionPpi, readImageMetadata } from '../formats/metadata'
+import { chooseImagePages } from '../formats/page-select'
+import { chooseRawDevelopSettings, type RawDevelopSettings } from '../formats/raw-develop'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
-const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim']
+const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim', 'sgi', 'sunras', 'exr', 'fits', 'dicom']
 
 /** sniff the first 64 bytes — enough for every magic-byte signature we know */
 async function sniffFormat(file: File): Promise<ImportFormatId | null> {
   try {
-    const head = new Uint8Array(await file.slice(0, 64).arrayBuffer())
+    const head = new Uint8Array(await file.slice(0, 256).arrayBuffer())
     return detectFormat(head)
   } catch {
     return null
@@ -30,14 +32,26 @@ interface DecodedCanvas {
   workingBitDepth: 8 | 16 | 32
   resolutionPpi?: number
   hdrPixels?: Float32Array
+  warnings?: string[]
 }
 
 /** Decode while retaining source precision. Custom high-depth codecs create
  * rgba-float16 canvases when the runtime supports them; otherwise they expose
  * the same file through an 8-bit compatibility preview. */
-async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
+async function decodeToCanvas(file: File, rawSettings?: RawDevelopSettings): Promise<DecodedCanvas> {
   const format = await sniffFormat(file)
-  if ((format && CODEC_FORMATS.includes(format)) || /\.(mp4|webm|mkv)$/i.test(file.name)) {
+  // RAW extensions may have a TIFF header but require a RAW decoder, not the TIFF codec.
+  // Do not silently hide that the embedded camera preview is only 8-bit.
+  if (publishedFormatKind(file.name) === 'raw') {
+    const decoded = await decodeFile(file, {rawSettings})
+    return {
+      canvas: decoded.canvas,
+      sourceBitDepth: decoded.sourceBitDepth ?? 8,
+      workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
+      warnings: decoded.warnings,
+    }
+  }
+  if (format && CODEC_FORMATS.includes(format)) {
     const decoded = await decodeFile(file)
     return {
       canvas: decoded.canvas,
@@ -76,7 +90,10 @@ export async function openFiles(files: File[], asLayer = false) {
       continue
     }
     try {
-      const metadata = !asLayer && !/\.(mp4|webm|mkv)$/i.test(file.name) ? await readImageMetadata(file).catch(() => undefined) : undefined
+      const rawSettings = publishedFormatKind(file.name) === 'raw'
+        ? await chooseRawDevelopSettings(file.name) : undefined
+      if (rawSettings === null) continue
+      const metadata = !asLayer ? await readImageMetadata(file).catch(() => undefined) : undefined
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded, metadata); continue }
@@ -92,7 +109,40 @@ export async function openFiles(files: File[], asLayer = false) {
           continue
         }
       }
-      const decoded = await decodeToCanvas(file)
+      // Multi-page raster and scientific containers carry independent frames.
+      // Represent these as independently selectable layers instead of silently discarding pages.
+      if (!asLayer && ['tiff', 'pcx', 'fits', 'dicom'].includes(format ?? '')) {
+        const decoded = await decodeFile(file)
+        if (decoded.documentLayers?.length) {
+          const choice = await chooseImagePages(file.name, decoded.documentLayers.map(page => ({
+            name: page.name, canvas: page.canvas,
+          })))
+          if (choice === null) continue
+          if (choice === 'all') {
+            addStructuredDocument(file.name, decoded, metadata)
+          } else {
+            const chosen = decoded.documentLayers[choice]
+            if (!chosen?.canvas) throw new Error('Selected page has no image')
+            engine.addCanvasDocument(chosen.canvas, file.name + ' — ' + chosen.name, {
+              sourceBitDepth: decoded.sourceBitDepth ?? 8,
+              workingBitDepth: canvasProfile(chosen.canvas).bitDepth,
+              resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata),
+              metadata,
+            })
+          }
+        } else {
+          engine.addCanvasDocument(decoded.canvas, file.name, {
+            sourceBitDepth: decoded.sourceBitDepth ?? 8,
+            workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
+            resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata),
+            metadata,
+          })
+        }
+        for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(warning, 'info')
+        continue
+      }
+      const decoded = await decodeToCanvas(file, rawSettings ?? undefined)
+      for (const warning of (decoded.warnings ?? [])) store.pushToast(`${file.name}: ${warning}`, 'info')
       if (asLayer && engine.activeDoc) {
         engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''), { hdrPixels: engine.activeDoc?.workingBitDepth === 32 ? decoded.hdrPixels : undefined })
         if (decoded.sourceBitDepth > 8) {
@@ -103,8 +153,6 @@ export async function openFiles(files: File[], asLayer = false) {
         engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), hdrPixels: decoded.hdrPixels, metadata })
       }
     } catch (err) {
-      // Cancelling the video frame picker is a normal user decision.
-      if (err instanceof Error && err.name === 'AbortError') continue
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
       store.pushToast(`Failed to open ${file.name}${why}`, 'error')
     }
@@ -246,8 +294,7 @@ export async function placeImageAsSmartLayer(file: File) {
       store.pushToast(`${file.name}: ${decoded.sourceBitDepth}-bit source placed as a ${decoded.workingBitDepth}-bit smart-object raster`, 'info')
     }
     store.pushToast(`Placed ${file.name} as Smart Object`, 'success')
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') return
+  } catch {
     store.pushToast(`Failed to place ${file.name}`, 'error')
   }
 }

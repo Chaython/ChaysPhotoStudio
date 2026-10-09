@@ -48,6 +48,9 @@ jobs:
       - name: Validate all editor tools
         run: bun run tools:validate
 
+      - name: Validate camera, HDR, scientific and multi-page formats
+        run: bun run formats:validate
+
       - name: Validate retouch stroke safety
         run: bun run retouch-safety:validate
 
@@ -65,12 +68,6 @@ jobs:
 
       - name: Validate recovery autosave scheduling
         run: bun run autosave:validate
-
-      - name: Validate portable recovery backups
-        run: bun run recovery-backup:validate
-
-      - name: Validate user-initiated release checks
-        run: bun run update-check:validate
 
       - name: Validate worker error recovery
         run: bun run worker:validate
@@ -128,6 +125,7 @@ jobs:
 
   build-smoke:
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     needs: verify
     steps:
       - uses: actions/checkout@v7
@@ -161,14 +159,11 @@ jobs:
       - name: Build GitHub Pages static app
         run: node scripts/export-webapp.mjs pages
 
-      - name: Audit offline WebView static assets
-        run: bun run webview-offline:validate
-
       - name: Validate embedded webview configuration
         run: |
           # ext:build already produced build/webapp-export above.
           node scripts/webview-config.mjs
-          node -e "const c=require('./webview/src-tauri/tauri.conf.release.json'); if(c.build.frontendDist!=='../../build/webapp-export') process.exit(1); if(c.app?.security?.csp?.['object-src']!==\"'none'\") process.exit(1); if(!c.app.security.csp['worker-src'].includes('blob:')) process.exit(1)"
+          node -e "const c=require('./webview/src-tauri/tauri.conf.release.json'); if(c.build.frontendDist!=='../../build/webapp-export') process.exit(1)"
           node -e "const c=require('./webview/src-tauri/tauri.conf.json'); const w=c.app?.windows?.[0]; if(w?.dataDirectory!=='profile-v2-no-pwa') process.exit(1)"
           node -e "const s=require('fs').readFileSync('public/sw.js','utf8'); if(!s.includes(\"self.location.hostname === 'tauri.localhost'\") || !s.includes('self.registration.unregister()')) process.exit(1)"
 

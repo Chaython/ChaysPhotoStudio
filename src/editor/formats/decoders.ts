@@ -11,7 +11,7 @@ import { createCanvas, ctx2d, canvasProfile, putFloat16Pixels } from '../utils/c
 
 export type ImportFormatId =
   | 'png' | 'jpeg' | 'gif' | 'webp' | 'avif' | 'heic' | 'jxl' | 'jp2' | 'svg'
-  | 'bmp' | 'ico' | 'icns' | 'dds' | 'iff' | 'anim' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx'
+  | 'bmp' | 'ico' | 'icns' | 'dds' | 'iff' | 'anim' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx' | 'sgi' | 'sunras' | 'exr' | 'fits' | 'dicom'
 
 /** decoded raster: tightly packed 8-bit RGBA (ImageData-compatible).
  *  Typed as Uint8ClampedArray<ArrayBuffer> (not ArrayBufferLike) so it feeds
@@ -116,6 +116,11 @@ export function detectFormat(bytes: Uint8Array): ImportFormatId | null {
   if (eq('#?RADIANCE') || eq('#?RGBE')) return 'hdr'
   if ((eq('PF') || eq('Pf')) && n >= 3 && (b[2] === 0x20 || b[2] === 0x09 || b[2] === 0x0a || b[2] === 0x0d)) return 'pfm'
   if (eq('8BPS')) return 'psd'
+  if (n >= 2 && b[0] === 0x01 && b[1] === 0xda) return 'sgi'
+  if (n >= 4 && b[0] === 0x59 && b[1] === 0xa6 && b[2] === 0x6a && b[3] === 0x95) return 'sunras'
+  if (n >= 4 && b[0] === 0x76 && b[1] === 0x2f && b[2] === 0x31 && b[3] === 0x01) return 'exr'
+  if (eq('SIMPLE  =')) return 'fits'
+  if (n >= 132 && eq('DICM', 128)) return 'dicom'
   if (eq('DDS ')) return 'dds'
   if (eq('icns')) return 'icns'
   if (eq('FORM') && n >= 12) {
@@ -367,14 +372,34 @@ async function decompressTiffBlock(bytes: Uint8Array, off: number, cnt: number, 
   return full
 }
 
-export async function decodeTiff(bytes: Uint8Array): Promise<RawImage> {
+/** Enumerate a safe, bounded TIFF IFD chain for multi-page import. */
+export function tiffPageOffsets(bytes: Uint8Array, limit = 24): number[] {
+  if (bytes.length < 8) return []
+  const le = bytes[0] === 0x49 && bytes[1] === 0x49
+  if (!le && !(bytes[0] === 0x4d && bytes[1] === 0x4d)) return []
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  if (view.getUint16(2, le) !== 42) return []
+  const pages: number[] = [], seen = new Set<number>()
+  let ptr = view.getUint32(4, le)
+  while (ptr >= 8 && ptr + 2 <= bytes.length && pages.length < limit && !seen.has(ptr)) {
+    seen.add(ptr)
+    const count = view.getUint16(ptr, le)
+    const nextPos = ptr + 2 + count * 12
+    if (nextPos + 4 > bytes.length) break
+    pages.push(ptr)
+    ptr = view.getUint32(nextPos, le)
+  }
+  return pages
+}
+
+export async function decodeTiff(bytes: Uint8Array, pageIndex = 0): Promise<RawImage> {
   if (bytes.length < 8) throw new Error('Truncated TIFF file')
   const le = bytes[0] === 0x49 && bytes[1] === 0x49
   const be = bytes[0] === 0x4d && bytes[1] === 0x4d
   if (!le && !be) throw new Error('Not a TIFF file (bad byte-order mark)')
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   if (view.getUint16(2, le) !== 42) throw new Error('Not a TIFF file (bad magic)')
-  const ifdOff = view.getUint32(4, le)
+  const ifdOff = tiffPageOffsets(bytes, pageIndex + 1)[pageIndex] ?? -1
   if (ifdOff < 8 || ifdOff + 2 > bytes.length) throw new Error('Corrupt TIFF IFD offset')
 
   const tags = new Map<number, number[]>()
@@ -1246,14 +1271,28 @@ export function decodeQoi(bytes: Uint8Array): RawImage {
 // PCX / DCX (single page)
 // ============================================================
 
-export function decodePcx(bytes: Uint8Array): RawImage {
+/** DCX starts with a fixed 1024-entry PCX page offset table. */
+export function dcxPageOffsets(bytes: Uint8Array, maxPages = 24): number[] {
+  if(bytes.length < 8 || bytes[0] !== 0x3a || bytes[1] !== 0xde || bytes[2] !== 0x68 || bytes[3] !== 0xb1) return []
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const offsets: number[] = []
+  let previous = 0
+  for(let i=0;i<Math.min(1024,maxPages);i++){
+    if(4+i*4+4>bytes.length) break
+    const off = view.getUint32(4+i*4,true)
+    if(!off) break
+    if(off < 4100 || off <= previous || off >= bytes.length) throw new Error('Invalid DCX page offset')
+    offsets.push(off);previous=off
+  }
+  return offsets
+}
+export function decodePcx(bytes: Uint8Array, pageIndex = 0): RawImage {
   let page = bytes
   if (bytes.length > 8 && bytes[0] === 0x3a && bytes[1] === 0xde && bytes[2] === 0x68 && bytes[3] === 0xb1) {
     // DCX container: magic + array of page offsets (0-terminated)
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-    const first = view.getUint32(4, true)
-    if (first <= 0 || first >= bytes.length) throw new Error('Corrupt DCX container')
-    page = bytes.subarray(first)
+    const pages = dcxPageOffsets(bytes, pageIndex + 2)
+    if (pageIndex < 0 || !pages[pageIndex]) throw new Error('DCX page index is out of range')
+    page = bytes.subarray(pages[pageIndex], pages[pageIndex + 1] ?? bytes.length)
   }
   if (page.length < 128) throw new Error('Truncated PCX header')
   if (page[0] !== 0x0a) throw new Error('Not a PCX file')

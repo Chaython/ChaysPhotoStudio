@@ -21,11 +21,14 @@ const os = require('node:os')
 const crypto = require('node:crypto')
 
 const DEV_URL = process.env.CHAYS_DEV_URL || 'http://localhost:3000'
-const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?|avif|tga|ico|psd)$/i
+const IMAGE_EXT = /\.(?:png|jpe?g|jfif|webp|gif|apng|bmp|tiff?|avif|tga|ico|cur|psd|psb|qoi|pcx|dcx|pfm|hdr|exr|jxl|jp2|j2k|j2c|heic|heif|hif|jxr|wdp|hdp|jls|bpg|sgi|rgb|rgba|bw|ras|sun|fits?|fts|dcm|dicom|dng|nef|nrw|cr2|cr3|crw|arw|sr2|srf|raf|rw2|orf|pef|ptx|srw|x3f|iiq|mos|mef|mrw|rwl|gpr|3fr|fff)$/i
 const MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
   '.gif': 'image/gif', '.bmp': 'image/bmp', '.tif': 'image/tiff', '.tiff': 'image/tiff',
   '.avif': 'image/avif', '.tga': 'image/x-tga', '.ico': 'image/x-icon', '.psd': 'image/vnd.adobe.photoshop',
+  '.heic': 'image/heic', '.heif': 'image/heif', '.jxl': 'image/jxl', '.jp2': 'image/jp2',
+  '.exr': 'image/x-exr', '.fits': 'image/fits', '.fit': 'image/fits', '.dcm': 'application/dicom',
+  '.jxr': 'image/jxr', '.jls': 'image/jls',
   '.svg': 'image/svg+xml', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.map': 'application/json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8', '.html': 'text/html; charset=utf-8',
@@ -351,7 +354,7 @@ function sendOpenFile(win, filePath) {
   try {
     const data = fs.readFileSync(filePath)
     const name = path.basename(filePath)
-    const type = MIME[path.extname(filePath).toLowerCase()] || 'image/png'
+    const type = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream'
     if (win && !win.isDestroyed()) win.webContents.send('chays:open-file', { name, type, data })
   } catch (err) {
     console.error(`[open-file] failed to read ${filePath}:`, err.message)
