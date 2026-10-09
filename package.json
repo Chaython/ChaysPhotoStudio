@@ -38,6 +38,7 @@
     "dist:validate": "node scripts/validate-distribution.mjs",
     "webview-offline:validate": "node scripts/validate-webview-static-offline.mjs",
     "tools:validate": "bun scripts/validate-tools.ts",
+    "dock-routing:validate": "bun scripts/validate-dock-routing.ts",
     "gimp:validate": "bun scripts/validate-gimp-compatibility.ts",
     "retouch-safety:validate": "bun scripts/validate-retouch-safety.ts",
     "warp:validate": "bun scripts/validate-transform.ts",
