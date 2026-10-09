@@ -31,6 +31,7 @@ const MatchColorDialog = deferredDialog(() => import('./match-color-dialog').the
 const PluginManagerDialog = deferredDialog(() => import('./plugin-manager-dialog').then(m => ({ default: m.PluginManagerDialog })))
 const LayerStylesDialog = deferredDialog(() => import('./layer-styles-dialog').then(m => ({ default: m.LayerStylesDialog })))
 const ObjectDetectDialog = deferredDialog(() => import('./object-detect-dialog').then(m => ({ default: m.ObjectDetectDialog })))
+const AllToolsDialog = deferredDialog(() => import('./all-tools-dialog').then(m => ({ default: m.AllToolsDialog })))
 const ShortcutsDialog = deferredDialog(() => import('./shortcuts-dialog').then(m => ({ default: m.ShortcutsDialog })))
 const ToolbarCustomizeDialog = deferredDialog(() => import('./toolbar-dialog').then(m => ({ default: m.ToolbarCustomizeDialog })))
 const RecoveryDialog = deferredDialog(() => import('./recovery-dialog').then(m => ({ default: m.RecoveryDialog })))
@@ -101,6 +102,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'batch': BatchDialog,
   'script-console': ScriptConsoleDialog,
   'shortcuts': ShortcutsDialog,
+  'all-tools': AllToolsDialog,
   'customize-toolbar': ToolbarCustomizeDialog,
   'about': AboutDialog,
   'recovery': RecoveryDialog,
