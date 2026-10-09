@@ -1274,19 +1274,40 @@ export class Engine {
     const w = Math.round(clamp(rect.w, 1, doc.width - x))
     const h = Math.round(clamp(rect.h, 1, doc.height - y))
     if (w < 1 || h < 1) return null
-    const flat = getFlatComposite(doc) // full-resolution, pre-add composite
-    const region = createCanvas(w, h)
-    ctx2d(region).drawImage(flat, -x, -y)
+    // In HDR, the SDR display composite is not an authoritative pixel
+    // source. Copy an actual scene-linear composite or reject complex stacks
+    // that cannot be composited without discarding HDR highlights.
+    let hdrRegion: Float32Array | null = null
+    let region: HTMLCanvasElement
+    if (doc.workingBitDepth === 32) {
+      const scene = this.simpleHdrComposite(doc, doc.layers)
+      if (!scene) {
+        this.ui?.toast('Layer via Object Selection needs a simple HDR raster stack; complex effects cannot be copied without precision loss', 'info')
+        return null
+      }
+      hdrRegion = cropHdrPixels(scene, doc.width, doc.height, w, h, x, y)
+      region = hdrFloat32ToPreviewCanvas(hdrRegion, w, h, 'srgb')
+    } else {
+      const flat = getFlatComposite(doc)
+      region = createCanvas(w, h, canvasProfile(flat))
+      ctx2d(region).drawImage(flat, -x, -y)
+    }
     const label = (name || 'Object').trim().slice(0, 32) || 'Object'
     const layerName = label.charAt(0).toUpperCase() + label.slice(1)
     const layer = newLayer('raster', layerName, doc.width, doc.height)
     layer.canvas = region
+    if (hdrRegion) {
+      layer.hdrPixels = hdrRegion
+      layer.hdrColorSpace = 'linear-srgb'
+      layer._hdrPreviewBefore = null
+    }
     layer.offsetX = x
     layer.offsetY = y
     layer.origin = 'detect'
     doc.layers.push(layer)
     doc.activeLayerId = layer.id
-    this.pushHistory(`Layer from “${layerName}”`)
+    invalidateFlat(doc)
+    this.pushHistory(`Layer from “${layerName}”`, doc)
     this.emit()
     return layer
   }

@@ -107,6 +107,10 @@ The local inpainting kernel currently consumes and writes 8-bit Canvas2D image d
 
 Reopening an Adjustment Layer and submitting its existing settings no longer increments the layer version, marks the project dirty or writes a redundant History entry. Committed nested curve/LUT parameter objects are deep-cloned to avoid edits leaking in from scripting callers. Unknown filter names from action import or scripting are rejected before Smart Filter insertion or History updates.
 
+## Object Selection Layer via Copy at 32-bit HDR
+
+**Object Selection → Layer via Copy** now crops genuine scene-linear Float32 composite pixels into a native-size raster layer when the document contains a simple supported HDR raster stack. Highlights above SDR white, alpha and document-space offsets survive intact; History gains one undoable layer insertion. Unsupported complex blend/effect stacks fail without editing the document instead of being flattened through the 8-bit display composite. SDR object extraction retains the document's working canvas profile.
+
 ## HDR destructive edits require raster sources
 
 HDR-safe direct filters and adjustments, including Exposure and Offset, now reject text, shapes and other non-raster editable sources in 32-bit documents. Previously their preview-backed rasterization could masquerade as scene-linear Float32 processing, reducing source precision. The guard applies to synchronous commands, worker-backed adjustments and filters, and generic pixel-operation scripting. Smart Objects continue to support non-destructive Smart Filters without flattening their sources; use explicit Rasterize for pixel-level destructive HDR editing.

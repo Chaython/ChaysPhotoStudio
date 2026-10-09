@@ -56,6 +56,7 @@
     "layer-mask:validate": "bun scripts/validate-layer-mask.ts",
     "hdr-composite:validate": "bun scripts/validate-hdr-composite.ts",
     "hdr-fill:validate": "bun scripts/validate-hdr-fill.ts",
+    "hdr-object-layer:validate": "bun scripts/validate-hdr-object-layer.ts",
     "fill-coverage:validate": "bun scripts/validate-fill-coverage.ts"
   },
   "dependencies": {
