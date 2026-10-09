@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 
 export function EditorApp() {
   const hasDoc = useEditorStore(s => !!s.activeDocId)
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
   const [theme, setTheme] = useState<'dark' | 'light' | 'oled'>(() => {
     if (typeof window === 'undefined') return 'dark'
     const saved = window.localStorage.getItem('chays-photo-studio-theme')
@@ -262,7 +263,7 @@ export function EditorApp() {
   }, [])
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none" style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
+    <div className={cn("h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none", !mobileMode && workspacePreset === "photoshop" && "zphoto-photoshop-workspace")} style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
       <MenuBar theme={theme} setTheme={setTheme} mobileMode={mobileMode} setMobileMode={setMobileMode} />
       <div className={cn('flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
         {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
