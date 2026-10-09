@@ -1,6 +1,6 @@
 # Feature, format and compatibility reference
 
-This guide documents **the current `main` branch**. It distinguishes an import extension being *recognized* from successful decoding, editing with intact structure, and round-trip export. See [README](../README.md), [Tool Parity Audit](../TOOL_PARITY.md), [User Guide](USER_GUIDE.md), [Distribution](../DISTRIBUTION.md), and [Changelog](../CHANGELOG.md).
+This guide documents **the current `main` branch**. It distinguishes an import extension being *recognized* from successful decoding, editing with intact structure, and round-trip export. See [README](../README.md), [Tool Parity Audit](../TOOL_PARITY.md), [User Guide](USER_GUIDE.md), [Distribution](../DISTRIBUTION.md), [Development & Testing](DEVELOPMENT_AND_TESTING.md), and [Changelog](../CHANGELOG.md).
 
 ## Feature availability at a glance
 
