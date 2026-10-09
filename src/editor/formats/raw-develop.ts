@@ -42,6 +42,12 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
 
 export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings, metadata?:ImageMetadata):Promise<RawDevelopSettings|null> {
   const current=initial?normalizeRawSettings(initial):rawSettingsFromSaved()
+  // Never carry a calibrated lens from a previously opened camera into a new
+  // unrelated RAW. Re-match using this file's EXIF or leave only manual values.
+  if(!initial && current.lensProfile.lensfun){
+    current.lensProfile={...current.lensProfile,lensfun:undefined}
+    if(current.lensProfile.name.startsWith('Lensfun: '))current.lensProfile.name=''
+  }
   if(typeof document==='undefined'||typeof HTMLDialogElement==='undefined')return current
   return await new Promise(resolve=>{
     const dialog=document.createElement('dialog')
