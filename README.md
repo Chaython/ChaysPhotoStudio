@@ -1,93 +1,126 @@
 # Chay's Photo Studio
 
-A 100% browser-based raster image editor — a Photoshop-class feature set running on a
-custom **WebGL2** engine. All editing (layers, filters, magic wand, object detection,
-upscaling, and more) happens locally in your browser. AI image generation runs on the
-free Pollinations engine (no account or key) or your own OpenAI-compatible endpoint.
+A source-available, browser-first photo editor with layered editing, Photoshop-inspired workflows, a WebGL2-accelerated compositor, and desktop/browser distributions. It aims for useful **Photoshop / GIMP / Photopea workflow compatibility**, not full feature-for-feature or plugin-binary equivalence.
 
-![Chay's Photo Studio](public/icon.svg)
+[**Open the live editor**](https://chaython.github.io/ChaysPhotoStudio/) · [**Download builds**](https://github.com/Chaython/ChaysPhotoStudio/releases) · [**User guide**](docs/USER_GUIDE.md) · [**Feature & format reference**](docs/FEATURES_AND_FORMATS.md) · [**Tool parity audit**](TOOL_PARITY.md) · [**Report an issue**](https://github.com/Chaython/ChaysPhotoStudio/issues)
 
-**Live app:** https://chaython.github.io/ChaysPhotoStudio/
+![Chay's Photo Studio icon](public/icon.svg)
 
-## Help & user documentation
+## Start editing
 
-Click the **Help** button (?) in the upper toolbar or choose **Help → User Guide & Documentation…**. Browse and search the categorized documentation without leaving the editor, including offline web/desktop use. The **Stroke Selection** and **Offset** dialogs have contextual Help buttons.
+1. Open the live editor or install a release from GitHub. Use **File → New**, **Open…**, **New from Clipboard**, or drag a supported image into the editor.
+2. Select a tool in the left toolbar. Modify size, shape, sampling, selection mode and other settings in **Tool Options**. Right-click a tool group or use **Edit → Customize Toolbar…** to organize tools.
+3. Keep edits reversible with layers, masks, adjustment layers, Smart Objects / Smart Filters, named Paths, History snapshots and Layer Comps.
+4. **File → Save Project** stores an editable `.zproj.json`. **Export As…** produces shareable raster or supported layered files. Use **File → Recent & Recovery…** after an interruption; current desktop/browser builds also let you download portable backups of recovery snapshots.
 
-The same manual is also readable on GitHub: **[User Guide](docs/USER_GUIDE.md)**. It covers Grow/Similar selections, Stroke Selection, Offset and seamless textures, layers, masks, Smart Objects, HDR, file exports, recovery and other workflows. Update `src/editor/help/topics.ts` and run `bun run help:generate` to regenerate the Markdown guide; CI checks they remain in sync.
+**Privacy & connectivity:** Most editing and local file processing run on your device; your images are not uploaded merely by opening them. **AI image generation and explicitly selected remote providers are network services** and may transmit prompts or image content. Optional local ComfyUI and desktop filter programs are separate installations. See [offline limitations](docs/FEATURES_AND_FORMATS.md#offline-use-and-privacy).
 
-The GitHub Pages site serves the editor itself. The commands below are only for running a local development copy.
+## Editor capabilities
 
-## Photoshop-style workspace template
+| Area | Available in the current `main` branch |
+|---|---|
+| **52 registered tools** | Move/transform, rectangular/elliptical/single-row/single-column marquee; Lasso/Polygonal/Magnetic; Object/Quick/Brush selection; Magic Wand; crop/perspective crop; painting, erasers, healing, retouching, Pen/Path tools, editable Type/Shapes, Hand/Zoom |
+| **Selections** | New/Add/Subtract/Intersect, Color Range, Select Subject, Focus Area, Grow/Similar, Select & Mask edge refinement, channels and luminosity selections, feather/smooth/contract/expand |
+| **Layers & masks** | Raster, native text/shape, adjustments, Smart Objects with Smart Filters, alpha/vector masks, clipping, blending, Layer Styles, alignment, layer duplication into another document, Layer Comps |
+| **History & automation** | Undo/redo, durable snapshots and snapshot notes, Actions recording/playback, Batch / Image Processor, scripting console and portable recovery snapshot exports |
+| **Retouching** | Healing and Spot Healing, Patch, Content-Aware Move/Fill, Clone/Pattern Stamps and source transforms, Mixer/History Brushes, Dodge/Burn/Sponge, Blur/Sharpen/Smudge, red-eye correction |
+| **Transforms** | Free Transform, editable Transform/Split Warp, Puppet Warp, crop/perspective crop, smart guides and distance labels; Liquify |
+| **Color** | RGB/HSL/Lab and related adjustments, curves, gradient controls, HDR-aware operations where supported, proof-color preview and gamut warnings, PPI/rulers/guides/grid |
+| **File information** | EXIF, XMP/IPTC, camera and GPS metadata inspection; editable File Info and metadata-aware export/sidecar workflows where supported |
+| **Interface** | Classic/custom or Photoshop-style workspace, themes including OLED black, floating panels, eight desktop dock locations (left, right, top, bottom and four corners), touch-first mode, keyboard shortcut customization, lazy-loaded panels and dialogs |
 
-On desktop, open the **Workspace** selector in the top-right menu bar (or **Settings → Workspace**) and choose **Photoshop-style**. This optional template keeps the existing editing engine and tools, but arranges a compact left toolbar, top options bar, document tabs, central canvas, and a split right inspector with Color/Adjustments/Properties above Layers/Channels/Paths/History.
+The table is a **capability summary**, not a claim that every combination of file format, effect, layer type, bit depth, or Photoshop feature is supported. Review [the tool audit](TOOL_PARITY.md) and [known limits](docs/FEATURES_AND_FORMATS.md#known-compatibility-limits) before using unfamiliar formats on important files.
 
-Choose **Classic / custom** to restore the panel layout that was active before you switched. Each workspace persists across reloads; resetting panel layout resets the currently selected template. **The color theme is separate**: Dark, Light, OLED black, and Photoshop-inspired colors remain available in Settings → Theme. Neither the template nor the fourth palette replaces the original UI. The Photoshop-style appearance is an original approximation, not an Adobe product or exact asset copy. The compact touch/mobile interface is unchanged.
+### Workspaces, tools and shortcuts
 
-## Import a still frame from a video
+Choose **Photoshop-style** or **Classic / custom** from the Workspace selector. Color themes (Dark, Light, OLED black and Photoshop-inspired) are independent from workspace layout. On desktop, panels may be docked **left/right/top/bottom and in all four corners**, or floated. Open **Window → All Tools / Tool Search** to filter and launch tools by name, category or shortcut. These improvements were merged in [PR #81](https://github.com/Chaython/ChaysPhotoStudio/pull/81).
 
-Open or drop an MP4, WebM, or MKV file. Instead of importing an arbitrary early frame, the editor displays a local video preview with playback, a timeline scrubber, and a timestamp entry in seconds. Choose **Import frame** to bring that still frame into the editor; **Cancel** or **Escape** leaves your document unchanged. Importing a movie as a full editable video timeline is not supported. Video playback and seeking depend on the browser's installed codec/container support. The file remains local and the temporary object URL is revoked when the picker closes.
+Open **Help → Keyboard Shortcuts** (or **Edit → Keyboard Shortcuts…**) to inspect/change bindings. Several Photoshop-style tools share a letter and **cycle** on repeated presses; they do not all have distinct default keys. The Pen group now includes **Standard Pen**, **Freeform Pen** and **Curvature Pen** (P); the Type group includes **Horizontal/Vertical Type Mask** selection tools (T). These are in `main` after [PR #82](https://github.com/Chaython/ChaysPhotoStudio/pull/82).
 
-## Quick start (local development)
+### File support in brief
 
-```bash
-bun install          # or: npm install
-cp .env.example .env # sqlite database location
-bun run db:push      # create the local database
-bun run dev          # http://localhost:3000
-```
+**Open/import:** native PNG/JPEG/WebP/GIF/AVIF/SVG where the webview decodes them; custom PSD/PSB, TIFF, TGA, BMP, QOI, PNM/PFM, Radiance HDR, ICO/ICNS, PCX and other supported formats; some structured third-party project containers via dedicated parsers or raster preview extraction. Camera RAW, HEIC/HEIF, JXL, JPEG 2000 and exotic/partial document formats are **decoder- and platform-dependent**. RAW on `main` is primarily a preview-oriented import path, **not complete non-destructive RAW development**.
 
-> Node 20+ (or [Bun](https://bun.sh) 1.1+) is required.
+**Video frames:** open MP4/WebM/MKV to preview, scrub and **Import frame**; this does *not* create a video-editing timeline. **Export:** PNG, JPEG, WebP, TIFF (including supported 16-bit options), BMP, TGA, QOI, PPM, ICO, OpenRaster and PSD, plus native editable `.zproj.json`. Some advanced PSD features must be approximated or rasterized.
 
-## What's inside
+See [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md) for categorized imports, exports and limitations. More RAW/EXR/DICOM support is being developed separately, not yet guaranteed in stable builds.
 
-| Path | Purpose |
-| --- | --- |
-| `src/` | The editor app (Next.js App Router + TypeScript + WebGL2 engine) |
-| `electron/` | Desktop app shell (Electron main + preload) |
-| `webview/` | Desktop webview shell (Tauri v2, ~3 MB, uses the system webview) |
-| `extension/` | Browser plugin source (Chrome MV3 + Firefox event-page variant) |
-| `scripts/` | Build tooling: icons, extension packaging, electron prep, webview config |
-| `.github/workflows/` | CI + automated multi-channel release pipeline |
-| `prisma/` + `db/` | Local SQLite schema (via Prisma) |
+## Plugins, AI and filters
 
-## v1.2 editing workflow upgrades
+- **Native Chay plugins:** manifest/script extensions with a permission model and worker-based execution. Only install extensions you trust.
+- **Photoshop UXP compatibility:** practical selected manifest, `batchPlay` and command APIs; not a complete UXP runtime and not binary Photoshop `.8bf` support.
+- **GIMP compatibility:** `.gbr` brush/`.ggr` gradient assets, filter discovery and script analysis. Electron can invoke **GIMP 3 PDB procedures** and supported Python/Script-Fu source **on demand** through a separate installed GIMP, alongside optional G'MIC/GEGL programs. The embedded Scheme subset or opt-in Pyodide runtime runs only when selected; neither emulates the full GIMP API.
+- **AI helpers:** local selection/subject, masks, cleanup and image analysis; optional ComfyUI workflows if independently configured; remote Pollinations/custom image generation requires internet and may transmit prompts or image data.
 
-- **Crash recovery:** dirty documents are autosaved locally in IndexedDB and can be restored from **Recent & Recovery**.
-- **Safer projects:** project v2 preserves selections, saved channels, guides, animation frames, view state, and the active layer; supported browsers also get true **Save** / **Save As** behavior.
-- **Faster compositing:** search/filter large layer stacks, Alt-click a layer eye to solo/restore visibility, and trim transparent padding without moving artwork.
-- **Richer vector shapes:** triangle, polygon, and star layers with configurable points, inset, fill, and stroke.
-- **Quicker ingest/export:** create a document directly from the clipboard and quick-export PNG, JPEG, or WebP.
+Expanded GIMP compatibility was merged in [PR #83](https://github.com/Chaython/ChaysPhotoStudio/pull/83). Native GIMP commands are **Electron-only** and require a trusted installed GIMP 3; the Pyodide interpreter is downloaded only when explicitly requested and therefore needs internet on first use. See the [user guide](docs/USER_GUIDE.md#plugins-automation-and-optional-ai) for common workflows.
 
-## v1.3 pro tools, AI and plugin compatibility
+## Install, build and run
 
-- **Selection engine:** perceptual/edge-aware Magic Wand, Pixel Exact mode, Quick/Object Selection and shared grayscale Select & Mask refinement.
-- **Retouching:** Clone/Healing can sample the active layer or visible composite; Dodge/Burn includes Protect Tones; the brush engine includes symmetry, dynamics, scatter, smoothing and imported GIMP brush tips.
-- **Local AI assists:** Select Subject, background masking, Smart Remove/Upscale, depth-map generation, denoise, depth relighting and vector-trace guides all keep outputs editable.
-- **ComfyUI:** save a different local workflow for inpaint, outpaint, upscale, depth, denoise, face restoration, relight, colorize, vectorize and caption jobs.
-- **Photoshop UXP bridge:** import manifest + JS, run a practical `batchPlay` subset, use plugin-scoped storage, inspect compatibility and explicitly grant sensitive permissions.
-- **GIMP ecosystem:** native `.gbr`/`.ggr` assets plus optional desktop G’MIC and GEGL execution. G’MIC/GEGL results are added as new layers rather than destructively overwriting the source.
-- **High-depth color & formats:** capable browsers can use a real 16-bit-float sRGB/Display-P3 working canvas; 16-bit TIFF/PNM stays high precision, TIFF exports at 16-bit, and PFM/Radiance HDR plus browser-supported HEIC/HEIF, JPEG XL and JPEG 2000 can be opened.
+The editor is distributed via web/PWA, Electron desktop (including Windows portable), Tauri WebView, and Chrome/Firefox browser plugin. Embedded WebView releases apply a CSP; native window position/size can persist, and **About → Check for updates** performs a user-initiated release check without silent installation. [**Distribution and releases**](DISTRIBUTION.md) lists package formats, GitHub Actions and signing behavior.
 
-The compatibility layers are intentionally honest: UXP coverage is partial, and legacy Photoshop `.8bf` plus full GIMP libgimp/PDB/Script-Fu are not claimed as universal drop-in runtimes. The native Chay plugin API remains the stable target while compatibility shims grow around it.
+| Distribution | Local editor assets | Important distinction |
+|---|---|---|
+| **Web / PWA** | PWA caches the shell after installation | First load needs a hosted page; cached content and browser storage can be cleared |
+| **Electron** | Bundled Next.js standalone server and Chromium | Runs a local server internally; does not require an external hosted editor |
+| **Tauri WebView** | Default releases embed the static frontend | Uses OS WebView2/WKWebView/WebKitGTK; a separate Windows offline-runtime installer is built; optional manual release check, no automatic updater |
+| **Browser plugin** | Bundled static app in extension | Right-click images for import, subject to remote image access/CORS |
 
-## Distribution channels
+The **additional Windows WebView2 offline installer** is now configured in `main` ([PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85)); its release filename starts `webview-windows-offline-x64--` once the release job successfully publishes it. Embedded-release CSP, native window persistence, portable recovery exports and a manual update checker are now in `main` after merged [PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86). Authenticode signing is optional and requires publisher-provided secrets.
 
-The same codebase ships five ways — see **[DISTRIBUTION.md](DISTRIBUTION.md)** for the
-full matrix, GitHub release automation, and per-channel build instructions:
+### Local development
 
-1. **Web** (self-hosted bundle)
-2. **PWA** — installable straight from the browser (offline shell included)
-3. **Electron** — full offline desktop app; Windows ships both an installer and a no-install portable EXE (`bun run app:dist`)
-4. **Tauri webview** — lightweight native shell using the system webview; embeds the static editor by default (`bun run webview:build`)
-5. **Browser plugin** — right-click any image → *Edit image in Chay's Photo Studio* (`bun run ext:build`)
-
-Build everything at once:
+Requires Node.js 20+ or a compatible recent Bun runtime; native desktop packages also require their platform toolchains.
 
 ```bash
-bun run dist:all
+bun install
+cp .env.example .env     # adjust SQLite / Prisma environment if needed
+bun run db:push
+bun run dev              # http://localhost:3000
 ```
+
+Run targeted checks before a PR:
+
+```bash
+bun run tools:validate
+bun run help:validate
+bun run dist:validate
+bun run autosave:validate
+bunx tsc --noEmit
+bun run lint
+```
+
+Build/packaging entry points:
+
+```bash
+bun run build            # Next.js standalone web bundle
+bun run app:dist         # Electron installer for host OS
+bun run app:dist:win     # Windows Electron setup + portable
+bun run webview:build    # Tauri static editor (requires Rust / OS SDK)
+bun run ext:build        # Chrome and Firefox extension bundles
+bun run dist:all         # Shared icons, web build, Electron & extensions (not Tauri)
+```
+
+**CI:** `.github/workflows/ci.yml` runs validations and build smoke tests; `.github/workflows/release.yml` produces per-platform artifacts, GitHub Pages and GitHub Releases with SHA-256 checksums. `bun run dist:all` is *not* a substitute for native cross-platform release jobs.
+
+## Repository and documentation
+
+| Path | Responsibility |
+|---|---|
+| `src/editor/` | Editor state, tools, layers, image processing, formats, plugins, workspace and Help content |
+| `src/editor/help/topics.ts` | **Canonical in-app Help content**, generating `docs/USER_GUIDE.md` |
+| `src/editor/constants/tools.ts` + `src/editor/tools/registry.ts` | Tool definitions, options, key groups and implementations |
+| `src/editor/formats/` | File import/export handlers, structured document codecs and metadata |
+| `electron/` · `webview/` · `extension/` | Platform-specific shells and installers |
+| `scripts/` · `.github/workflows/` | Build, distribution, regression tests and CI |
+| [**User Guide**](docs/USER_GUIDE.md) | Tutorials and troubleshooting, mirrored in the app |
+| [**Feature & Format Reference**](docs/FEATURES_AND_FORMATS.md) | Formats, bit depth, runtime limitations and feature overview |
+| [**Tool Parity Audit**](TOOL_PARITY.md) | Detailed implementation status and remaining parity work |
+| [**Distribution Guide**](DISTRIBUTION.md) | Native builds, release artifacts, optional configuration and packaging |
+| [**Development & Testing**](docs/DEVELOPMENT_AND_TESTING.md) | Source-of-truth files, validation scripts, CI and release smoke tests |
+| [**Changelog**](CHANGELOG.md) | Historical changes; upcoming PRs are not treated as released |
+
+**Documentation maintenance:** Edit `src/editor/help/topics.ts` rather than directly changing the generated User Guide; run `bun run help:generate` and `bun run help:validate`. Feature claims should reflect merged code or be explicitly labeled pending.
 
 ## Licensing
 
-Free for personal and educational use. See [LICENSE](LICENSE) — commercial licensing
-and sponsorship: **chaython@live.ca** / [github.com/sponsors/Chaython](https://github.com/sponsors/Chaython).
+Free for personal and educational use under a **non-commercial, source-available license**; commercial use requires licensing, and redistribution/modifications have additional restrictions. This is **not an OSI-approved open-source license**. See [LICENSE](LICENSE) for the authoritative terms. Commercial contact: **chaython@live.ca** · [Support development](https://github.com/sponsors/Chaython). The project is not affiliated with Adobe, GIMP or Photopea.
