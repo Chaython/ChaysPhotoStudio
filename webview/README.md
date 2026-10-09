@@ -10,6 +10,10 @@ on GitHub Pages or another server and continue to launch offline.
 - **Optional remote thin shell:** `WEBVIEW_APP_URL=https://studio.example.com bun run webview:build`.
 - Requires Rust (`rustup`) plus, on Linux: `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`.
 - `dragDropEnabled: false` lets the editor's own HTML5 drag-and-drop work.
-- No IPC capabilities are exposed (see `capabilities/default.json`); the editor is self-contained.
+- Native window size/position/maximized state is remembered by the Rust window-state plugin; the editor still owns its dock/panel layout separately.
+- Embedded release builds have a CSP blocking remote scripts and objects. Custom JS plugins require a documented `unsafe-eval` exception; the development server and optional remote thin shell do not inherit the embedded-release CSP.
+- Recent & Recovery snapshots can be exported as portable `.zproj.json` files, including backup to a user-selected folder where supported.
+- Optional Windows Authenticode signing uses Actions secrets `WINDOWS_CODESIGN_PFX_BASE64` and `WINDOWS_CODESIGN_PFX_PASSWORD`; unsigned builds remain available when these are unset.
+- No custom IPC commands are exposed (see `capabilities/default.json`). See [offline audit](../docs/WEBVIEW_OFFLINE_AUDIT.md) for network-dependent features and the limits of automated offline testing.
 
 Full instructions: see [`DISTRIBUTION.md`](../DISTRIBUTION.md).
