@@ -58,6 +58,14 @@ bun run dev          # http://localhost:3000
 - **GIMP ecosystem:** native `.gbr`/`.ggr` assets plus optional desktop G’MIC and GEGL execution. G’MIC/GEGL results are added as new layers rather than destructively overwriting the source.
 - **High-depth color & formats:** capable browsers can use a real 16-bit-float sRGB/Display-P3 working canvas; 16-bit TIFF/PNM stays high precision, TIFF exports at 16-bit, and PFM/Radiance HDR plus browser-supported HEIC/HEIF, JPEG XL and JPEG 2000 can be opened.
 
+## Image format coverage and camera RAW limitations
+
+The editor has native/custom import paths for PNG, JPEG, WebP, GIF, AVIF (when supported by the browser), SVG, TIFF, PSD/PSB, TGA, Netpbm (PBM/PGM/PPM/PAM), PFM, Radiance HDR, QOI, PCX/DCX (first page), BMP/DIB, ICO/CUR, DDS, IFF/ILBM, ICNS, and now **SGI RGB/RGBA/BW** and **Sun Raster (.ras/.sun)**. For additional proprietary formats the app may extract only embedded preview images; HEIC, JXL and JPEG 2000 depend on the runtime's codecs.
+
+**Camera RAW is currently preview-only, not real RAW development.** DNG, NEF/NRW, CR2/CR3/CRW, ARW/SRF/SR2, RAF, RW2, ORF, PEF/PTX, SRW, X3F, IIQ, MOS, MEF, MRW, RWL, GPR and other named RAW families are recognized and can import an embedded preview when present. The editor does not yet demosaic sensor data, process proprietary compression, or preserve RAW exposure latitude and 12–16-bit sensor data. RAW previews are opened as 8-bit images; the import notification states this clearly. If the file has no usable embedded preview or compatible native image decoder, import fails with an explicit error.
+
+Real RAW development should use a maintained decoder (such as LibRaw in a WASM worker or a native desktop bridge), then add camera white balance, demosaic quality, color matrices/profiles, lens corrections, and a non-destructive development panel. Adding extensions alone cannot supply these capabilities.
+
 The compatibility layers are intentionally honest: UXP coverage is partial, and legacy Photoshop `.8bf` plus full GIMP libgimp/PDB/Script-Fu are not claimed as universal drop-in runtimes. The native Chay plugin API remains the stable target while compatibility shims grow around it.
 
 ## Distribution channels
