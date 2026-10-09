@@ -30,7 +30,7 @@ export function TopDock({ side = 'top' }: { side?: 'top' | 'bottom' | 'top-left'
 
   return (
     <aside
-      data-panel-dock="top"
+      data-panel-dock={side}
       data-drop-active={dropActive ? '1' : undefined}
       className={cn('hidden md:flex bg-panel flex-shrink-0 relative panel-dock-drop', side.startsWith('bottom') ? 'border-t' : 'border-b')}
       style={{ height: topHeight }}
@@ -154,7 +154,7 @@ function HeightDivider({ height, onHeight, onReset, bottom = false }: {
     <div
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize top panel strip"
+      aria-label={bottom ? "Resize bottom panel strip" : "Resize top panel strip"}
       title="Drag to resize · double-click to reset"
       className={cn("absolute left-0 right-0 h-[6px] z-20 cursor-row-resize touch-none transition-colors hover:bg-primary/40", bottom ? "top-0 -mt-[3px]" : "bottom-0 -mb-[3px]")}
       {...(active ? { 'data-active': '1' } : {})}
