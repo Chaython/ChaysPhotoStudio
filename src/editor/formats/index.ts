@@ -336,6 +336,7 @@ export const FORMAT_INFO: ExportFormatInfo[] = [
   { id: 'qoi', label: 'QOI', ext: 'qoi', alpha: true, options: [], hint: 'QOI — lossless, compact' },
   { id: 'ppm', label: 'PPM (P6)', ext: 'ppm', alpha: false, options: ['background'], hint: 'PPM — binary RGB, no alpha' },
   { id: 'ico', label: 'ICO', ext: 'ico', alpha: true, options: ['icoSizes'], hint: 'ICO — multi-size Windows icon' },
+  { id: 'ora', label: 'OpenRaster (GIMP/Krita layers)', ext: 'ora', alpha: true, options: [], hint: 'OpenRaster — editable PNG layers; unsupported effects are rasterized' },
   { id: 'psd', label: 'PSD (layers)', ext: 'psd', alpha: true, options: ['psdLayers'], hint: 'PSD — layers + composite' },
 ]
 
