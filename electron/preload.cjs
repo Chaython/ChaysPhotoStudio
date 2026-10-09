@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('chaysPhotoStudio', {
   // process/child_process access; it can only invoke these audited commands.
   nativeTools: {
     info: () => ipcRenderer.invoke('chays:native-tools:info'),
+    listOperations: () => ipcRenderer.invoke('chays:native-tools:catalog', 'gegl'),
+    inspectOperation: (kind, operation) => ipcRenderer.invoke('chays:native-tools:inspect', { kind, operation }),
     runGmic: (payload) => ipcRenderer.invoke('chays:native-tools:gmic', payload),
     runGegl: (payload) => ipcRenderer.invoke('chays:native-tools:gegl', payload),
   },
