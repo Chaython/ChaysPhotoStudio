@@ -461,4 +461,5 @@ export async function encodeCanvas(
     case 'ora':
       throw new Error('OpenRaster export needs the layer stack — use buildOpenRaster() from the Export dialog')
   }
+  throw new Error(`Unsupported export format: ${String(format)}`)
 }
