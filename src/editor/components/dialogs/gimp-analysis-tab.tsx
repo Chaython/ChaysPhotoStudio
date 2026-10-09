@@ -5,6 +5,7 @@ import { analyzeGimpScript, type GimpScriptAnalysis } from '../../plugins/gimp-s
 import { Button } from '@/components/ui/button'
 import { FileCode2, Upload } from 'lucide-react'
 import { GimpEmbeddedRunner } from './gimp-embedded-runner'
+import { GimpExternalScriptRunner } from './gimp-external-script-runner'
 
 const MAX_SOURCE_BYTES = 2_000_000
 
@@ -43,6 +44,7 @@ export function GimpAnalysisTab() {
         placeholder="Paste a GIMP script, or open a .py/.scm file…" rows={6} spellCheck={false}
         className="w-full rounded border border-border bg-background p-2 font-mono text-[10px]"/>
       <GimpEmbeddedRunner source={source} filename={filename}/>
+      <GimpExternalScriptRunner source={source} filename={filename}/>
       {error && <p role="alert" className="text-destructive text-[10px]">{error}</p>}
       {result && (
         <>
