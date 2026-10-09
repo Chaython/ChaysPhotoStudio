@@ -199,17 +199,42 @@ def main():
                 dest = page.locator('[data-panel-dock="bottom-right"] [title*="Open Files"]').first
                 page.evaluate("""() => {
                     window.__contextEvents = []
-                    document.addEventListener('contextmenu', e => window.__contextEvents.push({
-                        target: e.target?.outerHTML?.slice(0, 350),
-                        x: e.clientX, y: e.clientY, prevented: e.defaultPrevented
-                    }), true)
+                    window.__dockChanges = []
+                    const pos = () => ({
+                        dock: window.__zphotoStore.getState().panels.dockSide.documents,
+                        floating: !!window.__zphotoStore.getState().panels.floating.documents
+                    })
+                    window.__zphotoStore.subscribe((current, previous) => {
+                        if (current.panels.dockSide.documents !== previous.panels.dockSide.documents
+                            || !!current.panels.floating.documents !== !!previous.panels.floating.documents) {
+                            window.__dockChanges.push({
+                                before: { dock: previous.panels.dockSide.documents, floating: !!previous.panels.floating.documents },
+                                after: pos(), stack: new Error('dock change').stack?.slice(0, 1500)
+                            })
+                        }
+                    })
+                    for (const type of ['pointerdown','pointermove','pointerup','contextmenu']) {
+                        document.addEventListener(type, e => {
+                            const target = e.target?.closest?.('[data-panel-dock]')?.dataset.panelDock
+                            if (window.__contextEvents.length < 60)
+                                window.__contextEvents.push({
+                                    type, button:e.button, buttons:e.buttons, targetDock:target,
+                                    x:e.clientX, y:e.clientY, prevented:e.defaultPrevented
+                                })
+                        }, true)
+                    }
                 }""")
+                print("  Before second right-click:", page.evaluate("""() => ({
+                    side: window.__zphotoStore.getState().panels.dockSide.documents,
+                    titleDock: Array.from(document.querySelectorAll('[title*="Open Files"]')).map(e=>e.closest('[data-panel-dock]')?.dataset.panelDock)
+                })"""), flush=True)
                 dest.click(button="right")
                 try:
                     page.get_by_role("menuitem", name=re.compile(r"Float panel", re.I)).wait_for(state="visible", timeout=4000)
                 except Exception:
                     print("  Context diagnostics:", page.evaluate("""() => ({
                       events: window.__contextEvents,
+                      changes: window.__dockChanges,
                       dockSide: window.__zphotoStore.getState().panels.dockSide.documents,
                       floating: !!window.__zphotoStore.getState().panels.floating.documents,
                       titles: Array.from(document.querySelectorAll('[title*="Open Files"]'))
