@@ -404,13 +404,17 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "Use Window → Batch / Image Processor… for repetitive jobs.",
       "Use Window → Scripting Console… to automate supported commands.",
       "Use Generate / AI Tools to access locally configured or external AI services.",
-      "Electron can use separately installed G'MIC/GEGL through Plugin Manager → Desktop Filters."
+      "Electron can use separately installed G'MIC/GEGL through Plugin Manager → Desktop Filters.",
+      "Plugin Manager → GIMP Runtime can detect an independently installed GIMP 3 and run a selected supported PDB procedure in Electron when you explicitly execute it.",
+      "Plugin Manager → GIMP Scripts can analyze scripts; a limited embedded Scheme interpreter or opt-in Pyodide Python runtime runs only on request."
     ],
     "tips": [
       "Photoshop UXP and GIMP compatibility is partial.",
       "Optional remote AI workflows can transmit content to outside providers.",
-      "GIMP Python/Script-Fu/C plugins and arbitrary Photoshop UXP native plugins are not drop-in supported.",
-      "Online generation may send prompts or image data to remote providers."
+      "Online generation may send prompts or image data to remote providers.",
+      "Supported GIMP 3 Python/Script-Fu procedures run only in a separately installed GIMP through Electron; no arbitrary GIMP native host runs in the web browser.",
+      "Pyodide downloads its runtime only on explicit use and is not guaranteed offline.",
+      "Only run trusted GIMP scripts; native processes have normal OS permissions."
     ]
   },
   {
@@ -579,7 +583,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       "External AI, remote image URLs and release updates require connectivity."
     ],
     "tips": [
-      "The separate Windows offline installer and WebView recovery/security work are pending PRs #85 and #86.",
+      "The offline Windows WebView2 installer is configured on main by merged PR #85; WebView security/recovery remains under review in PR #86.",
       "Electron uses a bundled localhost server and does not depend on GitHub Pages."
     ]
   },
@@ -598,6 +602,25 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     "tips": [
       "Lazy panel/dialog loading reduces startup overhead but does not eliminate large-image memory costs.",
       "Bug reports should include document size, bit depth, layer count and reproducible steps."
+    ]
+  },
+  {
+    "id": "gimp-compat",
+    "title": "GIMP plugins, PDB runtime and script interpreters",
+    "category": "Advanced",
+    "path": "Plugin Manager → Desktop Filters / GIMP Scripts / GIMP Runtime",
+    "summary": "Discover compatible GIMP assets and use supported external GIMP procedures without starting runtimes at launch.",
+    "steps": [
+      "Import supported .gbr brush, .ggr gradient and related GIMP assets into native editing controls.",
+      "In Electron, use Desktop Filters to inspect an existing G'MIC or GEGL install; these are never bundled by the browser app.",
+      "In Plugin Manager → GIMP Runtime, click Detect GIMP 3, inspect/select a noninteractive procedure, and execute it only after reviewing/trusting it.",
+      "Use GIMP Scripts for static source analysis. Electron can run explicitly chosen Python/Script-Fu source in a separate GIMP 3 process; image results are returned as a new layer.",
+      "For simple standalone experiments, choose the embedded Scheme subset or enable Python/Pyodide; these interpreters start only when you press Run."
+    ],
+    "tips": [
+      "Native GIMP 3 is Electron-only, installed separately, and runs with OS permissions; scripts are not sandboxed.",
+      "Pyodide is downloaded from a pinned remote CDN on first explicit request and may not work offline.",
+      "Embedded interpreters do not implement native GIMP GI, PDB or direct image editing; PNG interchange is not HDR/RAW round-tripping."
     ]
   }
 ]
