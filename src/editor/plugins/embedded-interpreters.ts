@@ -22,8 +22,8 @@ const pythonWorker = [
   '      try { Object.defineProperty(self, name, { value: deny, configurable: false, writable: false }) } catch {}',
   '    }',
   '    let text = "";',
-  '    runtime.setStdout({ batched: line => { if (text.length < 20000) text += line + "\n" } });',
-  '    runtime.setStderr({ batched: line => { if (text.length < 20000) text += line + "\n" } });',
+  '    runtime.setStdout({ batched: line => { if (text.length < 20000) text += line + "\\n" } });',
+  '    runtime.setStderr({ batched: line => { if (text.length < 20000) text += line + "\\n" } });',
   '    const value = await runtime.runPythonAsync(source);',
   '    if (value !== undefined && value !== null && text.length < 20000) text += String(value);',
   '    if (value && typeof value.destroy === "function") value.destroy();',
@@ -31,6 +31,14 @@ const pythonWorker = [
   '  } catch (e) { self.postMessage({ ok: false, error: String(e && e.message || e) }); }',
   '};',
 ].join('\n')
+
+/** Deterministic source builder, shared by the test suite. No worker starts here. */
+export function getEmbeddedWorkerSource(language: EmbeddedLanguage): string {
+  return language === 'scheme'
+    ? 'self.onmessage = (event) => { try { const text = (' + evaluateScheme.toString() +
+      ')(event.data.source); self.postMessage({ ok: true, text }); } catch (e) { self.postMessage({ ok: false, error: String(e && e.message || e) }); } };'
+    : pythonWorker
+}
 
 export function runEmbeddedInterpreter(
   language: EmbeddedLanguage,
@@ -43,10 +51,7 @@ export function runEmbeddedInterpreter(
   if (language === 'python' && !options?.allowDownload) {
     throw new Error('Embedded Python needs explicit permission to download Pyodide on first use')
   }
-  const script = language === 'scheme'
-    ? 'self.onmessage = (event) => { try { const text = (' + evaluateScheme.toString() +
-      ')(event.data.source); self.postMessage({ ok: true, text }); } catch (e) { self.postMessage({ ok: false, error: String(e && e.message || e) }); } };'
-    : pythonWorker
+  const script = getEmbeddedWorkerSource(language)
   const blobUrl = URL.createObjectURL(new Blob([script], { type: 'text/javascript' }))
   let worker: Worker
   try { worker = new Worker(blobUrl) }
