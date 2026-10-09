@@ -46,7 +46,7 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.",
       "Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.",
       "Choose Settings → Reset panel layout if a panel is difficult to locate.",
-      "On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right."
+      "On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right. Docks fit their contents by default; drag the dock divider for a fixed size or double-click it to return to automatic sizing."
     ],
     "tips": [
       "The top-toolbar Help button opens this manual without leaving the editor.",
