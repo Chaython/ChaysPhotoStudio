@@ -2,7 +2,7 @@
 // Horizontal modular panel strip. Panels render side-by-side and use the same
 // actions and pull-to-float behavior as the left/right docks.
 import { useEffect, useRef, useState } from 'react'
-import { useEditorStore } from '../../store'
+import { useEditorStore, TOP_HEIGHT_DEFAULT } from '../../store'
 import { PANEL_MAP } from './panel-registry'
 import { horizontalDockPanelWidth } from './auto-dock-sizing'
 import { PanelContextMenu } from './panel-actions-menu'
@@ -17,10 +17,10 @@ export function TopDock({ side = 'top' }: { side?: 'top' | 'bottom' | 'top-left'
   const floating = useEditorStore(s => s.panels.floating)
   const topOrder = useEditorStore(s => s.panels.topOrder)
   const isBottom = side.startsWith('bottom')
-  const topHeight = useEditorStore(s => isBottom ? s.panels.bottomHeight : s.panels.topHeight)
-  const manualHeight = useEditorStore(s => isBottom ? s.panels.bottomHeightManual : s.panels.topHeightManual)
-  const setTopHeight = useEditorStore(s => isBottom ? s.setBottomHeight : s.setTopHeight)
-  const resetHeight = useEditorStore(s => isBottom ? s.resetBottomHeightAuto : s.resetTopHeightAuto)
+  const savedHeight = useEditorStore(s => s.panels.dockHeights[side])
+  const manualHeight = savedHeight !== undefined
+  const setHeight = useEditorStore(s => s.setHorizontalDockHeight)
+  const resetHeight = useEditorStore(s => s.resetHorizontalDockHeight)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
   const dropActive = useDockDrop(side, false)
 
@@ -37,10 +37,11 @@ export function TopDock({ side = 'top' }: { side?: 'top' | 'bottom' | 'top-left'
       data-panel-dock={side}
       data-drop-active={dropActive ? '1' : undefined}
       className={cn('hidden md:flex bg-panel flex-shrink-0 relative panel-dock-drop', side.startsWith('bottom') ? 'border-t' : 'border-b')}
-      style={manualHeight ? { height: topHeight, maxHeight: '45vh' } : { height: 'max-content', maxHeight: '45vh' }}
+      style={manualHeight ? { height: savedHeight, maxHeight: '45vh' } : { height: 'max-content', maxHeight: '45vh' }}
       aria-label={`${side} panel strip`}
     >
-      <HeightDivider height={topHeight} onHeight={setTopHeight} onReset={resetHeight} bottom={isBottom} />
+      <HeightDivider height={savedHeight ?? (isBottom ? 192 : TOP_HEIGHT_DEFAULT)}
+        onHeight={px => setHeight(side, px)} onReset={() => resetHeight(side)} bottom={isBottom} />
 
       <div className="flex-1 min-w-0 flex">
         <div className="w-8 flex items-center justify-center border-r border-border/60 flex-shrink-0">
