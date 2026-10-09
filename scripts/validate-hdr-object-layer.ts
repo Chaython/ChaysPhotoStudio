@@ -71,7 +71,7 @@ try {
   input.width = 2
   input.height = 1
   const hdrInput = new Float32Array([7, 2, 1, 1, 11, 3, 2, 0.5])
-  const centered = engine.addLayerFromCanvas(input, 'Centered HDR', { center: true, hdrPixels: hdrInput })
+  const centered = engine.addLayerFromCanvas(input as unknown as HTMLCanvasElement, 'Centered HDR', { center: true, hdrPixels: hdrInput })
   assert.ok(centered)
   assert.equal(centered.offsetX, 1)
   assert.equal(centered.offsetY, 1)
