@@ -339,7 +339,7 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
 }
 
 /* Photoshop-inspired workspace skin. Scoped: never affects the classic / OLED UI. */
-.dark .zphoto-photoshop-workspace {
+.dark:not(.oled) .zphoto-photoshop-workspace {
   --background: #262626;
   --panel: #323232;
   --workspace: #1c1c1c;
