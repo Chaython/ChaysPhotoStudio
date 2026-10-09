@@ -53,7 +53,7 @@ function renderItems(items: MenuItem[], depth = 0): React.ReactNode[] {
   return out
 }
 
-type AppTheme = 'dark' | 'light' | 'oled'
+type AppTheme = 'dark' | 'light' | 'oled' | 'photoshop'
 
 export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
   theme: AppTheme
@@ -70,9 +70,9 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
   void menus // plugin installs/imports also bump renderTick → the dynamic Plugins menu stays fresh
   void scTick
 
-  const cycleTheme = () => setTheme(theme === 'dark' ? 'oled' : theme === 'oled' ? 'light' : 'dark')
-  const ThemeIcon = theme === 'light' ? Sun : theme === 'oled' ? Contrast : Moon
-  const themeLabel = theme === 'light' ? 'Light' : theme === 'oled' ? 'OLED black' : 'Dark'
+  const cycleTheme = () => setTheme(theme === 'dark' ? 'oled' : theme === 'oled' ? 'photoshop' : theme === 'photoshop' ? 'light' : 'dark')
+  const ThemeIcon = theme === 'light' ? Sun : theme === 'oled' ? Contrast : theme === 'photoshop' ? LayoutGrid : Moon
+  const themeLabel = theme === 'light' ? 'Light' : theme === 'oled' ? 'OLED black' : theme === 'photoshop' ? 'Photoshop-inspired' : 'Dark'
 
   return (
     <Menubar className={`h-8 rounded-none border-0 border-b bg-panel text-xs flex-shrink-0 gap-0 ${mobileMode ? 'overflow-x-auto zphoto-scroll' : ''}`}>
@@ -145,6 +145,9 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => setTheme('oled')}>
               <Contrast size={13} /><span className="flex-1">OLED black / high contrast</span>{theme === 'oled' && <Check size={13} />}
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => setTheme('photoshop')}>
+              <LayoutGrid size={13} /><span className="flex-1">Photoshop-inspired colors</span>{theme === 'photoshop' && <Check size={13} />}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace</div>
