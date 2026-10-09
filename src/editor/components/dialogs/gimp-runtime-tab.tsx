@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { engine } from '../../engine/engine'
 import { getFlatComposite } from '../../engine/document'
@@ -28,14 +28,13 @@ export function GimpRuntimeTab() {
   const [trust, setTrust] = useState(false)
   const [error, setError] = useState('')
   const available = gimpAvailable()
-  // This effect only occurs when the user opens this tab (Radix lazy panel).
-  useEffect(() => {
-    if (!available) return
-    let alive = true
-    void gimpInfo().then(v => { if (alive) setStatus(v) })
-      .catch(e => { if (alive) setError(String(e)) })
-    return () => { alive = false }
-  }, [available])
+  // No automatic probes, even when the user opens this tab.
+  const detect = async () => {
+    setBusy(true); setError('')
+    try { setStatus(await gimpInfo()) }
+    catch (e) { setError(e instanceof Error ? e.message : 'GIMP detection failed') }
+    finally { setBusy(false) }
+  }
   const discovered = useMemo(() => list.filter(x => x.includes(query.toLowerCase())), [list, query])
 
   const discover = async () => {
@@ -84,9 +83,10 @@ export function GimpRuntimeTab() {
     </p>
     {!available && <p className="rounded border border-border p-2">This bridge is available in Electron only. The browser and Tauri builds do not execute native GIMP binaries.</p>}
     {available && <p className="rounded border border-border p-2">
-      {status?.available ? 'GIMP detected: ' + status.version : status ? 'GIMP 3 not found. Install GIMP or set CHAYS_GIMP_PATH before launch.' : 'Checking GIMP 3 on request…'}
+      {status?.available ? 'GIMP detected: ' + status.version : status ? 'GIMP 3 not found. Install GIMP or set CHAYS_GIMP_PATH before launch.' : 'No detection performed'}
     </p>}
     <div className="flex flex-wrap gap-2 items-center">
+      <Button size="sm" variant="secondary" disabled={!available || busy} onClick={() => void detect()}>Detect GIMP 3</Button>
       <Button size="sm" disabled={!available || !status?.available || busy} onClick={() => void discover()}>
         {busy ? 'Working…' : 'Discover installed procedures'}
       </Button>
