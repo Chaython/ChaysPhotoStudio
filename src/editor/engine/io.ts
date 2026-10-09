@@ -153,7 +153,7 @@ export async function openFiles(files: File[], asLayer = false) {
       }
       // Multi-page raster and scientific containers carry independent frames.
       // Represent these as independently selectable layers instead of silently discarding pages.
-      if (!asLayer && ['tiff', 'pcx', 'fits', 'dicom'].includes(format ?? '')) {
+      if (!asLayer && ['tiff', 'pcx', 'fits', 'dicom', 'exr'].includes(format ?? '')) {
         const decoded = await decodeFile(file)
         if (decoded.documentLayers?.length) {
           const choice = await chooseImagePages(file.name, decoded.documentLayers.map(page => ({
