@@ -7,6 +7,7 @@ Chay's Photo Studio is a web-first editor (Next.js, App Router), so it ships thr
 |---|---|---|
 | 🖥️ **Electron** | Bundles Chromium and a local Next.js standalone server; editor loads without external hosting | Desktop editing, file associations and Windows portable; network AI/providers still require their services |
 | 🪶 **Webview shell (Tauri)** | Native OS webview (WebView2/WKWebView/WebKitGTK), embedded static editor by default | Smaller package; OS webview runtime and codecs must be present |
+| 📴 **Offline Windows WebView installer** | Separate NSIS installer with static editor and WebView2 runtime provisioning embedded | Clean/air-gapped Windows installations |
 | 🌐 **Self-hosted web** | `web-standalone.tar.gz` — the Next.js standalone server | Your own domain, intranets |
 | 📱 **PWA (installable web app)** | Install button on the welcome screen + manifest + service worker | Chrome/Edge "Install app", Android, iOS A2HS — no store needed |
 | 🧩 **Browser plugin** | Chrome MV3 extension (+ Firefox variant): right-click any image on the web → open it in Chay's Photo Studio | Browser-native workflow |
@@ -44,7 +45,7 @@ Distribute**, which:
 3. packages **Electron desktop builds** on native platform/architecture runners — Windows NSIS
    (`ChaysPhotoStudio-Setup-*.exe`) **and a no-install portable EXE**
    (`ChaysPhotoStudio-Portable-*-x64.exe`), macOS Intel + Apple Silicon DMGs, Linux AppImage + `.deb`
-4. builds the **Tauri webview shell** per OS (deb/AppImage, NSIS, dmg+app), embedding the static editor by default
+4. builds the **Tauri webview shell** per OS (deb/AppImage, NSIS, dmg+app), embedding the static editor by default; Windows also gets an offline-runtime NSIS variant
 5. zips the **browser plugin** (Chrome + Firefox variants — editor bundled inside)
 6. publishes a **continuous GitHub Release** (prerelease, tagged
    `v{version}-b{run number}`) containing every asset + `SHA256SUMS.txt`
@@ -112,9 +113,9 @@ The portable target is built directly by electron-builder; it extracts its runti
 
 ### Default Tauri and proposed offline installer
 
-The default Tauri release bundles local static editor assets (`build/webapp-export`) and uses the **system WebView**; that is different from bundling a WebView2 runtime installer. A normal Windows NSIS installer may need internet to provision WebView2 when it is missing. The independent Windows NSIS **offline WebView2 installer** is in [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85), not yet merged into `main`. Its planned release asset prefix is `webview-windows-offline-x64--`; only use that filename after the PR has merged and produced a release.
+The default Tauri release bundles local static editor assets (`build/webapp-export`) and uses the **system WebView**; that is different from bundling a WebView2 runtime installer. A normal Windows NSIS installer may need internet to provision WebView2 when it is missing. A separate Windows NSIS **offline WebView2 installer** is now configured on `main` by merged [PR #85](https://github.com/Chaython/ChaysPhotoStudio/pull/85). Its release asset prefix is `webview-windows-offline-x64--`; verify the release job completed successfully before distributing the artifact.
 
-A separate [WebView hardening and recovery PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86) proposes an embedded-release CSP, native window state restoration, recovery-backup exports, an optional manual release checker and optional Authenticode signing. None are assumed to be in the latest stable build until merged. The required Windows code-signing secrets and updater keys are **not** supplied by the repository.
+A separate [WebView hardening and recovery PR #86](https://github.com/Chaython/ChaysPhotoStudio/pull/86) still proposes an embedded-release CSP, native window state restoration, recovery-backup exports, an optional manual release checker and optional Authenticode signing. None are assumed to be in the latest stable build until merged. The required Windows code-signing secrets and updater keys are **not** supplied by the repository.
 
 ### Offline versus online features
 
