@@ -22,6 +22,20 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  // CharLS's Emscripten runtime contains a Node-only dynamic
+  // import('node:module') branch, even in its browser-capable distribution.
+  // Stub that specific module only in browser bundles. No Node builtins are
+  // needed by the browser decoder, and the Node/SSR bundle is untouched.
+  webpack: (config, { isServer, webpack }) => {
+    if (!isServer) {
+      config.plugins.push(new webpack.NormalModuleReplacementPlugin(
+        /^node:module$/, 'module'
+      ));
+      config.resolve = config.resolve || {};
+      config.resolve.fallback = { ...config.resolve.fallback, module: false };
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

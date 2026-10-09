@@ -46,6 +46,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [HDR Fill and feathered selections](#hdr-fill-and-feathered-selections)
 - [Match Color between documents](#match-color-between-documents)
 - [Saving, exporting and metadata](#saving-exporting-and-metadata)
+- [RAW, HDR, scientific and multi-page image files](#raw-hdr-scientific-and-multi-page-image-files)
 - [Proofing, print resolution and guides](#proofing-print-resolution-and-guides)
 - [Import formats and video frame extraction](#import-formats-and-video-frame-extraction)
 - [Layered exports, Save As and metadata](#layered-exports-save-as-and-metadata)
@@ -451,6 +452,26 @@ Extend workflows with plugins, scripts, batch jobs and configured AI providers.
 - Supported GIMP 3 Python/Script-Fu procedures run only in a separately installed GIMP through Electron; no arbitrary GIMP native host runs in the web browser.
 - Pyodide downloads its runtime only on explicit use and is not guaranteed offline.
 - Only run trusted GIMP scripts; native processes have normal OS permissions.
+
+## RAW, HDR, scientific and multi-page image files
+
+Open camera RAW, HDR, modern codecs and scientific files while retaining editable RAW originals when feasible.
+
+**Where:** File → Open / Place / Layer → Redevelop RAW Smart Object…
+
+1. Use File → Open or File → Place to select RAW images. The Develop dialog includes exposure, white balance, demosaicing, highlight, denoising and custom lens correction fields.
+2. When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.
+3. Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Import individual Lensfun XML calibration files on demand using Import Lensfun XML… in the Develop dialog; Match EXIF Lens requires unambiguous camera lens metadata. A full Lensfun WASM database is not bundled.
+4. OpenEXR supports regular single and multipart scanline/single-level tiled images with NONE/RLE/ZIPS/ZIP compression. Float32 HDR samples are retained per part; deep and multiresolution EXR remain unsupported.
+5. FITS and a limited subset of DICOM medical images import as display renderings. DICOM supports uncompressed, RLE Lossless, JPEG baseline, JPEG-LS and JPEG 2000 via available decoders; clinical values and measurements are not preserved.
+6. When TIFF, DCX, FITS, DICOM or multipart EXR contains multiple images, choose one frame/part or import all as selectable layers.
+
+**Notes and tips:**
+
+- Files larger than 64 MiB can be developed as ordinary raster images but their original RAW bytes are not embedded. RAW decoders may use a clearly labeled 8-bit camera preview if sensor decoding fails.
+- Imported Lensfun XML uses recorded calibration values with conservative EXIF matching; the full licensed database and WASM remapping engine are not bundled. Save the project to retain RAW originals and recipes.
+- DICOM support is only for graphic editing, never diagnosis or medical measurements. Rare compressed transfer syntaxes and ambiguous multifragment frame tables are rejected.
+- BPG has no vetted decoder. Deep EXR, multiresolution tile levels and PIZ/PXR24/B44 compression remain unsupported. A six-camera real RAW sensor matrix passed but newer vendor compression variants still need testing.
 
 ## Troubleshooting and known limits
 

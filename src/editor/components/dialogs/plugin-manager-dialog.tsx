@@ -277,7 +277,7 @@ function PluginsTab() {
             <Collapsible>
               <CollapsibleTrigger className="mt-2 flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground"><ShieldCheck size={10}/>Permissions</CollapsibleTrigger>
               <CollapsibleContent className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 rounded border border-border/60 p-2">
-                {ALL_PLUGIN_PERMISSIONS.map(perm => { const checked = (p.grantedPermissions ?? p.manifest.permissions ?? []).includes(perm); return <label key={perm} className="flex items-center gap-1 text-[9px]"><input type="checkbox" checked={checked} onChange={e => { const cur = new Set(p.grantedPermissions ?? p.manifest.permissions ?? []); e.target.checked ? cur.add(perm) : cur.delete(perm); void pluginManager.setPermissions(p.manifest.id, [...cur] as PluginPermission[]) }}/><span className={perm === 'native.process' || perm === 'network' ? 'text-amber-400' : ''}>{perm}</span></label> })}
+                {ALL_PLUGIN_PERMISSIONS.map(perm => { const checked = (p.grantedPermissions ?? p.manifest.permissions ?? []).includes(perm); return <label key={perm} className="flex items-center gap-1 text-[9px]"><input type="checkbox" checked={checked} onChange={e => { const cur = new Set(p.grantedPermissions ?? p.manifest.permissions ?? []); if (e.target.checked) cur.add(perm); else cur.delete(perm); void pluginManager.setPermissions(p.manifest.id, [...cur] as PluginPermission[]) }}/><span className={perm === 'native.process' || perm === 'network' ? 'text-amber-400' : ''}>{perm}</span></label> })}
               </CollapsibleContent>
             </Collapsible>
             {p.commands.length > 0 && (

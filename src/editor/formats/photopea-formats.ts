@@ -18,7 +18,8 @@ export const PHOTOPEA_RASTER_EXTENSIONS = [
 ] as const
 
 export const PHOTOPEA_RAW_EXTENSIONS = [
-  'dng', 'nef', 'cr2', 'cr3', 'arw', 'rw2', 'raf', 'orf', 'gpr', '3fr', 'fff',
+  'dng', 'nef', 'nrw', 'cr2', 'cr3', 'crw', 'arw', 'srf', 'sr2', 'rw2', 'raf', 'orf', 'gpr', '3fr', 'fff',
+  'pef', 'ptx', 'srw', 'x3f', 'iiq', 'mos', 'mef', 'mrw', 'k25', 'kdc', 'dcr', 'erf', 'bay', 'rwl',
 ] as const
 
 export const PHOTOPEA_ANIMATED_EXTENSIONS = [
@@ -28,6 +29,8 @@ export const PHOTOPEA_ANIMATED_EXTENSIONS = [
 // Chay's Photo Studio already supports several useful formats beyond that list.
 export const EXTRA_IMPORT_EXTENSIONS = [
   'qoi', 'pcx', 'dcx', 'pfm', 'jp2', 'j2k', 'j2c',
+  'sgi', 'rgb', 'rgba', 'bw', 'ras', 'sun', 'cur',
+  'fits', 'fit', 'fts', 'dcm', 'dicom', 'jls', 'jxr', 'wdp', 'hdp', 'bpg',
 ] as const
 
 const COMPLEX = new Set<string>(PHOTOPEA_COMPLEX_EXTENSIONS)
@@ -126,10 +129,48 @@ async function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
   }
 }
 
-/** Let the user select the exact time instead of silently extracting an early frame. */
 export async function decodeVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
-  const { pickVideoFrame } = await import('./video-frame-picker')
-  return pickVideoFrame(file)
+  if (typeof document === 'undefined') throw new Error('Video import requires a browser canvas runtime')
+  const url = URL.createObjectURL(file)
+  const video = document.createElement('video')
+  video.muted = true
+  video.playsInline = true
+  video.preload = 'auto'
+  const wait = (event: string, timeoutMs = 15000) => new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timed out decoding video frame')), timeoutMs)
+    const done = () => { clearTimeout(timer); cleanup(); resolve() }
+    const fail = () => { clearTimeout(timer); cleanup(); reject(new Error('The browser could not decode this video container')) }
+    const cleanup = () => {
+      video.removeEventListener(event, done)
+      video.removeEventListener('error', fail)
+    }
+    video.addEventListener(event, done, { once: true })
+    video.addEventListener('error', fail, { once: true })
+  })
+  try {
+    video.src = url
+    await wait('loadedmetadata')
+    if (Number.isFinite(video.duration) && video.duration > 0.08) {
+      video.currentTime = Math.min(0.1, Math.max(0, video.duration / 20))
+      await wait('seeked')
+    } else {
+      await wait('loadeddata')
+    }
+    const width = Math.max(1, video.videoWidth)
+    const height = Math.max(1, video.videoHeight)
+    if (!video.videoWidth || !video.videoHeight) throw new Error('Video contains no decodable visual frame')
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas 2D context unavailable')
+    ctx.drawImage(video, 0, 0, width, height)
+    return canvas
+  } finally {
+    video.removeAttribute('src')
+    video.load()
+    URL.revokeObjectURL(url)
+  }
 }
 
 function u16le(view: DataView, off: number): number {
