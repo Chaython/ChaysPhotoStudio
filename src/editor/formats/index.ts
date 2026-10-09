@@ -179,8 +179,22 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
  *  createImageBitmap/<img>; anything the browser can't do (16-bit
  *  TIFF, PSD, TGA, PNM, QOI, PCX, ICO-DIB) is decoded here. */
 export async function decodeFile(file: File | Blob): Promise<DecodedImage> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
   const sourceName = (file as File).name || ''
+  // Do not read an entire movie into JS memory just to select one frame.
+  // The browser's <video> element can seek directly from the Blob URL.
+  if (publishedFormatKind(sourceName) === 'video' || (!sourceName && file.type.startsWith('video/'))) {
+    const { decodeVideoFrame } = await import('./photopea-formats')
+    const canvas = await decodeVideoFrame(file)
+    return {
+      canvas,
+      width: canvas.width,
+      height: canvas.height,
+      hasAlpha: scanAlpha(getImageData(canvas).data),
+      format: fileExtension(sourceName) || file.type || 'video',
+      sourceBitDepth: 8,
+    }
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer())
   // Dedicated structured parsers keep editable objects/layers for supported
   // document containers. A composite preview is still attached for Place,
   // Open-as-Layer and callers that only understand a canvas.

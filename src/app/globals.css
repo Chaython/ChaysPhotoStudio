@@ -337,3 +337,52 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   min-width: 20px;
   min-height: 20px;
 }
+
+/* Independent Photoshop-inspired color theme. The original Dark/Light/OLED
+   themes and the classic panel arrangement stay selectable. */
+.photoshop-theme {
+  color-scheme: dark;
+  --background: #262626;
+  --foreground: #e7e7e7;
+  --card: #323232;
+  --card-foreground: #e7e7e7;
+  --popover: #383838;
+  --popover-foreground: #e7e7e7;
+  --primary: #49a7e8;
+  --primary-foreground: #101820;
+  --secondary: #393939;
+  --secondary-foreground: #e7e7e7;
+  --muted: #363636;
+  --muted-foreground: #b3b3b3;
+  --accent: #454545;
+  --accent-foreground: #ffffff;
+  --border: #4a4a4a;
+  --input: #545454;
+  --ring: #49a7e8;
+  --sidebar: #323232;
+  --sidebar-foreground: #e7e7e7;
+  --sidebar-border: #4a4a4a;
+  --workspace: #1c1c1c;
+  --panel: #323232;
+}
+
+/* Layout skin when Photoshop workspace is selected with the regular dark
+   theme; choosing OLED or Light does not unexpectedly override that theme. */
+
+.dark:not(.oled):not(.photoshop-theme) .zphoto-photoshop-workspace {
+  --background: #262626;
+  --panel: #323232;
+  --workspace: #1c1c1c;
+  --popover: #383838;
+  --accent: #454545;
+  --border: #4a4a4a;
+  --primary: #49a7e8;
+  --foreground: #e7e7e7;
+  --muted-foreground: #b3b3b3;
+}
+.zphoto-photoshop-workspace [data-native-module="tools"] > :first-child { display: none; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] { width: 48px; }
+.zphoto-photoshop-workspace [data-native-module="tool-options"] > :first-child { display: none; }
+.zphoto-photoshop-workspace [data-native-module="tool-options"] { min-height: 36px; }
+.zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"][aria-selected="true"] { box-shadow: inset 0 -1px var(--primary); }
+.zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"]:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
