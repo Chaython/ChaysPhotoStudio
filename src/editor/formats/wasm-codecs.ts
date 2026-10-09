@@ -1,6 +1,8 @@
 // Optional heavy codecs. Importing this module does not load their WASM payloads.
 // Each decoder module is fetched only after the user opens that format.
 import type { RawImage } from './decoders'
+import type { RawDevelopSettings } from './raw-develop'
+import { DEFAULT_RAW_SETTINGS, normalizeRawSettings } from './raw-develop'
 
 function shape(width:number,height:number){
   if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width*height>64*1024*1024)
@@ -14,13 +16,23 @@ function fromImageData(data:ImageData):RawImage{
 }
 
 /** Full LibRaw sensor unpack/demosaic, producing native 16-bit RGBA samples. */
-export async function decodeCameraRaw(buffer:ArrayBuffer):Promise<RawImage>{
+export async function decodeCameraRaw(buffer:ArrayBuffer,options?:RawDevelopSettings):Promise<RawImage>{
+  const settings=normalizeRawSettings(options ?? DEFAULT_RAW_SETTINGS)
   const {default:LibRaw}=await import('libraw-wasm')
   const decoder=new LibRaw()
   try{
     await decoder.open(new Uint8Array(buffer),{
-      outputBps:16,outputColor:1,useCameraWb:true,
-      noAutoBright:true,userQual:3,
+      outputBps:16,outputColor:1,
+      useCameraWb:settings.whiteBalance==='camera',
+      useAutoWb:settings.whiteBalance==='auto',
+      noAutoBright:true,
+      userQual:settings.interpolation,
+      highlight:settings.highlight,
+      threshold:settings.denoise,
+      halfSize:settings.halfSize,
+      expCorrec:settings.exposureEv!==0,
+      expShift:Math.pow(2,settings.exposureEv),
+      expPreser:settings.highlight>0?0.5:0,
     })
     const output=await decoder.imageData()
     if(!output)throw Error('LibRaw returned no processed image')
