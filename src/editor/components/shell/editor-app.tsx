@@ -157,14 +157,15 @@ export function EditorApp() {
       const files = filesOf(e)
       if (!files.length) return
       const projects = files.filter(f => f.name.endsWith('.zproj.json'))
-      const images = files.filter(f => f.type.startsWith('image/') && !f.name.endsWith('.zproj.json'))
-      const others = files.filter(f => !f.type.startsWith('image/') && !f.name.endsWith('.zproj.json'))
-      if (others.length) useEditorStore.getState().pushToast(`Skipped ${others.length} non-image file${others.length > 1 ? 's' : ''}`, 'error')
+      const supported = (f: File) => f.type.startsWith('image/') || /\.(mp4|webm|mkv)$/i.test(f.name)
+      const importable = files.filter(f => !f.name.endsWith('.zproj.json') && supported(f))
+      const others = files.filter(f => !f.name.endsWith('.zproj.json') && !supported(f))
+      if (others.length) useEditorStore.getState().pushToast(`Skipped ${others.length} unsupported file${others.length > 1 ? 's' : ''}`, 'error')
       if (projects.length) void openFiles(projects)
-      if (images.length === 1 && engine.activeDoc) {
-        void placeImageAsSmartLayer(images[0])
-      } else if (images.length) {
-        void openFiles(images)
+      if (importable.length === 1 && engine.activeDoc) {
+        void placeImageAsSmartLayer(importable[0])
+      } else if (importable.length) {
+        void openFiles(importable)
       }
     }
     const onDragOver = (e: DragEvent) => {
@@ -344,11 +345,11 @@ export function EditorApp() {
           <div className="absolute inset-4 border-2 border-dashed border-primary/70 rounded-xl bg-primary/5" />
           <div className="relative bg-panel/95 border rounded-lg px-8 py-5 text-center shadow-2xl">
             <ImagePlus size={26} className="mx-auto text-primary mb-2" aria-hidden />
-            <div className="text-sm font-medium">Drop images here</div>
+            <div className="text-sm font-medium">Drop images or videos here</div>
             <div className="text-[11px] text-muted-foreground mt-0.5">
               {engine.activeDoc
                 ? 'A single image is placed as a Smart Object layer in this document'
-                : 'Images open as new documents'}
+                : 'Images and selected video frames open as new documents'}
             </div>
           </div>
         </div>
