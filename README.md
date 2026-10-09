@@ -33,7 +33,7 @@ The table is a **capability summary**, not a claim that every combination of fil
 
 ### Workspaces, tools and shortcuts
 
-Choose **Photoshop-style** or **Classic / custom** from the Workspace selector. Color themes (Dark, Light, OLED black and Photoshop-inspired) are independent from workspace layout. On desktop, panels may be docked **left/right/top/bottom and in all four corners**, or floated. Open **Window → All Tools / Tool Search** to filter and launch tools by name, category or shortcut. These improvements were merged in [PR #81](https://github.com/Chaython/ChaysPhotoStudio/pull/81).
+Choose **Photoshop-style** or **Classic / custom** from the Workspace selector. Color themes (Dark, Light, OLED black and Photoshop-inspired) are independent from workspace layout. On desktop, panels may be docked **left/right/top/bottom and in all four corners**, or floated. Dock dimensions adapt to the active content (Open Files is a compact strip); resizing by dragging preserves a manual size and double-clicking the divider restores automatic fitting. Open **Window → All Tools / Tool Search** to filter and launch tools by name, category or shortcut. These improvements were merged in [PR #81](https://github.com/Chaython/ChaysPhotoStudio/pull/81).
 
 Open **Help → Keyboard Shortcuts** (or **Edit → Keyboard Shortcuts…**) to inspect/change bindings. Several Photoshop-style tools share a letter and **cycle** on repeated presses; they do not all have distinct default keys. The Pen group now includes **Standard Pen**, **Freeform Pen** and **Curvature Pen** (P); the Type group includes **Horizontal/Vertical Type Mask** selection tools (T). These are in `main` after [PR #82](https://github.com/Chaython/ChaysPhotoStudio/pull/82).
 
