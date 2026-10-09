@@ -784,7 +784,7 @@ export type DialogType =
   | 'plugin-manager' | 'ai-generate' | 'ai-tools'
   | 'layer-styles'
   | 'detect-objects'
-  | 'customize-toolbar' | 'recovery'
+  | 'customize-toolbar' | 'all-tools' | 'recovery'
 
 export interface DialogInstance {
   id: string
