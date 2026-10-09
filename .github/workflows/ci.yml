@@ -42,6 +42,9 @@ jobs:
       - name: Validate all editor tools
         run: bun run tools:validate
 
+      - name: Validate retouch stroke safety
+        run: bun run retouch-safety:validate
+
       - name: Validate Puppet Warp geometry
         run: bun run warp:validate
 
