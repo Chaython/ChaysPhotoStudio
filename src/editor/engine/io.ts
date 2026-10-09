@@ -6,13 +6,13 @@ import { newLayer } from './document'
 import type { HistoryState, ImageMetadata, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
 import { decodeFile, detectFormat } from '../formats'
 import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
-import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension } from '../formats'
+import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension, publishedFormatKind } from '../formats'
 import { metadataResolutionPpi, readImageMetadata } from '../formats/metadata'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 /** formats our own codecs handle — everything else prefers the browser
  *  decoder and only falls back to decodeFile when that fails */
-const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim']
+const CODEC_FORMATS: readonly ImportFormatId[] = ['tiff', 'psd', 'tga', 'ppm', 'pfm', 'hdr', 'qoi', 'pcx', 'ico', 'icns', 'dds', 'iff', 'anim', 'sgi', 'sunras']
 
 /** sniff the first 64 bytes — enough for every magic-byte signature we know */
 async function sniffFormat(file: File): Promise<ImportFormatId | null> {
@@ -37,6 +37,12 @@ interface DecodedCanvas {
  * the same file through an 8-bit compatibility preview. */
 async function decodeToCanvas(file: File): Promise<DecodedCanvas> {
   const format = await sniffFormat(file)
+  // RAW extensions may have a TIFF header but require a RAW decoder, not the TIFF codec.
+  // Do not silently hide that the embedded camera preview is only 8-bit.
+  if (publishedFormatKind(file.name) === 'raw') {
+    const decoded = await decodeFile(file)
+    return { canvas: decoded.canvas, sourceBitDepth: 8, workingBitDepth: 8 }
+  }
   if (format && CODEC_FORMATS.includes(format)) {
     const decoded = await decodeFile(file)
     return {
@@ -93,6 +99,7 @@ export async function openFiles(files: File[], asLayer = false) {
         }
       }
       const decoded = await decodeToCanvas(file)
+      if (publishedFormatKind(file.name) === 'raw') store.pushToast(`${file.name}: using embedded RAW preview (8-bit), not original sensor data`, 'info')
       if (asLayer && engine.activeDoc) {
         engine.addLayerFromCanvas(decoded.canvas, file.name.replace(/\.[^.]+$/, ''), { hdrPixels: engine.activeDoc?.workingBitDepth === 32 ? decoded.hdrPixels : undefined })
         if (decoded.sourceBitDepth > 8) {
