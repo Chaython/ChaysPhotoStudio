@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input'
 import { useEditorStore } from '../../store'
 import { rgbToHex, hexToRgb, rgbToHsv, hsvToRgb, clamp } from '../../utils/canvas'
 import { cn } from '@/lib/utils'
-import { ArrowLeftRight, RotateCcw, Eraser } from 'lucide-react'
+import { ArrowLeftRight, RotateCcw, Eraser, Upload } from 'lucide-react'
+import { parseGimpPalette, type ParsedGimpPalette } from '../../plugins/gimp-assets'
 
 const SWATCHES = [
   '#000000', '#ffffff', '#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e',
@@ -17,6 +18,7 @@ const SWATCHES = [
   '#d946ef', '#ec4899', '#f43f5e', '#78716c', '#a8a29e', '#57534e',
 ]
 
+const PALETTE_KEY = 'zphoto-gimp-palettes'
 const RECENTS_KEY = 'zphoto-recent-colors'
 const RECENTS_MAX = 10
 const HEX_RE = /^#[0-9a-fA-F]{6}$/
@@ -82,6 +84,8 @@ export function ColorPanel() {
   const [hex, setHex] = useState(fg)
   const [lastHexValid, setLastHexValid] = useState(fg)
   const [recents, setRecents] = useState<string[]>([])
+  const [palette, setPalette] = useState<ParsedGimpPalette | null>(null)
+  const paletteFile = useRef<HTMLInputElement>(null)
   const recentsRef = useRef<string[]>([])
 
   // load recent-colors memory (client only)
@@ -89,6 +93,10 @@ export function ColorPanel() {
     const loaded = loadRecents()
     recentsRef.current = loaded
     setRecents(loaded)
+    try {
+      const saved = localStorage.getItem(PALETTE_KEY)
+      if (saved) { const val = JSON.parse(saved) as ParsedGimpPalette; if (Array.isArray(val.colors)) setPalette(val) }
+    } catch { /* corrupted local palette */ }
   }, [])
 
   const current = active === 'fg' ? fg : bg
@@ -271,11 +279,25 @@ export function ColorPanel() {
         ))}
       </div>
 
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="truncate" title={palette?.name}>{palette?.name || 'Default swatches'}</span>
+        <button className="flex items-center gap-1 text-muted-foreground hover:text-foreground" onClick={() => paletteFile.current?.click()}><Upload size={11} /> GIMP .gpl</button>
+        <input ref={paletteFile} type="file" accept=".gpl" className="hidden" onChange={async e => {
+          const file = e.target.files?.[0]
+          if (!file) return
+          try {
+            const parsed = parseGimpPalette(await file.text(), file.name.replace(/\.gpl$/i, ''))
+            localStorage.setItem(PALETTE_KEY, JSON.stringify(parsed))
+            setPalette(parsed)
+          } catch (error) { useEditorStore.getState().pushToast(error instanceof Error ? error.message : 'Invalid GIMP palette', 'error') }
+          e.target.value = ''
+        }} />
+      </div>
       {/* swatches */}
       <div className="grid grid-cols-10 gap-1">
-        {SWATCHES.map(sw => (
+        {(palette?.colors.map(c => c.hex) ?? SWATCHES).map((sw, index) => (
           <button
-            key={sw}
+            key={`${sw}-${index}`}
             className="w-full aspect-square rounded-sm border border-border/60 hover:scale-110 transition-transform"
             style={{ background: sw }}
             onClick={() => applyHex(sw, true)}
