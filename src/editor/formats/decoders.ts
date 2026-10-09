@@ -11,7 +11,7 @@ import { createCanvas, ctx2d, canvasProfile, putFloat16Pixels } from '../utils/c
 
 export type ImportFormatId =
   | 'png' | 'jpeg' | 'gif' | 'webp' | 'avif' | 'heic' | 'jxl' | 'jp2' | 'svg'
-  | 'bmp' | 'ico' | 'icns' | 'dds' | 'iff' | 'anim' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx' | 'sgi' | 'sunras'
+  | 'bmp' | 'ico' | 'icns' | 'dds' | 'iff' | 'anim' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx' | 'sgi' | 'sunras' | 'exr' | 'fits' | 'dicom'
 
 /** decoded raster: tightly packed 8-bit RGBA (ImageData-compatible).
  *  Typed as Uint8ClampedArray<ArrayBuffer> (not ArrayBufferLike) so it feeds
@@ -118,6 +118,9 @@ export function detectFormat(bytes: Uint8Array): ImportFormatId | null {
   if (eq('8BPS')) return 'psd'
   if (n >= 2 && b[0] === 0x01 && b[1] === 0xda) return 'sgi'
   if (n >= 4 && b[0] === 0x59 && b[1] === 0xa6 && b[2] === 0x6a && b[3] === 0x95) return 'sunras'
+  if (n >= 4 && b[0] === 0x76 && b[1] === 0x2f && b[2] === 0x31 && b[3] === 0x01) return 'exr'
+  if (eq('SIMPLE  =')) return 'fits'
+  if (n >= 132 && eq('DICM', 128)) return 'dicom'
   if (eq('DDS ')) return 'dds'
   if (eq('icns')) return 'icns'
   if (eq('FORM') && n >= 12) {
