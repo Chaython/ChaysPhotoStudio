@@ -1,33 +1,53 @@
 'use client'
 // Dialog component registry — maps DialogType → component
 // NOTE: TASK 2-D may upgrade individual dialog files and re-point entries here.
+import { createElement, lazy, Suspense, type ComponentType } from 'react'
 import type { DialogType } from '../../types'
-import { GenericAdjustmentDialog, GenericFilterDialog, type DialogProps } from './generic-dialogs'
-import { NewDocDialog, ImageSizeDialog, CanvasSizeDialog, ExportDialog, TransformDialog } from './doc-dialogs'
-import { AiUpscaleDialog } from './ai-upscale-dialog'
-import { AiGenerateDialog } from './ai-generate-dialog'
-import { AiToolsDialog } from './ai-tools-dialog'
-import { LiquifyDialog } from './liquify-dialog'
-import { ContentAwareScaleDialog } from './content-aware-scale-dialog'
-import { MatchColorDialog } from './match-color-dialog'
-import { PluginManagerDialog } from './plugin-manager-dialog'
-import { LayerStylesDialog } from './layer-styles-dialog'
-import { ObjectDetectDialog } from './object-detect-dialog'
-import { ShortcutsDialog } from './shortcuts-dialog'
-import { ToolbarCustomizeDialog } from './toolbar-dialog'
-import { RecoveryDialog } from './recovery-dialog'
-import { ApplyImageDialog } from './apply-image-dialog'
-import { CalculationsDialog } from './calculations-dialog'
-import { ExportLayersDialog } from './export-layers-dialog'
-import { DuplicateLayerDialog } from './duplicate-layer-dialog'
-import { StrokeSelectionDialog } from './stroke-selection-dialog'
-import { HelpGuideDialog } from './help-guide-dialog'
-import { ProofSetupDialog } from './proof-setup-dialog'
-import { PuppetWarpDialog } from './puppet-warp-dialog'
-import {
-  ColorRangeDialog, SelectMaskDialog, ContentAwareFillDialog, BatchDialog,
-  ScriptConsoleDialog, AboutDialog,
-} from './advanced-dialogs'
+import type { DialogProps } from './generic-dialogs'
+// Dynamic imports are deliberately declared outside render so React preserves
+// component identity, dialog state, and preview cleanup across store updates.
+function deferredDialog(load: () => Promise<{ default: ComponentType<DialogProps> }>): ComponentType<DialogProps> {
+  const Loaded = lazy(load)
+  return function DeferredDialog(props: DialogProps) {
+    return createElement(Suspense, {
+      fallback: createElement('div', { role: 'status', className: 'py-6 text-center text-xs text-muted-foreground' }, 'Loading dialog…'),
+    }, createElement(Loaded, props))
+  }
+}
+
+const GenericAdjustmentDialog = deferredDialog(() => import('./generic-dialogs').then(m => ({ default: m.GenericAdjustmentDialog })))
+const GenericFilterDialog = deferredDialog(() => import('./generic-dialogs').then(m => ({ default: m.GenericFilterDialog })))
+const NewDocDialog = deferredDialog(() => import('./doc-dialogs').then(m => ({ default: m.NewDocDialog })))
+const ImageSizeDialog = deferredDialog(() => import('./doc-dialogs').then(m => ({ default: m.ImageSizeDialog })))
+const CanvasSizeDialog = deferredDialog(() => import('./doc-dialogs').then(m => ({ default: m.CanvasSizeDialog })))
+const ExportDialog = deferredDialog(() => import('./doc-dialogs').then(m => ({ default: m.ExportDialog })))
+const TransformDialog = deferredDialog(() => import('./doc-dialogs').then(m => ({ default: m.TransformDialog })))
+const AiUpscaleDialog = deferredDialog(() => import('./ai-upscale-dialog').then(m => ({ default: m.AiUpscaleDialog })))
+const AiGenerateDialog = deferredDialog(() => import('./ai-generate-dialog').then(m => ({ default: m.AiGenerateDialog })))
+const AiToolsDialog = deferredDialog(() => import('./ai-tools-dialog').then(m => ({ default: m.AiToolsDialog })))
+const LiquifyDialog = deferredDialog(() => import('./liquify-dialog').then(m => ({ default: m.LiquifyDialog })))
+const ContentAwareScaleDialog = deferredDialog(() => import('./content-aware-scale-dialog').then(m => ({ default: m.ContentAwareScaleDialog })))
+const MatchColorDialog = deferredDialog(() => import('./match-color-dialog').then(m => ({ default: m.MatchColorDialog })))
+const PluginManagerDialog = deferredDialog(() => import('./plugin-manager-dialog').then(m => ({ default: m.PluginManagerDialog })))
+const LayerStylesDialog = deferredDialog(() => import('./layer-styles-dialog').then(m => ({ default: m.LayerStylesDialog })))
+const ObjectDetectDialog = deferredDialog(() => import('./object-detect-dialog').then(m => ({ default: m.ObjectDetectDialog })))
+const ShortcutsDialog = deferredDialog(() => import('./shortcuts-dialog').then(m => ({ default: m.ShortcutsDialog })))
+const ToolbarCustomizeDialog = deferredDialog(() => import('./toolbar-dialog').then(m => ({ default: m.ToolbarCustomizeDialog })))
+const RecoveryDialog = deferredDialog(() => import('./recovery-dialog').then(m => ({ default: m.RecoveryDialog })))
+const ApplyImageDialog = deferredDialog(() => import('./apply-image-dialog').then(m => ({ default: m.ApplyImageDialog })))
+const CalculationsDialog = deferredDialog(() => import('./calculations-dialog').then(m => ({ default: m.CalculationsDialog })))
+const ExportLayersDialog = deferredDialog(() => import('./export-layers-dialog').then(m => ({ default: m.ExportLayersDialog })))
+const DuplicateLayerDialog = deferredDialog(() => import('./duplicate-layer-dialog').then(m => ({ default: m.DuplicateLayerDialog })))
+const StrokeSelectionDialog = deferredDialog(() => import('./stroke-selection-dialog').then(m => ({ default: m.StrokeSelectionDialog })))
+const HelpGuideDialog = deferredDialog(() => import('./help-guide-dialog').then(m => ({ default: m.HelpGuideDialog })))
+const ProofSetupDialog = deferredDialog(() => import('./proof-setup-dialog').then(m => ({ default: m.ProofSetupDialog })))
+const PuppetWarpDialog = deferredDialog(() => import('./puppet-warp-dialog').then(m => ({ default: m.PuppetWarpDialog })))
+const ColorRangeDialog = deferredDialog(() => import('./advanced-dialogs').then(m => ({ default: m.ColorRangeDialog })))
+const SelectMaskDialog = deferredDialog(() => import('./advanced-dialogs').then(m => ({ default: m.SelectMaskDialog })))
+const ContentAwareFillDialog = deferredDialog(() => import('./advanced-dialogs').then(m => ({ default: m.ContentAwareFillDialog })))
+const BatchDialog = deferredDialog(() => import('./advanced-dialogs').then(m => ({ default: m.BatchDialog })))
+const ScriptConsoleDialog = deferredDialog(() => import('./advanced-dialogs').then(m => ({ default: m.ScriptConsoleDialog })))
+const AboutDialog = deferredDialog(() => import('./advanced-dialogs').then(m => ({ default: m.AboutDialog })))
 
 const ADJUSTMENT_TYPES: DialogType[] = [
   'curves', 'levels', 'brightness-contrast', 'exposure', 'vibrance', 'hue-saturation',
