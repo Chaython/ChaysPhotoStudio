@@ -6,9 +6,10 @@ import { parseKrita } from './krita'
 import { parseSvgDocument } from './svg-document'
 import { parsePdfFamily } from './pdf-family'
 import { parseXcf } from './xcf'
+import { parseOpenRaster } from './openraster'
 import { parseFigma } from './figma'
 
-const DEDICATED = new Set(['sketch', 'xd', 'kra', 'kri', 'svg', 'pdf', 'ai', 'eps', 'xcf', 'fig'])
+const DEDICATED = new Set(['sketch', 'xd', 'kra', 'kri', 'svg', 'pdf', 'ai', 'eps', 'xcf', 'fig', 'ora'])
 
 export function hasDedicatedDocumentParser(name: string): boolean {
   return DEDICATED.has(fileExtension(name))
@@ -25,6 +26,7 @@ export async function parseStructuredDocument(file: File | Blob, name = (file as
     case 'svg': return parseSvgDocument(bytes, name)
     case 'pdf': case 'ai': case 'eps': return parsePdfFamily(bytes, name)
     case 'xcf': return parseXcf(bytes, name)
+    case 'ora': return parseOpenRaster(bytes, name)
     case 'fig': return parseFigma(bytes, name)
     default: return null
   }
