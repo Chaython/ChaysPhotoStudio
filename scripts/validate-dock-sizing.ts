@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { autoSideDockWidth, horizontalDockPanelWidth } from '../src/editor/components/panels/auto-dock-sizing'
 import type { PanelDef } from '../src/editor/components/panels/panel-registry'
-import { useEditorStore } from '../src/editor/store'
+import { useEditorStore, restoreDockHeightOverrides, restoreManualDockWidth } from '../src/editor/store'
 
 function panel(id: PanelDef['id'], minWidth: number): PanelDef {
   return { id, label: id, minFloat: { w: minWidth, h: 110 }, defaultFloat: { w: 720, h: 420 } } as PanelDef
@@ -38,3 +38,17 @@ assert.equal(useEditorStore.getState().panels.dockHeights['top-right'], 180, 're
 store.setHorizontalDockHeight('bottom-right', 1)
 assert.equal(useEditorStore.getState().panels.dockHeights['bottom-right'], 44, 'manual height clamps to 44px instead of jumping to 120px')
 useEditorStore.getState().resetPanelLayout()
+
+const legacy = restoreDockHeightOverrides({topHeight: 174, bottomHeight: 86})
+assert.equal(legacy.top, 174, 'legacy custom top height must migrate')
+assert.equal(legacy.bottom, 86, 'legacy custom bottom height must migrate')
+assert.equal(restoreDockHeightOverrides({topHeight: 232, bottomHeight: 192}).top, undefined, 'old defaults stay automatic')
+assert.deepEqual(restoreDockHeightOverrides({dockHeights: {}, topHeight: 174, bottomHeight: 86}), {},
+  'explicit reset to automatic sizing must not be remigrated')
+assert.deepEqual(restoreDockHeightOverrides({dockHeights: {'top-left': 110, bottom: 64, invalid: 200}}),
+  {'top-left': 110, bottom: 64}, 'valid per-position overrides survive')
+assert.equal(restoreManualDockWidth(400, undefined), true, 'legacy custom side width preserved')
+assert.equal(restoreManualDockWidth(264, undefined), false, 'legacy default remains automatic')
+assert.equal(restoreManualDockWidth(318, undefined, true), false, 'Photoshop default remains automatic')
+assert.equal(restoreManualDockWidth(400, false), false, 'explicit automatic setting overrides legacy value')
+console.log('Legacy manual dock sizing remains compatible with automatic-size resets')
