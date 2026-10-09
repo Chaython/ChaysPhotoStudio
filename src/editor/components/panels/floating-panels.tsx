@@ -115,6 +115,13 @@ function dockZoneAt(x: number, y: number, _id: string): DockZone | null {
 function onSessionMove(e: PointerEvent) {
   const s = session
   if (!s || e.pointerId !== s.pointerId) return
+  // Browser context menus and React reparenting can outlive the pointer
+  // capture of the original dock tab. A stale mouse drag must never be
+  // updated by hover or right-click movement after the left button releases.
+  if (e.pointerType === 'mouse' && (e.buttons & 1) === 0) {
+    commitSession(true)
+    return
+  }
   const vw = window.innerWidth
   const vh = window.innerHeight
   const def = PANEL_MAP[s.id]
@@ -179,6 +186,13 @@ function onSessionMove(e: PointerEvent) {
 
 function onSessionEnd(e: PointerEvent) {
   if (!session || e.pointerId !== session.pointerId) return
+  // Pointer IDs are reused across mouse buttons. A secondary-button release
+  // from a context menu must not commit a previously started drag to the dock
+  // currently under the pointer.
+  if (e.pointerType === 'mouse' && e.button !== 0) {
+    commitSession(true)
+    return
+  }
   commitSession(false)
 }
 
