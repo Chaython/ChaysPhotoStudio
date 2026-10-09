@@ -12,6 +12,7 @@
 // ============================================================
 const { app, BrowserWindow, Menu, shell, session, ipcMain } = require('electron')
 const { spawn, execFile } = require('node:child_process')
+const { installGimpIpc } = require('./gimp-runtime.cjs')
 const http = require('node:http')
 const fs = require('node:fs')
 const net = require('node:net')
@@ -338,7 +339,7 @@ async function installNativeToolIpc() {
     // GEGL chain syntax: gegl input -o output -- operation property=value ...
     return withNativeImage(payload?.image, (input, output) => execFileP(state.geglPath, [input, '-o', output, '--', operation, ...args]))
   })
-  return info(true)
+  // Do not launch installed filter tools during application startup.
 }
 
 // ---------- file-open relay ----------
@@ -494,6 +495,7 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
     await installNativeToolIpc().catch(err => console.warn('[native-tools]', err?.message || err))
+    installGimpIpc(ipcMain) // registers handlers only; no GIMP launch at startup
 
     buildMenu()
     createWindow()
