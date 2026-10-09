@@ -8,6 +8,7 @@ import { TOOL_DEFS } from '../../constants/tools'
 import { toolKey } from '../../shortcuts'
 import { useEditorStore } from '../../store'
 import { setActiveTool } from '../../tools/registry'
+import { engine } from '../../engine/engine'
 import type { DialogProps } from './generic-dialogs'
 
 const GROUPS: Record<number, string> = {
@@ -28,6 +29,7 @@ export function AllToolsDialog({ onClose }: DialogProps) {
   const select = (id: typeof TOOL_DEFS[number]['id']) => {
     setActiveTool(id)
     useEditorStore.getState().setTool(id)
+    ;(engine as any)._activeToolId = id
     onClose()
   }
   return (
