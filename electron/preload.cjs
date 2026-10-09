@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld('chaysPhotoStudio', {
   // Desktop-only native image-processing bridge. The renderer never receives
   // process/child_process access; it can only invoke these audited commands.
   nativeTools: {
-    info: () => ipcRenderer.invoke('chays:native-tools:info'),
+    info: (refresh = false) => ipcRenderer.invoke('chays:native-tools:info', refresh),
     listOperations: () => ipcRenderer.invoke('chays:native-tools:catalog', 'gegl'),
     inspectOperation: (kind, operation) => ipcRenderer.invoke('chays:native-tools:inspect', { kind, operation }),
     runGmic: (payload) => ipcRenderer.invoke('chays:native-tools:gmic', payload),
