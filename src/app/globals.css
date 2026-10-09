@@ -337,3 +337,22 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   min-width: 20px;
   min-height: 20px;
 }
+
+/* Photoshop-inspired workspace skin. Scoped: never affects the classic / OLED UI. */
+.dark .zphoto-photoshop-workspace {
+  --background: #262626;
+  --panel: #323232;
+  --workspace: #1c1c1c;
+  --popover: #383838;
+  --accent: #454545;
+  --border: #4a4a4a;
+  --primary: #49a7e8;
+  --foreground: #e7e7e7;
+  --muted-foreground: #b3b3b3;
+}
+.zphoto-photoshop-workspace [data-native-module="tools"] > :first-child { display: none; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] { width: 48px; }
+.zphoto-photoshop-workspace [data-native-module="tool-options"] > :first-child { display: none; }
+.zphoto-photoshop-workspace [data-native-module="tool-options"] { min-height: 36px; }
+.zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"][aria-selected="true"] { box-shadow: inset 0 -1px var(--primary); }
+.zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"]:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
