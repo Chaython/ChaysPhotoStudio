@@ -168,7 +168,8 @@ export async function openFiles(files: File[], asLayer = false) {
             if (!chosen?.canvas) throw new Error('Selected page has no image')
             engine.addCanvasDocument(chosen.canvas, file.name + ' — ' + chosen.name, {
               sourceBitDepth: decoded.sourceBitDepth ?? 8,
-              workingBitDepth: canvasProfile(chosen.canvas).bitDepth,
+              workingBitDepth: format==='exr' && chosen.hdrPixels ? 32 : canvasProfile(chosen.canvas).bitDepth,
+              hdrPixels:format==='exr' && chosen.hdrPixels ? new Float32Array(chosen.hdrPixels) : undefined,
               resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata),
               metadata,
             })
@@ -223,6 +224,10 @@ function layerFromParsed(parsed: ParsedDocumentLayer, width: number, height: num
   if (kind === 'raster') {
     if (!parsed.canvas) return null
     layer.canvas = parsed.canvas
+    if(parsed.hdrPixels?.length===parsed.canvas.width*parsed.canvas.height*4){
+      layer.hdrPixels = new Float32Array(parsed.hdrPixels)
+      layer.hdrColorSpace = 'linear-srgb'
+    }
     layer.offsetX = Number(parsed.left) || 0
     layer.offsetY = Number(parsed.top) || 0
   } else if (kind === 'smart') {
@@ -248,7 +253,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage, metadata?: I
   const doc: PsDocument = {
     id: uid(), name, width, height,
     resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi ?? metadataResolutionPpi(metadata)) || 72)),
-    workingBitDepth: 8,
+    workingBitDepth: decoded.format === 'exr' && decoded.sourceFloatPixels ? 32 : 8,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     workingColorSpace: 'srgb',
     metadata: metadata ? structuredClone(metadata) : undefined,
