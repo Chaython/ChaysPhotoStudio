@@ -287,7 +287,49 @@ function GradientToolStopsControl({ value, onChange }: { value: unknown; onChang
   )
 }
 
-export function ControlRenderer({ control, value, onChange, compact = true }: {
+export /**
+ * Keep partially typed values local until commit. Empty/invalid input reverts
+ * to the last valid option instead of sending 0/NaN into the tool state.
+ */
+export function normalizeToolNumber(raw: string, min?: number, max?: number): number | null {
+  if (!raw.trim()) return null
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return null
+  return Math.min(max ?? Infinity, Math.max(min ?? -Infinity, parsed))
+}
+
+function ToolNumberInput({ control, value, onChange, className }: {
+  control: ControlDef
+  value: unknown
+  onChange: (value: number) => void
+  className: string
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    if (draft === null) return
+    const next = normalizeToolNumber(draft, control.min, control.max)
+    setDraft(null)
+    if (next !== null && next !== value) onChange(next)
+  }
+  return <Input
+    type="number"
+    value={draft ?? (typeof value === 'number' && Number.isFinite(value) ? String(value) : '')}
+    min={control.min}
+    max={control.max}
+    step={control.step}
+    onChange={e => setDraft(e.target.value)}
+    onBlur={commit}
+    onKeyDown={e => {
+      // Don't dispatch editor hotkeys while editing a numeric field.
+      e.stopPropagation()
+      if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+      else if (e.key === 'Escape') { e.preventDefault(); setDraft(null); e.currentTarget.blur() }
+    }}
+    className={className}
+  />
+}
+
+function ControlRenderer({ control, value, onChange, compact = true }: {
   control: ControlDef
   value: any
   onChange: (v: any) => void
@@ -313,18 +355,7 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
             onValueChange={v => onChange(v[0])}
             className={cn('w-20', isAngle && 'w-24')}
           />
-          <Input
-            type="number"
-            value={typeof value === 'number' ? Math.round(value * 100) / 100 : ''}
-            min={control.min}
-            max={control.max}
-            step={control.step}
-            onChange={e => {
-              const n = Number(e.target.value)
-              if (!Number.isNaN(n)) onChange(n)
-            }}
-            className="h-6 w-14 text-[11px] font-mono px-1"
-          />
+          <ToolNumberInput key={control.key} control={control} value={value} onChange={onChange} className="h-6 w-14 text-[11px] font-mono px-1" />
           {control.unit && <span className="text-[10px] text-muted-foreground">{control.unit}</span>}
         </div>
       )
@@ -333,15 +364,7 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
       return (
         <div className="flex items-center gap-2 shrink-0 h-7">
           {label}
-          <Input
-            type="number"
-            value={typeof value === 'number' ? value : ''}
-            min={control.min}
-            max={control.max}
-            step={control.step}
-            onChange={e => onChange(Number(e.target.value))}
-            className="h-6 w-16 text-[11px] font-mono px-1"
-          />
+          <ToolNumberInput key={control.key} control={control} value={value} onChange={onChange} className="h-6 w-16 text-[11px] font-mono px-1" />
         </div>
       )
     case 'select':
