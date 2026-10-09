@@ -584,7 +584,7 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </DialogTitle>
       </DialogHeader>
       <Tabs defaultValue="plugins" className="py-1">
-        <TabsList className="grid w-full grid-cols-6 h-auto min-h-8">
+        <TabsList className="flex w-full flex-wrap h-auto min-h-8">
           <TabsTrigger value="plugins" className="text-[11px] gap-1.5">
             <Puzzle size={11} /> Plugins
           </TabsTrigger>
