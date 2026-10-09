@@ -38,8 +38,8 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
   }
 }
 
-export async function chooseRawDevelopSettings(fileName:string):Promise<RawDevelopSettings|null> {
-  const current=rawSettingsFromSaved()
+export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings):Promise<RawDevelopSettings|null> {
+  const current=initial?normalizeRawSettings(initial):rawSettingsFromSaved()
   if(typeof document==='undefined'||typeof HTMLDialogElement==='undefined')return current
   return await new Promise(resolve=>{
     const dialog=document.createElement('dialog')
