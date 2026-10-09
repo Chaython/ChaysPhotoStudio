@@ -39,6 +39,7 @@ import { cn } from '@/lib/utils'
 import { nativeToolInfo, runNativeGegl, runNativeGmic } from '../../plugins/native-host'
 import { GimpNativeCatalog } from './gimp-native-catalog'
 import { GimpAnalysisTab } from './gimp-analysis-tab'
+import { GimpRuntimeTab } from './gimp-runtime-tab'
 import { dataUrlToCanvas } from '../../image-ops'
 import { getFlatComposite } from '../../engine/document'
 import type { PluginPermission } from '../../plugins/plugin-types'
@@ -583,7 +584,7 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </DialogTitle>
       </DialogHeader>
       <Tabs defaultValue="plugins" className="py-1">
-        <TabsList className="grid w-full grid-cols-5 h-8">
+        <TabsList className="grid w-full grid-cols-6 h-auto min-h-8">
           <TabsTrigger value="plugins" className="text-[11px] gap-1.5">
             <Puzzle size={11} /> Plugins
           </TabsTrigger>
@@ -595,6 +596,9 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
           </TabsTrigger>
           <TabsTrigger value="gimp-analysis" className="text-[11px] gap-1.5">
             <FileJson size={11} /> GIMP Scripts
+          </TabsTrigger>
+          <TabsTrigger value="gimp-runtime" className="text-[10px] gap-1">
+            <Terminal size={11} /> GIMP Runtime
           </TabsTrigger>
           <TabsTrigger value="native" className="text-[11px] gap-1.5">
             <Terminal size={11} /> Desktop Filters
@@ -611,6 +615,9 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </TabsContent>
         <TabsContent value="gimp-analysis" className="mt-3">
           <GimpAnalysisTab />
+        </TabsContent>
+        <TabsContent value="gimp-runtime" className="mt-3">
+          <GimpRuntimeTab />
         </TabsContent>
         <TabsContent value="native" className="mt-3">
           <NativeFiltersTab />
