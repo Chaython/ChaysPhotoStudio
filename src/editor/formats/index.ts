@@ -319,7 +319,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
     }
     case 'fits':
     case 'dicom': {
-      const parsed = format === 'fits' ? decodeFits(bytes) : decodeDicom(bytes)
+      const parsed = format === 'fits' ? decodeFits(bytes) : await decodeDicom(bytes)
       const first = fromRaw(parsed.image, format)
       return {
         ...first,
