@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { Script } from 'node:vm'
+import { evaluateScheme } from '../src/editor/plugins/embedded-scheme'
+import { getEmbeddedWorkerSource } from '../src/editor/plugins/embedded-interpreters'
 import { analyzeGimpScript } from '../src/editor/plugins/gimp-script-analyzer'
 import { analyzeGimpPluginSource } from '../src/editor/plugins/compatibility'
 
@@ -32,3 +35,14 @@ assert.equal(analyzeGimpScript('// no GIMP calls', 'empty.txt').operations.lengt
 assert.throws(() => analyzeGimpScript('x'.repeat(2_000_001)), /limit/)
 assert.deepEqual(analyzeGimpScript('throw new Error("EXECUTED")', 'unsafe.py').operations, [])
 console.log('GIMP script analysis is static, bounded, and classifies native/bridge-only references')
+
+assert.equal(evaluateScheme('(+ 2 (* 3 4))'), '14')
+assert.equal(evaluateScheme('(define square (lambda (x) (* x x))) (square 9)'), '81')
+assert.equal(evaluateScheme('(let ((x 7)) (if (> x 5) "big" "small"))'), 'big')
+assert.match(evaluateScheme('(display "hello") (newline)'), /hello/)
+assert.throws(() => evaluateScheme('(gimp-image-new 1 1)'), /GIMP PDB is unavailable/)
+assert.throws(() => evaluateScheme('('.repeat(500)), /complexity|Missing|Unexpected/)
+assert.throws(() => evaluateScheme('x'.repeat(64001)), /64 KB/)
+new Script(getEmbeddedWorkerSource('scheme'))
+new Script(getEmbeddedWorkerSource('python'))
+console.log('Embedded workers parse and Scheme executes without GIMP or external interpreter load')
