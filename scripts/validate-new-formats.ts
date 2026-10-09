@@ -56,7 +56,7 @@ const re=(g:number,t:number,vr:string,data:number[])=>{
  else rw(data.length)
  rp.push(...data)
 }
-re(2,0x10,'UI',Array.from(enc.encode('1.2.840.10008.1.2.5\\0')))
+re(2,0x10,'UI',Array.from(enc.encode('1.2.840.10008.1.2.5\0')))
 re(0x28,0x10,'US',number16(1))
 re(0x28,0x11,'US',number16(2))
 re(0x28,0x100,'US',number16(8))
