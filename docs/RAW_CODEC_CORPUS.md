@@ -1,5 +1,29 @@
 # RAW / specialty codec compatibility testing
 
+## Verified camera sample matrix (October 9, 2026)
+
+The opt-in [GitHub Actions RAW corpus run](https://github.com/Chaython/ChaysPhotoStudio/actions/runs/37980488133)
+**passed** real LibRaw sensor decoding for the following pinned files from
+[f-spot/raw-samples](https://github.com/f-spot/raw-samples), source commit
+`54425e2cd53ec17d5fd88ee3277d03f54bf1fe84`:
+
+| Camera | Format | Sensor decode |
+| --- | --- | --- |
+| Sony A700 | ARW | Passed |
+| Canon EOS 400D | CR2 | Passed |
+| Leica M8 | DNG | Passed |
+| Nikon D90 | NEF | Passed |
+| Pentax K10D | PEF | Passed |
+| Panasonic G1 | RW2 | Passed |
+
+All six samples were downloaded transiently inside the runner, checked
+against their expected Git blob hashes, and run through the direct
+`decodeCameraRaw` path (not embedded JPEG previews). Tests verify dimensions,
+RGBA sample length and nonconstant pixels. **This does not verify color
+fidelity, metadata preservation, camera orientation, or untested compression
+variants.** Public fixture availability and reuse terms are documented by
+the sample repository; the RAWs are not redistributed with this project.
+
 ## Real-camera regression corpus
 
 Synthetic decoder tests are useful for offsets and pixel math but **do not prove**
@@ -62,7 +86,7 @@ preserving transformations and Smart Filters.
 
 ## Other codecs
 
-- EXR: run `bun run formats:validate` for synthetic scanline/RLE/tile
+- EXR: run `bun run formats:validate` for synthetic scanline/RLE/tile/multipart
   cases. Before broader claims, use the official
   [OpenEXR sample suite](https://openexr.com/en/latest/test_images/) to check
   compression variants, multiresolution tiles, multipart and deep samples.
@@ -73,10 +97,12 @@ preserving transformations and Smart Filters.
   implementations are unmaintained; enabling one without source, security,
   license and malformed-file fuzz testing would expose an image-decoding attack
   surface. Current file handling explicitly explains the missing decoder.
-- Lens profiles: settings currently implement user-calibrated coefficients for
-  radial distortion, lateral chromatic aberration and vignetting. No catalog of
-  verified camera/lens calibrations is bundled. Full Lensfun database matching
-  and WebAssembly packaging remain future integration work.
+- Lens profiles: settings implement user-calibrated coefficients and can now
+  import individual user-supplied Lensfun XML calibration files on demand.
+  The Develop dialog conservatively auto-matches model/focal metadata when a
+  unique lens is found; incompatible files or ambiguous lenses are rejected.
+  The database is *not bundled*; full licensed Lensfun WASM maps and broad
+  manufacturer calibration validation remain future work.
 
 Never count extension recognition, embedded preview import or a passing
 synthetic header as full support for proprietary formats.
