@@ -4218,14 +4218,17 @@ export class Engine {
         if (canvasProfile(staging).bitDepth !== 16)
           throw new Error('Native float16 canvas unavailable')
         putProcessingPixelData(staging, output)
-        if (layer.kind !== 'raster') this.rasterizeLayer(layer.id, { history: false, emit: false })
+        const wasRaster = layer.kind === 'raster'
+        if (!wasRaster) this.rasterizeLayer(layer.id, { history: false, emit: false })
         const live = this.layerById(layer.id)
         if (!live?.canvas || live.locked) return false
         // Snapshot storage is COW: replacing a canvas leaves frozen History
         // buffers untouched without cloning the previous large image.
         live.canvas = staging
         live._hdrPreviewBefore = null
-        live._v++
+        // rasterizeLayer already advanced the version when converting a
+        // Smart Object/text/shape; do not bump it a second time.
+        if (wasRaster) live._v++
         invalidateFlat(doc)
         return true
       } catch (err) {
