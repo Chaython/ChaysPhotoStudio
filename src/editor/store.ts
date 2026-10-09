@@ -80,6 +80,8 @@ function loadPanelLayout(rawOverride: string | null = null): {
   topOrder: string[]
   topHeight: number
   bottomHeight: number
+  topHeightManual: boolean
+  bottomHeightManual: boolean
 } | null {
   if (typeof window === 'undefined') return null
   try {
@@ -97,6 +99,8 @@ function loadPanelLayout(rawOverride: string | null = null): {
       topOrder?: unknown
       topHeight?: number
       bottomHeight?: number
+      topHeightManual?: boolean
+      bottomHeightManual?: boolean
     }
     const vw = window.innerWidth
     const vh = window.innerHeight
@@ -134,6 +138,8 @@ function loadPanelLayout(rawOverride: string | null = null): {
       topOrder: topOrder.filter(id => dockSide[id] === 'top'),
       topHeight: clampNum(Math.round(data.topHeight ?? TOP_HEIGHT_DEFAULT), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX),
       bottomHeight: clampNum(Math.round(data.bottomHeight ?? 192), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX),
+      topHeightManual: data.topHeightManual === true,
+      bottomHeightManual: data.bottomHeightManual === true,
     }
   } catch {
     return null
@@ -155,6 +161,8 @@ function persistPanelLayout(panels: EditorStore['panels']) {
       topOrder: panels.topOrder,
       topHeight: panels.topHeight,
       bottomHeight: panels.bottomHeight,
+      topHeightManual: panels.topHeightManual,
+      bottomHeightManual: panels.bottomHeightManual,
     }))
   } catch {
     /* noop */
@@ -259,7 +267,8 @@ function defaultPanelState(): EditorStore['panels'] {
   return {
     rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
     colorPanelOpen: true, floating: {}, dockSide: {}, topOrder: [],
-    topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
+    topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
+    topHeightManual: false, bottomHeightManual: false, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
   }
 }
 
@@ -269,6 +278,7 @@ function photoshopPanelState(current: EditorStore['panels']): EditorStore['panel
     ...current,
     rightTab: 'layers', leftTab: '', leftOpen: false,
     floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
+    topHeightManual: false, bottomHeightManual: false,
     dockWidth: 318,
   }
 }
@@ -327,6 +337,9 @@ interface EditorStore {
     topHeight: number
     /** bottom strip height in px (desktop) */
     bottomHeight: number
+    /** automatic content sizing is default; true after dragging a resize handle */
+    topHeightManual: boolean
+    bottomHeightManual: boolean
     /** monotonically increasing z counter for focus stacking */
     zTop: number
     /** right dock width in px (desktop) */
@@ -380,6 +393,8 @@ interface EditorStore {
   setLeftDockWidth(px: number): void
   setTopHeight(px: number): void
   setBottomHeight(px: number): void
+  resetTopHeightAuto(): void
+  resetBottomHeightAuto(): void
   resetPanelLayout(): void
   setViewPref(key: 'showRulers' | 'showGuides' | 'snapGuides' | 'showGrid' | 'snapGrid' | 'showGridLabels' | 'showPixelGrid', value: boolean): void
   setViewPref(key: 'rulerUnits', value: 'px' | 'in' | 'cm' | 'mm'): void
@@ -737,16 +752,30 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   setTopHeight: (px) => set(s => {
     const topHeight = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
-    if (topHeight === s.panels.topHeight) return {}
-    const panels = { ...s.panels, topHeight }
+    if (topHeight === s.panels.topHeight && s.panels.topHeightManual) return {}
+    const panels = { ...s.panels, topHeight, topHeightManual: true }
     persistPanelLayout(panels)
     return { panels }
   }),
 
   setBottomHeight: (px) => set(s => {
     const bottomHeight = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
-    if (bottomHeight === s.panels.bottomHeight) return {}
-    const panels = { ...s.panels, bottomHeight }
+    if (bottomHeight === s.panels.bottomHeight && s.panels.bottomHeightManual) return {}
+    const panels = { ...s.panels, bottomHeight, bottomHeightManual: true }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+
+  resetTopHeightAuto: () => set(s => {
+    if (!s.panels.topHeightManual) return {}
+    const panels = { ...s.panels, topHeightManual: false }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+
+  resetBottomHeightAuto: () => set(s => {
+    if (!s.panels.bottomHeightManual) return {}
+    const panels = { ...s.panels, bottomHeightManual: false }
     persistPanelLayout(panels)
     return { panels }
   }),
