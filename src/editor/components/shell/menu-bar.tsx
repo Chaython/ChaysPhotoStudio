@@ -157,6 +157,9 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('help-guide')}>
               <CircleHelp size={13}/><span className="flex-1">Help & User Guide</span>
             </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('all-tools')}>
+              <LayoutGrid size={13} /><span className="flex-1">All tools / Search tools</span>
+            </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('shortcuts')}>
               <Keyboard size={13} /><span className="flex-1">Keyboard shortcuts</span>
             </DropdownMenuItem>
