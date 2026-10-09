@@ -30,6 +30,7 @@ export const PHOTOPEA_ANIMATED_EXTENSIONS = [
 export const EXTRA_IMPORT_EXTENSIONS = [
   'qoi', 'pcx', 'dcx', 'pfm', 'jp2', 'j2k', 'j2c',
   'sgi', 'rgb', 'rgba', 'bw', 'ras', 'sun', 'cur',
+  'fits', 'fit', 'fts', 'dcm', 'dicom', 'jls', 'jxr', 'wdp', 'hdp', 'bpg',
 ] as const
 
 const COMPLEX = new Set<string>(PHOTOPEA_COMPLEX_EXTENSIONS)
