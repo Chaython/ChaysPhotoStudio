@@ -788,8 +788,14 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   if (colorMode === 0 || colorMode === 7) {
     throw new Error(`Unsupported PSD color mode ${colorMode} (bitmap / multichannel)`)
   }
-  const readLength = (p: number): number =>
-    psb ? view.getUint32(p) * 4294967296 + view.getUint32(p + 4) : view.getUint32(p)
+  const readLength = (p: number): number => {
+    if (!Number.isSafeInteger(p) || p < 0 || lenSize > bytes.length - p) {
+      throw new Error('Truncated Photoshop section length')
+    }
+    const size = psb ? view.getUint32(p) * 4294967296 + view.getUint32(p + 4) : view.getUint32(p)
+    if (!Number.isSafeInteger(size)) throw new Error('Unsupported Photoshop section length')
+    return size
+  }
   const str4 = (p: number): string => String.fromCharCode(bytes[p], bytes[p + 1], bytes[p + 2], bytes[p + 3])
 
   let pos = 26
@@ -801,10 +807,12 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const clut = colorMode === 2 && cmdLen >= 768 ? colorModeData.subarray(0, 768) : null
   pos += cmdLen
   // ---- image resources ----
+  if (pos + 4 > bytes.length) throw new Error('Truncated Photoshop image resources length')
   const resLen = view.getUint32(pos)
   pos += 4
   const resStart = pos
-  const resEnd = Math.min(bytes.length, resStart + resLen)
+  if (resLen > bytes.length - resStart) throw new Error('Truncated Photoshop image resources section')
+  const resEnd = resStart + resLen
   let resolutionPpi = 72
   let transparencyIndex: number | null = null
   const imageResources: Uint8Array[] = []
@@ -824,6 +832,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const dataLen = view.getUint32(pos)
     pos += 4
     const dataStart = pos
+    if (dataLen + (dataLen & 1) > resEnd - dataStart) {
+      throw new Error('Truncated Photoshop image resource payload')
+    }
     if (id === 0x0417 && colorMode === 2 && dataLen >= 2 && dataStart + 2 <= resEnd) {
       const candidate = view.getUint16(dataStart)
       if (candidate < 256) transparencyIndex = candidate
@@ -848,6 +859,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   // ---- layer & mask info ----
   const lmLen = readLength(pos)
   pos += lenSize
+  if (lmLen > bytes.length - pos) throw new Error('Truncated Photoshop layer and mask section')
   const lmEnd = pos + lmLen
 
   const compatibilityWarnings = new Set<string>()
@@ -864,6 +876,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     // Photoshop stores 16/32-bit layer records in the global Lr16/Lr32
     // tagged block instead of the ordinary (8-bit) layer-info section.
     // Retain the legacy location as a compatibility fallback for third-party writers.
+    if (pos + lenSize > lmEnd) throw new Error('Truncated Photoshop layer info length')
     let liLen = readLength(pos)
     pos += lenSize
     if (liLen === 0 && (depth === 16 || depth === 32)) {
@@ -892,11 +905,14 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         scan = dataStart + size + (size & 1)
       }
     }
+    if (liLen > lmEnd - pos) throw new Error('Truncated Photoshop layer info section')
     const liEnd = pos + liLen
     if (liLen > 0) {
+      if (pos + 2 > liEnd) throw new Error('Truncated Photoshop layer count')
       const layerCount = Math.abs(view.getInt16(pos))
       pos += 2
       for (let i = 0; i < layerCount; i++) {
+        if (pos + 18 > liEnd) throw new Error('Truncated Photoshop layer record')
         const top = view.getInt32(pos)
         const left = view.getInt32(pos + 4)
         const bottom = view.getInt32(pos + 8)
@@ -904,13 +920,18 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos += 16
         const chCount = view.getUint16(pos)
         pos += 2
+        if (chCount > 56 || chCount * (2 + lenSize) > liEnd - pos) {
+          throw new Error('Invalid Photoshop layer channel table')
+        }
         const channels: PsdChannelInfo[] = []
         for (let c = 0; c < chCount; c++) {
           const id = view.getInt16(pos)
           const len = psb ? view.getUint32(pos + 2) * 4294967296 + view.getUint32(pos + 6) : view.getUint32(pos + 2)
+          if (!Number.isSafeInteger(len) || len < 2) throw new Error('Invalid Photoshop layer channel length')
           channels.push({ id, len })
           pos += 2 + lenSize
         }
+        if (pos + 16 > liEnd || str4(pos) !== '8BIM') throw new Error('Invalid Photoshop layer blend header')
         pos += 4 // blend signature '8BIM'
         const blendKey = str4(pos)
         if (!faithfullyMappedBlendKeys.has(blendKey.trimEnd()) && blendKey.trimEnd() !== 'pass') {
@@ -923,11 +944,13 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos += 4 // opacity, clipping, flags, filler
         const extraLen = view.getUint32(pos)
         pos += 4
+        if (extraLen > liEnd - pos || extraLen < 12) throw new Error('Truncated Photoshop layer extra data')
         const extraEnd = pos + extraLen
         // layer mask data
         let maskRect: [number, number, number, number] | null = null
         let maskDefaultColor = 0
         let maskFlags = 0
+        if (pos + 4 > extraEnd) throw new Error('Truncated Photoshop mask length')
         const maskLen = view.getUint32(pos)
         pos += 4
         if (maskLen > extraEnd - pos) throw new Error('Truncated Photoshop layer mask metadata')
@@ -941,18 +964,21 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           pos += maskLen
         }
         // layer blending ranges
+        if (pos + 4 > extraEnd) throw new Error('Truncated Photoshop blending range length')
         const brLen = view.getUint32(pos)
         pos += 4
         if (brLen > extraEnd - pos) throw new Error('Truncated Photoshop blending ranges')
         const blendingRanges = bytes.slice(pos, pos + brLen)
         pos += brLen
         // pascal name (padded to multiple of 4 including the length byte)
+        if (pos >= extraEnd) throw new Error('Missing Photoshop layer name')
         const nameLen = bytes[pos]
         pos += 1
+        const namePad = (4 - ((1 + nameLen) & 3)) & 3
+        if (nameLen + namePad > extraEnd - pos) throw new Error('Truncated Photoshop layer name')
         let name = ''
-        for (let ci = 0; ci < nameLen && pos + ci < bytes.length; ci++) name += String.fromCharCode(bytes[pos + ci])
-        pos += nameLen
-        pos += (4 - ((1 + nameLen) & 3)) & 3
+        for (let ci = 0; ci < nameLen; ci++) name += String.fromCharCode(bytes[pos + ci])
+        pos += nameLen + namePad
         // additional layer info blocks: retain unsupported Photoshop metadata
         // byte-for-byte while regenerating names and any style blocks we can edit.
         const additionalInfo: Uint8Array[] = []
@@ -1031,6 +1057,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const lh = rec.bottom - rec.top
         for (const ch of rec.channels) {
           const chStart = pos
+          if (ch.len > liEnd - chStart || ch.len < 2) throw new Error('Truncated Photoshop layer channel payload')
           // -3 is Photoshop's combined user/vector mask and has an
           // independent rectangle in the mask metadata. Never decode it
           // against the raster layer dimensions: that turns valid Photoshop
