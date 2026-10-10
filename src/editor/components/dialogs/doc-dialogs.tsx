@@ -337,6 +337,8 @@ export function ExportDialog({ onClose }: DialogProps) {
       } else if (isPsd) {
         const hdrComposite = doc.workingBitDepth === 32 ? engine.hdrCompositeForPsd() : null
         if (doc.workingBitDepth === 32 && !hdrComposite) throw new Error('Complex 32-bit HDR layers cannot be encoded losslessly as PSD/PSB. Simplify the document or preserve it in the native format.')
+        const originalRealMasks = doc.layers.filter(l => l.psdUnsupportedRealMask)
+        if (originalRealMasks.length && !window.confirm(`${originalRealMasks.length} imported Photoshop layer(s) contain combined raster/vector masks (-3). Studio cannot export those original mask channels. Continue with a potentially destructive compatibility export?`)) return
         const unsupported = doc.layers.filter(l => ['adjustment', 'text', 'shape', 'smart'].includes(l.kind))
         if (unsupported.length && !window.confirm(`${unsupported.length} editable layer(s) (adjustment/text/shape/Smart Object) cannot round-trip natively in Photoshop. Adjustment layers will be omitted and other layers rasterized. Continue exporting a compatibility copy?`)) return
         // Group delimiters are byte-preserved only if the original drawable layer
