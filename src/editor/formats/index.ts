@@ -77,6 +77,8 @@ export interface DecodedImage {
     opacity: number
     /** engine blend mode id ('normal', 'multiply', …) */
     blendMode: string
+    /** Photoshop 4-byte source blend key retained across a no-change export. */
+    rawBlendKey?: string
     visible: boolean
     clipped?: boolean
     /** full-document-size mask canvas, mask value in the alpha channel */
@@ -388,6 +390,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           // PsdLayer.opacity is 0..100 — identical to the engine's Layer scale
           opacity: l.opacity,
           blendMode: psdBlendKeyToMode(l.blendKey),
+          rawBlendKey: l.blendKey,
           visible: l.visible,
           clipped: l.clipped,
           mask: l.mask,
