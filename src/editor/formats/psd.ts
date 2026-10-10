@@ -967,6 +967,17 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const lh = rec.bottom - rec.top
         for (const ch of rec.channels) {
           const chStart = pos
+          // -3 is Photoshop's combined user/vector mask and has an
+          // independent rectangle in the mask metadata. Never decode it
+          // against the raster layer dimensions: that turns valid Photoshop
+          // files into bogus RLE/ZIP channel-size failures. The separate
+          // user mask (-2), when present, remains imported below.
+          if (ch.id === -3) {
+            compatibilityWarnings.add('Photoshop combined user/vector mask channel (-3) is not rendered or editable; original mask appearance may differ')
+            if (ch.len < 2 || ch.len > liEnd - chStart) throw new Error('Invalid Photoshop real mask channel length')
+            pos = chStart + ch.len
+            continue
+          }
           const compr = view.getUint16(pos)
           pos += 2
           const isMask = ch.id === -2
