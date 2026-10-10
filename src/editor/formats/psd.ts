@@ -970,7 +970,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
             } else if (key === 'lrFX') {
               const parsed = parseLegacyLayerFxBlock(raw)
               if (parsed) legacyFx = parsed
-              else additionalInfo.push(raw)
+              // Retain the source binary even when it was parsed into editable
+              // controls: unknown Photoshop fields must survive no-op saves.
+              additionalInfo.push(raw)
             } else {
               if (key === 'lfx2' || key === 'lmfx' || key === 'lfxs') {
                 hasDescriptorFx = true
@@ -1614,7 +1616,14 @@ export function buildPsd(
     const nameBytes = asciiBytes(name)
     const pascalTotal = 1 + nameBytes.length
     const pascalPad = (4 - (pascalTotal & 3)) & 3
-    const replacingFx = !!p.input.fx
+    const originalLegacyFx = p.input.additionalInfo?.find(block => fxBlockKey(block) === 'lrFX')
+    const parsedOriginalFx = originalLegacyFx ? parseLegacyLayerFxBlock(originalLegacyFx) : null
+    const unchangedLegacyFx = !!p.input.fx && !!parsedOriginalFx &&
+      JSON.stringify(parsedOriginalFx) === JSON.stringify(p.input.fx)
+    // When Photoshop's editable legacy effects were not modified, retain
+    // the original effect bytes; regenerating them loses fields our native
+    // LayerFX model has not yet implemented.
+    const replacingFx = !!p.input.fx && !unchangedLegacyFx
     const preservedInfo = (p.input.additionalInfo ?? [])
       .filter(saneAdditionalInfoBlock)
       .filter(block => {
@@ -1625,7 +1634,7 @@ export function buildPsd(
         return key !== 'lrFX' && key !== 'chFX' && key !== 'lfx2' && key !== 'lmfx' && key !== 'lfxs'
       })
     const generatedFx: Uint8Array[] = []
-    if (p.input.fx) {
+    if (p.input.fx && !unchangedLegacyFx) {
       // chFX is an app-private, ignored-by-Photoshop copy of the complete
       // native stack. lrFX provides interoperable shadows/glows/bevel/fill.
       generatedFx.push(chaysLayerFxBlock(p.input.fx))
