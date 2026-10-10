@@ -187,7 +187,7 @@ for (const [planes, expected] of [
   [[255, 255, 255, 0], [0, 0, 0]],
   [[128, 255, 255, 255], [128, 255, 255]],
 ] as const) {
-  const decoded = await decodePsd(cmykComposite(...planes))
+  const decoded = await decodePsd(cmykComposite(planes[0], planes[1], planes[2], planes[3]))
   assert.deepEqual(Array.from(decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data.slice(0, 3)),
     Array.from(expected), 'PSD CMYK channels must use Photoshop inverted ink storage')
 }
@@ -232,7 +232,7 @@ for (const [color, white] of [
   [[255, 128, 128], true],
   [[0, 128, 128], false],
 ] as const) {
-  const decoded = await decodePsd(labComposite(...color))
+  const decoded = await decodePsd(labComposite(color[0], color[1], color[2]))
   const rgb = decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data
   for (let i = 0; i < 3; i++) assert.ok(Math.abs(rgb[i] - (white ? 255 : 0)) <= 2,
     'Photoshop Lab neutral white/black converts approximately to sRGB')
