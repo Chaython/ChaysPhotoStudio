@@ -742,5 +742,52 @@ for (const format of ['psd', 'psb'] as const) {
     'Unlocking clears Photoshop layer-record protection in addition to lspf')
 }
 
+
+function taggedPsdBlock(key: string, payload: number[], wide = false): Uint8Array {
+  assert.equal(key.length, 4)
+  const data = Uint8Array.from(payload)
+  const headerSize = wide ? 16 : 12
+  const block = new Uint8Array(headerSize + data.length + (data.length & 1))
+  block.set(new TextEncoder().encode('8BIM' + key))
+  const view = new DataView(block.buffer)
+  if (wide) {
+    view.setUint32(8, 0)
+    view.setUint32(12, data.length)
+  } else view.setUint32(8, data.length)
+  block.set(data, headerSize)
+  return block
+}
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(31, 55, 79)
+  for (const terminalBlock of [
+    taggedPsdBlock('zT00', []),       // 12-byte minimum sized tag
+    taggedPsdBlock('zT01', [27]),     // 14-byte tag after even padding
+    ...(format === 'psb' ? [taggedPsdBlock('lnk2', [], true)] : []), // 64-bit PSB length
+  ]) {
+    const psd = buildPsd(2, 2, [{
+      name: 'Trailing metadata', canvas: image, left: 0, top: 0,
+      opacity: 100, blendMode: 'normal', visible: true,
+      additionalInfo: [terminalBlock],
+    }], image, { format })
+    const bytes = new Uint8Array(await psd.arrayBuffer())
+    const decoded = await decodePsd(bytes)
+    const key = new TextDecoder().decode(terminalBlock.subarray(4, 8))
+    const found = decoded.layers[0].additionalInfo.find(b =>
+      new TextDecoder().decode(b.subarray(4, 8)) === key)
+    assert.deepEqual(found ? Array.from(found) : null, Array.from(terminalBlock),
+      `Trailing Photoshop tagged block ${key} is losslessly retained in ${format}`)
+    if (key === 'zT01') {
+      const corrupted = bytes.slice()
+      const target = corrupted.findIndex((_, pos) =>
+        pos + 12 <= corrupted.length &&
+        terminalBlock.subarray(0, 8).every((value, j) => corrupted[pos + j] === value))
+      assert.ok(target >= 0)
+      new DataView(corrupted.buffer).setUint32(target + 8, 0xffffffff)
+      await assert.rejects(() => decodePsd(corrupted), /Truncated Photoshop tagged block zT01 payload/,
+        'Corrupt Photoshop layer descriptor lengths must not be silently clipped')
+    }
+  }
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
