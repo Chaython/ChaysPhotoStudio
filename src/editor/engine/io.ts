@@ -139,7 +139,12 @@ export async function openFiles(files: File[], asLayer = false) {
 
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
-        if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded, metadata); continue }
+        if (decoded.psdLayers?.length) {
+          addPsdDocument(file.name, decoded, metadata)
+          for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(`${file.name}: ${warning}`, 'info')
+          if ((decoded.warnings?.length ?? 0) > 3) store.pushToast(`${decoded.warnings!.length - 3} additional PSD compatibility warnings`, 'info')
+          continue
+        }
         engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: decoded.sourceFloatPixels ? 32 : canvasProfile(decoded.canvas).bitDepth, hdrPixels: decoded.sourceFloatPixels, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata })
         continue
       }
