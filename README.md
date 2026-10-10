@@ -45,7 +45,7 @@ Open **Help → Keyboard Shortcuts** (or **Edit → Keyboard Shortcuts…**) to 
 
 See [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md) and [real-camera RAW tests](docs/RAW_CODEC_CORPUS.md) for support details. Six selected cameras passed LibRaw sensor-decoding checks; untested compression variants, precision, color matching and RAW round-trip fidelity are not guaranteed.
 
-**Browser regression coverage:** CI exercises the exported editor in headless Chromium, including eight dock positions, saved/manual/automatic sizing, panel context menus, workspace switches, PNG import, layer Undo/Redo and mobile startup. See [development/testing](docs/DEVELOPMENT_AND_TESTING.md#automated-chromium-interaction-tests). Native Electron/GIMP and multi-camera RAW integration are separately validated where possible.
+**Browser regression coverage:** CI exercises the exported editor in headless Chromium, including eight dock positions, saved/manual/automatic sizing, panel context menus, workspace switches, PNG import, layer Undo/Redo, GIMP script lazy-loading and explicit Scheme worker cleanup, and mobile startup. See [development/testing](docs/DEVELOPMENT_AND_TESTING.md#automated-chromium-interaction-tests). Native Electron/GIMP and multi-camera RAW integration are separately validated where possible.
 
 ## Plugins, AI and filters
 
