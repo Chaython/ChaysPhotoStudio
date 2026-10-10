@@ -668,9 +668,37 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const records: PsdLayerRecord[] = []
   const layerChannels: Map<number, PsdPlane>[] = []
   if (lmLen > 0 && lmEnd <= bytes.length) {
-    // layer info
-    const liLen = readLength(pos)
+    // Photoshop stores 16/32-bit layer records in the global Lr16/Lr32
+    // tagged block instead of the ordinary (8-bit) layer-info section.
+    // Retain the legacy location as a compatibility fallback for third-party writers.
+    let liLen = readLength(pos)
     pos += lenSize
+    if (liLen === 0 && (depth === 16 || depth === 32)) {
+      let scan = pos
+      if (scan + 4 <= lmEnd) {
+        const globalMaskLength = view.getUint32(scan)
+        scan += 4 + globalMaskLength
+      }
+      const tagKey = depth === 16 ? 'Lr16' : 'Lr32'
+      while (scan + 12 <= lmEnd) {
+        const signature = str4(scan)
+        if (signature !== '8BIM' && signature !== '8B64') break
+        const key = str4(scan + 4)
+        const taggedLengthSize = psb && (key === 'Lr16' || key === 'Lr32') ? 8 : 4
+        if (scan + 8 + taggedLengthSize > lmEnd) break
+        const size = taggedLengthSize === 8
+          ? view.getUint32(scan + 8) * 4294967296 + view.getUint32(scan + 12)
+          : view.getUint32(scan + 8)
+        const dataStart = scan + 8 + taggedLengthSize
+        if (!Number.isSafeInteger(size) || size < 0 || dataStart + size > lmEnd) break
+        if (key === tagKey) {
+          liLen = size
+          pos = dataStart
+          break
+        }
+        scan = dataStart + size + (size & 1)
+      }
+    }
     const liEnd = pos + liLen
     if (liLen > 0) {
       const layerCount = Math.abs(view.getInt16(pos))
@@ -1265,10 +1293,19 @@ export function buildPsd(
   // ---- layer info section (records + channel data, padded to 4) ----
   const layerInfoContent = concatUint8([...recordParts, ...channelDataParts])
   const liPad = (4 - (layerInfoContent.length & 3)) & 3
-  const layerInfo = concatUint8([sectionLength(pad4(layerInfoContent.length)), layerInfoContent, new Uint8Array(liPad)])
+  const highDepthTag = depth === 16 || depth === 32
+    ? concatUint8([
+        asciiBytes(psb ? '8B64' : '8BIM'),
+        asciiBytes(depth === 16 ? 'Lr16' : 'Lr32'),
+        sectionLength(pad4(layerInfoContent.length)),
+        layerInfoContent,
+        new Uint8Array(liPad),
+      ]) : null
+  const layerInfo = highDepthTag ? sectionLength(0)
+    : concatUint8([sectionLength(pad4(layerInfoContent.length)), layerInfoContent, new Uint8Array(liPad)])
 
-  // ---- layer & mask info: layer info + empty global mask info ----
-  const lmContent = concatUint8([layerInfo, u32(0)])
+  // ---- layer & mask info: high-depth Photoshop layers live in Lr16/Lr32 ----
+  const lmContent = concatUint8(highDepthTag ? [layerInfo, u32(0), highDepthTag] : [layerInfo, u32(0)])
   const lmPad = (4 - (lmContent.length & 3)) & 3
   const lmSection = concatUint8([sectionLength(pad4(lmContent.length)), lmContent, new Uint8Array(lmPad)])
 
