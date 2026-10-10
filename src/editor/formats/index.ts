@@ -36,7 +36,7 @@ export type { ParsedDocument, ParsedDocumentLayer } from './document-parser-type
 export { detectFormat, rawToCanvas, scanAlpha } from './decoders'
 export { buildOpenRaster } from './openraster'
 export { ICO_SIZE_POOL } from './encoders'
-export { decodePsd, buildPsd, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, stripPsdNativeObjectBlocks, psdNativeObjectKind } from './psd'
+export { decodePsd, buildPsd, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, stripPsdNativeObjectBlocks, psdNativeObjectKind, psdWillReplaceSourceFx } from './psd'
 export { PHOTOPEA_IMPORT_ACCEPT, PHOTOPEA_COMPLEX_EXTENSIONS, PHOTOPEA_RASTER_EXTENSIONS, PHOTOPEA_RAW_EXTENSIONS, PHOTOPEA_ANIMATED_EXTENSIONS, EXTRA_IMPORT_EXTENSIONS, fileExtension, publishedFormatKind, isPhotopeaPublishedExtension } from './photopea-formats'
 export { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 
