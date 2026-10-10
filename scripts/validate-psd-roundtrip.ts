@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdGroupPaths } from '../src/editor/formats/psd'
+import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdGroupPaths, psdWillReplaceSourceFx } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
 // without requiring a graphics stack or a browser installation.
@@ -639,6 +639,8 @@ for (const format of ['psd', 'psb'] as const) {
   }], image, { format })
   const imported = await decodePsd(new Uint8Array(await photoshopOnly.arrayBuffer()))
   assert.ok(imported.layers[0].fx?.dropShadow, 'Photoshop legacy FX should be editable')
+  assert.equal(psdWillReplaceSourceFx(imported.layers[0].additionalInfo, imported.layers[0].fx), false,
+    'No-op legacy PSD export must not require destructive-FX confirmation')
   assert.deepEqual(Array.from(photoshopTaggedBlock(imported.layers[0].additionalInfo, 'lrFX')),
     Array.from(legacyBlock), 'Importer must retain source effect bytes')
   const noOp = buildPsd(2, 2, [{
@@ -651,6 +653,10 @@ for (const format of ['psd', 'psb'] as const) {
     Array.from(legacyBlock), 'Unchanged Photoshop legacy FX must survive byte-for-byte')
   const modified = structuredClone(imported.layers[0].fx)!
   modified.dropShadow!.opacity = 25
+  assert.equal(psdWillReplaceSourceFx(imported.layers[0].additionalInfo, modified), true,
+    'Changing imported legacy FX must warn that Photoshop effects are regenerated')
+  assert.equal(psdWillReplaceSourceFx([nativeDescriptor('lfx2')], modified), true,
+    'Replacing modern Photoshop FX descriptors requires explicit confirmation')
   const editedExport = buildPsd(2, 2, [{
     name: 'Changed style', canvas: image, left: 0, top: 0,
     opacity: 100, blendMode: 'normal', visible: true,
