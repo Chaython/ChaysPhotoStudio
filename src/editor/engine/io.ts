@@ -326,6 +326,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
     if (psd.fx) layer.fx = structuredClone(psd.fx)
     if (psd.additionalInfo?.length) layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
+    if (psd.blendingRanges?.length) layer.psdBlendingRanges = bytesToBase64(psd.blendingRanges)
     doc.layers.push(layer as Layer)
   }
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
@@ -532,6 +533,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
       vectorMask: cloneVectorMask(l.vectorMask),
       psdAdditionalInfo: Array.isArray(l.psdAdditionalInfo) ? [...l.psdAdditionalInfo] : undefined,
+      psdBlendingRanges: l.psdBlendingRanges,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
       rawSmart: l.kind === 'smart' && l.rawSmart ? structuredClone(l.rawSmart) : undefined,
     },
@@ -678,6 +680,7 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     fx: sl.props.fx ?? null,
     vectorMask: normalizeVectorMask(sl.props.vectorMask),
     psdAdditionalInfo: Array.isArray(sl.props.psdAdditionalInfo) ? sl.props.psdAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
+    psdBlendingRanges: typeof sl.props.psdBlendingRanges === 'string' ? sl.props.psdBlendingRanges : undefined,
     offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
     origin: sl.props.origin ?? null,
     rawSmart: sl.props.kind === 'smart' && typeof sl.props.rawSmart?.dataBase64 === 'string' &&
