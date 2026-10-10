@@ -369,6 +369,8 @@ export interface PsdLayer {
   height: number
   opacity: number               // 0..100
   blendKey: string              // raw 4-char PSD key
+  /** Original Photoshop nested folder names, purely informational in Studio. */
+  groupPath?: string[]
   blendMode: string             // app blend mode id
   visible: boolean
   clipped: boolean
@@ -401,6 +403,38 @@ export interface PsdSectionMarker {
   /** Original opaque Photoshop lsct/lsdk and other layer-info records. */
   additionalInfo: Uint8Array[]
   blendingRanges: Uint8Array
+}
+
+/** Group delimiters are recorded bottom-to-top in Photoshop storage order.
+ * A folder-opening marker appears AFTER its child records, so walk the flat
+ * records backwards to build the original nested path for each raster layer.
+ * No editable group model is inferred from these advisory names. */
+export function psdGroupPaths(layerCount: number, markers: readonly PsdSectionMarker[]): string[][] {
+  if (!Number.isSafeInteger(layerCount) || layerCount < 0) throw new Error('Invalid Photoshop layer count')
+  const byPosition = new Map<number, PsdSectionMarker[]>()
+  for (const m of markers) {
+    if (m.kind !== 'group' || !Number.isSafeInteger(m.beforeLayerIndex) ||
+        m.beforeLayerIndex < 0 || m.beforeLayerIndex > layerCount) continue
+    const bucket = byPosition.get(m.beforeLayerIndex) ?? []
+    bucket.push(m)
+    byPosition.set(m.beforeLayerIndex, bucket)
+  }
+  const output: string[][] = Array.from({ length: layerCount }, () => [])
+  const openFolders: string[] = []
+  for (let boundary = layerCount; boundary >= 0; boundary--) {
+    const records = byPosition.get(boundary) ?? []
+    for (let i = records.length - 1; i >= 0; i--) {
+      const marker = records[i]
+      const divider = marker.additionalInfo.find(b => b.length >= 16 &&
+        (fxBlockKey(b) === 'lsct' || fxBlockKey(b) === 'lsdk'))
+      if (!divider) continue
+      const type = new DataView(divider.buffer, divider.byteOffset, divider.byteLength).getUint32(12)
+      if (type === 1 || type === 2) openFolders.push(marker.name)
+      else if (type === 3) openFolders.pop()
+    }
+    if (boundary > 0) output[boundary - 1] = [...openFolders]
+  }
+  return output
 }
 
 export interface PsdDecoded {
@@ -1096,6 +1130,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       blendingRanges: rec.blendingRanges.slice(),
     })
   }
+
+  const groupPaths = psdGroupPaths(layers.length, sectionMarkers)
+  for (let i = 0; i < layers.length; i++) layers[i].groupPath = groupPaths[i]
 
   // ---- merged composite (Image Data section) ----
   let composite: HTMLCanvasElement | null = null
