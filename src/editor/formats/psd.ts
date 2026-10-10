@@ -386,6 +386,8 @@ export interface PsdLayer {
 }
 
 export interface PsdSectionMarker {
+  /** A Photoshop-only non-rendering structure, not an editable native layer. */
+  kind: 'group' | 'adjustment'
   /** Position among raster layers in the original Photoshop record sequence. */
   beforeLayerIndex: number
   name: string
@@ -408,7 +410,7 @@ export interface PsdDecoded {
   hdrPixels?: Float32Array
   hasAlpha: boolean
   layers: PsdLayer[]             // storage order
-  /** Photoshop folder divider records retained separately from drawable layers. */
+  /** Photoshop folder and opaque zero-channel adjustment records retained separately. */
   sectionMarkers: PsdSectionMarker[]
   /** ResolutionInfo image-resource metadata, pixels per inch. */
   resolutionPpi: number
@@ -917,13 +919,22 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       const divider = rec.additionalInfo.find(block =>
         block.length >= 16 && ['lsct', 'lsdk'].includes(String.fromCharCode(...block.subarray(4, 8))))
       const sectionType = divider ? new DataView(divider.buffer, divider.byteOffset).getUint32(12) : 0
-      if (divider && [1, 2, 3].includes(sectionType) && rec.channels.length === 0) {
+      const isGroup = !!divider && [1, 2, 3].includes(sectionType)
+      // Only zero-pixel, zero-channel adjustments can be preserved verbatim
+      // without interpreting pixel/mask channels that the editor cannot render.
+      const adjustmentKeys = new Set(['levl', 'curv', 'brit', 'hue2', 'blnc', 'blwh',
+        'selc', 'vibA', 'expA', 'grdm', 'phfl', 'SoCo', 'GdFl', 'PtFl'])
+      const isAdjustment = rec.additionalInfo.some(block =>
+        block.length >= 12 && adjustmentKeys.has(String.fromCharCode(...block.subarray(4, 8))))
+      if ((isGroup || isAdjustment) && rec.channels.length === 0) {
         sectionMarkers.push({
+          kind: isGroup ? 'group' : 'adjustment',
           beforeLayerIndex: layers.length, name: rec.name, visible: rec.visible,
           opacity: Math.round(rec.opacity * 100 / 255), blendKey: rec.blendKey,
           additionalInfo: rec.additionalInfo.map(b => b.slice()),
           blendingRanges: rec.blendingRanges.slice(),
         })
+        if (isAdjustment) compatibilityWarnings.add('Photoshop adjustment records are retained for re-export but not rendered or editable in Studio')
       } else compatibilityWarnings.add('One or more non-raster Photoshop layer records could not be preserved')
       continue
     }
