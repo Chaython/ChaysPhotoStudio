@@ -343,6 +343,12 @@ function rgbWithExtraChannels(samples: number[]): Uint8Array {
   bytes.set(samples, 40)
   return bytes
 }
+const flattenedWithSpots = await decodePsd(rgbWithExtraChannels([100, 150, 200, 80, 207, 39]))
+assert.equal(flattenedWithSpots.layers.length, 0)
+assert.deepEqual(flattenedWithSpots.extraMergedChannels.map(c => Array.from(c)), [[207], [39]],
+  'Flattened RGB PSD imports must retain extra spot/alpha samples')
+assert.ok(flattenedWithSpots.warnings.some(w => w.includes('retained for compatible export')))
+
 for (const [samples, expected] of [
   [[100, 150, 200], [100, 150, 200, 255]],
   [[100, 150, 200, 45], [100, 150, 200, 45]],
@@ -850,6 +856,36 @@ for (const format of ['psd', 'psb'] as const) {
     top: 0, opacity: 100, blendMode: 'normal', visible: true,
   }], image, { format, extraMergedChannels: [Uint8Array.from([25])] }),
   /no longer matches dimensions or bit depth/, 'Stale extra channel dimensions are rejected')
+}
+
+function mergedImageOffset(bytes: Uint8Array): number {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const psb = view.getUint16(4) === 2
+  let pos = 26
+  const colorModeLength = view.getUint32(pos)
+  pos += 4 + colorModeLength
+  const resourcesLength = view.getUint32(pos)
+  pos += 4 + resourcesLength
+  const lmLength = psb
+    ? view.getUint32(pos) * 4294967296 + view.getUint32(pos + 4)
+    : view.getUint32(pos)
+  pos += (psb ? 8 : 4) + lmLength
+  return pos
+}
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(10, 20, 30)
+  const file = buildPsd(2, 2, [{
+    name: 'RLE rows', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], image, { format })
+  const data = new Uint8Array(await file.arrayBuffer())
+  const begin = mergedImageOffset(data)
+  assert.equal(new DataView(data.buffer).getUint16(begin), 1)
+  await assert.rejects(
+    () => decodePsd(data.slice(0, begin + 4)),
+    /Cannot decode PSD merged image and no raster layers are available|Truncated PSD merged RLE row-length table/,
+    'A truncated PSD/PSB shared RLE row table must reject incomplete composite data',
+  )
 }
 
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
