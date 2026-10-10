@@ -131,13 +131,14 @@ function DockTabs({ side, mobile, extra }: {
   const suppressClick = useRef(false)
 
   const onPullDown = (id: string) => (e: React.PointerEvent<HTMLElement>) => {
-    if (mobile || e.button !== 0) return
+    if (mobile || e.button !== 0 || (e.buttons & 1) === 0) { pullDrag.current = null; return }
     suppressClick.current = false
     pullDrag.current = { id, x: e.clientX, y: e.clientY, handedOff: false }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   const onPullMove = (e: React.PointerEvent<HTMLElement>) => {
+    if ((e.buttons & 1) === 0) { pullDrag.current = null; return }
     const d = pullDrag.current
     if (!d || d.handedOff) return
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > PULL_THRESHOLD) {

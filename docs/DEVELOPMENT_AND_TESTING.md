@@ -2,6 +2,20 @@
 
 This reference describes the **current `main` build system**, not features still waiting in open PRs. Begin with [README](../README.md), [Feature & Format Reference](FEATURES_AND_FORMATS.md), [Tool Parity Audit](../TOOL_PARITY.md) and [Distribution](../DISTRIBUTION.md).
 
+## Automated Chromium interaction tests
+
+CI now runs **the exported production web editor in actual headless Google Chrome** via Playwright, not a mocked DOM. The smoke suite (`scripts/test-chromium-editor.py`) covers initial startup, moving panels among all eight docks, independent resize/reset, persistence after reload, context-menu docking/floating, workspace switching, All Tools, opening a real generated PNG, layer Undo/Redo and a mobile viewport. Failure screenshots are retained in the `chromium-editor-e2e` Actions artifact.
+
+Run locally after exporting `build/webapp-export` with Chrome and Python Playwright available:
+
+```bash
+python -m pip install playwright==1.57.0
+python -m http.server 8765 --bind 127.0.0.1 --directory build/webapp-export &
+python scripts/test-chromium-editor.py
+```
+
+Tests are browser-level acceptance checks, **not** full Electron/GIMP native execution or proof of universal RAW camera support. The desktop integrations still require actual installed binaries and platform tests. Most heavyweight modules remain lazy-loaded and are not intentionally instantiated by smoke tests.
+
 ## Setup
 
 ```bash

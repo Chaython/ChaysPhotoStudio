@@ -1,4 +1,5 @@
 'use client'
+import { useRef, useState } from 'react'
 import { ArrowUp, Check, ChevronDown, ChevronUp, Home, Maximize2, PanelLeft, PanelRight } from 'lucide-react'
 import { useEditorStore, type DockSide } from '../../store'
 import { PANEL_MAP } from './panel-registry'
@@ -9,6 +10,16 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+
+/** Defer mutations that reparent the context menu trigger until Radix has
+ * finished selection and closing. Otherwise the original menu can survive
+ * and apply a stale "Dock bottom" item on the next right-click.
+ */
+function afterContextMenuClose(close: () => void, action: () => void) {
+  close()
+  // Close in a separate turn before the menu's trigger changes DOM parent.
+  window.setTimeout(action, 0)
+}
 
 /**
  * Zero-footprint panel controls. Right-click panel chrome (tab/title/drag
@@ -21,6 +32,18 @@ export function PanelContextMenu({
   id: string
   children: React.ReactElement
 }) {
+  const [menuGeneration, setMenuGeneration] = useState(0)
+  const closeMenu = () => setMenuGeneration(generation => generation + 1)
+  // When Radix flips a menu upward at the bottom of the viewport, the
+  // secondary mouseup that OPENED it must not select the item under the cursor.
+  const openingSecondaryRelease = useRef(false)
+  const choose = (event: Event, action: () => void) => {
+    if (openingSecondaryRelease.current) {
+      event.preventDefault()
+      return
+    }
+    afterContextMenuClose(closeMenu, action)
+  }
   const dockSide = useEditorStore(s => s.panels.dockSide)
   const floatingRect = useEditorStore(s => s.panels.floating[id])
   const def = PANEL_MAP[id]
@@ -33,15 +56,25 @@ export function PanelContextMenu({
     ? 'floating'
     : explicitSide ?? (def.home ? 'home' : 'right')
 
-  const move = (side: DockSide) => useEditorStore.getState().dockPanel(id, side)
+  const move = (event: Event, side: DockSide) => choose(event, () => useEditorStore.getState().dockPanel(id, side))
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="z-[90] min-w-52">
+    <ContextMenu key={menuGeneration}>
+      <ContextMenuTrigger asChild onContextMenuCapture={event => {
+        if (event.button === 2) openingSecondaryRelease.current = true
+      }}>{children}</ContextMenuTrigger>
+      <ContextMenuContent className="z-[90] min-w-52"
+        onPointerDownCapture={event => { if (event.button === 0) openingSecondaryRelease.current = false }}
+        onPointerUpCapture={event => {
+          if (event.button === 2) window.setTimeout(() => { openingSecondaryRelease.current = false }, 0)
+        }}
+        onKeyDownCapture={event => {
+          if (event.key === 'Enter' || event.key === ' ') openingSecondaryRelease.current = false
+        }}
+      >
         {def.home && (
           <>
-            <ContextMenuItem className="gap-2 text-xs" onSelect={() => useEditorStore.getState().homePanel(id)}>
+            <ContextMenuItem className="gap-2 text-xs" onSelect={event => choose(event, () => useEditorStore.getState().homePanel(id))}>
               <Home size={13} />
               <span className="flex-1">Return to default position</span>
               {current === 'home' && <Check size={12} className="text-primary" />}
@@ -54,7 +87,7 @@ export function PanelContextMenu({
           <>
             <ContextMenuItem
               className="gap-2 text-xs"
-              onSelect={() => useEditorStore.getState().collapsePanel(id, !floatingRect.collapsed)}
+              onSelect={event => choose(event, () => useEditorStore.getState().collapsePanel(id, !floatingRect.collapsed))}
             >
               {floatingRect.collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
               <span className="flex-1">{floatingRect.collapsed ? 'Expand panel' : 'Collapse panel'}</span>
@@ -65,7 +98,7 @@ export function PanelContextMenu({
           <>
             <ContextMenuItem
               className="gap-2 text-xs"
-              onSelect={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
+              onSelect={event => choose(event, () => useEditorStore.getState().floatPanel(id, def.defaultFloat))}
             >
               <Maximize2 size={13} />
               <span className="flex-1">Float panel</span>
@@ -74,11 +107,11 @@ export function PanelContextMenu({
           </>
         )}
 
-        <DockItem id={id} label="Dock left" side="left" current={current} onSelect={() => move('left')} />
-        <DockItem id={id} label="Dock right" side="right" current={current} onSelect={() => move('right')} />
-        <DockItem id={id} label="Dock top" side="top" current={current} onSelect={() => move('top')} />
+        <DockItem id={id} label="Dock left" side="left" current={current} onSelect={event => move(event, 'left')} />
+        <DockItem id={id} label="Dock right" side="right" current={current} onSelect={event => move(event, 'right')} />
+        <DockItem id={id} label="Dock top" side="top" current={current} onSelect={event => move(event, 'top')} />
         {(['bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map(side => (
-          <DockItem key={side} id={id} label={`Dock ${side.replaceAll('-', ' ')}`} side={side} current={current} onSelect={() => move(side)} />
+          <DockItem key={side} id={id} label={`Dock ${side.replaceAll('-', ' ')}`} side={side} current={current} onSelect={event => move(event, side)} />
         ))}
       </ContextMenuContent>
     </ContextMenu>
@@ -96,7 +129,7 @@ function DockItem({
   label: string
   side: DockSide
   current: DockSide | 'floating' | 'home'
-  onSelect: () => void
+  onSelect: (event: Event) => void
 }) {
   const Icon = side === 'left' ? PanelLeft : side === 'right' ? PanelRight : ArrowUp
   return (

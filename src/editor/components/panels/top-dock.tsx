@@ -68,12 +68,16 @@ function TopPanelBox({ id, hasDoc, manualHeight }: { id: string; hasDoc: boolean
   const pull = useRef<{ x: number; y: number; handed: boolean } | null>(null)
 
   const onDown = (e: React.PointerEvent<HTMLElement>) => {
-    if (e.button !== 0) return
+    if (e.button !== 0 || (e.buttons & 1) === 0) { pull.current = null; return }
     if ((e.target as HTMLElement).closest('button')) return
     pull.current = { x: e.clientX, y: e.clientY, handed: false }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
   const onMove = (e: React.PointerEvent<HTMLElement>) => {
+    // Re-docking a panel during a context-menu selection can unmount its
+    // original drag handle. Never interpret subsequent hover/right-click
+    // movement as a drag without a held PRIMARY mouse button.
+    if ((e.buttons & 1) === 0) { pull.current = null; return }
     const d = pull.current
     if (!d || d.handed) return
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > PULL_THRESHOLD) {
