@@ -329,7 +329,16 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = psd.maskEnabled !== false }
     if (psd.unsupportedRealMask) layer.psdUnsupportedRealMask = true
     if (psd.fx) layer.fx = structuredClone(psd.fx)
-    if (psd.additionalInfo?.length) layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
+    if (psd.additionalInfo?.length) {
+      layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
+      const kind = psdNativeObjectKind(psd.additionalInfo)
+      if (kind) layer.psdNativeOrigin = {
+        kind,
+        pixelFingerprint: psdPixelFingerprint(psd.canvas, psd.hdrPixels),
+        left: psd.left, top: psd.top,
+        width: psd.canvas.width, height: psd.canvas.height,
+      }
+    }
     if (psd.blendingRanges?.length) layer.psdBlendingRanges = bytesToBase64(psd.blendingRanges)
     doc.layers.push(layer as Layer)
   }
@@ -553,6 +562,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       psdBlendingRanges: l.psdBlendingRanges,
       psdBlendKey: l.psdBlendKey,
       psdUnsupportedRealMask: l.psdUnsupportedRealMask,
+      psdNativeOrigin: l.psdNativeOrigin ? structuredClone(l.psdNativeOrigin) : undefined,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
       rawSmart: l.kind === 'smart' && l.rawSmart ? structuredClone(l.rawSmart) : undefined,
     },
@@ -706,6 +716,11 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     psdBlendingRanges: typeof sl.props.psdBlendingRanges === 'string' ? sl.props.psdBlendingRanges : undefined,
     psdBlendKey: typeof sl.props.psdBlendKey === 'string' && sl.props.psdBlendKey.length === 4 ? sl.props.psdBlendKey : undefined,
     psdUnsupportedRealMask: sl.props.psdUnsupportedRealMask === true,
+    psdNativeOrigin: ['text', 'smart', 'vector'].includes(sl.props.psdNativeOrigin?.kind) &&
+      typeof sl.props.psdNativeOrigin?.pixelFingerprint === 'string' &&
+      Number.isFinite(sl.props.psdNativeOrigin?.left) && Number.isFinite(sl.props.psdNativeOrigin?.top) &&
+      Number.isFinite(sl.props.psdNativeOrigin?.width) && Number.isFinite(sl.props.psdNativeOrigin?.height)
+      ? structuredClone(sl.props.psdNativeOrigin) : undefined,
     offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
     origin: sl.props.origin ?? null,
     rawSmart: sl.props.kind === 'smart' && typeof sl.props.rawSmart?.dataBase64 === 'string' &&
