@@ -1400,6 +1400,46 @@ function unicodeLayerNameBlock(name: string): Uint8Array {
   return out
 }
 
+/** Photoshop-native layer descriptors which must not remain attached to a
+ * rasterized/edited preview. Photoshop prioritizes these objects over raster
+ * pixels, potentially discarding edits if their stale descriptors survive. */
+const PSD_NATIVE_OBJECT_KEYS = new Set([
+  'TySh', 'tySh',             // Live type layers
+  'SoLd', 'PlLd', 'SoLE',      // Placed/embedded Smart Objects
+  'vmsk', 'vsms', 'vscg', 'vogk', 'vstk', // Live vector/shape data
+])
+
+export function psdNativeObjectKind(blocks: readonly Uint8Array[]): 'text' | 'smart' | 'vector' | null {
+  const keys = new Set(blocks.filter(b => b.length >= 8).map(fxBlockKey))
+  if (keys.has('TySh') || keys.has('tySh')) return 'text'
+  if (keys.has('SoLd') || keys.has('PlLd') || keys.has('SoLE')) return 'smart'
+  if (['vmsk', 'vsms', 'vscg', 'vogk', 'vstk'].some(k => keys.has(k))) return 'vector'
+  return null
+}
+
+export function stripPsdNativeObjectBlocks(blocks: readonly Uint8Array[]): Uint8Array[] {
+  return blocks.filter(block => !PSD_NATIVE_OBJECT_KEYS.has(fxBlockKey(block)))
+}
+
+/** Pixel-content fingerprint, used ONLY to avoid exporting stale Photoshop
+ * native descriptors after raster edits. Two independent 32-bit accumulators
+ * plus dimensions reduce accidental collisions without async crypto or a
+ * large persistent pixel copy. This is not a security checksum. */
+export function psdPixelFingerprint(canvas: HTMLCanvasElement, hdr?: Float32Array | null): string {
+  const highData = !hdr && canvasProfile(canvas).bitDepth === 16 ? getFloat16ImageData(canvas) : null
+  const bytes = hdr
+    ? new Uint8Array(hdr.buffer, hdr.byteOffset, hdr.byteLength)
+    : highData?.data && ArrayBuffer.isView(highData.data)
+      ? new Uint8Array(highData.data.buffer, highData.data.byteOffset, highData.data.byteLength)
+      : getImageData(canvas).data
+  let a = 0x811c9dc5, b = 0x9e3779b9
+  for (let i = 0; i < bytes.length; i++) {
+    a = Math.imul(a ^ bytes[i], 16777619)
+    b = Math.imul(b ^ bytes[i], 2246822519)
+  }
+  return `${canvas.width}x${canvas.height}:${bytes.length}:${(a >>> 0).toString(16)}:${(b >>> 0).toString(16)}`
+}
+
 function saneAdditionalInfoBlock(block: Uint8Array): boolean {
   if (!(block instanceof Uint8Array) || block.length < 12) return false
   const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
