@@ -1060,6 +1060,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
 
   // ---- merged composite (Image Data section) ----
   let composite: HTMLCanvasElement | null = null
+  let compositeError: unknown = null
   let hdrComposite: Float32Array | undefined
   let hasAlpha = false
   try {
@@ -1117,11 +1118,18 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
     hdrComposite = res.rgbaFloat
     hasAlpha = res.hasAlpha
-  } catch {
+  } catch (error) {
+    compositeError = error
     composite = null
   }
 
   if (!composite) {
+    // Do not silently import a blank canvas when both the merged image and
+    // drawable Photoshop layers are absent. That previously looked like a
+    // successful open, then saving destroyed the only original source data.
+    if (!layers.length) throw new Error(`Cannot decode PSD merged image and no raster layers are available: ${compositeError instanceof Error ? compositeError.message : String(compositeError)}`)
+    compatibilityWarnings.add('PSD merged composite could not be decoded; preview was rebuilt from layers and may differ from Photoshop')
+    if (depth === 32) compatibilityWarnings.add('HDR merged image unavailable: layer-based fallback preview cannot retain the original scene-linear composite')
     // fallback: render the composite from the decoded layers
     composite = createCanvas(width, height)
     const cctx = ctx2d(composite)
@@ -1133,6 +1141,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       cctx.drawImage(l.canvas, l.left, l.top)
       cctx.restore()
     }
+    hasAlpha = getImageData(composite).data.some((v, i) => i % 4 === 3 && v < 255)
   }
 
   return { canvas: composite, width, height, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, colorModeData, warnings: [...compatibilityWarnings] }
