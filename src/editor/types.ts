@@ -398,6 +398,8 @@ export interface Layer {
   psdNativeOrigin?: {
     kind: 'text' | 'smart' | 'vector'
     pixelFingerprint: string
+    maskFingerprint: string | null
+    maskEnabled: boolean
     left: number
     top: number
     width: number
