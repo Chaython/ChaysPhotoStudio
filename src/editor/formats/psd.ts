@@ -1522,6 +1522,33 @@ export function buildPsd(
     maskDoc: { w: number; h: number; chan: Uint8Array } | null
   }
   if (list.length > 32767) throw new Error('Photoshop PSD/PSB supports at most 32767 layer records per layer-info section')
+  // Photoshop layer IDs (lyid) must be unique. Duplication in the editor
+  // often preserves the source opaque metadata, so reusing that original ID
+  // verbatim would create two Photoshop layers with the same identifier.
+  const sourceLayerId = (input: PsdLayerInput): number | null => {
+    const block = input.additionalInfo?.find(b => fxBlockKey(b) === 'lyid' && b.length >= 16)
+    if (!block) return null
+    const id = new DataView(block.buffer, block.byteOffset, block.byteLength).getUint32(12)
+    return id > 0 ? id : null
+  }
+  const reservedLayerIds = new Set<number>()
+  for (const input of list) {
+    const id = sourceLayerId(input)
+    if (id !== null) reservedLayerIds.add(id)
+  }
+  const usedLayerIds = new Set<number>()
+  let nextLayerId = 1
+  const uniqueLayerId = (input: PsdLayerInput): number => {
+    const existing = sourceLayerId(input)
+    if (existing !== null && !usedLayerIds.has(existing)) {
+      usedLayerIds.add(existing)
+      return existing
+    }
+    while (reservedLayerIds.has(nextLayerId) || usedLayerIds.has(nextLayerId)) nextLayerId++
+    if (nextLayerId > 0xffffffff) throw new Error('Exhausted Photoshop layer ID range')
+    usedLayerIds.add(nextLayerId)
+    return nextLayerId++
+  }
   const prepared: Prepared[] = []
   for (const input of list) {
     if (input.sectionMarker) {
@@ -1591,6 +1618,8 @@ export function buildPsd(
     const preservedInfo = (p.input.additionalInfo ?? [])
       .filter(saneAdditionalInfoBlock)
       .filter(block => {
+        // Regenerate exactly one valid, unique ID for every layer.
+        if (fxBlockKey(block) === 'lyid') return false
         if (!replacingFx) return true
         const key = fxBlockKey(block)
         return key !== 'lrFX' && key !== 'chFX' && key !== 'lfx2' && key !== 'lmfx' && key !== 'lfxs'
@@ -1604,7 +1633,8 @@ export function buildPsd(
       if (legacy) generatedFx.push(legacy)
     }
     const unicodeName = unicodeLayerNameBlock(p.input.name || 'Layer')
-    const additionalInfoBytes = [...preservedInfo, ...generatedFx].reduce((n, b) => n + b.length, unicodeName.length)
+    const layerIdBlock = concatUint8([asciiBytes('8BIM'), asciiBytes('lyid'), u32(4), u32(uniqueLayerId(p.input))])
+    const additionalInfoBytes = [...preservedInfo, ...generatedFx].reduce((n, b) => n + b.length, unicodeName.length + layerIdBlock.length)
     const blendingRanges = p.input.blendingRanges ?? new Uint8Array(0)
     const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + blendingRanges.length + pascalTotal + pascalPad + additionalInfoBytes
     recordParts.push(u32(extraLen))
@@ -1620,7 +1650,7 @@ export function buildPsd(
     }
     recordParts.push(u32(blendingRanges.length), blendingRanges) // original Photoshop Blend If ranges
     recordParts.push(new Uint8Array([nameBytes.length]), nameBytes, new Uint8Array(pascalPad))
-    recordParts.push(unicodeName, ...preservedInfo, ...generatedFx)
+    recordParts.push(unicodeName, layerIdBlock, ...preservedInfo, ...generatedFx)
     // channel image data blocks follow all records — store for later
     for (const ch of allChannels) channelDataParts.push(ch.block)
   }
