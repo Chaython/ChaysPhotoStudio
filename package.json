@@ -63,7 +63,8 @@
     "hdr-object-layer:validate": "bun scripts/validate-hdr-object-layer.ts",
     "fill-coverage:validate": "bun scripts/validate-fill-coverage.ts",
     "heritage-formats:validate": "bun scripts/validate-heritage-raster.ts",
-    "formats:validate": "bun scripts/validate-heritage-raster.ts && bun scripts/validate-new-formats.ts",
+    "formats:validate": "bun scripts/validate-heritage-raster.ts && bun scripts/validate-new-formats.ts && bun scripts/validate-psd-roundtrip.ts",
+    "psd:validate": "bun scripts/validate-psd-roundtrip.ts",
     "raw-corpus:validate": "bun scripts/validate-camera-raw-corpus.ts",
     "dock-routing:validate": "bun scripts/validate-dock-routing.ts"
   },
