@@ -10,7 +10,7 @@ import { engine, type TransformMode, type TransformReference } from '../../engin
 import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob, canvasPixelCapabilities } from '../../utils/canvas'
 import { compositeDocument, getFlatComposite } from '../../engine/document'
-import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster } from '../../formats'
+import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster, psdBlendKeyToMode } from '../../formats'
 import type { PsdLayerInput } from '../../formats'
 import type { DialogProps } from './generic-dialogs'
 import { TransformWarpEditor } from './transform-warp-editor'
@@ -384,6 +384,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             top: docSpace ? 0 : l.offsetY ?? 0,
             opacity: l.opacity,
             blendMode: l.blendMode,
+            rawBlendKey: l.psdBlendKey && l.blendMode === psdBlendKeyToMode(l.psdBlendKey) ? l.psdBlendKey : undefined,
             visible: l.visible,
             clipped: l.clipped,
             mask: l.maskEnabled ? l.mask : null,
