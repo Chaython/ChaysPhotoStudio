@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdGroupPaths, psdWillReplaceSourceFx } from '../src/editor/formats/psd'
+import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdGroupPaths, psdWillReplaceSourceFx, normalizePsdTaggedBlock } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
 // without requiring a graphics stack or a browser installation.
@@ -787,6 +787,34 @@ for (const format of ['psd', 'psb'] as const) {
         'Corrupt Photoshop layer descriptor lengths must not be silently clipped')
     }
   }
+}
+
+
+const linkedPayload = [0x21, 0x32, 0x43, 0x54, 0x65]
+const linkedShort = taggedPsdBlock('lnk2', linkedPayload)
+const linkedWide = taggedPsdBlock('lnk2', linkedPayload, true)
+assert.deepEqual(Array.from(normalizePsdTaggedBlock(linkedShort, true)), Array.from(linkedWide),
+  'PSD→PSB conversion must widen 64-bit-required length keys without changing their payload')
+assert.deepEqual(Array.from(normalizePsdTaggedBlock(linkedWide, false)), Array.from(linkedShort),
+  'PSB→PSD conversion must narrow compatible 64-bit length keys')
+assert.deepEqual(Array.from(normalizePsdTaggedBlock(linkedWide, true)), Array.from(linkedWide),
+  'No-op PSB export preserves source tagged blocks exactly')
+const malformedWideBlock = linkedWide.slice()
+new DataView(malformedWideBlock.buffer).setUint32(12, 1000)
+assert.throws(() => normalizePsdTaggedBlock(malformedWideBlock, false),
+  /Invalid Photoshop tagged block lnk2 length/, 'Invalid opaque tagged metadata is rejected')
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(55, 77, 99)
+  const input = format === 'psb' ? linkedShort : linkedWide
+  const blob = buildPsd(2, 2, [{
+    name: 'Cross-format metadata', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: [input],
+  }], image, { format })
+  const decoded = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
+  const matching = photoshopTaggedBlock(decoded.layers[0].additionalInfo, 'lnk2')
+  assert.deepEqual(Array.from(matching), Array.from(format === 'psb' ? linkedWide : linkedShort),
+    'PSD/PSB exporter must emit the target format tagged-length header')
 }
 
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
