@@ -387,6 +387,8 @@ export interface Layer {
    * that Chay's Photo Studio writes itself (e.g. the Unicode layer name) are
    * regenerated on export rather than stored here. */
   psdAdditionalInfo?: string[]
+  /** Opaque Photoshop Blend If ranges, base64; preserved when editing raster pixels. */
+  psdBlendingRanges?: string
   /** provenance marker — 'detect' = lifted from an AI-detected object box
    *  (Detect Objects dialog → "Layer"); lets the Layers panel badge it */
   origin?: 'detect'
