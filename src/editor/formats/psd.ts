@@ -336,6 +336,17 @@ function legacyColorOverlayRecord(effect: NonNullable<LayerFX['colorOverlay']>):
   return fxEffectRecord('sofi', payload)
 }
 
+/** Warn before Photoshop-native style descriptors are replaced by the
+ * subset of effects the Studio renderer/editor currently understands. */
+export function psdWillReplaceSourceFx(blocks: readonly Uint8Array[], fx: LayerFX | null | undefined): boolean {
+  if (!fx) return false
+  if (blocks.some(b => ['lfx2', 'lmfx', 'lfxs'].includes(fxBlockKey(b)))) return true
+  const original = blocks.find(b => fxBlockKey(b) === 'lrFX')
+  if (!original) return false
+  const parsed = parseLegacyLayerFxBlock(original)
+  return !parsed || JSON.stringify(parsed) !== JSON.stringify(fx)
+}
+
 function legacyLayerFxBlock(fx: LayerFX): Uint8Array | null {
   const records: Uint8Array[] = []
   const supported = [
