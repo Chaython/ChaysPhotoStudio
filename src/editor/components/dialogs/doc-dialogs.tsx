@@ -372,6 +372,16 @@ export function ExportDialog({ onClose }: DialogProps) {
             !window.confirm('The layer order or layer types changed since this PSD was opened. Original Photoshop folder/adjustment records cannot be preserved safely. Export without those records?')) return
         if (preserveGroups && sectionMarkers.some(m => m.kind === 'adjustment') &&
             !window.confirm('This PSD contains Photoshop-only adjustment layers. Studio cannot render or edit these adjustments, but the original records can be retained for Photoshop. The appearance after opening in Photoshop may differ from the Studio preview. Continue?')) return
+        // Extra RGB spot/alpha channels are independent Photoshop planes. Keep
+        // them only when dimensions, source bit depth and RGB source mode agree;
+        // never reinterpret their bytes after a resize or bit-depth conversion.
+        const storedExtras = (doc.psdExtraMergedChannels ?? []).map(base64Bytes)
+        const requiredBytes = doc.width * doc.height * (doc.workingBitDepth >> 3)
+        const canPreserveExtras = doc.psdSourceColorMode === 3 &&
+          doc.sourceBitDepth === doc.workingBitDepth &&
+          storedExtras.every(extra => extra.length === requiredBytes)
+        if (storedExtras.length && !canPreserveExtras &&
+            !window.confirm(`${storedExtras.length} imported Photoshop spot/alpha channel(s) no longer match the current RGB dimensions or bit depth. These channels will be omitted from the exported PSD/PSB. Continue?`)) return
         // ---- layered PSD: raster records and safe, opaque folder delimiters ----
         const inputs: PsdLayerInput[] = []
         const markerSurface = preserveGroups ? createCanvas(1, 1) : null
@@ -436,6 +446,7 @@ export function ExportDialog({ onClose }: DialogProps) {
           colorModeData: doc.workingBitDepth === 32 && doc.psdColorModeData
             ? base64Bytes(doc.psdColorModeData) : undefined,
           sourceColorMode: doc.psdSourceColorMode,
+          extraMergedChannels: canPreserveExtras ? storedExtras : undefined,
           format: format === 'psb' ? 'psb' : 'psd',
           imageResources: [...preservedResources, ...metadataResources],
         })
