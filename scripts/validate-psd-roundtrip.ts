@@ -384,5 +384,38 @@ for (const format of ['psd', 'psb'] as const) {
   assert.equal(recovered.layers[0].blendKey, 'brst', 'Unknown Photoshop blend key round trips')
 }
 
+
+function photoshopResource(id: number): Uint8Array {
+  return Uint8Array.from([
+    0x38, 0x42, 0x49, 0x4d, id >> 8, id & 255, 0, 0,
+    0, 0, 0, 4, 0xde, 0xad, 0xbe, 0xef,
+  ])
+}
+const iccResource = photoshopResource(0x040f)
+const indexedTransparencyResource = photoshopResource(0x0417)
+function containsResource(bytes: Uint8Array, id: number): boolean {
+  return bytes.some((_, i) => i + 6 <= bytes.length &&
+    bytes[i] === 0x38 && bytes[i + 1] === 0x42 &&
+    bytes[i + 2] === 0x49 && bytes[i + 3] === 0x4d &&
+    bytes[i + 4] === (id >> 8) && bytes[i + 5] === (id & 255))
+}
+for (const format of ['psd', 'psb'] as const) {
+  for (const colorMode of [3, 4, 9]) {
+    const image = canvas(75, 85, 95)
+    const output = buildPsd(2, 2, [{
+      name: 'Converted RGB', canvas: image, left: 0, top: 0,
+      opacity: 100, blendMode: 'normal', visible: true,
+    }], image, {
+      format, sourceColorMode: colorMode, imageResources: [iccResource, indexedTransparencyResource],
+    })
+    const bytes = new Uint8Array(await output.arrayBuffer())
+    assert.equal(containsResource(bytes, 0x040f), colorMode === 3,
+      'Original CMYK/Lab ICC profile must not be applied to RGB export')
+    assert.ok(!containsResource(bytes, 0x0417),
+      'Indexed transparency resource must not be applied to RGB export')
+    assert.ok(containsResource(bytes, 0x03ed), 'RGB export retains a canonical ResolutionInfo block')
+  }
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
