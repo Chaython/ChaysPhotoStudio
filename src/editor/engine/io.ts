@@ -336,6 +336,15 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     resolutionPpi: decoded.resolutionPpi,
     metadata,
   })
+  if (decoded.psdSectionMarkers?.length) {
+    doc.psdSectionMarkers = decoded.psdSectionMarkers.map(m => ({
+      beforeLayerIndex: m.beforeLayerIndex, name: m.name, opacity: m.opacity,
+      visible: m.visible, blendKey: m.blendKey,
+      additionalInfo: m.additionalInfo.map(bytesToBase64),
+      blendingRanges: bytesToBase64(m.blendingRanges),
+    }))
+    doc.psdSectionLayerOrder = doc.layers.map(l => l.id)
+  }
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
   engine.docs.push(doc)
   engine.setActiveDocument(doc.id)
@@ -466,6 +475,8 @@ export interface SerializedProject {
     proof?: import('../types').ProofSettings
     resolutionPpi?: number
     psdImageResources?: string[]
+    psdSectionMarkers?: PsDocument['psdSectionMarkers']
+    psdSectionLayerOrder?: string[]
     metadata?: ImageMetadata
     colorSamplers?: { id: string; x: number; y: number }[]
     measurements?: import('../types').SavedMeasurement[]
@@ -578,6 +589,8 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       proof: doc.proof ? structuredClone(doc.proof) : undefined,
       resolutionPpi: doc.resolutionPpi ?? 72,
       psdImageResources: doc.psdImageResources ? [...doc.psdImageResources] : undefined,
+      psdSectionMarkers: doc.psdSectionMarkers ? structuredClone(doc.psdSectionMarkers) : undefined,
+      psdSectionLayerOrder: doc.psdSectionLayerOrder ? [...doc.psdSectionLayerOrder] : undefined,
       metadata: doc.metadata ? structuredClone(doc.metadata) : undefined,
       colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
       measurements: (doc.measurements ?? []).map(m => ({
@@ -761,6 +774,13 @@ export async function openSerializedProject(project: SerializedProject, label = 
       : (project.doc.workingBitDepth === 32 ? 32 : project.doc.workingBitDepth === 16 ? 16 : 8),
     psdImageResources: Array.isArray(project.doc.psdImageResources)
       ? project.doc.psdImageResources.filter((v: unknown) => typeof v === 'string')
+      : undefined,
+    psdSectionMarkers: Array.isArray(project.doc.psdSectionMarkers)
+      ? project.doc.psdSectionMarkers.filter(m => m && Number.isSafeInteger(m.beforeLayerIndex) && m.beforeLayerIndex >= 0 &&
+          typeof m.name === 'string' && Array.isArray(m.additionalInfo) && m.additionalInfo.every(x => typeof x === 'string')).map(m => structuredClone(m))
+      : undefined,
+    psdSectionLayerOrder: Array.isArray(project.doc.psdSectionLayerOrder)
+      ? project.doc.psdSectionLayerOrder.filter((id: unknown) => typeof id === 'string')
       : undefined,
     metadata: project.doc.metadata && typeof project.doc.metadata === 'object'
       ? structuredClone(project.doc.metadata)
