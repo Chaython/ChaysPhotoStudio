@@ -391,6 +391,8 @@ export interface Layer {
   psdBlendingRanges?: string
   /** Original 4-byte Photoshop blend mode, including unsupported native modes. */
   psdBlendKey?: string
+  /** Imported Photoshop channel -3 exists; warn before destructive PSD re-export. */
+  psdUnsupportedRealMask?: boolean
   /** provenance marker — 'detect' = lifted from an AI-detected object box
    *  (Detect Objects dialog → "Layer"); lets the Layers panel badge it */
   origin?: 'detect'
