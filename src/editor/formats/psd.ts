@@ -11,7 +11,7 @@
 // Photoshop opens the files.
 // ============================================================
 
-import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
+import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels, hdrFloat32ToPreviewCanvas, canvasProfile } from '../utils/canvas'
 import type { BlendMode, LayerFX } from '../types'
 
 // ---------- blend mode mapping ----------
@@ -1005,6 +1005,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       const { rgba, rgba16, rgbaFloat } = channelsToRgba(chans, lw, lh, colorMode, clut, transparencyIndex)
       hdrPixels = rgbaFloat
       canvas = rgbaToCanvas2(rgba, lw, lh, rgba16, rgbaFloat)
+      if (depth === 16 && canvasProfile(canvas).bitDepth !== 16) {
+        compatibilityWarnings.add('16-bit PSD layer precision was reduced to an 8-bit canvas preview by this browser; edits and export may quantize high-precision samples')
+      }
     } catch (error) {
       throw new Error(`Unable to restore Photoshop layer ${rec.name}: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -1101,6 +1104,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
     const res = channelsToRgba(chans, width, height, colorMode, clut, transparencyIndex)
     composite = rgbaToCanvas2(res.rgba, width, height, res.rgba16, res.rgbaFloat)
+    if (depth === 16 && canvasProfile(composite).bitDepth !== 16) {
+      compatibilityWarnings.add('16-bit PSD precision was reduced to an 8-bit canvas preview by this browser; edits and export may quantize high-precision samples')
+    }
     hdrComposite = res.rgbaFloat
     hasAlpha = res.hasAlpha
   } catch {
