@@ -623,6 +623,31 @@ function channelsToRgba(
         bb16 = Math.round((yy * kk) / 65535)
         break
       }
+      case 9: {
+        // Photoshop Lab storage: L in 0..100 and a/b encoded with 128 as
+        // the neutral 8-bit center. Convert D50 Lab to display sRGB using a
+        // fixed D50-adapted matrix. This is an approximate RGB preview, not
+        // a replacement for full ICC/Lab editing or Lab-preserving export.
+        const L = s16(r, i) * (100 / 65535)
+        const aLab = s16(g, i) * (255 / 65535) - 128
+        const bLab = s16(b, i) * (255 / 65535) - 128
+        const fy = (L + 16) / 116
+        const fx = fy + aLab / 500
+        const fz = fy - bLab / 200
+        const delta = 6 / 29
+        const cube = (t: number) => t > delta ? t * t * t : 3 * delta * delta * (t - 4 / 29)
+        const X = cube(fx) * 0.96422
+        const Y = cube(fy)
+        const Z = cube(fz) * 0.82521
+        const gamma = (v: number) => {
+          const c = Math.max(0, Math.min(1, v))
+          return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055
+        }
+        rr16 = Math.round(gamma(3.1338561 * X - 1.6168667 * Y - 0.4906146 * Z) * 65535)
+        gg16 = Math.round(gamma(-0.9787684 * X + 1.9161415 * Y + 0.0334540 * Z) * 65535)
+        bb16 = Math.round(gamma(0.0719453 * X - 0.2289914 * Y + 1.4052427 * Z) * 65535)
+        break
+      }
       case 2: {
         const idx = s8(r, i) * 3
         if (clut && idx + 2 < clut.length) {
@@ -676,8 +701,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   }
   if (depth !== 8 && depth !== 16 && depth !== 32) throw new Error(`Unsupported PSD depth ${depth} bits (only 8/16/32)`)
   if (depth === 32 && colorMode !== 3) throw new Error('32-bit PSD currently supports RGB color mode only')
-  if (colorMode === 0 || colorMode === 7 || colorMode === 9) {
-    throw new Error(`Unsupported PSD color mode ${colorMode} (bitmap / multichannel / Lab)`)
+  if (colorMode === 0 || colorMode === 7) {
+    throw new Error(`Unsupported PSD color mode ${colorMode} (bitmap / multichannel)`)
   }
   const readLength = (p: number): number =>
     psb ? view.getUint32(p) * 4294967296 + view.getUint32(p + 4) : view.getUint32(p)
@@ -730,6 +755,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const lmEnd = pos + lmLen
 
   const compatibilityWarnings = new Set<string>()
+  if (colorMode === 9) compatibilityWarnings.add('Photoshop Lab was converted to an approximate sRGB preview; editable Lab/ICC color data is not retained')
+  if (colorMode === 4) compatibilityWarnings.add('Photoshop CMYK was converted to an approximate RGB preview; an ICC-managed conversion is not available')
   const records: PsdLayerRecord[] = []
   const layerChannels: Map<number, PsdPlane>[] = []
   if (lmLen > 0 && lmEnd <= bytes.length) {
@@ -1003,7 +1030,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const rowBytes = width * bpc
     const chans = new Map<number, PsdPlane>()
     const compositeId = (c: number): number =>
-      (colorMode === 3 && c < 3) || (colorMode === 4 && c < 4) || (colorMode === 1 && c < 1) || (colorMode === 2 && c < 1) || (colorMode === 8 && c < 1) ? c : -1
+      (colorMode === 3 && c < 3) || (colorMode === 4 && c < 4) || (colorMode === 1 && c < 1) || (colorMode === 2 && c < 1) || (colorMode === 8 && c < 1) || (colorMode === 9 && c < 3) ? c : -1
     if (compr === 0) {
       for (let c = 0; c < channels; c++) {
         const chan = await decodePsdChannel(bytes, view, pos, compr, width, height, depth, rowBytes * height)
