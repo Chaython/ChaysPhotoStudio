@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildPsd, decodePsd, restorePsdPrediction } from '../src/editor/formats/psd'
+import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
 // without requiring a graphics stack or a browser installation.
@@ -302,6 +302,18 @@ for (const transparent of [false, true]) {
   ], 'PSD indexed palette must use non-interleaved RGB planes and transparency index')
   assert.equal(decoded.hasAlpha, transparent)
 }
+
+
+const literal = new Uint8Array(2)
+decodePackBitsRow(Uint8Array.from([1, 19, 31]), 0, 3, literal, 0, 2)
+assert.deepEqual(Array.from(literal), [19, 31])
+const repeated = new Uint8Array(3)
+decodePackBitsRow(Uint8Array.from([254, 55]), 0, 2, repeated, 0, 3)
+assert.deepEqual(Array.from(repeated), [55, 55, 55])
+assert.throws(() => decodePackBitsRow(Uint8Array.from([1, 19]), 0, 2, new Uint8Array(2), 0, 2), /Truncated/)
+assert.throws(() => decodePackBitsRow(Uint8Array.from([254, 19]), 0, 2, new Uint8Array(2), 0, 2), /oversized/)
+assert.throws(() => decodePackBitsRow(Uint8Array.from([0, 12]), 0, 2, new Uint8Array(2), 0, 2), /Incomplete/)
+assert.throws(() => decodePackBitsRow(Uint8Array.from([0, 12]), 0, 7, new Uint8Array(2), 0, 2), /Invalid/)
 
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
