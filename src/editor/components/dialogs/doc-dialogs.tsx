@@ -10,7 +10,7 @@ import { engine, type TransformMode, type TransformReference } from '../../engin
 import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob, canvasPixelCapabilities } from '../../utils/canvas'
 import { compositeDocument, getFlatComposite } from '../../engine/document'
-import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster, psdBlendKeyToMode } from '../../formats'
+import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster, psdBlendKeyToMode, psdPixelFingerprint, stripPsdNativeObjectBlocks } from '../../formats'
 import type { PsdLayerInput } from '../../formats'
 import type { DialogProps } from './generic-dialogs'
 import { TransformWarpEditor } from './transform-warp-editor'
@@ -339,6 +339,19 @@ export function ExportDialog({ onClose }: DialogProps) {
         if (doc.workingBitDepth === 32 && !hdrComposite) throw new Error('Complex 32-bit HDR layers cannot be encoded losslessly as PSD/PSB. Simplify the document or preserve it in the native format.')
         const originalRealMasks = doc.layers.filter(l => l.psdUnsupportedRealMask)
         if (originalRealMasks.length && !window.confirm(`${originalRealMasks.length} imported Photoshop layer(s) contain combined raster/vector masks (-3). Studio cannot export those original mask channels. Continue with a potentially destructive compatibility export?`)) return
+        const staleNative = new Set<string>()
+        for (const l of doc.layers) {
+          const origin = l.psdNativeOrigin
+          if (!origin) continue
+          const maskHash = l.mask ? psdPixelFingerprint(l.mask) : null
+          if (!l.canvas || l.kind !== 'raster' || !!l.transform || l.smartFilters.some(filter => filter.enabled) ||
+              l.canvas.width !== origin.width || l.canvas.height !== origin.height ||
+              (l.offsetX ?? 0) !== origin.left || (l.offsetY ?? 0) !== origin.top ||
+              psdPixelFingerprint(l.canvas, l.hdrPixels) !== origin.pixelFingerprint ||
+              maskHash !== origin.maskFingerprint ||
+              (!!l.mask && l.maskEnabled) !== origin.maskEnabled) staleNative.add(l.id)
+        }
+        if (staleNative.size && !window.confirm(`${staleNative.size} Photoshop-native text/Smart Object/vector layer(s) have changed since import. Photoshop's original live descriptors no longer match the pixels or geometry and will be removed from this PSD/PSB export to preserve your raster edits. Continue?`)) return
         const unsupported = doc.layers.filter(l => ['adjustment', 'text', 'shape', 'smart'].includes(l.kind))
         if (unsupported.length && !window.confirm(`${unsupported.length} editable layer(s) (adjustment/text/shape/Smart Object) cannot round-trip natively in Photoshop. Adjustment layers will be omitted and other layers rasterized. Continue exporting a compatibility copy?`)) return
         // Group delimiters are byte-preserved only if the original drawable layer
@@ -393,7 +406,11 @@ export function ExportDialog({ onClose }: DialogProps) {
             maskEnabled: l.maskEnabled,
             hdrPixels: doc.workingBitDepth === 32 ? l.hdrPixels ?? undefined : undefined,
             fx: l.fx ? structuredClone(l.fx) : null,
-            additionalInfo: l.psdAdditionalInfo?.map(base64Bytes),
+            additionalInfo: l.psdAdditionalInfo
+              ? (staleNative.has(l.id)
+                ? stripPsdNativeObjectBlocks(l.psdAdditionalInfo.map(base64Bytes))
+                : l.psdAdditionalInfo.map(base64Bytes))
+              : undefined,
             blendingRanges: l.psdBlendingRanges ? base64Bytes(l.psdBlendingRanges) : undefined,
           })
         }
