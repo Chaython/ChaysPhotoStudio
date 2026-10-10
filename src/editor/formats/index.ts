@@ -84,6 +84,8 @@ export interface DecodedImage {
     clipped?: boolean
     /** full-document-size mask canvas, mask value in the alpha channel */
     mask?: HTMLCanvasElement | null
+    /** Photoshop bit1-disabled layer masks remain present but inactive. */
+    maskEnabled?: boolean
     /** Scene-linear 32-bit Photoshop raster backing pixels. */
     hdrPixels?: Float32Array
     /** editable layer style decoded from PSD effect metadata when supported */
@@ -396,6 +398,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           visible: l.visible,
           clipped: l.clipped,
           mask: l.mask,
+          maskEnabled: l.maskEnabled,
           hdrPixels: l.hdrPixels,
           blendingRanges: l.blendingRanges.slice(),
           fx: l.fx ? structuredClone(l.fx) : null,
