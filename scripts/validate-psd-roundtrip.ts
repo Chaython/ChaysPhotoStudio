@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction } from '../src/editor/formats/psd'
+import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
 // without requiring a graphics stack or a browser installation.
@@ -362,6 +362,27 @@ await assert.rejects(
   'truncated flattened PSD must fail rather than appear blank',
 )
 
+
+
+assert.equal(psdBlendKeyToMode('smud'), 'exclusion', 'Photoshop Exclusion must not be imported as Difference')
+assert.equal(blendModeToPsdKey('exclusion'), 'smud', 'Photoshop Exclusion must remain Exclusion on export')
+for (const format of ['psd', 'psb'] as const) {
+  const source = canvas(31, 62, 93)
+  const unsupported = buildPsd(2, 2, [{
+    name: 'Photoshop mode', canvas: source, left: 0, top: 0, opacity: 100,
+    blendMode: 'normal', visible: true, rawBlendKey: 'brst',
+  }], source, { format })
+  const decoded = await decodePsd(new Uint8Array(await unsupported.arrayBuffer()))
+  assert.equal(decoded.layers[0].blendKey, 'brst', 'Unknown Photoshop blend key must not be replaced by Normal')
+  assert.ok(decoded.warnings.some(w => w.includes('blend modes cannot be previewed faithfully')))
+  const reexport = buildPsd(2, 2, [{
+    name: decoded.layers[0].name, canvas: decoded.layers[0].canvas,
+    left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true,
+    rawBlendKey: decoded.layers[0].blendKey,
+  }], source, { format })
+  const recovered = await decodePsd(new Uint8Array(await reexport.arrayBuffer()))
+  assert.equal(recovered.layers[0].blendKey, 'brst', 'Unknown Photoshop blend key round trips')
+}
 
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
