@@ -1018,5 +1018,17 @@ for (const format of ['psd', 'psb'] as const) {
     'Oversized Photoshop image resource payloads must be rejected')
 }
 
+
+const malformedPalette = indexedPsd(false)
+new DataView(malformedPalette.buffer).setUint32(26, 767)
+await assert.rejects(() => decodePsd(malformedPalette),
+  /Truncated Photoshop indexed color palette/,
+  'Missing PSD palette entries must not silently produce black RGB pixels')
+const invalidIndexedDepth = indexedPsd(false)
+new DataView(invalidIndexedDepth.buffer).setUint16(22, 16)
+await assert.rejects(() => decodePsd(invalidIndexedDepth),
+  /Photoshop indexed-color PSD requires 8-bit palette indices/,
+  'Photoshop indexed-color must not decode incompatible 16-bit indices')
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
