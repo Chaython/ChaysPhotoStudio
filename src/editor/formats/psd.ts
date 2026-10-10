@@ -750,7 +750,12 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       const candidate = view.getUint16(dataStart)
       if (candidate < 256) transparencyIndex = candidate
     }
-    if (id === 0x0400 && dataLen >= 16 && dataStart + 16 <= resEnd) {
+    // Photoshop's ResolutionInfo resource is 1005 (0x03ED), NOT 1024
+    // (0x0400). Some older Studio exports accidentally used 0x0400, so
+    // recognize that legacy 16-byte payload only when its units match.
+    const legacyResolution = id === 0x0400 && dataLen === 16 && dataStart + 16 <= resEnd &&
+      view.getUint16(dataStart + 4) === 1 && view.getUint16(dataStart + 12) === 1
+    if ((id === 0x03ed || legacyResolution) && dataLen >= 16 && dataStart + 16 <= resEnd) {
       const hFixed = view.getUint32(dataStart)
       const vFixed = view.getUint32(dataStart + 8)
       const h = hFixed / 65536
@@ -759,7 +764,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       if (Number.isFinite(ppi) && ppi > 0) resolutionPpi = Math.max(1, Math.min(12000, ppi))
     }
     pos = dataStart + dataLen + (dataLen & 1)
-    if (id !== 0x0400 && pos <= resEnd) imageResources.push(bytes.slice(blockStart, pos))
+    if (id !== 0x03ed && !legacyResolution && pos <= resEnd) imageResources.push(bytes.slice(blockStart, pos))
   }
   pos = resEnd
   // ---- layer & mask info ----
@@ -1474,7 +1479,7 @@ export function buildPsd(
   const lmPad = (4 - (lmContent.length & 3)) & 3
   const lmSection = concatUint8([sectionLength(pad4(lmContent.length)), lmContent, new Uint8Array(lmPad)])
 
-  // ---- image resources: ResolutionInfo (0x0400) ----
+  // ---- image resources: Photoshop ResolutionInfo (1005 / 0x03ED) ----
   const resolutionPpi = Math.max(1, Math.min(12000, Number(options.resolutionPpi) || 72))
   const fixedPpi = Math.max(1, Math.min(0xffffffff, Math.round(resolutionPpi * 65536)))
   const resData = new Uint8Array(16)
@@ -1485,11 +1490,13 @@ export function buildPsd(
   resView.setUint32(8, fixedPpi)    // vRes
   resView.setUint16(12, 1)          // vResUnit
   resView.setUint16(14, 1)          // heightUnit
-  const resolutionResource = concatUint8([asciiBytes('8BIM'), u16(0x0400), new Uint8Array([0, 0]), u32(resData.length), resData])
+  const resolutionResource = concatUint8([asciiBytes('8BIM'), u16(0x03ed), new Uint8Array([0, 0]), u32(resData.length), resData])
   const preservedResources = (options.imageResources ?? []).filter(block => {
     if (!(block instanceof Uint8Array) || block.length < 12) return false
     const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
-    return sig === '8BIM' || sig === 'MeSa'
+    const id = (block[4] << 8) | block[5]
+    // Writer owns the canonical ResolutionInfo resource; do not duplicate it.
+    return (sig === '8BIM' || sig === 'MeSa') && id !== 0x03ed
   })
   const resources = concatUint8([resolutionResource, ...preservedResources])
 
