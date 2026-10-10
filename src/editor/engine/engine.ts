@@ -727,6 +727,7 @@ export class Engine {
       psdBlendKey: layer.psdBlendKey,
       psdUnsupportedRealMask: layer.psdUnsupportedRealMask,
       psdNativeOrigin: layer.psdNativeOrigin ? structuredClone(layer.psdNativeOrigin) : undefined,
+      psdGroupPath: layer.psdGroupPath ? [...layer.psdGroupPath] : undefined,
     }
   }
 
@@ -1427,6 +1428,7 @@ export class Engine {
       psdBlendKey: src.psdBlendKey,
       psdUnsupportedRealMask: src.psdUnsupportedRealMask,
       psdNativeOrigin: src.psdNativeOrigin ? structuredClone(src.psdNativeOrigin) : undefined,
+      psdGroupPath: src.psdGroupPath ? [...src.psdGroupPath] : undefined,
       _v: src._v + 1,
       _mv: src._mv + 1,
     }
