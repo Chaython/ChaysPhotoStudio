@@ -448,7 +448,45 @@ function psdPlaneFromBytes(raw: Uint8Array, depth: number, n: number): PsdPlane 
   return out
 }
 
-/** Decode one channel (raw / RLE / ZIP) without reducing 16-bit samples. */
+/** Reverse Photoshop's ZIP-with-prediction transform on one planar channel.
+ * 8/16-bit delta prediction runs on samples; 32-bit floats are byte-shuffled,
+ * delta-predicted as bytes, then unshuffled by component. */
+export function restorePsdPrediction(encoded: Uint8Array, width: number, height: number, depth: number): Uint8Array {
+  const bytesPerSample = depth >>> 3
+  if (![8, 16, 32].includes(depth) || encoded.length !== width * height * bytesPerSample) {
+    throw new Error('Invalid PSD predicted ZIP channel length or bit depth')
+  }
+  const raw = new Uint8Array(encoded)
+  const rowBytes = width * bytesPerSample
+  if (depth === 16) {
+    const view = new DataView(raw.buffer)
+    for (let y = 0; y < height; y++) {
+      const offset = y * rowBytes
+      for (let x = 1; x < width; x++) {
+        const at = offset + x * 2
+        view.setUint16(at, (view.getUint16(at) + view.getUint16(at - 2)) & 0xffff, false)
+      }
+    }
+  } else {
+    for (let y = 0; y < height; y++) {
+      const offset = y * rowBytes
+      for (let i = 1; i < rowBytes; i++) raw[offset + i] = (raw[offset + i] + raw[offset + i - 1]) & 255
+    }
+    if (depth === 32) {
+      const restored = new Uint8Array(raw.length)
+      for (let y = 0; y < height; y++) {
+        const offset = y * rowBytes
+        for (let x = 0; x < width; x++) for (let component = 0; component < 4; component++) {
+          restored[offset + x * 4 + component] = raw[offset + component * width + x]
+        }
+      }
+      return restored
+    }
+  }
+  return raw
+}
+
+/** Decode one channel (raw / RLE / ZIP) without reducing 16/32-bit samples. */
 async function decodePsdChannel(
   bytes: Uint8Array, view: DataView, pos: number, compr: number,
   w: number, h: number, depth: number, dataLen: number, rowLenBytes: 2 | 4 = 2,
@@ -483,11 +521,12 @@ async function decodePsdChannel(
     }
     return psdPlaneFromBytes(raw, depth, n)
   }
-  if (compr === 2) {
+  if (compr === 2 || compr === 3) {
     const data = await inflateZlib(bytes.subarray(pos, pos + Math.max(0, dataLen)))
-    return psdPlaneFromBytes(data, depth, n)
+    if (data.length !== rowBytes * h) throw new Error('Invalid Photoshop ZIP channel size')
+    return psdPlaneFromBytes(compr === 3 ? restorePsdPrediction(data, w, h, depth) : data, depth, n)
   }
-  return emptyPsdPlane(depth, n)
+  throw new Error(`Unsupported PSD channel compression ${compr}`)
 }
 
 function decodePackBitsRow(src: Uint8Array, start: number, end: number, out: Uint8Array, outOff: number, outLen: number): void {
@@ -818,8 +857,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           const mh = isMask && rec.maskRect ? rec.maskRect[2] - rec.maskRect[0] : lh
           try {
             chans.set(ch.id, await decodePsdChannel(bytes, view, pos, compr, Math.max(0, mw), Math.max(0, mh), depth, Math.max(0, ch.len - 2), psb ? 4 : 2))
-          } catch {
-            chans.set(ch.id, emptyPsdPlane(depth, Math.max(0, mw) * Math.max(0, mh)))
+          } catch (error) {
+            throw new Error(`Cannot decode PSD layer ${rec.name} channel ${ch.id}: ${error instanceof Error ? error.message : String(error)}`)
           }
           pos = chStart + ch.len // lengths cover compression + row table + data
         }
@@ -921,12 +960,13 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         }
         chans.set(compositeId(c), psdPlaneFromBytes(raw, depth, width * height))
       }
-    } else if (compr === 2) {
+    } else if (compr === 2 || compr === 3) {
       const data = await inflateZlib(bytes.subarray(pos))
       const channelBytes = rowBytes * height
+      if (data.length !== channelBytes * channels) throw new Error('Invalid Photoshop ZIP composite size')
       for (let ci = 0; ci < channels; ci++) {
         const raw = data.subarray(ci * channelBytes, (ci + 1) * channelBytes)
-        chans.set(compositeId(ci), psdPlaneFromBytes(raw, depth, width * height))
+        chans.set(compositeId(ci), psdPlaneFromBytes(compr === 3 ? restorePsdPrediction(raw, width, height, depth) : raw, depth, width * height))
       }
     } else {
       throw new Error(`Unsupported composite compression ${compr}`)
