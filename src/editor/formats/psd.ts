@@ -943,6 +943,8 @@ export interface PsdLayerInput {
   clipped?: boolean
   /** full-document-size mask canvas — mask value lives in the ALPHA channel */
   mask?: HTMLCanvasElement | null
+  /** Authoritative linear RGB floats for 32-bit Photoshop interchange. */
+  hdrPixels?: Float32Array
   /** Native editable layer style stack. Photoshop-readable legacy effects
    * are regenerated; the complete stack is retained in chFX for Chay's Studio. */
   fx?: LayerFX | null
@@ -1006,10 +1008,20 @@ function encodeRleChannel(chan: Uint8Array, w: number, h: number, rowLenBytes: 2
   return out
 }
 
-function splitCanvasChannels(canvas: HTMLCanvasElement, depth: 8 | 16): { r: Uint8Array; g: Uint8Array; b: Uint8Array; a: Uint8Array } {
+function splitCanvasChannels(canvas: HTMLCanvasElement, depth: 8 | 16 | 32, hdrPixels?: Float32Array): { r: Uint8Array; g: Uint8Array; b: Uint8Array; a: Uint8Array } {
   const n = canvas.width * canvas.height
   const bpc = depth >> 3
   const r = new Uint8Array(n * bpc), g = new Uint8Array(n * bpc), b = new Uint8Array(n * bpc), a = new Uint8Array(n * bpc)
+  if (depth === 32) {
+    if (!hdrPixels || hdrPixels.length !== n * 4) throw new Error('32-bit PSD export requires full-resolution Float32 pixels for every layer')
+    const views = [r, g, b, a].map(buf => new DataView(buf.buffer))
+    for (let i = 0; i < n; i++) for (let c = 0; c < 4; c++) {
+      const value = hdrPixels[i * 4 + c]
+      if (!Number.isFinite(value)) throw new Error('Non-finite PSD HDR pixel value')
+      views[c].setFloat32(i * 4, value, false)
+    }
+    return { r, g, b, a }
+  }
   if (depth === 16) {
     const hi = getFloat16ImageData(canvas)
     const fallback = hi?.data ? null : getImageData(canvas).data
@@ -1041,7 +1053,7 @@ function splitCanvasChannels(canvas: HTMLCanvasElement, depth: 8 | 16): { r: Uin
   return { r, g, b, a }
 }
 
-function maskChannelBytes(canvas: HTMLCanvasElement, depth: 8 | 16): Uint8Array {
+function maskChannelBytes(canvas: HTMLCanvasElement, depth: 8 | 16 | 32): Uint8Array {
   const d = getImageData(canvas).data
   const n = canvas.width * canvas.height
   if (depth === 8) {
@@ -1049,7 +1061,12 @@ function maskChannelBytes(canvas: HTMLCanvasElement, depth: 8 | 16): Uint8Array 
     for (let i = 0, o = 3; i < n; i++, o += 4) out[i] = d[o]
     return out
   }
-  const out = new Uint8Array(n * 2)
+  const out = new Uint8Array(n * (depth >> 3))
+  if (depth === 32) {
+    const view = new DataView(out.buffer)
+    for (let i = 0; i < n; i++) view.setFloat32(i * 4, d[i * 4 + 3] / 255, false)
+    return out
+  }
   for (let i = 0, o = 3; i < n; i++, o += 4) {
     const v = d[o] * 257
     out[i * 2] = v >>> 8
@@ -1127,9 +1144,9 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number; depth?: 8 | 16; imageResources?: Uint8Array[]; format?: 'psd' | 'psb' } = {},
+  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array } = {},
 ): Blob {
-  const depth: 8 | 16 = options.depth === 16 ? 16 : 8
+  const depth: 8 | 16 | 32 = options.depth === 32 ? 32 : options.depth === 16 ? 16 : 8
   const psb = options.format === 'psb'
   if (!psb && (width > 30000 || height > 30000)) throw new Error('PSD maximum dimension exceeded; export PSB instead')
   if (width > 300000 || height > 300000 || width < 1 || height < 1) throw new Error('Invalid PSD/PSB dimensions')
@@ -1157,7 +1174,7 @@ export function buildPsd(
   for (const input of list) {
     const w = input.canvas.width
     const h = input.canvas.height
-    const { r, g, b, a } = splitCanvasChannels(input.canvas, depth)
+    const { r, g, b, a } = splitCanvasChannels(input.canvas, depth, input.hdrPixels)
     const rowBytes = w * bpc
     const channels: { id: number; block: Uint8Array }[] = [
       { id: 0, block: encodeRleChannel(r, rowBytes, h, rowLenBytes) },
@@ -1275,7 +1292,7 @@ export function buildPsd(
   const resources = concatUint8([resolutionResource, ...preservedResources])
 
   // ---- merged composite: RLE with a shared channels × height row table ----
-  const comp = splitCanvasChannels(flat, depth)
+  const comp = splitCanvasChannels(flat, depth, options.compositeHdrPixels)
   const compChannels: { id: number; chan: Uint8Array }[] = [
     { id: 0, chan: comp.r }, { id: 1, chan: comp.g }, { id: 2, chan: comp.b }, { id: -1, chan: comp.a },
   ]
