@@ -140,7 +140,7 @@ export async function openFiles(files: File[], asLayer = false) {
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
         if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded, metadata); continue }
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata })
+        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: decoded.sourceFloatPixels ? 32 : canvasProfile(decoded.canvas).bitDepth, hdrPixels: decoded.sourceFloatPixels, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata })
         continue
       }
       if (!asLayer && hasDedicatedDocumentParser(file.name)) {
@@ -325,6 +325,8 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
   }
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    workingBitDepth: decoded.sourceFloatPixels ? 32 : canvasProfile(decoded.canvas).bitDepth,
+    hdrPixels: decoded.sourceFloatPixels,
     resolutionPpi: decoded.resolutionPpi,
     metadata,
   })
