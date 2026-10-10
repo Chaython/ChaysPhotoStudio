@@ -243,5 +243,46 @@ assert.equal(lab16.depth, 16)
 assert.ok(lab16.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[0] >= 253,
   'Photoshop 16-bit neutral Lab converts to a white preview')
 
-console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews pass')
+
+function indexedPsd(transparent: boolean): Uint8Array {
+  const palette = new Uint8Array(768)
+  palette[0] = 220; palette[1] = 17 // red plane
+  palette[256] = 20; palette[257] = 121 // green plane
+  palette[512] = 10; palette[513] = 240 // blue plane
+  const resource = transparent ? Uint8Array.from([
+    0x38, 0x42, 0x49, 0x4d, // 8BIM
+    0x04, 0x17, // transparency-index resource 1047
+    0, 0, // zero-length Pascal resource name
+    0, 0, 0, 2, // resource payload length
+    0, 1, // index 1 is transparent
+  ]) : new Uint8Array(0)
+  const bytes = new Uint8Array(26 + 4 + 768 + 4 + resource.length + 4 + 2 + 2)
+  const view = new DataView(bytes.buffer)
+  bytes.set(new TextEncoder().encode('8BPS'))
+  view.setUint16(4, 1)
+  view.setUint16(12, 1)
+  view.setUint32(14, 1)
+  view.setUint32(18, 2)
+  view.setUint16(22, 8)
+  view.setUint16(24, 2)
+  view.setUint32(26, palette.length)
+  bytes.set(palette, 30)
+  const resourcePosition = 30 + palette.length
+  view.setUint32(resourcePosition, resource.length)
+  bytes.set(resource, resourcePosition + 4)
+  const imagePosition = resourcePosition + 4 + resource.length + 4
+  view.setUint16(imagePosition, 0)
+  bytes.set([0, 1], imagePosition + 2)
+  return bytes
+}
+for (const transparent of [false, true]) {
+  const decoded = await decodePsd(indexedPsd(transparent))
+  const pixel = decoded.canvas.getContext('2d')!.getImageData(0, 0, 2, 1).data
+  assert.deepEqual(Array.from(pixel), [
+    220, 20, 10, 255, 17, 121, 240, transparent ? 0 : 255,
+  ], 'PSD indexed palette must use non-interleaved RGB planes and transparency index')
+  assert.equal(decoded.hasAlpha, transparent)
+}
+
+console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
