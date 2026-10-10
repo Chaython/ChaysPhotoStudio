@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey } from '../src/editor/formats/psd'
+import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
 // without requiring a graphics stack or a browser installation.
@@ -481,6 +481,59 @@ for (const format of ['psd', 'psb'] as const) {
   assert.equal(decoded.layers[0].unsupportedRealMask, true,
     'Combined Photoshop real-mask loss must be tracked for export warnings')
   assert.ok(decoded.warnings.some(w => w.includes('combined user/vector mask channel')))
+}
+
+
+function nativeDescriptor(key: string): Uint8Array {
+  assert.equal(key.length, 4)
+  const bytes = new Uint8Array(16)
+  bytes.set(new TextEncoder().encode('8BIM' + key), 0)
+  new DataView(bytes.buffer).setUint32(8, 4)
+  bytes.set([1, 2, 3, 4], 12)
+  return bytes
+}
+const nativeDescriptors = [
+  nativeDescriptor('TySh'),
+  nativeDescriptor('SoLd'),
+  nativeDescriptor('vmsk'),
+  nativeDescriptor('lfx2'),
+]
+assert.equal(psdNativeObjectKind([nativeDescriptors[0]]), 'text')
+assert.equal(psdNativeObjectKind([nativeDescriptors[1]]), 'smart')
+assert.equal(psdNativeObjectKind([nativeDescriptors[2]]), 'vector')
+assert.equal(psdNativeObjectKind([nativeDescriptors[3]]), null)
+const rasterOnlyBlocks = stripPsdNativeObjectBlocks(nativeDescriptors)
+assert.deepEqual(rasterOnlyBlocks, [nativeDescriptors[3]],
+  'Raster edits remove native Photoshop objects, but retain unrelated effects')
+assert.equal(psdNativeObjectKind(rasterOnlyBlocks), null)
+const sourceForNative = canvas(140, 60, 80)
+const initialFingerprint = psdPixelFingerprint(sourceForNative)
+assert.equal(initialFingerprint, psdPixelFingerprint(sourceForNative), 'fingerprint remains stable')
+const rasterCtx = sourceForNative.getContext('2d')!
+const edited = rasterCtx.getImageData(0, 0, 2, 2)
+edited.data[0] = 160
+rasterCtx.putImageData(edited, 0, 0)
+assert.notEqual(psdPixelFingerprint(sourceForNative), initialFingerprint,
+  'Native Photoshop descriptor provenance must detect raster edits')
+for (const format of ['psd', 'psb'] as const) {
+  const flattened = canvas(190, 90, 40)
+  const file = buildPsd(2, 2, [{
+    name: 'Text originally', canvas: flattened, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: nativeDescriptors,
+  }], flattened, { format })
+  const decoded = await decodePsd(new Uint8Array(await file.arrayBuffer()))
+  assert.equal(psdNativeObjectKind(decoded.layers[0].additionalInfo), 'text')
+  const rasterized = buildPsd(2, 2, [{
+    name: 'Edited raster copy', canvas: flattened, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: stripPsdNativeObjectBlocks(decoded.layers[0].additionalInfo),
+  }], flattened, { format })
+  const recovered = await decodePsd(new Uint8Array(await rasterized.arrayBuffer()))
+  assert.equal(psdNativeObjectKind(recovered.layers[0].additionalInfo), null,
+    'Edited Photoshop text must not retain a stale TySh native descriptor')
+  assert.ok(recovered.layers[0].additionalInfo.some(b => new TextDecoder().decode(b.subarray(4, 8)) === 'lfx2'),
+    'Non-native opaque Photoshop FX records remain after rasterizing text')
 }
 
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
