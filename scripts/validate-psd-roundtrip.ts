@@ -158,6 +158,13 @@ assert.deepEqual(Array.from(restorePsdPrediction(shuffled, 2, 1, 32)), Array.fro
 assert.throws(() => restorePsdPrediction(Uint8Array.from([1,2,3]), 2, 1, 32), /Invalid PSD predicted/)
 
 
+function photoshopTaggedBlock(blocks: readonly Uint8Array[], key: string): Uint8Array {
+  const block = blocks.find(b => b.length >= 12 &&
+    new TextDecoder().decode(b.subarray(4, 8)) === key)
+  assert.ok(block, `Expected Photoshop additional-info block ${key}`)
+  return block
+}
+
 function sectionDivider(type: 1 | 2 | 3): Uint8Array {
   const block = new Uint8Array(16)
   block.set(new TextEncoder().encode('8BIMlsct'), 0)
@@ -186,8 +193,8 @@ for (const format of ['psd', 'psb'] as const) {
     'group marker positions are stable relative to drawable layers')
   assert.deepEqual(decoded.sectionMarkers.map(m => m.name), ['Folder A', '</Layer group>'])
   assert.equal(decoded.sectionMarkers[0].blendKey, 'pass', 'folder pass-through blending survives')
-  assert.deepEqual(Array.from(decoded.sectionMarkers[0].additionalInfo[0]), Array.from(open))
-  assert.deepEqual(Array.from(decoded.sectionMarkers[1].additionalInfo[0]), Array.from(close))
+  assert.deepEqual(Array.from(photoshopTaggedBlock(decoded.sectionMarkers[0].additionalInfo, 'lsct')), Array.from(open))
+  assert.deepEqual(Array.from(photoshopTaggedBlock(decoded.sectionMarkers[1].additionalInfo, 'lsct')), Array.from(close))
 }
 
 
@@ -233,7 +240,7 @@ for (const format of ['psd', 'psb'] as const) {
   assert.equal(decoded.sectionMarkers.length, 1)
   assert.equal(decoded.sectionMarkers[0].kind, 'adjustment')
   assert.equal(decoded.sectionMarkers[0].beforeLayerIndex, 1)
-  assert.deepEqual(Array.from(decoded.sectionMarkers[0].additionalInfo[0]), Array.from(adjustmentBlock))
+  assert.deepEqual(Array.from(photoshopTaggedBlock(decoded.sectionMarkers[0].additionalInfo, 'levl')), Array.from(adjustmentBlock))
   assert.ok(decoded.warnings.some(w => w.includes('not rendered or editable')))
 }
 
