@@ -965,7 +965,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           const key = str4(pos + 4)
           // Only specific PSB tagged blocks use 64-bit lengths; normal 8BIM
           // layer descriptors still have 32-bit lengths (Adobe specification).
-          const uses64Length = psb && ['LMsk', 'Lr16', 'Lr32', 'Layr', 'Mt16', 'Mt32', 'Mtrn', 'Alph', 'FMsk', 'lnk2', 'FEid', 'FXid', 'PxSD'].includes(key)
+          const uses64Length = psb && PSB_WIDE_TAG_KEYS.has(key)
           const headerSize = uses64Length ? 16 : 12
           if (blockStart + headerSize > extraEnd) throw new Error(`Truncated Photoshop tagged block ${key} header`)
           const blockLen = uses64Length ? readLength(blockStart + 8) : view.getUint32(blockStart + 8)
@@ -1514,6 +1514,51 @@ export function psdPixelFingerprint(canvas: HTMLCanvasElement, hdr?: Float32Arra
   return `${canvas.width}x${canvas.height}:${bytes.length}:${(a >>> 0).toString(16)}:${(b >>> 0).toString(16)}`
 }
 
+/** These Adobe PSB additional-layer keys use 64-bit payload lengths;
+ * all other additional-info records still use 32-bit lengths. */
+const PSB_WIDE_TAG_KEYS = new Set([
+  'LMsk', 'Lr16', 'Lr32', 'Layr', 'Mt16', 'Mt32', 'Mtrn',
+  'Alph', 'FMsk', 'lnk2', 'FEid', 'FXid', 'PxSD',
+])
+
+/** Transcode an opaque tagged block's LENGTH HEADER when switching PSD↔PSB.
+ * Preserve signature, key, payload and trailing even-byte padding exactly.
+ * Guessing a header without validating the declared length corrupts linked
+ * Smart Object or effect data, so reject ambiguous/malformed input. */
+export function normalizePsdTaggedBlock(block: Uint8Array, targetPsb: boolean): Uint8Array {
+  if (block.length < 12) throw new Error('Truncated Photoshop tagged block')
+  const signature = readAscii4(block, 0)
+  if (signature !== '8BIM' && signature !== '8B64') throw new Error('Invalid Photoshop tagged block signature')
+  const key = fxBlockKey(block)
+  if (!PSB_WIDE_TAG_KEYS.has(key)) return block
+  const view = new DataView(block.buffer, block.byteOffset, block.byteLength)
+  const shortLength = view.getUint32(8)
+  const shortValid = 12 + shortLength + (shortLength & 1) === block.length
+  const wideLength = block.length >= 16 ? view.getUint32(8) * 4294967296 + view.getUint32(12) : -1
+  const wideValid = Number.isSafeInteger(wideLength) && wideLength >= 0 &&
+    16 + wideLength + (wideLength & 1) === block.length
+  const sourceWide = wideValid && !shortValid
+  if (!shortValid && !wideValid) throw new Error(`Invalid Photoshop tagged block ${key} length`)
+  if (sourceWide === targetPsb) return block
+  if (sourceWide) {
+    if (wideLength > 0xffffffff) throw new Error(`Cannot export 64-bit Photoshop block ${key} in PSD`)
+    const data = block.subarray(16)
+    const result = new Uint8Array(12 + data.length)
+    result.set(block.subarray(0, 8))
+    new DataView(result.buffer).setUint32(8, wideLength)
+    result.set(data, 12)
+    return result
+  }
+  const data = block.subarray(12)
+  const result = new Uint8Array(16 + data.length)
+  result.set(block.subarray(0, 8))
+  const output = new DataView(result.buffer)
+  output.setUint32(8, 0)
+  output.setUint32(12, shortLength)
+  result.set(data, 16)
+  return result
+}
+
 function saneAdditionalInfoBlock(block: Uint8Array): boolean {
   if (!(block instanceof Uint8Array) || block.length < 12) return false
   const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
@@ -1675,6 +1720,7 @@ export function buildPsd(
         const key = fxBlockKey(block)
         return key !== 'lrFX' && key !== 'chFX' && key !== 'lfx2' && key !== 'lmfx' && key !== 'lfxs'
       })
+      .map(block => normalizePsdTaggedBlock(block, psb))
     const generatedFx: Uint8Array[] = []
     if (updatingProtection) generatedFx.push(additionalInfoBlock('lspf', u32(p.input.locked ? 0x7 : 0)))
     if (p.input.fx && !unchangedLegacyFx) {
