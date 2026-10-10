@@ -212,5 +212,36 @@ for (const format of ['psd', 'psb'] as const) {
   assert.ok(decoded.warnings.some(w => w.includes('not rendered or editable')))
 }
 
-console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough pass')
+
+function labComposite(l: number, a: number, b: number, depth: 8 | 16 = 8): Uint8Array {
+  const bytes = new Uint8Array(26 + 4 + 4 + 4 + 2 + 3 * (depth >>> 3))
+  bytes.set(new TextEncoder().encode('8BPS'))
+  const view = new DataView(bytes.buffer)
+  view.setUint16(4, 1)
+  view.setUint16(12, 3)
+  view.setUint32(14, 1)
+  view.setUint32(18, 1)
+  view.setUint16(22, depth)
+  view.setUint16(24, 9) // Lab
+  view.setUint16(38, 0) // raw composite channels
+  if (depth === 8) bytes.set([l, a, b], 40)
+  else for (const [i, value] of [l, a, b].entries()) view.setUint16(40 + i * 2, value, false)
+  return bytes
+}
+for (const [color, white] of [
+  [[255, 128, 128], true],
+  [[0, 128, 128], false],
+] as const) {
+  const decoded = await decodePsd(labComposite(...color))
+  const rgb = decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(rgb[i] - (white ? 255 : 0)) <= 2,
+    'Photoshop Lab neutral white/black converts approximately to sRGB')
+  assert.ok(decoded.warnings.some(w => w.includes('Lab was converted')))
+}
+const lab16 = await decodePsd(labComposite(65535, 32896, 32896, 16))
+assert.equal(lab16.depth, 16)
+assert.ok(lab16.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[0] >= 253,
+  'Photoshop 16-bit neutral Lab converts to a white preview')
+
+console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews pass')
 
