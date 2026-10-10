@@ -385,6 +385,8 @@ export interface PsdLayer {
   blendMode: string             // app blend mode id
   visible: boolean
   clipped: boolean
+  /** Photoshop composite/transparency/position protections mapped to Studio's layer lock. */
+  locked: boolean
   mask: HTMLCanvasElement | null // full-document-size canvas, mask value in alpha
   /** Layer mask can exist but be disabled by Photoshop. */
   maskEnabled: boolean
@@ -1122,6 +1124,13 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         ctx2d(mask).putImageData(mimg, 0, 0)
       }
     }
+    const protectionRecord = rec.additionalInfo.find(block => fxBlockKey(block) === 'lspf' && block.length >= 16)
+    const protection = protectionRecord
+      ? new DataView(protectionRecord.buffer, protectionRecord.byteOffset, protectionRecord.byteLength).getUint32(12)
+      : 0
+    if ((protection & 0x7) !== 0 && (protection & 0x7) !== 0x7) {
+      compatibilityWarnings.add('Partially protected Photoshop layers are conservatively locked in Studio; their original protection flags are preserved on unchanged export')
+    }
     layers.push({
       name: rec.name || `Layer ${i + 1}`,
       canvas,
@@ -1135,6 +1144,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       blendMode: psdBlendKeyToMode(rec.blendKey),
       visible: rec.visible,
       clipped: rec.clipped,
+      locked: (protection & 0x7) !== 0,
       mask,
       maskEnabled: !(rec.maskFlags & 2),
       unsupportedRealMask: rec.channels.some(ch => ch.id === -3),
@@ -1249,6 +1259,8 @@ export interface PsdLayerInput {
   blendMode: string  // app blend mode id ('normal', 'multiply', …)
   visible: boolean
   clipped?: boolean
+  /** Photoshop lspf protection flags are generated from the current lock when changed. */
+  locked?: boolean
   /** full-document-size mask canvas — mask value lives in the ALPHA channel */
   mask?: HTMLCanvasElement | null
   /** Authoritative linear RGB floats for 32-bit Photoshop interchange. */
@@ -1635,16 +1647,24 @@ export function buildPsd(
     // the original effect bytes; regenerating them loses fields our native
     // LayerFX model has not yet implemented.
     const replacingFx = !!p.input.fx && !unchangedLegacyFx
+    const originalProtection = p.input.additionalInfo?.find(block => fxBlockKey(block) === 'lspf' && block.length >= 16)
+    const originalProtectionFlags = originalProtection
+      ? new DataView(originalProtection.buffer, originalProtection.byteOffset, originalProtection.byteLength).getUint32(12)
+      : 0
+    const sourceLocked = (originalProtectionFlags & 0x7) !== 0
+    const updatingProtection = p.input.locked !== undefined && p.input.locked !== sourceLocked
     const preservedInfo = (p.input.additionalInfo ?? [])
       .filter(saneAdditionalInfoBlock)
       .filter(block => {
         // Regenerate exactly one valid, unique ID for every layer.
         if (fxBlockKey(block) === 'lyid') return false
+        if (updatingProtection && fxBlockKey(block) === 'lspf') return false
         if (!replacingFx) return true
         const key = fxBlockKey(block)
         return key !== 'lrFX' && key !== 'chFX' && key !== 'lfx2' && key !== 'lmfx' && key !== 'lfxs'
       })
     const generatedFx: Uint8Array[] = []
+    if (updatingProtection) generatedFx.push(additionalInfoBlock('lspf', u32(p.input.locked ? 0x7 : 0)))
     if (p.input.fx && !unchangedLegacyFx) {
       // chFX is an app-private, ignored-by-Photoshop copy of the complete
       // native stack. lrFX provides interoperable shadows/glows/bevel/fill.
