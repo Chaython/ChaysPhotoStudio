@@ -81,6 +81,8 @@ export interface DecodedImage {
     hdrPixels?: Float32Array
     /** editable layer style decoded from PSD effect metadata when supported */
     fx?: LayerFX | null
+    /** Raw Photoshop blending ranges (Blend If) retained for round-trip. */
+    blendingRanges?: Uint8Array
     /** opaque Photoshop additional-layer-information blocks */
     additionalInfo?: Uint8Array[]
   }[]
@@ -380,6 +382,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           clipped: l.clipped,
           mask: l.mask,
           hdrPixels: l.hdrPixels,
+          blendingRanges: l.blendingRanges.slice(),
           fx: l.fx ? structuredClone(l.fx) : null,
           additionalInfo: l.additionalInfo.map(b => b.slice()),
         })),
