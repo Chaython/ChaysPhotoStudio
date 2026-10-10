@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks } from '../src/editor/formats/psd'
+import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdGroupPaths } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
 // without requiring a graphics stack or a browser installation.
@@ -534,6 +534,51 @@ for (const format of ['psd', 'psb'] as const) {
     'Edited Photoshop text must not retain a stale TySh native descriptor')
   assert.ok(recovered.layers[0].additionalInfo.some(b => new TextDecoder().decode(b.subarray(4, 8)) === 'lfx2'),
     'Non-native opaque Photoshop FX records remain after rasterizing text')
+}
+
+
+function syntheticGroupMarker(name: string, type: 1 | 2 | 3, beforeLayerIndex: number) {
+  return {
+    kind: 'group' as const,
+    name,
+    beforeLayerIndex,
+    visible: true,
+    opacity: 100,
+    blendKey: 'pass',
+    additionalInfo: [sectionDivider(type)],
+    blendingRanges: new Uint8Array(0),
+  }
+}
+const groupsBottomUp = [
+  syntheticGroupMarker('</Outer>', 3, 0),
+  syntheticGroupMarker('</Inner>', 3, 0),
+  syntheticGroupMarker('Inner', 1, 1),
+  syntheticGroupMarker('Outer', 1, 2),
+]
+assert.deepEqual(psdGroupPaths(2, groupsBottomUp), [
+  ['Outer', 'Inner'],
+  ['Outer'],
+], 'nested Photoshop groups must be reconstructed from bottom-up section records')
+assert.deepEqual(psdGroupPaths(2, []), [[], []], 'ordinary layers have no imported Photoshop folder')
+for (const format of ['psd', 'psb'] as const) {
+  const pixels = canvas(12, 44, 86)
+  const records = [
+    { name: '</Outer>', canvas: pixels, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true, additionalInfo: [sectionDivider(3)] },
+    { name: '</Inner>', canvas: pixels, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true, additionalInfo: [sectionDivider(3)] },
+    { name: 'Inside inner', canvas: pixels, left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true },
+    { name: 'Inner', canvas: pixels, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true, additionalInfo: [sectionDivider(1)] },
+    { name: 'Inside outer', canvas: pixels, left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true },
+    { name: 'Outer', canvas: pixels, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true, additionalInfo: [sectionDivider(1)] },
+  ]
+  const blob = buildPsd(2, 2, records, pixels, { format, depth: 8 })
+  const parsed = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
+  assert.deepEqual(parsed.layers.map(l => l.groupPath), [
+    ['Outer', 'Inner'], ['Outer'],
+  ], 'PSD/PSB file parsing must expose original nested group ancestry')
 }
 
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
