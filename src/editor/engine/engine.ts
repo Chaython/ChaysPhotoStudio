@@ -1761,6 +1761,13 @@ export class Engine {
     return compositeHdrRasters(doc.width, doc.height, inputs)
   }
 
+  /** Safe, scene-linear export surface. Refuse complex 32-bit documents that
+   * would require rasterizing Photoshop features through an SDR canvas. */
+  hdrCompositeForPsd(): Float32Array | null {
+    const doc = this.activeDoc
+    return doc && doc.workingBitDepth === 32 ? this.simpleHdrComposite(doc, doc.layers) : null
+  }
+
   /** Photoshop Merge Down: source-over composition must BAKE both opacities
    * and layer masks exactly once. Never duplicate the lower layer's mask or
    * properties on the already-composited output. */
