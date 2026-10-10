@@ -519,11 +519,12 @@ async function decodePsdChannel(
   const n = w * h
   if (w <= 0 || h <= 0) return emptyPsdPlane(depth, n)
   if (compr === 0) {
-    const raw = bytes.subarray(pos, Math.min(pos + rowBytes * h, bytes.length))
+    if (rowBytes * h > Math.min(dataLen, bytes.length - pos)) throw new Error('Truncated raw PSD channel')
+    const raw = bytes.subarray(pos, pos + rowBytes * h)
     return psdPlaneFromBytes(raw, depth, n)
   }
   if (compr === 1) {
-    if (pos + rowLenBytes * h > bytes.length) return emptyPsdPlane(depth, n)
+    if (pos + rowLenBytes * h > bytes.length) throw new Error('Truncated PSD RLE row-length table')
     // Photoshop stores the entire table of compressed row lengths FIRST,
     // followed by all encoded rows. The former interleaved parser consumed
     // row-length bytes as pixel data and corrupted even simple PSD imports.
@@ -552,21 +553,32 @@ async function decodePsdChannel(
   throw new Error(`Unsupported PSD channel compression ${compr}`)
 }
 
-function decodePackBitsRow(src: Uint8Array, start: number, end: number, out: Uint8Array, outOff: number, outLen: number): void {
+export function decodePackBitsRow(src: Uint8Array, start: number, end: number, out: Uint8Array, outOff: number, outLen: number): void {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end > src.length ||
+      start > end || outOff < 0 || outLen < 0 || outOff + outLen > out.length) {
+    throw new Error('Invalid Photoshop PackBits row bounds')
+  }
   let sp = start
   let op = outOff
   const outEnd = outOff + outLen
   while (sp < end && op < outEnd) {
     const n = src[sp++]
     if (n < 128) {
-      const cnt = n + 1
-      for (let i = 0; i < cnt && op < outEnd; i++) out[op++] = src[sp++]
+      const count = n + 1
+      if (sp + count > end || op + count > outEnd) throw new Error('Truncated or oversized Photoshop PackBits literal')
+      out.set(src.subarray(sp, sp + count), op)
+      op += count
+      sp += count
     } else if (n > 128) {
-      const cnt = 257 - n
-      const v = sp < end ? src[sp++] : 0
-      for (let i = 0; i < cnt && op < outEnd; i++) out[op++] = v
+      const count = 257 - n
+      if (sp >= end || op + count > outEnd) throw new Error('Truncated or oversized Photoshop PackBits run')
+      const value = src[sp++]
+      out.fill(value, op, op + count)
+      op += count
     }
+    // 128 is a PackBits no-op.
   }
+  if (op !== outEnd) throw new Error('Incomplete Photoshop PackBits row')
 }
 
 /** combine channel planes → RGBA (RGBA / gray / CMYK / indexed) */
