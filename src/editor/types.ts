@@ -391,6 +391,8 @@ export interface Layer {
   psdBlendingRanges?: string
   /** Original 4-byte Photoshop blend mode, including unsupported native modes. */
   psdBlendKey?: string
+  /** Photoshop layer-record bit0, independent of lspf protection flags. */
+  psdTransparencyProtected?: boolean
   /** Imported Photoshop channel -3 exists; warn before destructive PSD re-export. */
   psdUnsupportedRealMask?: boolean
   /** Source Photoshop-native layer descriptor, safe to preserve only while
