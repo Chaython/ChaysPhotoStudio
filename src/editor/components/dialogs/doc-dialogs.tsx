@@ -376,9 +376,10 @@ export function ExportDialog({ onClose }: DialogProps) {
         // them only when dimensions, source bit depth and RGB source mode agree;
         // never reinterpret their bytes after a resize or bit-depth conversion.
         const storedExtras = (doc.psdExtraMergedChannels ?? []).map(base64Bytes)
-        const requiredBytes = doc.width * doc.height * (doc.workingBitDepth >> 3)
+        const exportDepth = doc.workingBitDepth === 32 ? 32 : doc.workingBitDepth === 16 ? 16 : 8
+        const requiredBytes = doc.width * doc.height * (exportDepth >> 3)
         const canPreserveExtras = doc.psdSourceColorMode === 3 &&
-          doc.sourceBitDepth === doc.workingBitDepth &&
+          doc.sourceBitDepth === exportDepth &&
           storedExtras.every(extra => extra.length === requiredBytes)
         if (storedExtras.length && !canPreserveExtras &&
             !window.confirm(`${storedExtras.length} imported Photoshop spot/alpha channel(s) no longer match the current RGB dimensions or bit depth. These channels will be omitted from the exported PSD/PSB. Continue?`)) return
