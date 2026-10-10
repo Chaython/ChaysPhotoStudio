@@ -64,6 +64,8 @@ export interface DecodedImage {
   documentLayers?: ParsedDocumentLayer[]
   warnings?: string[]
   psdImageResources?: Uint8Array[]
+  /** Non-rendering Photoshop folder boundary records retained in source order. */
+  psdSectionMarkers?: import('./psd').PsdSectionMarker[]
   psdLayers?: {
     name: string
     canvas: HTMLCanvasElement      // pixels of the layer rect (canvas space)
@@ -370,6 +372,11 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
         sourceColorSpace: psd.depth === 32 ? 'linear-srgb' : undefined,
         resolutionPpi: psd.resolutionPpi,
         psdImageResources: psd.imageResources.map(b => b.slice()),
+        psdSectionMarkers: psd.sectionMarkers.map(m => ({
+          ...m,
+          additionalInfo: m.additionalInfo.map(b => b.slice()),
+          blendingRanges: m.blendingRanges.slice(),
+        })),
         psdLayers: psd.layers.map(l => ({
           name: l.name,
           canvas: l.canvas,
