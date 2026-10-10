@@ -473,6 +473,8 @@ export interface PsdDecoded {
   imageResources: Uint8Array[]
   /** Original Photoshop color-mode section payload (especially 32-bit hdrt). */
   colorModeData: Uint8Array
+  /** Opaque extra RGB merged spot/alpha planes beyond RGBA. */
+  extraMergedChannels: Uint8Array[]
   /** Unsupported Photoshop objects retained as opaque blocks only. */
   warnings: string[]
 }
@@ -1170,6 +1172,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   // ---- merged composite (Image Data section) ----
   let composite: HTMLCanvasElement | null = null
   let compositeError: unknown = null
+  let extraMergedChannels: Uint8Array[] = []
   let hdrComposite: Float32Array | undefined
   let hasAlpha = false
   try {
@@ -1179,6 +1182,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const bpc = depth >> 3
     const rowBytes = width * bpc
     const chans = new Map<number, PsdPlane>()
+    const retainedExtras: Uint8Array[] = []
     // Extra spot/alpha channels must never overwrite the first merged
     // transparency channel. A five-channel RGB PSD contains R/G/B, alpha,
     // then a fifth independent channel—not a replacement for transparency.
@@ -1188,6 +1192,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const chan = await decodePsdChannel(bytes, view, pos, compr, width, height, depth, rowBytes * height)
         const id = compositeId(c)
         if (id >= -1) chans.set(id, chan)
+        else if (colorMode === 3) retainedExtras.push(bytes.slice(pos, pos + rowBytes * height))
         pos += rowBytes * height
       }
     } else if (compr === 1) {
@@ -1207,6 +1212,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         }
         const id = compositeId(c)
         if (id >= -1) chans.set(id, psdPlaneFromBytes(raw, depth, width * height))
+        else if (colorMode === 3) retainedExtras.push(raw)
       }
     } else if (compr === 2 || compr === 3) {
       const data = await inflateZlib(bytes.subarray(pos))
@@ -1216,11 +1222,13 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const raw = data.subarray(ci * channelBytes, (ci + 1) * channelBytes)
         const id = compositeId(ci)
         if (id >= -1) chans.set(id, psdPlaneFromBytes(compr === 3 ? restorePsdPrediction(raw, width, height, depth) : raw, depth, width * height))
+        else if (colorMode === 3) retainedExtras.push((compr === 3 ? restorePsdPrediction(raw, width, height, depth) : raw).slice())
       }
     } else {
       throw new Error(`Unsupported composite compression ${compr}`)
     }
     const res = channelsToRgba(chans, width, height, colorMode, clut, transparencyIndex)
+    extraMergedChannels = retainedExtras
     composite = rgbaToCanvas2(res.rgba, width, height, res.rgba16, res.rgbaFloat)
     if (depth === 16 && canvasProfile(composite).bitDepth !== 16) {
       compatibilityWarnings.add('16-bit PSD precision was reduced to an 8-bit canvas preview by this browser; edits and export may quantize high-precision samples')
@@ -1229,6 +1237,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     hasAlpha = res.hasAlpha
   } catch (error) {
     compositeError = error
+    extraMergedChannels = []
     composite = null
   }
 
@@ -1253,7 +1262,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     hasAlpha = getImageData(composite).data.some((v, i) => i % 4 === 3 && v < 255)
   }
 
-  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, colorModeData, warnings: [...compatibilityWarnings] }
+  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, colorModeData, extraMergedChannels, warnings: [...compatibilityWarnings] }
 }
 
 // ============================================================
@@ -1569,7 +1578,7 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; sourceColorMode?: number; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array } = {},
+  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; sourceColorMode?: number; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array; extraMergedChannels?: Uint8Array[] } = {},
 ): Blob {
   const depth: 8 | 16 | 32 = options.depth === 32 ? 32 : options.depth === 16 ? 16 : 8
   const psb = options.format === 'psb'
@@ -1801,6 +1810,13 @@ export function buildPsd(
   const compChannels: { id: number; chan: Uint8Array }[] = [
     { id: 0, chan: comp.r }, { id: 1, chan: comp.g }, { id: 2, chan: comp.b }, { id: -1, chan: comp.a },
   ]
+  for (const [index, extra] of (options.extraMergedChannels ?? []).entries()) {
+    if (!(extra instanceof Uint8Array) || extra.length !== width * height * bpc) {
+      throw new Error(`Extra Photoshop merged channel ${index + 1} no longer matches dimensions or bit depth`)
+    }
+    compChannels.push({ id: -1000 - index, chan: extra })
+  }
+  if (compChannels.length > 56) throw new Error('Too many Photoshop merged channels')
   const compRows: Uint8Array[][] = compChannels.map(c => {
     const rows: Uint8Array[] = []
     for (let y = 0; y < height; y++) rows.push(packBitsRow(c.chan, y * width * bpc, width * bpc))
@@ -1840,7 +1856,7 @@ export function buildPsd(
   header.set([0x38, 0x42, 0x50, 0x53], 0) // '8BPS'
   hv.setUint16(4, psb ? 2 : 1) // PSD=1, large-document PSB=2
   // bytes 6..11 reserved (zero)
-  hv.setUint16(12, 4)     // channels
+  hv.setUint16(12, compChannels.length) // RGBA plus retained extra merged channels
   hv.setUint32(14, height)
   hv.setUint32(18, width)
   hv.setUint16(22, depth) // depth
