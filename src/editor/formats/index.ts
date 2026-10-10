@@ -374,6 +374,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           visible: l.visible,
           clipped: l.clipped,
           mask: l.mask,
+          fx: l.fx ? structuredClone(l.fx) : null,
           additionalInfo: l.additionalInfo.map(b => b.slice()),
         })),
       }
