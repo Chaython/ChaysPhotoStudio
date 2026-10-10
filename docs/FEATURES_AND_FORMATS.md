@@ -43,7 +43,7 @@ The editor includes 16-bit-float and 32-bit scene-linear infrastructure, guarded
 | Input | Current behavior | Caveat |
 |---|---|---|
 | PNG, JPEG, GIF, WebP, AVIF, SVG | Uses the webview/browser decoder where possible | Alpha, animation and specific bit depths are runtime-dependent |
-| PSD / PSB | Custom layered/document import and supported native layer constructs | Advanced effects, color modes and proprietary records may be approximated or skipped |
+| PSD / PSB | Layered 8-/16-bit RGB-compatible import; PSD and PSB v2 export with larger section sizes and appropriate RLE row tables | Imported Photoshop text, shapes, groups, adjustments and Smart Objects are not yet reconstructed as their native editable counterparts. Export warns before rasterizing or omitting these. 32-bit HDR interchange, modern FX descriptors and complex ICC/CMYK remain incomplete. |
 | TIFF / TIF | Dedicated TIFF reader (supported 8/16-bit, selected compression) | Floating TIFF and some uncommon compressions/color models aren't universal |
 | BMP, TGA, QOI, PNM/PPM/PGM/PBM/PAM, PFM, Radiance HDR, PCX, ICO/ICNS, DDS/IFF/ANIM | Dedicated/native/fallback codecs according to format | Not all subtypes or compression variants decode; verify output |
 | OpenRaster (.ora), XCF, Krita/Sketch/other project containers | Dedicated structured parsers for supported cases; otherwise embedded preview or raster fallback | Original editable effects and vector/text fidelity vary by container |
