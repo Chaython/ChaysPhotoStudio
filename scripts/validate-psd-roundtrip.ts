@@ -817,5 +817,40 @@ for (const format of ['psd', 'psb'] as const) {
     'PSD/PSB exporter must emit the target format tagged-length header')
 }
 
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(48, 90, 150)
+  const extras = [
+    Uint8Array.from([21, 43, 65, 87]),
+    Uint8Array.from([98, 76, 54, 32]),
+  ]
+  const source = buildPsd(2, 2, [{
+    name: 'Merged RGB with spot channels', canvas: image,
+    left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true,
+  }], image, { format, depth: 8, extraMergedChannels: extras })
+  const bytes = new Uint8Array(await source.arrayBuffer())
+  assert.equal(new DataView(bytes.buffer).getUint16(12), 6,
+    'PSB/PSD channel header includes merged RGBA plus extra spot channels')
+  const decoded = await decodePsd(bytes)
+  assert.equal(decoded.extraMergedChannels.length, 2)
+  assert.deepEqual(decoded.extraMergedChannels.map(c => Array.from(c)), extras.map(c => Array.from(c)),
+    'Non-rendered merged spot/alpha channels are retained byte-for-byte')
+  assert.deepEqual(Array.from(decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data),
+    [48, 90, 150, 255], 'Extra spot data must not replace RGBA channels')
+  const cross = buildPsd(2, 2, [{
+    name: 'Converted PSD/PSB', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], image, { format: format === 'psd' ? 'psb' : 'psd', depth: 8,
+    extraMergedChannels: decoded.extraMergedChannels })
+  const converted = await decodePsd(new Uint8Array(await cross.arrayBuffer()))
+  assert.deepEqual(converted.extraMergedChannels.map(c => Array.from(c)), extras.map(c => Array.from(c)),
+    'Extra spot planes survive PSD↔PSB conversion')
+  assert.throws(() => buildPsd(2, 2, [{
+    name: 'Incompatible spot channel', canvas: image, left: 0,
+    top: 0, opacity: 100, blendMode: 'normal', visible: true,
+  }], image, { format, extraMergedChannels: [Uint8Array.from([25])] }),
+  /no longer matches dimensions or bit depth/, 'Stale extra channel dimensions are rejected')
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
