@@ -410,6 +410,7 @@ export function ExportDialog({ onClose }: DialogProps) {
           compositeHdrPixels: hdrComposite ?? undefined,
           colorModeData: doc.workingBitDepth === 32 && doc.psdColorModeData
             ? base64Bytes(doc.psdColorModeData) : undefined,
+          sourceColorMode: doc.psdSourceColorMode,
           format: format === 'psb' ? 'psb' : 'psd',
           imageResources: [...preservedResources, ...metadataResources],
         })
