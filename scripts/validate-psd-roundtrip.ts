@@ -349,6 +349,19 @@ await assert.rejects(
   () => decodePsd(rgbWithExtraChannels([100, 150])),
   /Invalid Photoshop channel count/,
 )
+const corruptMerged = rgbWithExtraChannels([100, 150, 200])
+new DataView(corruptMerged.buffer).setUint16(38, 9)
+await assert.rejects(
+  () => decodePsd(corruptMerged),
+  /Cannot decode PSD merged image and no raster layers are available/,
+  'corrupt flattened PSD must never import as an apparently valid empty canvas',
+)
+await assert.rejects(
+  () => decodePsd(rgbWithExtraChannels([100, 150, 200]).subarray(0, 40)),
+  /Cannot decode PSD merged image and no raster layers are available/,
+  'truncated flattened PSD must fail rather than appear blank',
+)
+
 
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
