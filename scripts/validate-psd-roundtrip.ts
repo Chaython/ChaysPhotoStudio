@@ -668,5 +668,47 @@ for (const format of ['psd', 'psb'] as const) {
   assert.ok(edited.layers[0].fx?.dropShadow?.opacity !== imported.layers[0].fx?.dropShadow?.opacity)
 }
 
+
+function photoshopProtection(blocks: readonly Uint8Array[]): number {
+  const block = photoshopTaggedBlock(blocks, 'lspf')
+  return new DataView(block.buffer, block.byteOffset, block.byteLength).getUint32(12)
+}
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(21, 42, 63)
+  const partialProtection = nativeDescriptor('lspf')
+  new DataView(partialProtection.buffer).setUint32(12, 1) // transparency lock only
+  const importedFile = buildPsd(2, 2, [{
+    name: 'Source partial lock', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: [partialProtection],
+  }], image, { format })
+  const imported = await decodePsd(new Uint8Array(await importedFile.arrayBuffer()))
+  assert.equal(imported.layers[0].locked, true, 'Partial Photoshop protection must prevent unintended native editing')
+  assert.ok(imported.warnings.some(w => w.includes('Partially protected')))
+  const untouched = buildPsd(2, 2, [{
+    name: 'Unchanged lock', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, locked: true,
+    additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const preserved = await decodePsd(new Uint8Array(await untouched.arrayBuffer()))
+  assert.equal(photoshopProtection(preserved.layers[0].additionalInfo), 1,
+    'Unchanged partial protection survives PSD/PSB export byte-for-byte')
+  const unlocked = buildPsd(2, 2, [{
+    name: 'Unlocked', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, locked: false,
+    additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const reopened = await decodePsd(new Uint8Array(await unlocked.arrayBuffer()))
+  assert.equal(reopened.layers[0].locked, false)
+  assert.equal(photoshopProtection(reopened.layers[0].additionalInfo), 0)
+  const lockedNew = buildPsd(2, 2, [{
+    name: 'New lock', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, locked: true,
+  }], image, { format })
+  const parsedNew = await decodePsd(new Uint8Array(await lockedNew.arrayBuffer()))
+  assert.equal(parsedNew.layers[0].locked, true)
+  assert.equal(photoshopProtection(parsedNew.layers[0].additionalInfo), 7)
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
