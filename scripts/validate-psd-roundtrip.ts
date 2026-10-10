@@ -980,5 +980,43 @@ for (const format of ['psd', 'psb'] as const) {
   'Untrusted Photoshop mask rectangles must not allocate enormous buffers')
 }
 
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(90, 70, 50)
+  const resource = Uint8Array.from([
+    0x38, 0x42, 0x49, 0x4d, // 8BIM
+    0x04, 0x28, // opaque Photoshop resource
+    0, 0, // empty Pascal name, padded to even length
+    0, 0, 0, 4, // payload length
+    0xaa, 0xbb, 0xcc, 0xdd,
+  ])
+  const source = buildPsd(2, 2, [{
+    name: 'Resource limits', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], image, { format, imageResources: [resource] })
+  const encoded = new Uint8Array(await source.arrayBuffer())
+  const original = await decodePsd(encoded)
+  assert.ok(original.imageResources.some(b => Array.from(b).join(',') === Array.from(resource).join(',')),
+    'Valid Photoshop resource blocks must be retained')
+  const at = encoded.findIndex((_, offset) => offset + resource.length <= encoded.length &&
+    resource.every((v, j) => encoded[offset + j] === v))
+  assert.ok(at >= 0, 'Expected source resource in serialized PSD')
+  const mutated = (change: (bytes: Uint8Array, view: DataView) => void) => {
+    const broken = encoded.slice()
+    change(broken, new DataView(broken.buffer))
+    return broken
+  }
+  await assert.rejects(() => decodePsd(mutated(b => { b[at] = 0 })),
+    /Invalid Photoshop image resource signature/,
+    'Corrupt Photoshop resource signatures must not silently drop metadata')
+  await assert.rejects(() => decodePsd(mutated(b => { b[at + 6] = 255 })),
+    /Truncated Photoshop image resource name/,
+    'Oversized Photoshop Pascal names must be rejected')
+  await assert.rejects(() => decodePsd(mutated((_b, view) => {
+    view.setUint32(at + 8, 0xffffffff)
+  })), /Truncated Photoshop image resource payload/,
+    'Oversized Photoshop image resource payloads must be rejected')
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
