@@ -723,6 +723,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   }
   if (depth !== 8 && depth !== 16 && depth !== 32) throw new Error(`Unsupported PSD depth ${depth} bits (only 8/16/32)`)
   if (depth === 32 && colorMode !== 3) throw new Error('32-bit PSD currently supports RGB color mode only')
+  const baseChannels = colorMode === 3 || colorMode === 9 ? 3 : colorMode === 4 ? 4 : 1
+  if (channels < baseChannels || channels > 56) throw new Error(`Invalid Photoshop channel count ${channels} for color mode ${colorMode}`)
   if (colorMode === 0 || colorMode === 7) {
     throw new Error(`Unsupported PSD color mode ${colorMode} (bitmap / multichannel)`)
   }
@@ -789,6 +791,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const lmEnd = pos + lmLen
 
   const compatibilityWarnings = new Set<string>()
+  if (channels > baseChannels + 1) compatibilityWarnings.add('Additional Photoshop spot/alpha channels beyond merged transparency are not reconstructed in the canvas preview')
   if (colorMode === 9) compatibilityWarnings.add('Photoshop Lab was converted to an approximate sRGB preview; editable Lab/ICC color data is not retained')
   if (colorMode === 4) compatibilityWarnings.add('Photoshop CMYK was converted to an approximate RGB preview; an ICC-managed conversion is not available')
   const records: PsdLayerRecord[] = []
@@ -1066,12 +1069,15 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const bpc = depth >> 3
     const rowBytes = width * bpc
     const chans = new Map<number, PsdPlane>()
-    const compositeId = (c: number): number =>
-      (colorMode === 3 && c < 3) || (colorMode === 4 && c < 4) || (colorMode === 1 && c < 1) || (colorMode === 2 && c < 1) || (colorMode === 8 && c < 1) || (colorMode === 9 && c < 3) ? c : -1
+    // Extra spot/alpha channels must never overwrite the first merged
+    // transparency channel. A five-channel RGB PSD contains R/G/B, alpha,
+    // then a fifth independent channel—not a replacement for transparency.
+    const compositeId = (c: number): number => c < baseChannels ? c : c === baseChannels ? -1 : -1000 - c
     if (compr === 0) {
       for (let c = 0; c < channels; c++) {
         const chan = await decodePsdChannel(bytes, view, pos, compr, width, height, depth, rowBytes * height)
-        chans.set(compositeId(c), chan)
+        const id = compositeId(c)
+        if (id >= -1) chans.set(id, chan)
         pos += rowBytes * height
       }
     } else if (compr === 1) {
@@ -1089,7 +1095,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           decodePackBitsRow(bytes, pos, pos + rl, raw, y * rowBytes, rowBytes)
           pos += rl
         }
-        chans.set(compositeId(c), psdPlaneFromBytes(raw, depth, width * height))
+        const id = compositeId(c)
+        if (id >= -1) chans.set(id, psdPlaneFromBytes(raw, depth, width * height))
       }
     } else if (compr === 2 || compr === 3) {
       const data = await inflateZlib(bytes.subarray(pos))
@@ -1097,7 +1104,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       if (data.length !== channelBytes * channels) throw new Error('Invalid Photoshop ZIP composite size')
       for (let ci = 0; ci < channels; ci++) {
         const raw = data.subarray(ci * channelBytes, (ci + 1) * channelBytes)
-        chans.set(compositeId(ci), psdPlaneFromBytes(compr === 3 ? restorePsdPrediction(raw, width, height, depth) : raw, depth, width * height))
+        const id = compositeId(ci)
+        if (id >= -1) chans.set(id, psdPlaneFromBytes(compr === 3 ? restorePsdPrediction(raw, width, height, depth) : raw, depth, width * height))
       }
     } else {
       throw new Error(`Unsupported composite compression ${compr}`)
