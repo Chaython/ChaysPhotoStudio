@@ -478,6 +478,8 @@ for (const format of ['psd', 'psb'] as const) {
   const decoded = await decodePsd(bytes)
   assert.equal(decoded.layers.length, 1, 'A real mask channel must not block PSD layer decoding')
   assert.equal(decoded.layers[0].mask, null, 'Unrepresented real vector mask is not mislabeled as a user raster mask')
+  assert.equal(decoded.layers[0].unsupportedRealMask, true,
+    'Combined Photoshop real-mask loss must be tracked for export warnings')
   assert.ok(decoded.warnings.some(w => w.includes('combined user/vector mask channel')))
 }
 
