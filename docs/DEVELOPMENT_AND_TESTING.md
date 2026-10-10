@@ -4,7 +4,7 @@ This reference describes the **current `main` build system**, not features still
 
 ## Automated Chromium interaction tests
 
-CI now runs **the exported production web editor in actual headless Google Chrome** via Playwright, not a mocked DOM. The smoke suite (`scripts/test-chromium-editor.py`) covers initial startup, moving panels among all eight docks, independent resize/reset, persistence after reload, context-menu docking/floating, workspace switching, All Tools, opening a real generated PNG, layer Undo/Redo and a mobile viewport. Failure screenshots are retained in the `chromium-editor-e2e` Actions artifact.
+CI now runs **the exported production web editor in actual headless Google Chrome** via Playwright, not a mocked DOM. The smoke suite (`scripts/test-chromium-editor.py`) covers initial startup, moving panels among all eight docks, independent resize/reset, persistence after reload, context-menu docking/floating, workspace switching, All Tools, opening a real generated PNG, layer Undo/Redo, GIMP script analysis without interpreter startup, explicit Scheme worker execution and cleanup without Pyodide downloads, and a mobile viewport. Failure screenshots are retained in the `chromium-editor-e2e` Actions artifact.
 
 Run locally after exporting `build/webapp-export` with Chrome and Python Playwright available:
 
