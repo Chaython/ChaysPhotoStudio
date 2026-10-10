@@ -359,6 +359,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             hdrPixels: doc.workingBitDepth === 32 ? l.hdrPixels ?? undefined : undefined,
             fx: l.fx ? structuredClone(l.fx) : null,
             additionalInfo: l.psdAdditionalInfo?.map(base64Bytes),
+            blendingRanges: l.psdBlendingRanges ? base64Bytes(l.psdBlendingRanges) : undefined,
           })
         }
         showProgress(format === 'psb' ? 'Building PSB…' : 'Building PSD…')
