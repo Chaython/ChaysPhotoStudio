@@ -945,5 +945,40 @@ for (const format of ['psd', 'psb'] as const) {
     /Truncated Photoshop layer extra data/)
 }
 
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(40, 80, 120)
+  const mask = canvas(255, 255, 255, 190)
+  const source = buildPsd(2, 2, [{
+    name: 'Dimension safety', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, mask,
+  }], image, { format })
+  const bytes = new Uint8Array(await source.arrayBuffer())
+  const { record, lenSize } = firstPhotoshopLayerRecord(bytes)
+  const cloneWith = (change: (view: DataView) => void) => {
+    const clone = bytes.slice()
+    change(new DataView(clone.buffer))
+    return clone
+  }
+  await assert.rejects(() => decodePsd(cloneWith(view => {
+    view.setInt32(record + 8, 1000000) // layer bottom
+    view.setInt32(record + 12, 1000000) // layer right
+  })), /Invalid Photoshop layer dimensions/,
+  'Untrusted Photoshop layer extents must not allocate enormous pixel planes')
+  await assert.rejects(() => decodePsd(cloneWith(view => {
+    view.setInt32(record + 8, -1) // inverted layer rectangle
+  })), /Invalid Photoshop layer dimensions/)
+  const view = new DataView(bytes.buffer)
+  const channelCount = view.getUint16(record + 16)
+  const extraLengthAt = record + 18 + channelCount * (2 + lenSize) + 12
+  assert.equal(view.getUint32(extraLengthAt + 4), 20)
+  await assert.rejects(() => decodePsd(cloneWith(dv => {
+    const maskTop = extraLengthAt + 8
+    dv.setInt32(maskTop + 8, 1000000)
+    dv.setInt32(maskTop + 12, 1000000)
+  })), /Invalid Photoshop layer mask\/channel dimensions/,
+  'Untrusted Photoshop mask rectangles must not allocate enormous buffers')
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
