@@ -337,7 +337,7 @@ def main():
                 output.wait_for(state="visible", timeout=15000)
                 check(output.inner_text().strip() == "3",
                       f"Scheme calculation produced an unexpected result: {output.inner_text()}")
-                page.wait_for_function("(initial) => window.__workerTestRecord.terminated > initial", initial,
+                page.wait_for_function("(initial) => window.__workerTestRecord.terminated > initial", arg=initial,
                                        timeout=10000)
                 counts = page.evaluate("() => window.__workerTestRecord")
                 check(counts["created"] == initial + 1 and counts["terminated"] >= 1,
