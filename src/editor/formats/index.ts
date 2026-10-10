@@ -362,6 +362,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
         height: psd.height,
         hasAlpha: psd.hasAlpha,
         format: 'psd',
+        warnings: psd.warnings,
         sourceBitDepth: psd.depth,
         sourceFloatPixels: psd.hdrPixels,
         sourceColorSpace: psd.depth === 32 ? 'linear-srgb' : undefined,
