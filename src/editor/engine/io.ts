@@ -300,6 +300,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
     psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
+    psdSourceColorMode: decoded.psdSourceColorMode,
     metadata: metadata ? structuredClone(metadata) : undefined,
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
@@ -478,6 +479,7 @@ export interface SerializedProject {
     resolutionPpi?: number
     psdImageResources?: string[]
     psdColorModeData?: string
+    psdSourceColorMode?: number
     psdSectionMarkers?: PsDocument['psdSectionMarkers']
     psdSectionLayerOrder?: string[]
     metadata?: ImageMetadata
@@ -594,6 +596,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       resolutionPpi: doc.resolutionPpi ?? 72,
       psdImageResources: doc.psdImageResources ? [...doc.psdImageResources] : undefined,
       psdColorModeData: doc.psdColorModeData,
+      psdSourceColorMode: doc.psdSourceColorMode,
       psdSectionMarkers: doc.psdSectionMarkers ? structuredClone(doc.psdSectionMarkers) : undefined,
       psdSectionLayerOrder: doc.psdSectionLayerOrder ? [...doc.psdSectionLayerOrder] : undefined,
       metadata: doc.metadata ? structuredClone(doc.metadata) : undefined,
@@ -779,6 +782,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
       ? Number(project.doc.sourceBitDepth)
       : (project.doc.workingBitDepth === 32 ? 32 : project.doc.workingBitDepth === 16 ? 16 : 8),
     psdColorModeData: typeof project.doc.psdColorModeData === 'string' ? project.doc.psdColorModeData : undefined,
+    psdSourceColorMode: Number.isSafeInteger(project.doc.psdSourceColorMode) ? project.doc.psdSourceColorMode : undefined,
     psdImageResources: Array.isArray(project.doc.psdImageResources)
       ? project.doc.psdImageResources.filter((v: unknown) => typeof v === 'string')
       : undefined,
