@@ -108,6 +108,7 @@ On current `main`, recovery snapshots live in IndexedDB. **Recent & Recovery** n
 - **Runtime differences:** WebGL2, WebGPU, Float16 rendering, canvas decoder support and the File System Access API vary by Chromium, Firefox, operating system and embedded WebView.
 - **RAW:** LibRaw sensor development and redevelopable Smart Objects are available for supported files, but broad proprietary compression, Lensfun matching, color fidelity and 16/32-bit editing remain unverified. Unsupported sensor files may fall back to embedded JPEG previews.
 - **PSD/PSB:** proprietary effects, blend modes, Smart Objects, channels and high-depth combinations can behave differently than in Adobe Photoshop.
+  - Legacy Photoshop `lrFX` style records are preserved byte-for-byte when the imported style is unchanged. Editing an imported style regenerates supported shadow/glow/bevel/overlay fields, so unimplemented Photoshop-specific effect parameters may not survive that edit. Modern `lfx2`/`lmfx` descriptors are still opaque and not natively editable.
 - **PDF/design documents:** best-effort parsers do not guarantee exact fonts, vector geometry or multi-page layouts.
 - **AI:** local heuristics and optional ComfyUI/remote providers have different accuracy, costs, network requirements and file-transfer implications.
 - **HDR:** not all filters preserve scene-linear Float32 values; the editor must refuse unsafe edits rather than silently rasterize high-depth content.
