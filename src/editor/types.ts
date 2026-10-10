@@ -656,6 +656,8 @@ export interface PsDocument {
   psdColorModeData?: string
   /** Original Photoshop color mode for compatible ICC/resource preservation. */
   psdSourceColorMode?: number
+  /** Original Photoshop RGB spot/alpha planes in base64, for same-depth same-size export. */
+  psdExtraMergedChannels?: string[]
   /** Opaque Photoshop folder delimiters / zero-channel adjustment records.
    * Re-exported only while original source layer ordering remains unchanged. */
   psdSectionMarkers?: Array<{
