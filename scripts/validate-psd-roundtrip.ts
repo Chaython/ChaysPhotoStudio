@@ -462,5 +462,24 @@ for (const format of ['psd', 'psb'] as const) {
     'Relative mask position must include the layer x offset')
 }
 
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(20, 40, 60)
+  const userMask = canvas(255, 255, 255, 90)
+  const file = buildPsd(2, 2, [{
+    name: 'Real mask compatibility', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, mask: userMask,
+  }], image, { format })
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const channelIndex = bytes.findIndex((b, i) =>
+    b === 255 && bytes[i + 1] === 254 && i + (format === 'psb' ? 10 : 6) <= bytes.length)
+  assert.ok(channelIndex > 26, 'Mask channel identifier is present')
+  bytes[channelIndex + 1] = 253 // -2 user mask -> -3 real combined mask
+  const decoded = await decodePsd(bytes)
+  assert.equal(decoded.layers.length, 1, 'A real mask channel must not block PSD layer decoding')
+  assert.equal(decoded.layers[0].mask, null, 'Unrepresented real vector mask is not mislabeled as a user raster mask')
+  assert.ok(decoded.warnings.some(w => w.includes('combined user/vector mask channel')))
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
