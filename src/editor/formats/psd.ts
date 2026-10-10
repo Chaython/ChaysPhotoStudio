@@ -575,6 +575,10 @@ async function decodePsdChannel(
   w: number, h: number, depth: number, dataLen: number, rowLenBytes: 2 | 4 = 2,
 ): Promise<PsdPlane> {
   const bpc = depth >> 3
+  if (!Number.isSafeInteger(w) || !Number.isSafeInteger(h) || w < 0 || h < 0 ||
+      (w > 0 && h > 0 && (w * h > 268435456 || w * h * bpc > 536870912))) {
+    throw new Error('Invalid Photoshop channel dimensions')
+  }
   const rowBytes = w * bpc
   const n = w * h
   if (w <= 0 || h <= 0) return emptyPsdPlane(depth, n)
@@ -1055,6 +1059,10 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const chans = new Map<number, PsdPlane>()
         const lw = rec.right - rec.left
         const lh = rec.bottom - rec.top
+        if (lw < 0 || lh < 0 || lw * lh > 268435456 ||
+            lw * lh * (depth >> 3) > 536870912) {
+          throw new Error(`Invalid Photoshop layer dimensions: ${rec.name}`)
+        }
         for (const ch of rec.channels) {
           const chStart = pos
           if (ch.len > liEnd - chStart || ch.len < 2) throw new Error('Truncated Photoshop layer channel payload')
@@ -1074,6 +1082,10 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           const isMask = ch.id === -2
           const mw = isMask && rec.maskRect ? rec.maskRect[3] - rec.maskRect[1] : lw
           const mh = isMask && rec.maskRect ? rec.maskRect[2] - rec.maskRect[0] : lh
+          if (mw < 0 || mh < 0 || mw * mh > 268435456 ||
+              mw * mh * (depth >> 3) > 536870912) {
+            throw new Error('Invalid Photoshop layer mask/channel dimensions')
+          }
           try {
             chans.set(ch.id, await decodePsdChannel(bytes, view, pos, compr, Math.max(0, mw), Math.max(0, mh), depth, Math.max(0, ch.len - 2), psb ? 4 : 2))
           } catch (error) {
