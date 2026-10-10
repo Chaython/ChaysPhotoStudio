@@ -610,11 +610,15 @@ function channelsToRgba(
         rr16 = gg16 = bb16 = s16(r, i)
         break
       case 4: {
+        // In Photoshop PSD storage, 0 means 100% ink and max means 0% ink.
+        // Values are already inverted relative to the usual normalized CMYK
+        // equation. Multiply by the (inverted) K channel instead of inverting
+        // again. An embedded CMYK ICC profile would give better print colors;
+        // this remains an explicitly approximate RGB preview conversion.
         const cc = s16(r, i), mm = s16(g, i), yy = s16(b, i), kk = s16(k, i)
-        const inv = 65535 - kk
-        rr16 = Math.round(((65535 - cc) * inv) / 65535)
-        gg16 = Math.round(((65535 - mm) * inv) / 65535)
-        bb16 = Math.round(((65535 - yy) * inv) / 65535)
+        rr16 = Math.round((cc * kk) / 65535)
+        gg16 = Math.round((mm * kk) / 65535)
+        bb16 = Math.round((yy * kk) / 65535)
         break
       }
       case 2: {
