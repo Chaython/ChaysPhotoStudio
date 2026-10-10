@@ -1074,6 +1074,8 @@ export interface PsdLayerInput {
   blendingRanges?: Uint8Array
   /** Non-rendering Photoshop group delimiter. Has no pixel channels. */
   sectionMarker?: boolean
+  /** Exact Photoshop folder blend key, e.g. 'pass'; other layer kinds use mapped modes. */
+  rawBlendKey?: string
 }
 
 /** PackBits-encode one row; returns the packed bytes */
@@ -1347,7 +1349,8 @@ export function buildPsd(
     for (const ch of allChannels) {
       recordParts.push(i16(ch.id), sectionLength(ch.block.length))
     }
-    recordParts.push(asciiBytes('8BIM'), asciiBytes(blendModeToPsdKey(p.input.blendMode)))
+    recordParts.push(asciiBytes('8BIM'), asciiBytes(p.input.sectionMarker && p.input.rawBlendKey?.length === 4
+      ? p.input.rawBlendKey : blendModeToPsdKey(p.input.blendMode)))
     recordParts.push(new Uint8Array([
       Math.max(0, Math.min(255, Math.round((p.input.opacity * 255) / 100))), // opacity
       p.input.clipped ? 1 : 0,   // clipping
