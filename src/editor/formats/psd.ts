@@ -398,6 +398,8 @@ export interface PsdDecoded {
   resolutionPpi: number
   /** Opaque non-resolution image-resource blocks retained byte-for-byte. */
   imageResources: Uint8Array[]
+  /** Unsupported Photoshop objects retained as opaque blocks only. */
+  warnings: string[]
 }
 
 async function inflateZlib(data: Uint8Array): Promise<Uint8Array> {
@@ -704,6 +706,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   pos += lenSize
   const lmEnd = pos + lmLen
 
+  const compatibilityWarnings = new Set<string>()
   const records: PsdLayerRecord[] = []
   const layerChannels: Map<number, PsdPlane>[] = []
   if (lmLen > 0 && lmEnd <= bytes.length) {
@@ -826,7 +829,14 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
               if (parsed) legacyFx = parsed
               else additionalInfo.push(raw)
             } else {
-              if (key === 'lfx2' || key === 'lmfx' || key === 'lfxs') hasDescriptorFx = true
+              if (key === 'lfx2' || key === 'lmfx' || key === 'lfxs') {
+                hasDescriptorFx = true
+                compatibilityWarnings.add('Modern Photoshop layer styles are retained as opaque descriptors, not fully editable')
+              }
+              if (key === 'lsct' || key === 'lsdk') compatibilityWarnings.add('Photoshop layer groups are not reconstructed; saving can lose folder organization')
+              if (key === 'TySh') compatibilityWarnings.add('Native Photoshop text layer editing is not yet supported')
+              if (key === 'SoLd' || key === 'PlLd' || key === 'lnk2') compatibilityWarnings.add('Embedded/linked Photoshop Smart Objects are not reconstructed as native editable objects')
+              if (key === 'vmsk' || key === 'vsms') compatibilityWarnings.add('Photoshop vector masks are retained as opaque descriptors, not native editable masks')
               additionalInfo.push(raw)
             }
           }
@@ -998,7 +1008,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
   }
 
-  return { canvas: composite, width, height, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, resolutionPpi, imageResources }
+  return { canvas: composite, width, height, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, resolutionPpi, imageResources, warnings: [...compatibilityWarnings] }
 }
 
 // ============================================================
