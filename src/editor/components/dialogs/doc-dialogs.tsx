@@ -406,6 +406,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             visible: l.visible,
             clipped: l.clipped,
             locked: l.locked,
+            sourceTransparencyProtected: l.psdTransparencyProtected,
             mask: l.mask,
             maskEnabled: l.maskEnabled,
             hdrPixels: doc.workingBitDepth === 32 ? l.hdrPixels ?? undefined : undefined,
