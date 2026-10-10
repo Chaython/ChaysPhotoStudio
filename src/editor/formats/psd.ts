@@ -453,12 +453,22 @@ async function decodePsdChannel(
   }
   if (compr === 1) {
     if (pos + rowLenBytes * h > bytes.length) return emptyPsdPlane(depth, n)
-    let p = pos
+    // Photoshop stores the entire table of compressed row lengths FIRST,
+    // followed by all encoded rows. The former interleaved parser consumed
+    // row-length bytes as pixel data and corrupted even simple PSD imports.
+    const tableEnd = pos + rowLenBytes * h
+    if (tableEnd > bytes.length || tableEnd > pos + dataLen) throw new Error('Truncated PSD RLE row table')
+    const lengths: number[] = []
+    for (let y = 0, p = pos; y < h; y++, p += rowLenBytes) {
+      lengths.push(rowLenBytes === 4 ? view.getUint32(p) : view.getUint16(p))
+    }
     const raw = new Uint8Array(rowBytes * h)
+    const channelEnd = Math.min(bytes.length, pos + dataLen)
+    let p = tableEnd
     for (let y = 0; y < h; y++) {
-      const rowLen = rowLenBytes === 4 ? view.getUint32(p) : view.getUint16(p)
-      p += rowLenBytes
-      decodePackBitsRow(bytes, p, Math.min(bytes.length, p + rowLen), raw, y * rowBytes, rowBytes)
+      const rowLen = lengths[y]
+      if (rowLen > channelEnd - p) throw new Error('Truncated PSD RLE row')
+      decodePackBitsRow(bytes, p, p + rowLen, raw, y * rowBytes, rowBytes)
       p += rowLen
     }
     return psdPlaneFromBytes(raw, depth, n)
