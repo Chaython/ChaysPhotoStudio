@@ -11,7 +11,7 @@
 // Photoshop opens the files.
 // ============================================================
 
-import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels } from '../utils/canvas'
+import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
 import type { BlendMode, LayerFX } from '../types'
 
 // ---------- blend mode mapping ----------
@@ -373,6 +373,8 @@ export interface PsdLayer {
   visible: boolean
   clipped: boolean
   mask: HTMLCanvasElement | null // full-document-size canvas, mask value in alpha
+  /** Raw 32-bit/channel scene-linear pixels, never reduced to a canvas preview. */
+  hdrPixels?: Float32Array
   /** Editable layer styles decoded from Chay's native style block or
    * Photoshop's legacy lrFX block when available. */
   fx: LayerFX | null
@@ -387,7 +389,9 @@ export interface PsdDecoded {
   height: number
   /** Original PSD/PSB component depth. 16-bit files are retained in
    * float16 canvases when the runtime supports them. */
-  depth: 8 | 16
+  depth: 8 | 16 | 32
+  /** Raw merged 32-bit/channel scene-linear pixels when present. */
+  hdrPixels?: Float32Array
   hasAlpha: boolean
   layers: PsdLayer[]             // bottom-first (PSD storage order)
   /** ResolutionInfo image-resource metadata, pixels per inch. */
@@ -420,16 +424,22 @@ interface PsdLayerRecord {
   additionalInfo: Uint8Array[]
 }
 
-type PsdPlane = Uint8Array | Uint16Array
+type PsdPlane = Uint8Array | Uint16Array | Float32Array
 
 function emptyPsdPlane(depth: number, n: number): PsdPlane {
-  return depth === 16 ? new Uint16Array(n) : new Uint8Array(n)
+  return depth === 32 ? new Float32Array(n) : depth === 16 ? new Uint16Array(n) : new Uint8Array(n)
 }
 
 function psdPlaneFromBytes(raw: Uint8Array, depth: number, n: number): PsdPlane {
   if (depth === 8) {
     const out = new Uint8Array(n)
     out.set(raw.subarray(0, n))
+    return out
+  }
+  if (depth === 32) {
+    const out = new Float32Array(n)
+    const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
+    for (let i = 0; i < Math.min(n, raw.length >>> 2); i++) out[i] = view.getFloat32(i * 4, false)
     return out
   }
   const out = new Uint16Array(n)
@@ -501,16 +511,20 @@ function decodePackBitsRow(src: Uint8Array, start: number, end: number, out: Uin
 function channelsToRgba(
   chans: Map<number, PsdPlane>, w: number, h: number,
   colorMode: number, clut: Uint8Array | null,
-): { rgba: Uint8ClampedArray<ArrayBuffer>; rgba16?: Uint16Array; hasAlpha: boolean } {
+): { rgba: Uint8ClampedArray<ArrayBuffer>; rgba16?: Uint16Array; rgbaFloat?: Float32Array; hasAlpha: boolean } {
   const n = w * h
   const out = new Uint8ClampedArray(n * 4)
+  const floating = Array.from(chans.values()).some(v => v instanceof Float32Array)
   const high = Array.from(chans.values()).some(v => v instanceof Uint16Array)
   const out16 = high ? new Uint16Array(n * 4) : undefined
+  const outFloat = floating ? new Float32Array(n * 4) : undefined
   const r = chans.get(0), g = chans.get(1), b = chans.get(2), k = chans.get(3), a = chans.get(-1)
+  const sFloat = (p: PsdPlane | undefined, i: number, fallback = 0): number =>
+    !p ? fallback : p instanceof Float32Array ? p[i] : p instanceof Uint16Array ? p[i] / 65535 : p[i] / 255
   const s16 = (p: PsdPlane | undefined, i: number, fallback = 0): number =>
-    !p ? fallback : p instanceof Uint16Array ? p[i] : p[i] * 257
+    !p ? fallback : p instanceof Float32Array ? Math.round(Math.max(0, Math.min(1, p[i])) * 65535) : p instanceof Uint16Array ? p[i] : p[i] * 257
   const s8 = (p: PsdPlane | undefined, i: number, fallback = 0): number =>
-    !p ? fallback : p instanceof Uint16Array ? Math.round(p[i] / 257) : p[i]
+    !p ? fallback : p instanceof Float32Array ? Math.round(Math.max(0, Math.min(1, p[i])) * 255) : p instanceof Uint16Array ? Math.round(p[i] / 257) : p[i]
   let hasAlpha = false
 
   for (let i = 0, o = 0; i < n; i++, o += 4) {
@@ -518,7 +532,15 @@ function channelsToRgba(
     const av8 = Math.round(av16 / 257)
     out[o + 3] = av8
     if (out16) out16[o + 3] = av16
-    if (av16 < 65535) hasAlpha = true
+    if ((floating ? sFloat(a, i, 1) : av16 / 65535) < 1) hasAlpha = true
+    if (outFloat) {
+      const alpha = sFloat(a, i, 1)
+      if (![sFloat(r, i), sFloat(g, i), sFloat(b, i), alpha].every(Number.isFinite)) throw new Error('Invalid floating-point PSD sample')
+      outFloat[o] = sFloat(r, i)
+      outFloat[o + 1] = sFloat(g, i)
+      outFloat[o + 2] = sFloat(b, i)
+      outFloat[o + 3] = alpha
+    }
 
     let rr16 = 0, gg16 = 0, bb16 = 0
     switch (colorMode) {
@@ -556,10 +578,11 @@ function channelsToRgba(
       out16[o] = rr16; out16[o + 1] = gg16; out16[o + 2] = bb16
     }
   }
-  return { rgba: out, rgba16: out16, hasAlpha }
+  return { rgba: out, rgba16: out16, rgbaFloat: outFloat, hasAlpha }
 }
 
-function rgbaToCanvas2(rgba: Uint8ClampedArray<ArrayBuffer>, w: number, h: number, rgba16?: Uint16Array): HTMLCanvasElement {
+function rgbaToCanvas2(rgba: Uint8ClampedArray<ArrayBuffer>, w: number, h: number, rgba16?: Uint16Array, rgbaFloat?: Float32Array): HTMLCanvasElement {
+  if (rgbaFloat) return hdrFloat32ToPreviewCanvas(rgbaFloat, w, h)
   const c = createCanvas(w, h, { bitDepth: rgba16 ? 16 : 8, colorSpace: 'srgb' })
   if (rgba16) {
     const values = new Float32Array(rgba16.length)
@@ -587,7 +610,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   if (width <= 0 || height <= 0 || width * height > 268435456) {
     throw new Error(`Invalid PSD dimensions ${width}×${height}`)
   }
-  if (depth !== 8 && depth !== 16) throw new Error(`Unsupported PSD depth ${depth} bits (only 8/16)`)
+  if (depth !== 8 && depth !== 16 && depth !== 32) throw new Error(`Unsupported PSD depth ${depth} bits (only 8/16/32)`)
+  if (depth === 32 && colorMode !== 3) throw new Error('32-bit PSD currently supports RGB color mode only')
   if (colorMode === 0 || colorMode === 7 || colorMode === 9) {
     throw new Error(`Unsupported PSD color mode ${colorMode} (bitmap / multichannel / Lab)`)
   }
@@ -788,8 +812,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     if (lw <= 0 || lh <= 0) continue
     let canvas: HTMLCanvasElement
     try {
-      const { rgba, rgba16 } = channelsToRgba(chans, lw, lh, colorMode, clut)
-      canvas = rgbaToCanvas2(rgba, lw, lh, rgba16)
+      const { rgba, rgba16, rgbaFloat } = channelsToRgba(chans, lw, lh, colorMode, clut)
+      canvas = rgbaToCanvas2(rgba, lw, lh, rgba16, rgbaFloat)
     } catch {
       continue
     }
@@ -817,6 +841,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     layers.push({
       name: rec.name || `Layer ${i + 1}`,
       canvas,
+      hdrPixels: depth === 32 ? channelsToRgba(chans, lw, lh, colorMode, clut).rgbaFloat : undefined,
       left: rec.left,
       top: rec.top,
       width: lw,
@@ -834,6 +859,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
 
   // ---- merged composite (Image Data section) ----
   let composite: HTMLCanvasElement | null = null
+  let hdrComposite: Float32Array | undefined
   let hasAlpha = false
   try {
     pos = Math.min(lmEnd, bytes.length)
@@ -878,7 +904,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       throw new Error(`Unsupported composite compression ${compr}`)
     }
     const res = channelsToRgba(chans, width, height, colorMode, clut)
-    composite = rgbaToCanvas2(res.rgba, width, height, res.rgba16)
+    composite = rgbaToCanvas2(res.rgba, width, height, res.rgba16, res.rgbaFloat)
+    hdrComposite = res.rgbaFloat
     hasAlpha = res.hasAlpha
   } catch {
     composite = null
@@ -898,7 +925,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
   }
 
-  return { canvas: composite, width, height, depth: depth as 8 | 16, hasAlpha, layers, resolutionPpi, imageResources }
+  return { canvas: composite, width, height, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, resolutionPpi, imageResources }
 }
 
 // ============================================================
