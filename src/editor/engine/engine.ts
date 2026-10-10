@@ -625,6 +625,9 @@ export class Engine {
       sourceBitDepth: src.sourceBitDepth,
       workingColorSpace: src.workingColorSpace,
       psdImageResources: src.psdImageResources ? [...src.psdImageResources] : undefined,
+      psdColorModeData: src.psdColorModeData,
+      psdSectionMarkers: src.psdSectionMarkers ? structuredClone(src.psdSectionMarkers) : undefined,
+      psdSectionLayerOrder: src.psdSectionLayerOrder?.map(id => layerIds.get(id) ?? id),
       metadata: src.metadata ? structuredClone(src.metadata) : undefined,
       proof: src.proof ? structuredClone(src.proof) : undefined,
       layers,
@@ -719,6 +722,8 @@ export class Engine {
       blendIf: layer.blendIf ? structuredClone(layer.blendIf) : null,
       fx: layer.fx ? structuredClone(layer.fx) : null,
       psdAdditionalInfo: layer.psdAdditionalInfo ? [...layer.psdAdditionalInfo] : layer.psdAdditionalInfo,
+      psdBlendingRanges: layer.psdBlendingRanges,
+      psdBlendKey: layer.psdBlendKey,
     }
   }
 
@@ -1415,6 +1420,8 @@ export class Engine {
       blendIf: src.blendIf ? structuredClone(src.blendIf) : null,
       fx: src.fx ? structuredClone(src.fx) : null,
       psdAdditionalInfo: src.psdAdditionalInfo ? [...src.psdAdditionalInfo] : src.psdAdditionalInfo,
+      psdBlendingRanges: src.psdBlendingRanges,
+      psdBlendKey: src.psdBlendKey,
       _v: src._v + 1,
       _mv: src._mv + 1,
     }
