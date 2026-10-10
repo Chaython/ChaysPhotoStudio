@@ -411,7 +411,7 @@ export function ExportDialog({ onClose }: DialogProps) {
     }
   }
 
-  const opts = info.options
+  const opts = format === 'psb' ? (['psdLayers'] as typeof info.options) : info.options
   const canExport = !!doc && !busy && (!opts.includes('icoSizes') || effectiveIcoSizes.length > 0)
 
   return (
@@ -438,7 +438,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             </Select>
           </div>
         </div>
-        <div className="text-[10px] text-muted-foreground -mt-1.5">{info.hint}</div>
+        <div className="text-[10px] text-muted-foreground -mt-1.5">{format === 'psb' ? 'PSB v2 large-document layered export (8/16-bit RGB). Advanced Photoshop layer objects require compatibility rasterization.' : info.hint}</div>
 
         {['png', 'jpeg', 'webp', 'tiff', 'psd'].includes(info.id) || format === 'psb' && (
           <div className="rounded border border-border/60 p-2 space-y-1">
