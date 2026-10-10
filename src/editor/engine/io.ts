@@ -322,6 +322,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     layer.offsetY = psd.top
     layer.opacity = Math.round(psd.opacity)
     layer.blendMode = (psd.blendMode || 'normal') as Layer['blendMode']
+    if (psd.rawBlendKey?.length === 4) layer.psdBlendKey = psd.rawBlendKey
     layer.visible = psd.visible
     layer.clipped = !!psd.clipped
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
@@ -547,6 +548,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       vectorMask: cloneVectorMask(l.vectorMask),
       psdAdditionalInfo: Array.isArray(l.psdAdditionalInfo) ? [...l.psdAdditionalInfo] : undefined,
       psdBlendingRanges: l.psdBlendingRanges,
+      psdBlendKey: l.psdBlendKey,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
       rawSmart: l.kind === 'smart' && l.rawSmart ? structuredClone(l.rawSmart) : undefined,
     },
@@ -697,6 +699,7 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     vectorMask: normalizeVectorMask(sl.props.vectorMask),
     psdAdditionalInfo: Array.isArray(sl.props.psdAdditionalInfo) ? sl.props.psdAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
     psdBlendingRanges: typeof sl.props.psdBlendingRanges === 'string' ? sl.props.psdBlendingRanges : undefined,
+    psdBlendKey: typeof sl.props.psdBlendKey === 'string' && sl.props.psdBlendKey.length === 4 ? sl.props.psdBlendKey : undefined,
     offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
     origin: sl.props.origin ?? null,
     rawSmart: sl.props.kind === 'smart' && typeof sl.props.rawSmart?.dataBase64 === 'string' &&
