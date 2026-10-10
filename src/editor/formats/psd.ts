@@ -853,7 +853,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const compatibilityWarnings = new Set<string>()
   const faithfullyMappedBlendKeys = new Set(['norm', 'dark', 'mul', 'mult', 'lite', 'scrn', 'screen',
     'over', 'hard', 'soft', 'diff', 'smud', 'xclu', 'hue', 'sat', 'colr', 'lum', 'div', 'idiv', 'dded'])
-  if (channels > baseChannels + 1) compatibilityWarnings.add('Additional Photoshop spot/alpha channels beyond merged transparency are not reconstructed in the canvas preview')
+  if (channels > baseChannels + 1) compatibilityWarnings.add(colorMode === 3
+    ? 'Extra Photoshop RGB spot/alpha channels are retained for compatible export but are not editable or visible in the canvas preview'
+    : 'Additional Photoshop spot/alpha channels beyond merged transparency are not reconstructed in the canvas preview')
   if (colorMode === 9) compatibilityWarnings.add('Photoshop Lab was converted to an approximate sRGB preview; editable Lab/ICC color data is not retained')
   if (colorMode === 4) compatibilityWarnings.add('Photoshop CMYK was converted to an approximate RGB preview; an ICC-managed conversion is not available')
   const records: PsdLayerRecord[] = []
