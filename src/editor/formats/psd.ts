@@ -699,8 +699,11 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           if (s0 !== 0x38 /* 8 */ || s1 !== 0x42 /* B */) break
           const key = str4(pos + 4)
           pos += 8
-          const blockLen = readLength(pos)
-          pos += lenSize
+          // Only specific PSB tagged blocks use 64-bit lengths; normal 8BIM
+          // layer descriptors still have 32-bit lengths (Adobe specification).
+          const uses64Length = psb && ['LMsk', 'Lr16', 'Lr32', 'Layr', 'Mt16', 'Mt32', 'Mtrn', 'Alph', 'FMsk', 'lnk2', 'FEid', 'FXid', 'PxSD'].includes(key)
+          const blockLen = uses64Length ? readLength(pos) : view.getUint32(pos)
+          pos += uses64Length ? 8 : 4
           const dataStart = pos
           if (key === 'luni' && blockLen >= 4 && dataStart + 4 <= bytes.length) {
             const charCount = view.getUint32(dataStart)
@@ -735,7 +738,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos = extraEnd
         records.push({
           top, left, bottom, right, channels, blendKey,
-          opacity, visible: (flags & 2) !== 0, clipped: clipping === 1, name, maskRect, fx, additionalInfo,
+          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, name, maskRect, fx, additionalInfo,
         })
       }
 
@@ -842,8 +845,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       const totalRows = channels * height
       const rowLens: number[] = []
       for (let i = 0; i < totalRows && pos + 2 <= bytes.length; i++) {
-        rowLens.push(view.getUint16(pos))
-        pos += 2
+        rowLens.push(psb ? view.getUint32(pos) : view.getUint16(pos))
+        pos += psb ? 4 : 2
       }
       for (let c = 0; c < channels; c++) {
         const raw = new Uint8Array(rowBytes * height)
@@ -1160,7 +1163,7 @@ export function buildPsd(
     recordParts.push(new Uint8Array([
       Math.max(0, Math.min(255, Math.round((p.input.opacity * 255) / 100))), // opacity
       p.input.clipped ? 1 : 0,   // clipping
-      p.input.visible ? 2 : 0,   // flags (bit 1 = visible)
+      p.input.visible ? 0 : 2,   // Photoshop bit 1 is HIDDEN (inverted)
       0,                          // filler
     ]))
     // extra data: mask block + blending ranges + pascal name
