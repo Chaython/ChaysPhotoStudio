@@ -887,5 +887,63 @@ for (const format of ['psd', 'psb'] as const) {
   )
 }
 
+
+function firstPhotoshopLayerRecord(bytes: Uint8Array) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const psb = view.getUint16(4) === 2
+  const lenSize = psb ? 8 : 4
+  let pos = 26
+  pos += 4 + view.getUint32(pos) // color-mode section
+  pos += 4 + view.getUint32(pos) // image resources
+  const lmAt = pos
+  const lmSize = psb ? view.getUint32(pos) * 4294967296 + view.getUint32(pos + 4) : view.getUint32(pos)
+  pos += lenSize
+  const liAt = pos
+  const liSize = psb ? view.getUint32(pos) * 4294967296 + view.getUint32(pos + 4) : view.getUint32(pos)
+  pos += lenSize
+  assert.ok(lmSize > liSize && liSize > 0)
+  assert.equal(Math.abs(view.getInt16(pos)), 1)
+  pos += 2
+  return { record: pos, lmAt, liAt, lenSize, psb }
+}
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(60, 100, 140)
+  const blob = buildPsd(2, 2, [{
+    name: 'Bounds regression', canvas: image,
+    left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true,
+  }], image, { format })
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  const { record, lmAt, liAt, lenSize, psb } = firstPhotoshopLayerRecord(bytes)
+  const original = new DataView(bytes.buffer)
+  const count = original.getUint16(record + 16)
+  const firstChannelLengthAt = record + 20
+  const extraLengthAt = record + 18 + count * (2 + lenSize) + 12
+  const broken = (mutate: (view: DataView) => void): Uint8Array => {
+    const clone = bytes.slice()
+    mutate(new DataView(clone.buffer))
+    return clone
+  }
+  const oversizedMaskSection = broken(v => {
+    if (psb) { v.setUint32(lmAt, 0xffffffff); v.setUint32(lmAt + 4, 0xffffffff) }
+    else v.setUint32(lmAt, 0xffffffff)
+  })
+  await assert.rejects(() => decodePsd(oversizedMaskSection),
+    /Unsupported Photoshop section length|Truncated Photoshop layer and mask section/)
+  const oversizedLayerSection = broken(v => {
+    if (psb) { v.setUint32(liAt, 0); v.setUint32(liAt + 4, 0xffffffff) }
+    else v.setUint32(liAt, 0xffffffff)
+  })
+  await assert.rejects(() => decodePsd(oversizedLayerSection), /Truncated Photoshop layer info section/)
+  await assert.rejects(() => decodePsd(broken(v => v.setUint16(record + 16, 57))),
+    /Invalid Photoshop layer channel table/)
+  await assert.rejects(() => decodePsd(broken(v => {
+    if (psb) { v.setUint32(firstChannelLengthAt, 0); v.setUint32(firstChannelLengthAt + 4, 1) }
+    else v.setUint32(firstChannelLengthAt, 1)
+  })), /Invalid Photoshop layer channel length/)
+  await assert.rejects(() => decodePsd(broken(v => v.setUint32(extraLengthAt, 0xffffffff))),
+    /Truncated Photoshop layer extra data/)
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
