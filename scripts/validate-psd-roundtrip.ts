@@ -192,5 +192,25 @@ for (const [planes, expected] of [
     Array.from(expected), 'PSD CMYK channels must use Photoshop inverted ink storage')
 }
 
-console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews pass')
+
+for (const format of ['psd', 'psb'] as const) {
+  const pixels = canvas(90, 80, 70)
+  const adjustmentBlock = new Uint8Array(16)
+  adjustmentBlock.set(new TextEncoder().encode('8BIMlevl'))
+  new DataView(adjustmentBlock.buffer).setUint32(8, 4)
+  const encoded = buildPsd(2, 2, [
+    { name: 'Artwork', canvas: pixels, left: 0, top: 0, opacity: 100, visible: true, blendMode: 'normal' },
+    { name: 'Levels', canvas: pixels, left: 0, top: 0, opacity: 100, visible: true,
+      blendMode: 'normal', sectionMarker: true, additionalInfo: [adjustmentBlock] },
+  ], pixels, { format, depth: 8 })
+  const decoded = await decodePsd(new Uint8Array(await encoded.arrayBuffer()))
+  assert.equal(decoded.layers.length, 1, 'unsupported Photoshop adjustment must not masquerade as raster')
+  assert.equal(decoded.sectionMarkers.length, 1)
+  assert.equal(decoded.sectionMarkers[0].kind, 'adjustment')
+  assert.equal(decoded.sectionMarkers[0].beforeLayerIndex, 1)
+  assert.deepEqual(Array.from(decoded.sectionMarkers[0].additionalInfo[0]), Array.from(adjustmentBlock))
+  assert.ok(decoded.warnings.some(w => w.includes('not rendered or editable')))
+}
+
+console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough pass')
 
