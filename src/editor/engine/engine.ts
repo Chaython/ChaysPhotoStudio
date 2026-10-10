@@ -627,6 +627,7 @@ export class Engine {
       psdImageResources: src.psdImageResources ? [...src.psdImageResources] : undefined,
       psdColorModeData: src.psdColorModeData,
       psdSourceColorMode: src.psdSourceColorMode,
+      psdExtraMergedChannels: src.psdExtraMergedChannels ? [...src.psdExtraMergedChannels] : undefined,
       psdSectionMarkers: src.psdSectionMarkers ? structuredClone(src.psdSectionMarkers) : undefined,
       psdSectionLayerOrder: src.psdSectionLayerOrder?.map(id => layerIds.get(id) ?? id),
       metadata: src.metadata ? structuredClone(src.metadata) : undefined,
