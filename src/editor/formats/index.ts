@@ -64,6 +64,8 @@ export interface DecodedImage {
   documentLayers?: ParsedDocumentLayer[]
   warnings?: string[]
   psdImageResources?: Uint8Array[]
+  /** Photoshop-origin 32-bit HDR color-mode payload (hdrt) for exact passthrough. */
+  psdColorModeData?: Uint8Array
   /** Non-rendering Photoshop folder boundary records retained in source order. */
   psdSectionMarkers?: import('./psd').PsdSectionMarker[]
   psdLayers?: {
@@ -372,6 +374,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
         sourceColorSpace: psd.depth === 32 ? 'linear-srgb' : undefined,
         resolutionPpi: psd.resolutionPpi,
         psdImageResources: psd.imageResources.map(b => b.slice()),
+        psdColorModeData: psd.depth === 32 ? psd.colorModeData.slice() : undefined,
         psdSectionMarkers: psd.sectionMarkers.map(m => ({
           ...m,
           additionalInfo: m.additionalInfo.map(b => b.slice()),
