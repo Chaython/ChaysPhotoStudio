@@ -335,7 +335,8 @@ export function ExportDialog({ onClose }: DialogProps) {
         downloadBlob(blob, `${outName}.ora`)
         store.pushToast(`Exported ${outName}.ora — ${layers.length} layers (complex effects may be rasterized)`, 'success')
       } else if (isPsd) {
-        if (doc.workingBitDepth === 32) throw new Error('32-bit HDR PSD/PSB export is not yet supported. Use the native project format to preserve scene-linear values.')
+        const hdrComposite = doc.workingBitDepth === 32 ? engine.hdrCompositeForPsd() : null
+        if (doc.workingBitDepth === 32 && !hdrComposite) throw new Error('Complex 32-bit HDR layers cannot be encoded losslessly as PSD/PSB. Simplify the document or preserve it in the native format.')
         const unsupported = doc.layers.filter(l => ['adjustment', 'text', 'shape', 'smart'].includes(l.kind))
         if (unsupported.length && !window.confirm(`${unsupported.length} editable layer(s) (adjustment/text/shape/Smart Object) cannot round-trip natively in Photoshop. Adjustment layers will be omitted and other layers rasterized. Continue exporting a compatibility copy?`)) return
         // ---- layered PSD: one record per layer (bottom-first = doc order) ----
@@ -355,6 +356,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             visible: l.visible,
             clipped: l.clipped,
             mask: l.maskEnabled ? l.mask : null,
+            hdrPixels: doc.workingBitDepth === 32 ? l.hdrPixels ?? undefined : undefined,
             fx: l.fx ? structuredClone(l.fx) : null,
             additionalInfo: l.psdAdditionalInfo?.map(base64Bytes),
           })
@@ -370,7 +372,8 @@ export function ExportDialog({ onClose }: DialogProps) {
         const metadataResources = includeMetadata ? buildPhotoshopMetadataResources(doc.metadata) : []
         const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), {
           resolutionPpi: doc.resolutionPpi ?? 72,
-          depth: doc.workingBitDepth === 16 ? 16 : 8,
+          depth: doc.workingBitDepth === 32 ? 32 : doc.workingBitDepth === 16 ? 16 : 8,
+          compositeHdrPixels: hdrComposite ?? undefined,
           format: format === 'psb' ? 'psb' : 'psd',
           imageResources: [...preservedResources, ...metadataResources],
         })
@@ -438,7 +441,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             </Select>
           </div>
         </div>
-        <div className="text-[10px] text-muted-foreground -mt-1.5">{format === 'psb' ? 'PSB v2 large-document layered export (8/16-bit RGB). Advanced Photoshop layer objects require compatibility rasterization.' : info.hint}</div>
+        <div className="text-[10px] text-muted-foreground -mt-1.5">{format === 'psb' ? 'PSB v2 large-document layered export (8/16/32-bit RGB). Advanced Photoshop layer objects require compatibility rasterization.' : info.hint}</div>
 
         {['png', 'jpeg', 'webp', 'tiff', 'psd'].includes(info.id) || format === 'psb' && (
           <div className="rounded border border-border/60 p-2 space-y-1">
