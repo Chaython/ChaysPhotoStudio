@@ -405,6 +405,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             rawBlendKey: l.psdBlendKey && l.blendMode === psdBlendKeyToMode(l.psdBlendKey) ? l.psdBlendKey : undefined,
             visible: l.visible,
             clipped: l.clipped,
+            locked: l.locked,
             mask: l.mask,
             maskEnabled: l.maskEnabled,
             hdrPixels: doc.workingBitDepth === 32 ? l.hdrPixels ?? undefined : undefined,
