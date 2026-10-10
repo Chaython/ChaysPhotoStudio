@@ -395,6 +395,8 @@ export interface Layer {
   psdUnsupportedRealMask?: boolean
   /** Source Photoshop-native layer descriptor, safe to preserve only while
    * raster pixels AND geometry remain unchanged from the original import. */
+  /** Imported Photoshop nested folder names for read-only Layers panel context. */
+  psdGroupPath?: string[]
   psdNativeOrigin?: {
     kind: 'text' | 'smart' | 'vector'
     pixelFingerprint: string
