@@ -327,6 +327,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     if (psd.groupPath?.length) layer.psdGroupPath = [...psd.groupPath]
     layer.visible = psd.visible
     layer.locked = psd.locked === true
+    if (psd.transparencyProtected) layer.psdTransparencyProtected = true
     layer.clipped = !!psd.clipped
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = psd.maskEnabled !== false }
     if (psd.unsupportedRealMask) layer.psdUnsupportedRealMask = true
@@ -565,6 +566,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       psdAdditionalInfo: Array.isArray(l.psdAdditionalInfo) ? [...l.psdAdditionalInfo] : undefined,
       psdBlendingRanges: l.psdBlendingRanges,
       psdBlendKey: l.psdBlendKey,
+      psdTransparencyProtected: l.psdTransparencyProtected,
       psdUnsupportedRealMask: l.psdUnsupportedRealMask,
       psdNativeOrigin: l.psdNativeOrigin ? structuredClone(l.psdNativeOrigin) : undefined,
       psdGroupPath: l.psdGroupPath ? [...l.psdGroupPath] : undefined,
@@ -720,6 +722,7 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     psdAdditionalInfo: Array.isArray(sl.props.psdAdditionalInfo) ? sl.props.psdAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
     psdBlendingRanges: typeof sl.props.psdBlendingRanges === 'string' ? sl.props.psdBlendingRanges : undefined,
     psdBlendKey: typeof sl.props.psdBlendKey === 'string' && sl.props.psdBlendKey.length === 4 ? sl.props.psdBlendKey : undefined,
+    psdTransparencyProtected: sl.props.psdTransparencyProtected === true,
     psdUnsupportedRealMask: sl.props.psdUnsupportedRealMask === true,
     psdGroupPath: Array.isArray(sl.props.psdGroupPath) && sl.props.psdGroupPath.every((name: unknown) => typeof name === 'string')
       ? sl.props.psdGroupPath.slice(0, 64) : undefined,
