@@ -60,7 +60,8 @@ for (const format of ['psd', 'psb'] as const) {
   const bottom = canvas(200, 0, 0)
   const hidden = canvas(0, 180, 0, 127)
   const blob = buildPsd(2, 2, [
-    { name: 'Base', canvas: bottom, left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true },
+    { name: 'Base', canvas: bottom, left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true,
+      blendingRanges: Uint8Array.from([0, 0, 255, 255, 0, 0, 255, 255]) },
     { name: 'Hidden ✓', canvas: hidden, left: 0, top: 0, opacity: 30, blendMode: 'normal', visible: false },
   ], bottom, { format, depth: 8, resolutionPpi: 300 })
   const bytes = new Uint8Array(await blob.arrayBuffer())
@@ -70,6 +71,7 @@ for (const format of ['psd', 'psb'] as const) {
   assert.equal(view.getUint16(24), 3)
   const decoded = await decodePsd(bytes)
   assert.equal(decoded.layers.length, 2)
+  assert.deepEqual(Array.from(decoded.layers[0].blendingRanges), [0,0,255,255,0,0,255,255], 'Photoshop Blend If ranges retained')
   assert.deepEqual(decoded.layers.map(l => l.name), ['Base', 'Hidden ✓'])
   assert.deepEqual(decoded.layers.map(l => l.visible), [true, false], 'Photoshop hidden flag is inverted')
   assert.equal(decoded.layers[1].opacity, 30)
