@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildPsd, decodePsd } from '../src/editor/formats/psd'
+import { buildPsd, decodePsd, restorePsdPrediction } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
 // without requiring a graphics stack or a browser installation.
@@ -104,4 +104,30 @@ for (const format of ['psd', 'psb'] as const) {
   }], image, { format, depth: 32, compositeHdrPixels: samples }), /full-resolution Float32/)
 }
 
-console.log('PSD/PSB 8-/32-bit round-trip: version, layers, visibility, alpha, Unicode and PPI pass')
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(50, 100, 150, 255)
+  const blob = buildPsd(2, 2, [{
+    name: '16-bit RGB', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], image, { format, depth: 16 })
+  const data = new Uint8Array(await blob.arrayBuffer())
+  assert.ok(Buffer.from(data).includes(Buffer.from('Lr16')), 'Photoshop high-depth layer section is present')
+  const decoded = await decodePsd(data)
+  assert.equal(decoded.depth, 16)
+  assert.equal(decoded.layers.length, 1, 'Lr16 contains editable layer records')
+  assert.equal(decoded.layers[0].name, '16-bit RGB')
+  assert.equal(decoded.layers[0].canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[0], 50)
+}
+assert.deepEqual(Array.from(restorePsdPrediction(Uint8Array.from([10,10,10]), 3, 1, 8)), [10,20,30])
+assert.deepEqual(Array.from(restorePsdPrediction(Uint8Array.from([0,10,0,10]), 2, 1, 16)), [0,10,0,20])
+const floats = new Uint8Array(8)
+const floatsView = new DataView(floats.buffer)
+floatsView.setFloat32(0, 2.5, false)
+floatsView.setFloat32(4, 0.125, false)
+const shuffled = Uint8Array.from([floats[0],floats[4],floats[1],floats[5],floats[2],floats[6],floats[3],floats[7]])
+for (let i = shuffled.length - 1; i > 0; i--) shuffled[i] = (shuffled[i] - shuffled[i - 1] + 256) & 255
+assert.deepEqual(Array.from(restorePsdPrediction(shuffled, 2, 1, 32)), Array.from(floats))
+assert.throws(() => restorePsdPrediction(Uint8Array.from([1,2,3]), 2, 1, 32), /Invalid PSD predicted/)
+
+console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode and PPI pass')\n
