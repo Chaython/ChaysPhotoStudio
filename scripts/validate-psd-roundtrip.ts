@@ -165,5 +165,32 @@ for (const format of ['psd', 'psb'] as const) {
   assert.deepEqual(Array.from(decoded.sectionMarkers[1].additionalInfo[0]), Array.from(close))
 }
 
-console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure pass')
+
+function cmykComposite(c: number, m: number, y: number, k: number): Uint8Array {
+  // PSD: 26-byte header, three empty sections, raw planar CMYK composite.
+  const bytes = new Uint8Array(26 + 4 + 4 + 4 + 2 + 4)
+  bytes.set(new TextEncoder().encode('8BPS'))
+  const view = new DataView(bytes.buffer)
+  view.setUint16(4, 1)
+  view.setUint16(12, 4)
+  view.setUint32(14, 1)
+  view.setUint32(18, 1)
+  view.setUint16(22, 8)
+  view.setUint16(24, 4)
+  view.setUint16(38, 0)
+  bytes.set([c, m, y, k], 40)
+  return bytes
+}
+for (const [planes, expected] of [
+  [[255, 255, 255, 255], [255, 255, 255]],
+  [[0, 255, 255, 255], [0, 255, 255]],
+  [[255, 255, 255, 0], [0, 0, 0]],
+  [[128, 255, 255, 255], [128, 255, 255]],
+] as const) {
+  const decoded = await decodePsd(cmykComposite(...planes))
+  assert.deepEqual(Array.from(decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data.slice(0, 3)),
+    Array.from(expected), 'PSD CMYK channels must use Photoshop inverted ink storage')
+}
+
+console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews pass')
 
