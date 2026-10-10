@@ -417,5 +417,46 @@ for (const format of ['psd', 'psb'] as const) {
   }
 }
 
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(90, 120, 150)
+  const userMask = canvas(255, 255, 255, 100)
+  const source = buildPsd(2, 2, [{
+    name: 'Masked', canvas: image, left: 1, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    mask: userMask, maskEnabled: false,
+  }], image, { format })
+  const bytes = new Uint8Array(await source.arrayBuffer())
+  const decoded = await decodePsd(bytes)
+  assert.equal(decoded.layers.length, 1)
+  assert.ok(decoded.layers[0].mask, 'Photoshop disabled masks retain their pixel channels')
+  assert.equal(decoded.layers[0].maskEnabled, false, 'Photoshop disabled-mask bit is respected')
+  assert.equal(decoded.layers[0].mask!.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 100)
+
+  // Change the Photoshop mask metadata only: default outside-mask color is
+  // white and mask position is layer-relative. The original 2x2 mask
+  // pixels stay encoded intact so they still test the real channel decoder.
+  const changed = bytes.slice()
+  const maskHeader = Uint8Array.from([
+    0, 0, 0, 20, // mask metadata length
+    0, 0, 0, 0, 0, 0, 0, 0, // top/left
+    0, 0, 0, 2, 0, 0, 0, 2, // bottom/right
+    0, 2, 0, 0, // default black, disabled, padding
+  ])
+  const offset = changed.findIndex((_, at) =>
+    at + maskHeader.length <= changed.length &&
+    maskHeader.every((byte, i) => changed[at + i] === byte))
+  assert.ok(offset >= 0, 'Photoshop mask metadata is present')
+  changed[offset + 20] = 255 // white outside recorded bounds
+  changed[offset + 21] = 1 // position relative to layer, mask enabled
+  const relative = await decodePsd(changed)
+  assert.equal(relative.layers[0].maskEnabled, true)
+  const mask = relative.layers[0].mask!.getContext('2d')!
+  assert.equal(mask.getImageData(0, 0, 1, 1).data[3], 255,
+    'Outside relative mask rectangle, Photoshop default color must be used')
+  assert.equal(mask.getImageData(1, 0, 1, 1).data[3], 100,
+    'Relative mask position must include the layer x offset')
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
