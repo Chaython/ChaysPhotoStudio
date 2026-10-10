@@ -145,7 +145,17 @@ export async function openFiles(files: File[], asLayer = false) {
           if ((decoded.warnings?.length ?? 0) > 3) store.pushToast(`${decoded.warnings!.length - 3} additional PSD compatibility warnings`, 'info')
           continue
         }
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: decoded.sourceFloatPixels ? 32 : canvasProfile(decoded.canvas).bitDepth, hdrPixels: decoded.sourceFloatPixels, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata })
+        engine.addCanvasDocument(decoded.canvas, file.name, {
+          sourceBitDepth: decoded.sourceBitDepth ?? 8,
+          workingBitDepth: decoded.sourceFloatPixels ? 32 : canvasProfile(decoded.canvas).bitDepth,
+          hdrPixels: decoded.sourceFloatPixels,
+          resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata,
+          psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
+          psdSourceColorMode: decoded.psdSourceColorMode,
+          psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
+          psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
+        })
+        for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(`${file.name}: ${warning}`, 'info')
         continue
       }
       if (!asLayer && hasDedicatedDocumentParser(file.name)) {
