@@ -786,6 +786,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     throw new Error(`Invalid PSD dimensions ${width}×${height}`)
   }
   if (depth !== 8 && depth !== 16 && depth !== 32) throw new Error(`Unsupported PSD depth ${depth} bits (only 8/16/32)`)
+  if (colorMode === 2 && depth !== 8) throw new Error('Photoshop indexed-color PSD requires 8-bit palette indices')
   if (depth === 32 && colorMode !== 3) throw new Error('32-bit PSD currently supports RGB color mode only')
   const baseChannels = colorMode === 3 || colorMode === 9 ? 3 : colorMode === 4 ? 4 : 1
   if (channels < baseChannels || channels > 56) throw new Error(`Invalid Photoshop channel count ${channels} for color mode ${colorMode}`)
@@ -807,6 +808,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const cmdLen = view.getUint32(pos)
   pos += 4
   if (cmdLen > bytes.length - pos) throw new Error('Truncated Photoshop color-mode data')
+  if (colorMode === 2 && cmdLen < 768) throw new Error('Truncated Photoshop indexed color palette')
   const colorModeData = bytes.slice(pos, pos + cmdLen)
   const clut = colorMode === 2 && cmdLen >= 768 ? colorModeData.subarray(0, 768) : null
   pos += cmdLen
