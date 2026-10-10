@@ -1253,6 +1253,7 @@ export function buildPsd(
     channels: { id: number; block: Uint8Array }[]
     maskDoc: { w: number; h: number; chan: Uint8Array } | null
   }
+  if (list.length > 32767) throw new Error('Photoshop PSD/PSB supports at most 32767 layer records per layer-info section')
   const prepared: Prepared[] = []
   for (const input of list) {
     const w = input.canvas.width
@@ -1280,7 +1281,12 @@ export function buildPsd(
   }
 
   // ---- layer records ----
-  const recordParts: Uint8Array[] = [u16(prepared.length)]
+  // A negative layer count tells Photoshop channel 4 is merged transparency,
+  // not an unrelated extra alpha channel. The ordinary layer order is unchanged.
+  const compositeAlpha = depth === 32 && options.compositeHdrPixels
+    ? options.compositeHdrPixels.some((v, i) => i % 4 === 3 && v < 1)
+    : getImageData(flat).data.some((v, i) => i % 4 === 3 && v < 255)
+  const recordParts: Uint8Array[] = [i16(compositeAlpha ? -prepared.length : prepared.length)]
   const channelDataParts: Uint8Array[] = []
   for (const p of prepared) {
     const w = p.input.canvas.width
