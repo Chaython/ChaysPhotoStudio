@@ -385,6 +385,18 @@ export interface PsdLayer {
   blendingRanges: Uint8Array
 }
 
+export interface PsdSectionMarker {
+  /** Position among raster layers in the original Photoshop record sequence. */
+  beforeLayerIndex: number
+  name: string
+  opacity: number
+  visible: boolean
+  blendKey: string
+  /** Original opaque Photoshop lsct/lsdk and other layer-info records. */
+  additionalInfo: Uint8Array[]
+  blendingRanges: Uint8Array
+}
+
 export interface PsdDecoded {
   canvas: HTMLCanvasElement      // merged composite
   width: number
@@ -395,7 +407,9 @@ export interface PsdDecoded {
   /** Raw merged 32-bit/channel scene-linear pixels when present. */
   hdrPixels?: Float32Array
   hasAlpha: boolean
-  layers: PsdLayer[]             // bottom-first (PSD storage order)
+  layers: PsdLayer[]             // storage order
+  /** Photoshop folder divider records retained separately from drawable layers. */
+  sectionMarkers: PsdSectionMarker[]
   /** ResolutionInfo image-resource metadata, pixels per inch. */
   resolutionPpi: number
   /** Opaque non-resolution image-resource blocks retained byte-for-byte. */
@@ -887,12 +901,28 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
 
   // ---- build layer canvases ----
   const layers: PsdLayer[] = []
+  const sectionMarkers: PsdSectionMarker[] = []
   for (let i = 0; i < records.length; i++) {
     const rec = records[i]
     const chans = layerChannels[i]
     const lw = rec.right - rec.left
     const lh = rec.bottom - rec.top
-    if (lw <= 0 || lh <= 0) continue
+    if (lw <= 0 || lh <= 0) {
+      // Group boundaries are zero-sized, zero-channel layer records with a
+      // section-divider tag. Retain their Photoshop metadata and position.
+      const divider = rec.additionalInfo.find(block =>
+        block.length >= 16 && ['lsct', 'lsdk'].includes(String.fromCharCode(...block.subarray(4, 8))))
+      const sectionType = divider ? new DataView(divider.buffer, divider.byteOffset).getUint32(12) : 0
+      if (divider && [1, 2, 3].includes(sectionType) && rec.channels.length === 0) {
+        sectionMarkers.push({
+          beforeLayerIndex: layers.length, name: rec.name, visible: rec.visible,
+          opacity: Math.round(rec.opacity * 100 / 255), blendKey: rec.blendKey,
+          additionalInfo: rec.additionalInfo.map(b => b.slice()),
+          blendingRanges: rec.blendingRanges.slice(),
+        })
+      } else compatibilityWarnings.add('One or more non-raster Photoshop layer records could not be preserved')
+      continue
+    }
     let canvas: HTMLCanvasElement
     let hdrPixels: Float32Array | undefined
     try {
@@ -1015,7 +1045,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
   }
 
-  return { canvas: composite, width, height, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, resolutionPpi, imageResources, warnings: [...compatibilityWarnings] }
+  return { canvas: composite, width, height, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, warnings: [...compatibilityWarnings] }
 }
 
 // ============================================================
@@ -1042,6 +1072,8 @@ export interface PsdLayerInput {
   additionalInfo?: Uint8Array[]
   /** Lossless passthrough of Photoshop source/destination blending ranges. */
   blendingRanges?: Uint8Array
+  /** Non-rendering Photoshop group delimiter. Has no pixel channels. */
+  sectionMarker?: boolean
 }
 
 /** PackBits-encode one row; returns the packed bytes */
@@ -1251,8 +1283,8 @@ export function buildPsd(
     flat = createCanvas(width, height)
     ctx2d(flat).drawImage(composite, 0, 0, width, height)
   }
-  let list = layers.filter(l => l.canvas && l.canvas.width > 0 && l.canvas.height > 0)
-  if (!list.length) {
+  let list = layers.filter(l => l.sectionMarker || (l.canvas && l.canvas.width > 0 && l.canvas.height > 0))
+  if (!list.some(l => !l.sectionMarker)) {
     list = [{ name: 'Background', canvas: flat, left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true }]
   }
 
@@ -1265,6 +1297,10 @@ export function buildPsd(
   if (list.length > 32767) throw new Error('Photoshop PSD/PSB supports at most 32767 layer records per layer-info section')
   const prepared: Prepared[] = []
   for (const input of list) {
+    if (input.sectionMarker) {
+      prepared.push({ input, channels: [], maskDoc: null })
+      continue
+    }
     const w = input.canvas.width
     const h = input.canvas.height
     const { r, g, b, a } = splitCanvasChannels(input.canvas, depth, input.hdrPixels)
@@ -1298,8 +1334,8 @@ export function buildPsd(
   const recordParts: Uint8Array[] = [i16(compositeAlpha ? -prepared.length : prepared.length)]
   const channelDataParts: Uint8Array[] = []
   for (const p of prepared) {
-    const w = p.input.canvas.width
-    const h = p.input.canvas.height
+    const w = p.input.sectionMarker ? 0 : p.input.canvas.width
+    const h = p.input.sectionMarker ? 0 : p.input.canvas.height
     const allChannels = p.maskDoc
       ? [...p.channels, { id: -2, block: encodeRleChannel(p.maskDoc.chan, p.maskDoc.w * bpc, p.maskDoc.h, rowLenBytes) }]
       : p.channels
