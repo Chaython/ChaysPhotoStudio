@@ -389,6 +389,8 @@ export interface Layer {
   psdAdditionalInfo?: string[]
   /** Opaque Photoshop Blend If ranges, base64; preserved when editing raster pixels. */
   psdBlendingRanges?: string
+  /** Original 4-byte Photoshop blend mode, including unsupported native modes. */
+  psdBlendKey?: string
   /** provenance marker — 'detect' = lifted from an AI-detected object box
    *  (Detect Objects dialog → "Layer"); lets the Layers panel badge it */
   origin?: 'detect'
