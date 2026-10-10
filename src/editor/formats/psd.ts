@@ -20,7 +20,7 @@ const PSD_TO_APP: Record<string, BlendMode> = {
   dark: 'darken', mul: 'multiply', mult: 'multiply',
   lite: 'lighten', scrn: 'screen', screen: 'screen',
   over: 'overlay', hard: 'hard-light', soft: 'soft-light',
-  diff: 'difference', smud: 'difference', xclu: 'difference',
+  diff: 'difference', smud: 'exclusion', xclu: 'exclusion',
   hue: 'hue', sat: 'saturation', colr: 'color', lum: 'luminosity',
   div: 'color-dodge', idiv: 'color-burn', dded: 'linear-dodge',
   lbrn: 'normal', lbrg: 'normal', vlig: 'hard-light', llig: 'linear-dodge', plig: 'hard-light',
@@ -29,7 +29,7 @@ const APP_TO_PSD: Record<BlendMode, string> = {
   normal: 'norm', multiply: 'mul ', screen: 'scrn', overlay: 'over',
   darken: 'dark', lighten: 'lite', 'color-dodge': 'div ', 'color-burn': 'idiv',
   'linear-dodge': 'dded', 'hard-light': 'hard', 'soft-light': 'soft',
-  difference: 'diff', exclusion: 'diff', hue: 'hue ', saturation: 'sat ',
+  difference: 'diff', exclusion: 'smud', hue: 'hue ', saturation: 'sat ',
   color: 'colr', luminosity: 'lum ',
 }
 
@@ -791,6 +791,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const lmEnd = pos + lmLen
 
   const compatibilityWarnings = new Set<string>()
+  const faithfullyMappedBlendKeys = new Set(['norm', 'dark', 'mul', 'mult', 'lite', 'scrn', 'screen',
+    'over', 'hard', 'soft', 'diff', 'smud', 'xclu', 'hue', 'sat', 'colr', 'lum', 'div', 'idiv', 'dded'])
   if (channels > baseChannels + 1) compatibilityWarnings.add('Additional Photoshop spot/alpha channels beyond merged transparency are not reconstructed in the canvas preview')
   if (colorMode === 9) compatibilityWarnings.add('Photoshop Lab was converted to an approximate sRGB preview; editable Lab/ICC color data is not retained')
   if (colorMode === 4) compatibilityWarnings.add('Photoshop CMYK was converted to an approximate RGB preview; an ICC-managed conversion is not available')
@@ -849,6 +851,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         }
         pos += 4 // blend signature '8BIM'
         const blendKey = str4(pos)
+        if (!faithfullyMappedBlendKeys.has(blendKey.trimEnd()) && blendKey.trimEnd() !== 'pass') {
+          compatibilityWarnings.add('Some Photoshop blend modes cannot be previewed faithfully by Studio; original mode keys are retained for Photoshop re-export')
+        }
         pos += 4
         const opacity = bytes[pos]
         const clipping = bytes[pos + 1]
@@ -1456,7 +1461,7 @@ export function buildPsd(
     for (const ch of allChannels) {
       recordParts.push(i16(ch.id), sectionLength(ch.block.length))
     }
-    recordParts.push(asciiBytes('8BIM'), asciiBytes(p.input.sectionMarker && p.input.rawBlendKey?.length === 4
+    recordParts.push(asciiBytes('8BIM'), asciiBytes(typeof p.input.rawBlendKey === 'string' && /^[\\x20-\\x7e]{4}$/.test(p.input.rawBlendKey)
       ? p.input.rawBlendKey : blendModeToPsdKey(p.input.blendMode)))
     recordParts.push(new Uint8Array([
       Math.max(0, Math.min(255, Math.round((p.input.opacity * 255) / 100))), // opacity
