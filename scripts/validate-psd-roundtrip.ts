@@ -710,5 +710,37 @@ for (const format of ['psd', 'psb'] as const) {
   assert.equal(photoshopProtection(parsedNew.layers[0].additionalInfo), 7)
 }
 
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(44, 55, 66)
+  const source = buildPsd(2, 2, [{
+    name: 'Legacy protected transparency', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    sourceTransparencyProtected: true, locked: true,
+  }], image, { format })
+  const imported = await decodePsd(new Uint8Array(await source.arrayBuffer()))
+  assert.equal(imported.layers[0].transparencyProtected, true)
+  assert.equal(imported.layers[0].locked, true,
+    'Legacy PSD record transparency-protection bit must lock imported layer')
+  const unchanged = buildPsd(2, 2, [{
+    name: 'Still protected', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    sourceTransparencyProtected: imported.layers[0].transparencyProtected, locked: true,
+    additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const reread = await decodePsd(new Uint8Array(await unchanged.arrayBuffer()))
+  assert.equal(reread.layers[0].transparencyProtected, true)
+  const unlocked = buildPsd(2, 2, [{
+    name: 'Unprotected', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    sourceTransparencyProtected: true, locked: false,
+    additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const updated = await decodePsd(new Uint8Array(await unlocked.arrayBuffer()))
+  assert.equal(updated.layers[0].transparencyProtected, false)
+  assert.equal(updated.layers[0].locked, false,
+    'Unlocking clears Photoshop layer-record protection in addition to lspf')
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
