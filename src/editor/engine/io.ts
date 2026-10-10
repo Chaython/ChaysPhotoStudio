@@ -324,6 +324,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     layer.opacity = Math.round(psd.opacity)
     layer.blendMode = (psd.blendMode || 'normal') as Layer['blendMode']
     if (psd.rawBlendKey?.length === 4) layer.psdBlendKey = psd.rawBlendKey
+    if (psd.groupPath?.length) layer.psdGroupPath = [...psd.groupPath]
     layer.visible = psd.visible
     layer.clipped = !!psd.clipped
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = psd.maskEnabled !== false }
@@ -565,6 +566,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       psdBlendKey: l.psdBlendKey,
       psdUnsupportedRealMask: l.psdUnsupportedRealMask,
       psdNativeOrigin: l.psdNativeOrigin ? structuredClone(l.psdNativeOrigin) : undefined,
+      psdGroupPath: l.psdGroupPath ? [...l.psdGroupPath] : undefined,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
       rawSmart: l.kind === 'smart' && l.rawSmart ? structuredClone(l.rawSmart) : undefined,
     },
@@ -718,6 +720,8 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     psdBlendingRanges: typeof sl.props.psdBlendingRanges === 'string' ? sl.props.psdBlendingRanges : undefined,
     psdBlendKey: typeof sl.props.psdBlendKey === 'string' && sl.props.psdBlendKey.length === 4 ? sl.props.psdBlendKey : undefined,
     psdUnsupportedRealMask: sl.props.psdUnsupportedRealMask === true,
+    psdGroupPath: Array.isArray(sl.props.psdGroupPath) && sl.props.psdGroupPath.every((name: unknown) => typeof name === 'string')
+      ? sl.props.psdGroupPath.slice(0, 64) : undefined,
     psdNativeOrigin: ['text', 'smart', 'vector'].includes(sl.props.psdNativeOrigin?.kind) &&
       typeof sl.props.psdNativeOrigin?.pixelFingerprint === 'string' &&
       (sl.props.psdNativeOrigin.maskFingerprint === null || typeof sl.props.psdNativeOrigin.maskFingerprint === 'string') &&
