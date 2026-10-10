@@ -360,7 +360,12 @@ for (const [samples, expected] of [
     Array.from(decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data),
     Array.from(expected), 'PSD spot channels must never override the first merged alpha channel')
   assert.equal(decoded.hasAlpha, samples.length >= 4)
-  if (samples.length > 4) assert.ok(decoded.warnings.some(w => w.includes('Additional Photoshop spot/alpha channels')))
+  if (samples.length > 4) {
+    assert.ok(decoded.warnings.some(w => w.includes('retained for compatible export')))
+    assert.deepEqual(decoded.extraMergedChannels.map(c => Array.from(c)),
+      Array.from(samples.slice(4)).map(value => [value]),
+      'Flattened extra channels retain their original single-pixel samples')
+  }
 }
 await assert.rejects(
   () => decodePsd(rgbWithExtraChannels([100, 150])),
