@@ -338,7 +338,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
   })
   if (decoded.psdSectionMarkers?.length) {
     doc.psdSectionMarkers = decoded.psdSectionMarkers.map(m => ({
-      beforeLayerIndex: m.beforeLayerIndex, name: m.name, opacity: m.opacity,
+      kind: m.kind, beforeLayerIndex: m.beforeLayerIndex, name: m.name, opacity: m.opacity,
       visible: m.visible, blendKey: m.blendKey,
       additionalInfo: m.additionalInfo.map(bytesToBase64),
       blendingRanges: bytesToBase64(m.blendingRanges),
