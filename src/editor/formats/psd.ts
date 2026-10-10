@@ -570,7 +570,7 @@ function decodePackBitsRow(src: Uint8Array, start: number, end: number, out: Uin
 /** combine channel planes → RGBA (RGBA / gray / CMYK / indexed) */
 function channelsToRgba(
   chans: Map<number, PsdPlane>, w: number, h: number,
-  colorMode: number, clut: Uint8Array | null,
+  colorMode: number, clut: Uint8Array | null, transparentIndex: number | null = null,
 ): { rgba: Uint8ClampedArray<ArrayBuffer>; rgba16?: Uint16Array; rgbaFloat?: Float32Array; hasAlpha: boolean } {
   const n = w * h
   const out = new Uint8ClampedArray(n * 4)
@@ -649,11 +649,19 @@ function channelsToRgba(
         break
       }
       case 2: {
-        const idx = s8(r, i) * 3
-        if (clut && idx + 2 < clut.length) {
-          rr16 = clut[idx] * 257
-          gg16 = clut[idx + 1] * 257
-          bb16 = clut[idx + 2] * 257
+        // Adobe PSD indexed palettes are PLANAR, not RGB triplets:
+        // [256 red samples][256 green samples][256 blue samples].
+        const index = s8(r, i)
+        if (clut && clut.length >= 768) {
+          rr16 = clut[index] * 257
+          gg16 = clut[256 + index] * 257
+          bb16 = clut[512 + index] * 257
+        }
+        if (transparentIndex === index) {
+          out[o + 3] = 0
+          if (out16) out16[o + 3] = 0
+          if (outFloat) outFloat[o + 3] = 0
+          hasAlpha = true
         }
         break
       }
@@ -720,6 +728,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const resStart = pos
   const resEnd = Math.min(bytes.length, resStart + resLen)
   let resolutionPpi = 72
+  let transparencyIndex: number | null = null
   const imageResources: Uint8Array[] = []
   // Parse Photoshop Image Resource Blocks enough to recover ResolutionInfo
   // (0x0400). The Pascal name is padded to an even byte boundary and resource
@@ -737,6 +746,10 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const dataLen = view.getUint32(pos)
     pos += 4
     const dataStart = pos
+    if (id === 0x0417 && colorMode === 2 && dataLen >= 2 && dataStart + 2 <= resEnd) {
+      const candidate = view.getUint16(dataStart)
+      if (candidate < 256) transparencyIndex = candidate
+    }
     if (id === 0x0400 && dataLen >= 16 && dataStart + 16 <= resEnd) {
       const hFixed = view.getUint32(dataStart)
       const vFixed = view.getUint32(dataStart + 8)
@@ -968,7 +981,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     let canvas: HTMLCanvasElement
     let hdrPixels: Float32Array | undefined
     try {
-      const { rgba, rgba16, rgbaFloat } = channelsToRgba(chans, lw, lh, colorMode, clut)
+      const { rgba, rgba16, rgbaFloat } = channelsToRgba(chans, lw, lh, colorMode, clut, transparencyIndex)
       hdrPixels = rgbaFloat
       canvas = rgbaToCanvas2(rgba, lw, lh, rgba16, rgbaFloat)
     } catch (error) {
@@ -1065,7 +1078,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     } else {
       throw new Error(`Unsupported composite compression ${compr}`)
     }
-    const res = channelsToRgba(chans, width, height, colorMode, clut)
+    const res = channelsToRgba(chans, width, height, colorMode, clut, transparencyIndex)
     composite = rgbaToCanvas2(res.rgba, width, height, res.rgba16, res.rgbaFloat)
     hdrComposite = res.rgbaFloat
     hasAlpha = res.hasAlpha
