@@ -955,29 +955,35 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         let fx: LayerFX | null = null
         let legacyFx: LayerFX | null = null
         let hasDescriptorFx = false
-        while (pos + 8 + lenSize <= extraEnd) {
+        // PSB changes the length field to 64-bit only for specific keys.
+        // Most PSB tagged blocks are still 12-byte records with a uint32
+        // length. Requiring 16 bytes here silently dropped short final tags.
+        while (pos + 12 <= extraEnd) {
           const blockStart = pos
-          const s0 = bytes[pos]
-          const s1 = bytes[pos + 1]
-          if (s0 !== 0x38 /* 8 */ || s1 !== 0x42 /* B */) break
+          const signature = str4(pos)
+          if (signature !== '8BIM' && signature !== '8B64') break
           const key = str4(pos + 4)
-          pos += 8
           // Only specific PSB tagged blocks use 64-bit lengths; normal 8BIM
           // layer descriptors still have 32-bit lengths (Adobe specification).
           const uses64Length = psb && ['LMsk', 'Lr16', 'Lr32', 'Layr', 'Mt16', 'Mt32', 'Mtrn', 'Alph', 'FMsk', 'lnk2', 'FEid', 'FXid', 'PxSD'].includes(key)
-          const blockLen = uses64Length ? readLength(pos) : view.getUint32(pos)
-          pos += uses64Length ? 8 : 4
-          const dataStart = pos
-          if (key === 'luni' && blockLen >= 4 && dataStart + 4 <= bytes.length) {
+          const headerSize = uses64Length ? 16 : 12
+          if (blockStart + headerSize > extraEnd) throw new Error(`Truncated Photoshop tagged block ${key} header`)
+          const blockLen = uses64Length ? readLength(blockStart + 8) : view.getUint32(blockStart + 8)
+          const dataStart = blockStart + headerSize
+          if (!Number.isSafeInteger(blockLen) || blockLen < 0 || blockLen + (blockLen & 1) > extraEnd - dataStart) {
+            throw new Error(`Truncated Photoshop tagged block ${key} payload`)
+          }
+          const blockEnd = dataStart + blockLen + (blockLen & 1)
+          if (key === 'luni' && blockLen >= 4) {
             const charCount = view.getUint32(dataStart)
+            if (charCount > (blockLen - 4) / 2) throw new Error('Truncated Photoshop Unicode layer name')
             let uni = ''
-            for (let ci = 0; ci < charCount && dataStart + 4 + ci * 2 + 1 < bytes.length; ci++) {
+            for (let ci = 0; ci < charCount; ci++) {
               uni += String.fromCharCode(view.getUint16(dataStart + 4 + ci * 2))
             }
             if (uni) name = uni
           }
-          const blockEnd = Math.min(extraEnd, dataStart + blockLen + (blockLen & 1))
-          if (blockEnd > blockStart && key !== 'luni') {
+          if (key !== 'luni') {
             const raw = bytes.slice(blockStart, blockEnd)
             if (key === 'chFX') {
               const parsed = parseChaysLayerFxBlock(raw)
