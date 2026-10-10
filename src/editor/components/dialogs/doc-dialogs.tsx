@@ -407,6 +407,8 @@ export function ExportDialog({ onClose }: DialogProps) {
           resolutionPpi: doc.resolutionPpi ?? 72,
           depth: doc.workingBitDepth === 32 ? 32 : doc.workingBitDepth === 16 ? 16 : 8,
           compositeHdrPixels: hdrComposite ?? undefined,
+          colorModeData: doc.workingBitDepth === 32 && doc.psdColorModeData
+            ? base64Bytes(doc.psdColorModeData) : undefined,
           format: format === 'psb' ? 'psb' : 'psd',
           imageResources: [...preservedResources, ...metadataResources],
         })
