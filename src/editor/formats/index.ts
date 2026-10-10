@@ -80,6 +80,8 @@ export interface DecodedImage {
     blendMode: string
     /** Photoshop 4-byte source blend key retained across a no-change export. */
     rawBlendKey?: string
+    /** Photoshop folder ancestry; informational, not native editable groups. */
+    groupPath?: string[]
     visible: boolean
     clipped?: boolean
     /** full-document-size mask canvas, mask value in the alpha channel */
@@ -397,6 +399,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           opacity: l.opacity,
           blendMode: psdBlendKeyToMode(l.blendKey),
           rawBlendKey: l.blendKey,
+          groupPath: l.groupPath ? [...l.groupPath] : [],
           visible: l.visible,
           clipped: l.clipped,
           mask: l.mask,
