@@ -375,6 +375,8 @@ export interface PsdLayer {
   mask: HTMLCanvasElement | null // full-document-size canvas, mask value in alpha
   /** Layer mask can exist but be disabled by Photoshop. */
   maskEnabled: boolean
+  /** Photoshop combined raster/vector mask (-3) that cannot round-trip natively. */
+  unsupportedRealMask: boolean
   /** Raw 32-bit/channel scene-linear pixels, never reduced to a canvas preview. */
   hdrPixels?: Float32Array
   /** Editable layer styles decoded from Chay's native style block or
@@ -1088,6 +1090,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       clipped: rec.clipped,
       mask,
       maskEnabled: !(rec.maskFlags & 2),
+      unsupportedRealMask: rec.channels.some(ch => ch.id === -3),
       fx: rec.fx ? structuredClone(rec.fx) : null,
       additionalInfo: rec.additionalInfo.map(b => b.slice()),
       blendingRanges: rec.blendingRanges.slice(),
