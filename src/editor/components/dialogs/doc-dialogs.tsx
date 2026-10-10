@@ -351,7 +351,9 @@ export function ExportDialog({ onClose }: DialogProps) {
           sectionMarkers.every(m => Number.isSafeInteger(m.beforeLayerIndex) &&
             m.beforeLayerIndex >= 0 && m.beforeLayerIndex <= doc.layers.length)
         if (sectionMarkers.length && !preserveGroups &&
-            !window.confirm('The layer order or layer types changed since this PSD was opened. Photoshop folder nesting cannot be preserved safely. Export without the original folder structure?')) return
+            !window.confirm('The layer order or layer types changed since this PSD was opened. Original Photoshop folder/adjustment records cannot be preserved safely. Export without those records?')) return
+        if (preserveGroups && sectionMarkers.some(m => m.kind === 'adjustment') &&
+            !window.confirm('This PSD contains Photoshop-only adjustment layers. Studio cannot render or edit these adjustments, but the original records can be retained for Photoshop. The appearance after opening in Photoshop may differ from the Studio preview. Continue?')) return
         // ---- layered PSD: raster records and safe, opaque folder delimiters ----
         const inputs: PsdLayerInput[] = []
         const markerSurface = preserveGroups ? createCanvas(1, 1) : null
