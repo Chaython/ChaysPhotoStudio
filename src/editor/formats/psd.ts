@@ -400,6 +400,8 @@ export interface PsdSectionMarker {
 }
 
 export interface PsdDecoded {
+  /** Original PSD color mode; RGB-only exports cannot reuse CMYK/Lab ICC profiles. */
+  colorMode: number
   canvas: HTMLCanvasElement      // merged composite
   width: number
   height: number
@@ -1149,7 +1151,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     hasAlpha = getImageData(composite).data.some((v, i) => i % 4 === 3 && v < 255)
   }
 
-  return { canvas: composite, width, height, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, colorModeData, warnings: [...compatibilityWarnings] }
+  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, colorModeData, warnings: [...compatibilityWarnings] }
 }
 
 // ============================================================
@@ -1374,7 +1376,7 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array } = {},
+  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; sourceColorMode?: number; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array } = {},
 ): Blob {
   const depth: 8 | 16 | 32 = options.depth === 32 ? 32 : options.depth === 16 ? 16 : 8
   const psb = options.format === 'psb'
@@ -1547,8 +1549,11 @@ export function buildPsd(
     if (!(block instanceof Uint8Array) || block.length < 12) return false
     const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
     const id = (block[4] << 8) | block[5]
-    // Writer owns the canonical ResolutionInfo resource; do not duplicate it.
-    return (sig === '8BIM' || sig === 'MeSa') && id !== 0x03ed
+    // Writer owns ResolutionInfo. Indexed transparency (1047) does not
+    // belong in an RGB export, and a CMYK/Lab ICC profile (1039) would
+    // misinterpret the RGB pixels if carried over unchanged.
+    return (sig === '8BIM' || sig === 'MeSa') && id !== 0x03ed && id !== 0x0417 &&
+      !(id === 0x040f && options.sourceColorMode !== undefined && options.sourceColorMode !== 3)
   })
   const resources = concatUint8([resolutionResource, ...preservedResources])
 
