@@ -65,6 +65,10 @@ for (const format of ['psd', 'psb'] as const) {
     { name: 'Hidden ✓', canvas: hidden, left: 0, top: 0, opacity: 30, blendMode: 'normal', visible: false },
   ], bottom, { format, depth: 8, resolutionPpi: 300 })
   const bytes = new Uint8Array(await blob.arrayBuffer())
+  // Photoshop's canonical 1005/0x03ED ResolutionInfo resource.
+  const marker = Uint8Array.from([0x38, 0x42, 0x49, 0x4d, 0x03, 0xed])
+  assert.ok(bytes.some((_, at) => at + marker.length <= bytes.length &&
+    marker.every((value, i) => bytes[at + i] === value)), 'Photoshop ResolutionInfo must use resource ID 1005')
   const view = new DataView(bytes.buffer)
   assert.equal(view.getUint16(4), format === 'psb' ? 2 : 1, 'version matches export format')
   assert.equal(view.getUint16(22), 8)
@@ -78,6 +82,14 @@ for (const format of ['psd', 'psb'] as const) {
   assert.equal(decoded.layers[0].canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[0], 200)
   assert.equal(decoded.layers[1].canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 127)
   assert.ok(Math.abs(decoded.resolutionPpi - 300) < 0.01)
+  const oldBytes = bytes.slice()
+  const oldMarker = oldBytes.findIndex((_, at) => at + 5 < oldBytes.length &&
+    marker.every((value, i) => oldBytes[at + i] === value))
+  assert.ok(oldMarker >= 0)
+  oldBytes[oldMarker + 4] = 0x04
+  oldBytes[oldMarker + 5] = 0x00
+  const oldDecoded = await decodePsd(oldBytes)
+  assert.ok(Math.abs(oldDecoded.resolutionPpi - 300) < 0.01, 'old Studio PPI metadata remains readable')
 }
 
 for (const format of ['psd', 'psb'] as const) {
