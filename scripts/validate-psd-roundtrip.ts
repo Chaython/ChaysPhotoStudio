@@ -617,5 +617,50 @@ for (const format of ['psd', 'psb'] as const) {
     new TextDecoder().decode(b.subarray(4, 8)) === 'lyid').length, 1)
 }
 
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(70, 80, 90)
+  const style = { dropShadow: {
+    enabled: true, color: '#223344', opacity: 70, angle: 30,
+    distance: 7, blur: 5, blendMode: 'multiply' as const,
+    spread: 0, noise: 0,
+  } }
+  const withEditableStyle = buildPsd(2, 2, [{
+    name: 'Photoshop effects', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, fx: style,
+  }], image, { format })
+  const studioDecoded = await decodePsd(new Uint8Array(await withEditableStyle.arrayBuffer()))
+  const legacyBlock = photoshopTaggedBlock(studioDecoded.layers[0].additionalInfo, 'lrFX')
+  // Simulate an authentic Photoshop source containing only a legacy lrFX block.
+  const photoshopOnly = buildPsd(2, 2, [{
+    name: 'Photoshop effects', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: [legacyBlock],
+  }], image, { format })
+  const imported = await decodePsd(new Uint8Array(await photoshopOnly.arrayBuffer()))
+  assert.ok(imported.layers[0].fx?.dropShadow, 'Photoshop legacy FX should be editable')
+  assert.deepEqual(Array.from(photoshopTaggedBlock(imported.layers[0].additionalInfo, 'lrFX')),
+    Array.from(legacyBlock), 'Importer must retain source effect bytes')
+  const noOp = buildPsd(2, 2, [{
+    name: 'Unchanged style', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    fx: imported.layers[0].fx, additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const unmodified = await decodePsd(new Uint8Array(await noOp.arrayBuffer()))
+  assert.deepEqual(Array.from(photoshopTaggedBlock(unmodified.layers[0].additionalInfo, 'lrFX')),
+    Array.from(legacyBlock), 'Unchanged Photoshop legacy FX must survive byte-for-byte')
+  const modified = structuredClone(imported.layers[0].fx)!
+  modified.dropShadow!.opacity = 25
+  const editedExport = buildPsd(2, 2, [{
+    name: 'Changed style', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    fx: modified, additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const edited = await decodePsd(new Uint8Array(await editedExport.arrayBuffer()))
+  assert.notDeepEqual(Array.from(photoshopTaggedBlock(edited.layers[0].additionalInfo, 'lrFX')),
+    Array.from(legacyBlock), 'Edited native styles regenerate Photoshop effects')
+  assert.ok(edited.layers[0].fx?.dropShadow?.opacity !== imported.layers[0].fx?.dropShadow?.opacity)
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
