@@ -858,33 +858,27 @@ for (const format of ['psd', 'psb'] as const) {
   /no longer matches dimensions or bit depth/, 'Stale extra channel dimensions are rejected')
 }
 
-function mergedImageOffset(bytes: Uint8Array): number {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  const psb = view.getUint16(4) === 2
-  let pos = 26
-  const colorModeLength = view.getUint32(pos)
-  pos += 4 + colorModeLength
-  const resourcesLength = view.getUint32(pos)
-  pos += 4 + resourcesLength
-  const lmLength = psb
-    ? view.getUint32(pos) * 4294967296 + view.getUint32(pos + 4)
-    : view.getUint32(pos)
-  pos += (psb ? 8 : 4) + lmLength
-  return pos
-}
 for (const format of ['psd', 'psb'] as const) {
-  const image = canvas(10, 20, 30)
-  const file = buildPsd(2, 2, [{
-    name: 'RLE rows', canvas: image, left: 0, top: 0,
-    opacity: 100, blendMode: 'normal', visible: true,
-  }], image, { format })
-  const data = new Uint8Array(await file.arrayBuffer())
-  const begin = mergedImageOffset(data)
-  assert.equal(new DataView(data.buffer).getUint16(begin), 1)
+  // Construct a flattened image with no layer fallback, deliberately cutting
+  // its shared RLE table short after one 16/32-bit row-length entry.
+  const psb = format === 'psb'
+  const data = new Uint8Array(26 + 4 + 4 + (psb ? 8 : 4) + 2 + (psb ? 4 : 2))
+  const view = new DataView(data.buffer)
+  data.set(new TextEncoder().encode('8BPS'), 0)
+  view.setUint16(4, psb ? 2 : 1)
+  view.setUint16(12, 4) // RGBA
+  view.setUint32(14, 1)
+  view.setUint32(18, 1)
+  view.setUint16(22, 8)
+  view.setUint16(24, 3)
+  const imageStart = 26 + 4 + 4 + (psb ? 8 : 4)
+  view.setUint16(imageStart, 1) // compression RLE
+  if (psb) view.setUint32(imageStart + 2, 2)
+  else view.setUint16(imageStart + 2, 2)
   await assert.rejects(
-    () => decodePsd(data.slice(0, begin + 4)),
-    /Cannot decode PSD merged image and no raster layers are available|Truncated PSD merged RLE row-length table/,
-    'A truncated PSD/PSB shared RLE row table must reject incomplete composite data',
+    () => decodePsd(data),
+    /Cannot decode PSD merged image and no raster layers are available: Truncated PSD merged RLE row-length table/,
+    'A truncated flattened PSD/PSB shared RLE table must fail instead of opening blank',
   )
 }
 
