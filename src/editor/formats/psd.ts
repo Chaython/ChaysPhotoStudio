@@ -1198,10 +1198,14 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     } else if (compr === 1) {
       // shared row table: channels × height 2-byte entries, then all rows
       const totalRows = channels * height
+      const rowLenBytes = psb ? 4 : 2
+      if (totalRows * rowLenBytes > bytes.length - pos) {
+        throw new Error('Truncated PSD merged RLE row-length table')
+      }
       const rowLens: number[] = []
-      for (let i = 0; i < totalRows && pos + 2 <= bytes.length; i++) {
+      for (let i = 0; i < totalRows; i++) {
         rowLens.push(psb ? view.getUint32(pos) : view.getUint16(pos))
-        pos += psb ? 4 : 2
+        pos += rowLenBytes
       }
       for (let c = 0; c < channels; c++) {
         const raw = new Uint8Array(rowBytes * height)
