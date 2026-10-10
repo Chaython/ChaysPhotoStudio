@@ -317,7 +317,7 @@ def main():
                 source.wait_for(state="visible", timeout=30000)
                 source.fill("gimp-drawable-levels")
                 page.get_by_role("button", name="Analyze source").click()
-                page.get_by_text("gimp-drawable-levels", exact=True).wait_for(state="visible")
+                page.get_by_text("gimp-drawable-levels", exact=True).last.wait_for(state="visible")
                 check(page.evaluate("() => window.__workerTestRecord.created") == initial,
                       "static GIMP source analysis unexpectedly started a Worker")
                 page.get_by_role("tab", name="GIMP Runtime").click()
