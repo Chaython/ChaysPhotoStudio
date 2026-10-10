@@ -77,4 +77,31 @@ for (const format of ['psd', 'psb'] as const) {
   assert.equal(decoded.layers[1].canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 127)
   assert.ok(Math.abs(decoded.resolutionPpi - 300) < 0.01)
 }
-console.log('PSD/PSB 8-bit round-trip: version, layers, visibility, alpha, Unicode and PPI pass')
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(84, 173, 246, 200)
+  const samples = new Float32Array([
+    2.5, 0.5, 0.25, 1,
+    1.25, 0.125, 0, 0.75,
+    0, 0.5, 3.75, 1,
+    0.25, 0.25, 0.25, 0.5,
+  ])
+  const blob = buildPsd(2, 2, [{
+    name: 'HDR layer', canvas: image, left: 0, top: 0, opacity: 100,
+    blendMode: 'normal', visible: true, hdrPixels: samples,
+  }], image, { format, depth: 32, compositeHdrPixels: samples })
+  const data = new Uint8Array(await blob.arrayBuffer())
+  assert.equal(new DataView(data.buffer).getUint16(22), 32)
+  const decoded = await decodePsd(data)
+  assert.equal(decoded.depth, 32)
+  assert.ok(decoded.hdrPixels)
+  assert.deepEqual(Array.from(decoded.hdrPixels), Array.from(samples), 'HDR composite survives Photoshop float round-trip')
+  assert.ok(decoded.layers[0].hdrPixels)
+  assert.deepEqual(Array.from(decoded.layers[0].hdrPixels), Array.from(samples), 'HDR layer survives Photoshop float round-trip')
+  assert.throws(() => buildPsd(2, 2, [{
+    name: 'Missing HDR', canvas: image, left: 0, top: 0, opacity: 100,
+    blendMode: 'normal', visible: true,
+  }], image, { format, depth: 32, compositeHdrPixels: samples }), /full-resolution Float32/)
+}
+
+console.log('PSD/PSB 8-/32-bit round-trip: version, layers, visibility, alpha, Unicode and PPI pass')
