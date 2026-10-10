@@ -416,6 +416,8 @@ export interface PsdDecoded {
   resolutionPpi: number
   /** Opaque non-resolution image-resource blocks retained byte-for-byte. */
   imageResources: Uint8Array[]
+  /** Original Photoshop color-mode section payload (especially 32-bit hdrt). */
+  colorModeData: Uint8Array
   /** Unsupported Photoshop objects retained as opaque blocks only. */
   warnings: string[]
 }
@@ -720,7 +722,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   // ---- color mode data (holds the CLUT for indexed files) ----
   const cmdLen = view.getUint32(pos)
   pos += 4
-  const clut = colorMode === 2 && cmdLen >= 768 ? bytes.subarray(pos, pos + 768) : null
+  if (cmdLen > bytes.length - pos) throw new Error('Truncated Photoshop color-mode data')
+  const colorModeData = bytes.slice(pos, pos + cmdLen)
+  const clut = colorMode === 2 && cmdLen >= 768 ? colorModeData.subarray(0, 768) : null
   pos += cmdLen
   // ---- image resources ----
   const resLen = view.getUint32(pos)
@@ -1105,7 +1109,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
   }
 
-  return { canvas: composite, width, height, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, warnings: [...compatibilityWarnings] }
+  return { canvas: composite, width, height, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, colorModeData, warnings: [...compatibilityWarnings] }
 }
 
 // ============================================================
@@ -1330,10 +1334,18 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array } = {},
+  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array } = {},
 ): Blob {
   const depth: 8 | 16 | 32 = options.depth === 32 ? 32 : options.depth === 16 ? 16 : 8
   const psb = options.format === 'psb'
+  // Photoshop 32-bit RGB documents require their HDR tone-preview data
+  // ('hdrt') in the color-mode section. No verified generic writer exists
+  // yet; round-trip the Photoshop-authored bytes instead of fabricating it.
+  const colorModeData = depth === 32 ? options.colorModeData : undefined
+  if (depth === 32 && !(colorModeData instanceof Uint8Array && colorModeData.length >= 8 &&
+    String.fromCharCode(...colorModeData.subarray(0, 4)) === 'hdrt')) {
+    throw new Error('32-bit PSD/PSB export requires Photoshop-origin HDR color-mode data (hdrt); use the native project format for new HDR documents')
+  }
   if (!psb && (width > 30000 || height > 30000)) throw new Error('PSD maximum dimension exceeded; export PSB instead')
   if (width > 300000 || height > 300000 || width < 1 || height < 1) throw new Error('Invalid PSD/PSB dimensions')
   const sectionLength = psb ? u64 : u32
@@ -1550,7 +1562,8 @@ export function buildPsd(
   hv.setUint16(22, depth) // depth
   hv.setUint16(24, 3)     // color mode: RGB
 
-  return new Blob([header, u32(0), u32(resources.length), resources, lmSection, compositeSection] as unknown as BlobPart[], {
+  const colorModeSection = depth === 32 ? colorModeData! : new Uint8Array(0)
+  return new Blob([header, u32(colorModeSection.length), colorModeSection, u32(resources.length), resources, lmSection, compositeSection] as unknown as BlobPart[], {
     type: 'image/vnd.adobe.photoshop',
   })
 }
