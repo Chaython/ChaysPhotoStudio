@@ -581,5 +581,34 @@ for (const format of ['psd', 'psb'] as const) {
   ], 'PSD/PSB file parsing must expose original nested group ancestry')
 }
 
+
+function photoshopLayerId(blocks: readonly Uint8Array[]): number {
+  const idBlock = blocks.find(b => b.length >= 16 &&
+    new TextDecoder().decode(b.subarray(4, 8)) === 'lyid')
+  assert.ok(idBlock, 'Every exported Photoshop layer needs a unique lyid record')
+  assert.equal(new DataView(idBlock.buffer, idBlock.byteOffset).getUint32(8), 4)
+  return new DataView(idBlock.buffer, idBlock.byteOffset).getUint32(12)
+}
+const originalIdRecord = nativeDescriptor('lyid')
+new DataView(originalIdRecord.buffer).setUint32(12, 42)
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(31, 63, 95)
+  const blob = buildPsd(2, 2, [
+    { name: 'Original ID', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, additionalInfo: [originalIdRecord] },
+    { name: 'Duplicated ID', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, additionalInfo: [originalIdRecord] },
+    { name: 'New layer', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true },
+  ], image, { format, depth: 8 })
+  const parsed = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
+  const ids = parsed.layers.map(l => photoshopLayerId(l.additionalInfo))
+  assert.equal(ids[0], 42, 'Original imported Photoshop layer ID remains stable')
+  assert.equal(new Set(ids).size, 3, 'Duplicated Photoshop layer IDs are regenerated on export')
+  assert.ok(ids.every(id => id > 0), 'Generated IDs must be valid positive 32-bit values')
+  assert.equal(parsed.layers[0].additionalInfo.filter(b =>
+    new TextDecoder().decode(b.subarray(4, 8)) === 'lyid').length, 1)
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
