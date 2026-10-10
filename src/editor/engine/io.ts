@@ -326,7 +326,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     if (psd.rawBlendKey?.length === 4) layer.psdBlendKey = psd.rawBlendKey
     layer.visible = psd.visible
     layer.clipped = !!psd.clipped
-    if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
+    if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = psd.maskEnabled !== false }
     if (psd.fx) layer.fx = structuredClone(psd.fx)
     if (psd.additionalInfo?.length) layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
     if (psd.blendingRanges?.length) layer.psdBlendingRanges = bytesToBase64(psd.blendingRanges)
