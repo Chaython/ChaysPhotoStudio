@@ -7,10 +7,14 @@ class TestImageData {
   data: Uint8ClampedArray
   width: number
   height: number
-  constructor(data: Uint8ClampedArray, width: number, height: number) {
-    this.data = data
-    this.width = width
-    this.height = height
+  constructor(dataOrWidth: Uint8ClampedArray | number, widthOrHeight: number, height?: number) {
+    // Canvas ImageData supports both (typedArray, width, height) and
+    // (width, height). The latter is used by Photoshop mask reconstruction.
+    this.width = typeof dataOrWidth === 'number' ? dataOrWidth : widthOrHeight
+    this.height = typeof dataOrWidth === 'number' ? widthOrHeight : height!
+    this.data = typeof dataOrWidth === 'number'
+      ? new Uint8ClampedArray(this.width * this.height * 4)
+      : dataOrWidth
   }
 }
 class TestCanvas {
