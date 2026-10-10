@@ -132,5 +132,38 @@ for (let i = shuffled.length - 1; i > 0; i--) shuffled[i] = (shuffled[i] - shuff
 assert.deepEqual(Array.from(restorePsdPrediction(shuffled, 2, 1, 32)), Array.from(floats))
 assert.throws(() => restorePsdPrediction(Uint8Array.from([1,2,3]), 2, 1, 32), /Invalid PSD predicted/)
 
-console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode and PPI pass')
+
+function sectionDivider(type: 1 | 2 | 3): Uint8Array {
+  const block = new Uint8Array(16)
+  block.set(new TextEncoder().encode('8BIMlsct'), 0)
+  new DataView(block.buffer).setUint32(8, 4)
+  new DataView(block.buffer).setUint32(12, type)
+  return block
+}
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(80, 130, 180)
+  const open = sectionDivider(1)
+  const close = sectionDivider(3)
+  const blob = buildPsd(2, 2, [
+    { name: 'Folder A', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', rawBlendKey: 'pass', visible: true,
+      sectionMarker: true, additionalInfo: [open] },
+    { name: 'Artwork', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true },
+    { name: '</Layer group>', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true,
+      additionalInfo: [close] },
+  ], image, { format, depth: 8 })
+  const decoded = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
+  assert.equal(decoded.layers.length, 1, 'group boundaries must not become drawable layers')
+  assert.deepEqual(decoded.sectionMarkers.map(m => m.beforeLayerIndex), [0, 1],
+    'group marker positions are stable relative to drawable layers')
+  assert.deepEqual(decoded.sectionMarkers.map(m => m.name), ['Folder A', '</Layer group>'])
+  assert.equal(decoded.sectionMarkers[0].blendKey, 'pass', 'folder pass-through blending survives')
+  assert.deepEqual(Array.from(decoded.sectionMarkers[0].additionalInfo[0]), Array.from(open))
+  assert.deepEqual(Array.from(decoded.sectionMarkers[1].additionalInfo[0]), Array.from(close))
+}
+
+console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure pass')
 
