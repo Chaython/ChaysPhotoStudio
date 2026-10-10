@@ -636,6 +636,8 @@ export interface PsDocument {
   psdImageResources?: string[]
   /** Original Photoshop 32-bit HDR tone-preview settings, base64. */
   psdColorModeData?: string
+  /** Original Photoshop color mode for compatible ICC/resource preservation. */
+  psdSourceColorMode?: number
   /** Opaque Photoshop folder delimiters / zero-channel adjustment records.
    * Re-exported only while original source layer ordering remains unchanged. */
   psdSectionMarkers?: Array<{
