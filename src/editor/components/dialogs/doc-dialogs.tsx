@@ -292,7 +292,7 @@ export function ExportDialog({ onClose }: DialogProps) {
   const [busy, setBusy] = useState(false)
 
   const info = FORMAT_INFO.find(f => f.id === format) ?? FORMAT_INFO[0]
-  const isPsd = info.id === 'psd' || format === 'ora'
+  const isPsd = format === 'psd' || format === 'psb' || format === 'ora'
   // icon entries can't exceed the source dimensions
   const icoPool = ICO_SIZE_POOL.filter(s => s <= Math.min(doc?.width ?? 256, doc?.height ?? 256))
   const effectiveIcoSizes = icoSizes.filter(s => icoPool.includes(s))
@@ -335,6 +335,9 @@ export function ExportDialog({ onClose }: DialogProps) {
         downloadBlob(blob, `${outName}.ora`)
         store.pushToast(`Exported ${outName}.ora — ${layers.length} layers (complex effects may be rasterized)`, 'success')
       } else if (isPsd) {
+        if (doc.workingBitDepth === 32) throw new Error('32-bit HDR PSD/PSB export is not yet supported. Use the native project format to preserve scene-linear values.')
+        const unsupported = doc.layers.filter(l => ['adjustment', 'text', 'shape', 'smart'].includes(l.kind))
+        if (unsupported.length && !window.confirm(`${unsupported.length} editable layer(s) (adjustment/text/shape/Smart Object) cannot round-trip natively in Photoshop. Adjustment layers will be omitted and other layers rasterized. Continue exporting a compatibility copy?`)) return
         // ---- layered PSD: one record per layer (bottom-first = doc order) ----
         const inputs: PsdLayerInput[] = []
         for (const l of doc.layers) {
@@ -356,7 +359,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             additionalInfo: l.psdAdditionalInfo?.map(base64Bytes),
           })
         }
-        showProgress('Building PSD…')
+        showProgress(format === 'psb' ? 'Building PSB…' : 'Building PSD…')
         await sleep(16) // let the progress bar paint before the sync encode
         const preservedResources = (doc.psdImageResources ?? [])
           .map(base64Bytes)
@@ -367,11 +370,12 @@ export function ExportDialog({ onClose }: DialogProps) {
         const metadataResources = includeMetadata ? buildPhotoshopMetadataResources(doc.metadata) : []
         const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), {
           resolutionPpi: doc.resolutionPpi ?? 72,
-          depth: doc.workingBitDepth === 32 ? 16 : doc.workingBitDepth === 16 ? 16 : 8,
+          depth: doc.workingBitDepth === 16 ? 16 : 8,
+          format: format === 'psb' ? 'psb' : 'psd',
           imageResources: [...preservedResources, ...metadataResources],
         })
-        downloadBlob(blob, `${outName}.psd`)
-        store.pushToast(`Exported ${outName}.psd — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
+        downloadBlob(blob, `${outName}.${format}`)
+        store.pushToast(`Exported ${outName}.${format} — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
       } else {
         // ---- flattened raster formats ----
         const flat = compositeDocument(doc)
@@ -429,13 +433,14 @@ export function ExportDialog({ onClose }: DialogProps) {
                     {f.label}
                   </SelectItem>
                 ))}
+                <SelectItem value="psb" className="text-xs">PSB (large document, layered)</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
         <div className="text-[10px] text-muted-foreground -mt-1.5">{info.hint}</div>
 
-        {['png', 'jpeg', 'webp', 'tiff', 'psd'].includes(info.id) && (
+        {['png', 'jpeg', 'webp', 'tiff', 'psd'].includes(info.id) || format === 'psb' && (
           <div className="rounded border border-border/60 p-2 space-y-1">
             <label className="flex items-center gap-2 text-[11px] cursor-pointer">
               <input
