@@ -632,8 +632,10 @@ export interface PsDocument {
   sourceBitDepth?: number
   /** Opaque Photoshop image-resource blocks retained from imported PSD/PSB. */
   psdImageResources?: string[]
-  /** Opaque Photoshop group delimiters; retained only when source layer ordering remains unchanged. */
+  /** Opaque Photoshop folder delimiters / zero-channel adjustment records.
+   * Re-exported only while original source layer ordering remains unchanged. */
   psdSectionMarkers?: Array<{
+    kind?: 'group' | 'adjustment'
     beforeLayerIndex: number
     name: string
     opacity: number
