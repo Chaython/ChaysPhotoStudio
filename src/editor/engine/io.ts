@@ -335,6 +335,8 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
       if (kind) layer.psdNativeOrigin = {
         kind,
         pixelFingerprint: psdPixelFingerprint(psd.canvas, psd.hdrPixels),
+        maskFingerprint: psd.mask ? psdPixelFingerprint(psd.mask) : null,
+        maskEnabled: psd.mask ? psd.maskEnabled !== false : false,
         left: psd.left, top: psd.top,
         width: psd.canvas.width, height: psd.canvas.height,
       }
@@ -718,6 +720,8 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     psdUnsupportedRealMask: sl.props.psdUnsupportedRealMask === true,
     psdNativeOrigin: ['text', 'smart', 'vector'].includes(sl.props.psdNativeOrigin?.kind) &&
       typeof sl.props.psdNativeOrigin?.pixelFingerprint === 'string' &&
+      (sl.props.psdNativeOrigin.maskFingerprint === null || typeof sl.props.psdNativeOrigin.maskFingerprint === 'string') &&
+      typeof sl.props.psdNativeOrigin.maskEnabled === 'boolean' &&
       Number.isFinite(sl.props.psdNativeOrigin?.left) && Number.isFinite(sl.props.psdNativeOrigin?.top) &&
       Number.isFinite(sl.props.psdNativeOrigin?.width) && Number.isFinite(sl.props.psdNativeOrigin?.height)
       ? structuredClone(sl.props.psdNativeOrigin) : undefined,
