@@ -878,11 +878,13 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const lh = rec.bottom - rec.top
     if (lw <= 0 || lh <= 0) continue
     let canvas: HTMLCanvasElement
+    let hdrPixels: Float32Array | undefined
     try {
       const { rgba, rgba16, rgbaFloat } = channelsToRgba(chans, lw, lh, colorMode, clut)
+      hdrPixels = rgbaFloat
       canvas = rgbaToCanvas2(rgba, lw, lh, rgba16, rgbaFloat)
-    } catch {
-      continue
+    } catch (error) {
+      throw new Error(`Unable to restore Photoshop layer ${rec.name}: ${error instanceof Error ? error.message : String(error)}`)
     }
     // user mask → full-document-size canvas with the mask value in alpha
     let mask: HTMLCanvasElement | null = null
@@ -897,9 +899,12 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const md = mimg.data
         for (let y = 0; y < Math.min(mh, height - mTop); y++) {
           for (let x = 0; x < Math.min(mw, width - mLeft); x++) {
-            const o = ((mTop + y) * width + (mLeft + x)) * 4
+            const docX = mLeft + x, docY = mTop + y
+            if (docX < 0 || docX >= width || docY < 0 || docY >= height) continue
+            const o = (docY * width + docX) * 4
             md[o] = 255; md[o + 1] = 255; md[o + 2] = 255
-            md[o + 3] = mch instanceof Uint16Array ? Math.round(mch[y * mw + x] / 257) : mch[y * mw + x]
+            const pixel = mch[y * mw + x]
+            md[o + 3] = mch instanceof Float32Array ? Math.round(pixel * 255) : mch instanceof Uint16Array ? Math.round(pixel / 257) : pixel
           }
         }
         ctx2d(mask).putImageData(mimg, 0, 0)
@@ -908,7 +913,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     layers.push({
       name: rec.name || `Layer ${i + 1}`,
       canvas,
-      hdrPixels: depth === 32 ? channelsToRgba(chans, lw, lh, colorMode, clut).rgbaFloat : undefined,
+      hdrPixels,
       left: rec.left,
       top: rec.top,
       width: lw,
