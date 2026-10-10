@@ -339,9 +339,38 @@ export function ExportDialog({ onClose }: DialogProps) {
         if (doc.workingBitDepth === 32 && !hdrComposite) throw new Error('Complex 32-bit HDR layers cannot be encoded losslessly as PSD/PSB. Simplify the document or preserve it in the native format.')
         const unsupported = doc.layers.filter(l => ['adjustment', 'text', 'shape', 'smart'].includes(l.kind))
         if (unsupported.length && !window.confirm(`${unsupported.length} editable layer(s) (adjustment/text/shape/Smart Object) cannot round-trip natively in Photoshop. Adjustment layers will be omitted and other layers rasterized. Continue exporting a compatibility copy?`)) return
-        // ---- layered PSD: one record per layer (bottom-first = doc order) ----
+        // Group delimiters are byte-preserved only if the original drawable layer
+        // sequence is intact. Reordering or inserting layers can invalidate the
+        // Photoshop nesting, so never silently emit stale folder boundaries.
+        const sectionMarkers = doc.psdSectionMarkers ?? []
+        const originalOrder = doc.psdSectionLayerOrder ?? []
+        const preserveGroups = sectionMarkers.length > 0 &&
+          unsupported.length === 0 &&
+          originalOrder.length === doc.layers.length &&
+          doc.layers.every((l, i) => l.id === originalOrder[i] && l.kind === 'raster') &&
+          sectionMarkers.every(m => Number.isSafeInteger(m.beforeLayerIndex) &&
+            m.beforeLayerIndex >= 0 && m.beforeLayerIndex <= doc.layers.length)
+        if (sectionMarkers.length && !preserveGroups &&
+            !window.confirm('The layer order or layer types changed since this PSD was opened. Photoshop folder nesting cannot be preserved safely. Export without the original folder structure?')) return
+        // ---- layered PSD: raster records and safe, opaque folder delimiters ----
         const inputs: PsdLayerInput[] = []
-        for (const l of doc.layers) {
+        const markerSurface = preserveGroups ? createCanvas(1, 1) : null
+        const addMarkers = (at: number) => {
+          if (!preserveGroups || !markerSurface) return
+          for (const m of sectionMarkers) {
+            if (m.beforeLayerIndex !== at) continue
+            inputs.push({
+              sectionMarker: true, name: m.name, canvas: markerSurface,
+              left: 0, top: 0, opacity: m.opacity, visible: m.visible,
+              blendMode: 'normal', rawBlendKey: m.blendKey,
+              additionalInfo: m.additionalInfo.map(base64Bytes),
+              blendingRanges: m.blendingRanges ? base64Bytes(m.blendingRanges) : undefined,
+            })
+          }
+        }
+        for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
+          addMarkers(layerIndex)
+          const l = doc.layers[layerIndex]
           if (l.kind === 'adjustment') continue // no pixels of their own
           const c = engine.layerCanvas(l.id)
           if (!c || c.width === 0 || c.height === 0) continue
@@ -362,6 +391,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             blendingRanges: l.psdBlendingRanges ? base64Bytes(l.psdBlendingRanges) : undefined,
           })
         }
+        addMarkers(doc.layers.length)
         showProgress(format === 'psb' ? 'Building PSB…' : 'Building PSD…')
         await sleep(16) // let the progress bar paint before the sync encode
         const preservedResources = (doc.psdImageResources ?? [])
