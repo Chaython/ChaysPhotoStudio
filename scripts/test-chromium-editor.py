@@ -55,10 +55,20 @@ def pixel_png(width=8, height=8) -> bytes:
             + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
-def app_page(browser, size=(1440, 900)):
+def app_page(browser, size=(1440, 900), track_workers=False):
     global ACTIVE_PAGE
     context = browser.new_context(viewport={"width": size[0], "height": size[1]},
                                   service_workers="block", accept_downloads=True)
+    if track_workers:
+        context.add_init_script("""(() => {
+            const BaseWorker = window.Worker
+            const record = { created: 0, terminated: 0 }
+            window.__workerTestRecord = record
+            window.Worker = class TrackedWorker extends BaseWorker {
+                constructor(...args) { super(...args); record.created++ }
+                terminate() { record.terminated++; return super.terminate() }
+            }
+        })()""")
     page = context.new_page()
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
@@ -295,6 +305,48 @@ def main():
                 check(value["afterRedo"] == value["added"], "redo did not restore added layer")
                 check(not errors, f"image import/history threw uncaught errors: {errors[:3]}")
 
+            def gimp_lazy_interpreters():
+                _, page, errors = app_page(browser, track_workers=True)
+                requests = []
+                page.on("request", lambda request: requests.append(request.url))
+                initial = page.evaluate("() => window.__workerTestRecord.created")
+                page.evaluate("() => window.__zphotoStore.getState().openDialog('plugin-manager')")
+                page.get_by_role("dialog").wait_for(state="visible", timeout=30000)
+                page.get_by_role("tab", name="GIMP Scripts").click()
+                source = page.get_by_role("textbox", name="GIMP script source")
+                source.wait_for(state="visible", timeout=30000)
+                source.fill("gimp-drawable-levels")
+                page.get_by_role("button", name="Analyze source").click()
+                page.get_by_text("gimp-drawable-levels", exact=True).wait_for(state="visible")
+                check(page.evaluate("() => window.__workerTestRecord.created") == initial,
+                      "static GIMP source analysis unexpectedly started a Worker")
+                page.get_by_role("tab", name="GIMP Runtime").click()
+                page.get_by_role("button", name="Detect GIMP 3").wait_for(state="visible")
+                check(page.evaluate("() => window.__workerTestRecord.created") == initial,
+                      "opening GIMP Runtime unexpectedly started a Worker")
+                check(not any("pyodide" in url.lower() or "jsdelivr" in url.lower() for url in requests),
+                      "opening GIMP tools downloaded the Python interpreter")
+                page.get_by_role("tab", name="GIMP Scripts").click()
+                source.fill("(+ 1 2)")
+                page.locator('label:has-text("Runtime") select').first.select_option("scheme")
+                # Only the explicit Run action may start Scheme. No Pyodide network fetch.
+                check(page.evaluate("() => window.__workerTestRecord.created") == initial,
+                      "choosing a Scheme interpreter loaded it before Run")
+                page.get_by_role("button", name="Run embedded code").click()
+                output = page.get_by_label("Interpreter output")
+                output.wait_for(state="visible", timeout=15000)
+                check(output.inner_text().strip() == "3",
+                      f"Scheme calculation produced an unexpected result: {output.inner_text()}")
+                page.wait_for_function("(initial) => window.__workerTestRecord.terminated > initial", initial,
+                                       timeout=10000)
+                counts = page.evaluate("() => window.__workerTestRecord")
+                check(counts["created"] == initial + 1 and counts["terminated"] >= 1,
+                      f"Scheme must create and clean up exactly one worker: {counts}")
+                check(not any("pyodide" in url.lower() or "jsdelivr" in url.lower() for url in requests),
+                      "running Scheme incorrectly downloaded Pyodide")
+                check(not errors, f"GIMP script UI produced JavaScript errors: {errors[:3]}")
+                print("  GIMP lazy-load workers:", counts, flush=True)
+
             def mobile_start():
                 _, page, errors = app_page(browser, size=(430, 850))
                 check(page.locator("body").bounding_box()["width"] <= 431,
@@ -310,6 +362,7 @@ def main():
                 ("dock_context_move_float", context_float),
                 ("workspace_all_tools_dialog", workspace_and_dialog),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
+                ("gimp_lazy_interpreters", gimp_lazy_interpreters),
                 ("mobile_editor_startup", mobile_start),
             ]:
                 run_test(name, fn)
