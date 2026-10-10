@@ -393,6 +393,16 @@ export interface Layer {
   psdBlendKey?: string
   /** Imported Photoshop channel -3 exists; warn before destructive PSD re-export. */
   psdUnsupportedRealMask?: boolean
+  /** Source Photoshop-native layer descriptor, safe to preserve only while
+   * raster pixels AND geometry remain unchanged from the original import. */
+  psdNativeOrigin?: {
+    kind: 'text' | 'smart' | 'vector'
+    pixelFingerprint: string
+    left: number
+    top: number
+    width: number
+    height: number
+  }
   /** provenance marker — 'detect' = lifted from an AI-detected object box
    *  (Detect Objects dialog → "Layer"); lets the Layers panel badge it */
   origin?: 'detect'
