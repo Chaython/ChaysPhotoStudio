@@ -326,6 +326,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     if (psd.rawBlendKey?.length === 4) layer.psdBlendKey = psd.rawBlendKey
     if (psd.groupPath?.length) layer.psdGroupPath = [...psd.groupPath]
     layer.visible = psd.visible
+    layer.locked = psd.locked === true
     layer.clipped = !!psd.clipped
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = psd.maskEnabled !== false }
     if (psd.unsupportedRealMask) layer.psdUnsupportedRealMask = true
