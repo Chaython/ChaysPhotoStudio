@@ -938,7 +938,7 @@ function packBitsRow(src: Uint8Array, off: number, n: number): Uint8Array {
 }
 
 /** one channel block: [u16 compression=1][2h row lengths][packed rows] */
-function encodeRleChannel(chan: Uint8Array, w: number, h: number): Uint8Array {
+function encodeRleChannel(chan: Uint8Array, w: number, h: number, rowLenBytes: 2 | 4 = 2): Uint8Array {
   const rows: Uint8Array[] = []
   const rowLens: number[] = []
   let dataBytes = 0
@@ -948,11 +948,20 @@ function encodeRleChannel(chan: Uint8Array, w: number, h: number): Uint8Array {
     rowLens.push(row.length)
     dataBytes += row.length
   }
-  const out = new Uint8Array(2 + 2 * h + dataBytes)
+  // PSD stores 16-bit RLE row sizes; a too-wide row must use raw data.
+  if (rowLenBytes === 2 && rowLens.some(len => len > 0xffff)) {
+    const raw = new Uint8Array(2 + chan.length)
+    raw.set(chan, 2)
+    return raw
+  }
+  const out = new Uint8Array(2 + rowLenBytes * h + dataBytes)
   const view = new DataView(out.buffer)
   view.setUint16(0, 1)
-  for (let y = 0; y < h; y++) view.setUint16(2 + y * 2, rowLens[y])
-  let o = 2 + 2 * h
+  for (let y = 0; y < h; y++) {
+    if (rowLenBytes === 4) view.setUint32(2 + y * 4, rowLens[y])
+    else view.setUint16(2 + y * 2, rowLens[y])
+  }
+  let o = 2 + rowLenBytes * h
   for (const row of rows) { out.set(row, o); o += row.length }
   return out
 }
@@ -1028,6 +1037,15 @@ function pad4(n: number): number {
   return n + ((4 - (n & 3)) & 3)
 }
 
+function u64(v: number): Uint8Array {
+  if (!Number.isSafeInteger(v) || v < 0) throw new Error('Invalid PSB section length')
+  const out = new Uint8Array(8)
+  const view = new DataView(out.buffer)
+  view.setUint32(0, Math.floor(v / 0x100000000))
+  view.setUint32(4, v >>> 0)
+  return out
+}
+
 function u32(v: number): Uint8Array {
   const out = new Uint8Array(4)
   new DataView(out.buffer).setUint32(0, v)
@@ -1069,9 +1087,14 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number; depth?: 8 | 16; imageResources?: Uint8Array[] } = {},
+  options: { resolutionPpi?: number; depth?: 8 | 16; imageResources?: Uint8Array[]; format?: 'psd' | 'psb' } = {},
 ): Blob {
   const depth: 8 | 16 = options.depth === 16 ? 16 : 8
+  const psb = options.format === 'psb'
+  if (!psb && (width > 30000 || height > 30000)) throw new Error('PSD maximum dimension exceeded; export PSB instead')
+  if (width > 300000 || height > 300000 || width < 1 || height < 1) throw new Error('Invalid PSD/PSB dimensions')
+  const sectionLength = psb ? u64 : u32
+  const rowLenBytes: 2 | 4 = psb ? 4 : 2
   const bpc = depth >> 3
   // normalize: composite must be doc-size
   let flat = composite
@@ -1097,10 +1120,10 @@ export function buildPsd(
     const { r, g, b, a } = splitCanvasChannels(input.canvas, depth)
     const rowBytes = w * bpc
     const channels: { id: number; block: Uint8Array }[] = [
-      { id: 0, block: encodeRleChannel(r, rowBytes, h) },
-      { id: 1, block: encodeRleChannel(g, rowBytes, h) },
-      { id: 2, block: encodeRleChannel(b, rowBytes, h) },
-      { id: -1, block: encodeRleChannel(a, rowBytes, h) },
+      { id: 0, block: encodeRleChannel(r, rowBytes, h, rowLenBytes) },
+      { id: 1, block: encodeRleChannel(g, rowBytes, h, rowLenBytes) },
+      { id: 2, block: encodeRleChannel(b, rowBytes, h, rowLenBytes) },
+      { id: -1, block: encodeRleChannel(a, rowBytes, h, rowLenBytes) },
     ]
     // mask: full-document-size canvas → doc-sized channel
     let maskDoc: { w: number; h: number; chan: Uint8Array } | null = null
@@ -1123,7 +1146,7 @@ export function buildPsd(
     const w = p.input.canvas.width
     const h = p.input.canvas.height
     const allChannels = p.maskDoc
-      ? [...p.channels, { id: -2, block: encodeRleChannel(p.maskDoc.chan, p.maskDoc.w * bpc, p.maskDoc.h) }]
+      ? [...p.channels, { id: -2, block: encodeRleChannel(p.maskDoc.chan, p.maskDoc.w * bpc, p.maskDoc.h, rowLenBytes) }]
       : p.channels
     // record
     recordParts.push(
@@ -1131,7 +1154,7 @@ export function buildPsd(
       u16(allChannels.length),
     )
     for (const ch of allChannels) {
-      recordParts.push(i16(ch.id), u32(ch.block.length))
+      recordParts.push(i16(ch.id), sectionLength(ch.block.length))
     }
     recordParts.push(asciiBytes('8BIM'), asciiBytes(blendModeToPsdKey(p.input.blendMode)))
     recordParts.push(new Uint8Array([
@@ -1185,12 +1208,12 @@ export function buildPsd(
   // ---- layer info section (records + channel data, padded to 4) ----
   const layerInfoContent = concatUint8([...recordParts, ...channelDataParts])
   const liPad = (4 - (layerInfoContent.length & 3)) & 3
-  const layerInfo = concatUint8([u32(pad4(layerInfoContent.length)), layerInfoContent, new Uint8Array(liPad)])
+  const layerInfo = concatUint8([sectionLength(pad4(layerInfoContent.length)), layerInfoContent, new Uint8Array(liPad)])
 
   // ---- layer & mask info: layer info + empty global mask info ----
   const lmContent = concatUint8([layerInfo, u32(0)])
   const lmPad = (4 - (lmContent.length & 3)) & 3
-  const lmSection = concatUint8([u32(pad4(lmContent.length)), lmContent, new Uint8Array(lmPad)])
+  const lmSection = concatUint8([sectionLength(pad4(lmContent.length)), lmContent, new Uint8Array(lmPad)])
 
   // ---- image resources: ResolutionInfo (0x0400) ----
   const resolutionPpi = Math.max(1, Math.min(12000, Number(options.resolutionPpi) || 72))
@@ -1221,23 +1244,31 @@ export function buildPsd(
     for (let y = 0; y < height; y++) rows.push(packBitsRow(c.chan, y * width * bpc, width * bpc))
     return rows
   })
-  const tableSize = 2 * compChannels.length * height
+  const oversizedPsdRow = !psb && compRows.some(rows => rows.some(row => row.length > 0xffff))
+  const tableSize = rowLenBytes * compChannels.length * height
   let compDataBytes = 0
   for (const rows of compRows) for (const r of rows) compDataBytes += r.length
-  const compositeSection = new Uint8Array(2 + tableSize + compDataBytes)
-  const compView = new DataView(compositeSection.buffer)
-  compView.setUint16(0, 1) // compression: RLE
-  let cp = 2
-  for (const rows of compRows) {
-    for (const r of rows) {
-      compView.setUint16(cp, r.length)
-      cp += 2
+  let compositeSection: Uint8Array
+  if (oversizedPsdRow) {
+    // Both PSD and PSB accept raw composite channels. Never truncate RLE row sizes.
+    compositeSection = concatUint8([u16(0), ...compChannels.map(c => c.chan)])
+  } else {
+    compositeSection = new Uint8Array(2 + tableSize + compDataBytes)
+    const compView = new DataView(compositeSection.buffer)
+    compView.setUint16(0, 1)
+    let cp = 2
+    for (const rows of compRows) {
+      for (const r of rows) {
+        if (psb) compView.setUint32(cp, r.length)
+        else compView.setUint16(cp, r.length)
+        cp += rowLenBytes
+      }
     }
-  }
-  for (const rows of compRows) {
-    for (const r of rows) {
-      compositeSection.set(r, cp)
-      cp += r.length
+    for (const rows of compRows) {
+      for (const r of rows) {
+        compositeSection.set(r, cp)
+        cp += r.length
+      }
     }
   }
 
@@ -1245,7 +1276,7 @@ export function buildPsd(
   const header = new Uint8Array(26)
   const hv = new DataView(header.buffer)
   header.set([0x38, 0x42, 0x50, 0x53], 0) // '8BPS'
-  hv.setUint16(4, 1)      // version 1 (PSD)
+  hv.setUint16(4, psb ? 2 : 1) // PSD=1, large-document PSB=2
   // bytes 6..11 reserved (zero)
   hv.setUint16(12, 4)     // channels
   hv.setUint32(14, height)
