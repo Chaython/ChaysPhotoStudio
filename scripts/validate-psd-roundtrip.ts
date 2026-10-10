@@ -317,5 +317,38 @@ assert.throws(() => decodePackBitsRow(Uint8Array.from([254, 19]), 0, 2, new Uint
 assert.throws(() => decodePackBitsRow(Uint8Array.from([0, 12]), 0, 2, new Uint8Array(2), 0, 2), /Incomplete/)
 assert.throws(() => decodePackBitsRow(Uint8Array.from([0, 12]), 0, 7, new Uint8Array(2), 0, 2), /Invalid/)
 
+
+function rgbWithExtraChannels(samples: number[]): Uint8Array {
+  const bytes = new Uint8Array(26 + 4 + 4 + 4 + 2 + samples.length)
+  const dv = new DataView(bytes.buffer)
+  bytes.set(new TextEncoder().encode('8BPS'))
+  dv.setUint16(4, 1)
+  dv.setUint16(12, samples.length)
+  dv.setUint32(14, 1)
+  dv.setUint32(18, 1)
+  dv.setUint16(22, 8)
+  dv.setUint16(24, 3)
+  dv.setUint16(38, 0)
+  bytes.set(samples, 40)
+  return bytes
+}
+for (const [samples, expected] of [
+  [[100, 150, 200], [100, 150, 200, 255]],
+  [[100, 150, 200, 45], [100, 150, 200, 45]],
+  [[100, 150, 200, 45, 255], [100, 150, 200, 45]],
+  [[100, 150, 200, 45, 255, 0], [100, 150, 200, 45]],
+] as const) {
+  const decoded = await decodePsd(rgbWithExtraChannels(Array.from(samples)))
+  assert.deepEqual(
+    Array.from(decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data),
+    Array.from(expected), 'PSD spot channels must never override the first merged alpha channel')
+  assert.equal(decoded.hasAlpha, samples.length >= 4)
+  if (samples.length > 4) assert.ok(decoded.warnings.some(w => w.includes('Additional Photoshop spot/alpha channels')))
+}
+await assert.rejects(
+  () => decodePsd(rgbWithExtraChannels([100, 150])),
+  /Invalid Photoshop channel count/,
+)
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
