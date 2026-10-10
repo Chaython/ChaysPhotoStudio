@@ -291,7 +291,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
   const doc: PsDocument = {
     id: uid(), name, width, height,
     resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
-    workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
+    workingBitDepth: decoded.sourceBitDepth === 32 && decoded.psdLayers?.some(l => l.hdrPixels) ? 32 : canvasProfile(decoded.canvas).bitDepth,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
     metadata: metadata ? structuredClone(metadata) : undefined,
@@ -308,6 +308,10 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
   for (const psd of decoded.psdLayers ?? []) {
     const layer = newLayer('raster', psd.name || 'Layer', width, height)
     layer.canvas = psd.canvas
+    if (psd.hdrPixels) {
+      layer.hdrPixels = new Float32Array(psd.hdrPixels)
+      layer.hdrColorSpace = 'linear-srgb'
+    }
     layer.offsetX = psd.left
     layer.offsetY = psd.top
     layer.opacity = Math.round(psd.opacity)
