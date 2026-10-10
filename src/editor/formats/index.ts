@@ -77,6 +77,8 @@ export interface DecodedImage {
     clipped?: boolean
     /** full-document-size mask canvas, mask value in the alpha channel */
     mask?: HTMLCanvasElement | null
+    /** Scene-linear 32-bit Photoshop raster backing pixels. */
+    hdrPixels?: Float32Array
     /** editable layer style decoded from PSD effect metadata when supported */
     fx?: LayerFX | null
     /** opaque Photoshop additional-layer-information blocks */
@@ -361,6 +363,8 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
         hasAlpha: psd.hasAlpha,
         format: 'psd',
         sourceBitDepth: psd.depth,
+        sourceFloatPixels: psd.hdrPixels,
+        sourceColorSpace: psd.depth === 32 ? 'linear-srgb' : undefined,
         resolutionPpi: psd.resolutionPpi,
         psdImageResources: psd.imageResources.map(b => b.slice()),
         psdLayers: psd.layers.map(l => ({
@@ -374,6 +378,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           visible: l.visible,
           clipped: l.clipped,
           mask: l.mask,
+          hdrPixels: l.hdrPixels,
           fx: l.fx ? structuredClone(l.fx) : null,
           additionalInfo: l.additionalInfo.map(b => b.slice()),
         })),
