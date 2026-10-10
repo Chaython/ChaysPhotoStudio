@@ -725,6 +725,7 @@ export class Engine {
       psdAdditionalInfo: layer.psdAdditionalInfo ? [...layer.psdAdditionalInfo] : layer.psdAdditionalInfo,
       psdBlendingRanges: layer.psdBlendingRanges,
       psdBlendKey: layer.psdBlendKey,
+      psdUnsupportedRealMask: layer.psdUnsupportedRealMask,
     }
   }
 
@@ -1423,6 +1424,7 @@ export class Engine {
       psdAdditionalInfo: src.psdAdditionalInfo ? [...src.psdAdditionalInfo] : src.psdAdditionalInfo,
       psdBlendingRanges: src.psdBlendingRanges,
       psdBlendKey: src.psdBlendKey,
+      psdUnsupportedRealMask: src.psdUnsupportedRealMask,
       _v: src._v + 1,
       _mv: src._mv + 1,
     }
