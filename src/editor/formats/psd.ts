@@ -373,6 +373,8 @@ export interface PsdLayer {
   visible: boolean
   clipped: boolean
   mask: HTMLCanvasElement | null // full-document-size canvas, mask value in alpha
+  /** Layer mask can exist but be disabled by Photoshop. */
+  maskEnabled: boolean
   /** Raw 32-bit/channel scene-linear pixels, never reduced to a canvas preview. */
   hdrPixels?: Float32Array
   /** Editable layer styles decoded from Chay's native style block or
@@ -444,6 +446,8 @@ interface PsdLayerRecord {
   clipped: boolean
   name: string
   maskRect: [number, number, number, number] | null // top, left, bottom, right
+  maskDefaultColor: number
+  maskFlags: number
   fx: LayerFX | null
   additionalInfo: Uint8Array[]
   blendingRanges: Uint8Array
@@ -866,12 +870,18 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const extraEnd = pos + extraLen
         // layer mask data
         let maskRect: [number, number, number, number] | null = null
+        let maskDefaultColor = 0
+        let maskFlags = 0
         const maskLen = view.getUint32(pos)
         pos += 4
+        if (maskLen > extraEnd - pos) throw new Error('Truncated Photoshop layer mask metadata')
         if (maskLen > 0) {
-          if (maskLen >= 16) {
-            maskRect = [view.getInt32(pos), view.getInt32(pos + 4), view.getInt32(pos + 8), view.getInt32(pos + 12)]
-          }
+          if (maskLen < 18) throw new Error('Invalid Photoshop layer mask metadata length')
+          maskRect = [view.getInt32(pos), view.getInt32(pos + 4), view.getInt32(pos + 8), view.getInt32(pos + 12)]
+          maskDefaultColor = bytes[pos + 16]
+          maskFlags = bytes[pos + 17]
+          if (maskFlags & 4) compatibilityWarnings.add('Legacy inverted Photoshop masks are retained as previews; mask inversion must be verified in Photoshop')
+          if (maskFlags & 16) compatibilityWarnings.add('Photoshop layer mask density/feather cannot yet be edited natively')
           pos += maskLen
         }
         // layer blending ranges
@@ -946,7 +956,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos = extraEnd
         records.push({
           top, left, bottom, right, channels, blendKey,
-          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, name, maskRect, fx, additionalInfo, blendingRanges,
+          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, name, maskRect, maskDefaultColor, maskFlags, fx, additionalInfo, blendingRanges,
         })
       }
 
@@ -1021,23 +1031,30 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     } catch (error) {
       throw new Error(`Unable to restore Photoshop layer ${rec.name}: ${error instanceof Error ? error.message : String(error)}`)
     }
-    // user mask → full-document-size canvas with the mask value in alpha
+    // User masks are stored within a rectangle; outside it Photoshop uses
+    // the explicit default color (commonly WHITE). Position can be relative
+    // to the layer bounds, and the disabled flag must remain meaningful.
     let mask: HTMLCanvasElement | null = null
     if (rec.maskRect) {
-      const mTop = rec.maskRect[0], mLeft = rec.maskRect[1]
-      const mw = rec.maskRect[3] - mLeft
-      const mh = rec.maskRect[2] - mTop
+      const [mTop, mLeft, mBottom, mRight] = rec.maskRect
+      const mw = mRight - mLeft, mh = mBottom - mTop
       const mch = chans.get(-2)
       if (mw > 0 && mh > 0 && mch && mch.length >= mw * mh) {
         mask = createCanvas(width, height)
         const mimg = new ImageData(width, height)
         const md = mimg.data
-        for (let y = 0; y < Math.min(mh, height - mTop); y++) {
-          for (let x = 0; x < Math.min(mw, width - mLeft); x++) {
-            const docX = mLeft + x, docY = mTop + y
+        for (let pixelIndex = 0; pixelIndex < width * height; pixelIndex++) {
+          const p = pixelIndex * 4
+          md[p] = md[p + 1] = md[p + 2] = 255
+          md[p + 3] = rec.maskDefaultColor
+        }
+        const originX = mLeft + ((rec.maskFlags & 1) ? rec.left : 0)
+        const originY = mTop + ((rec.maskFlags & 1) ? rec.top : 0)
+        for (let y = 0; y < mh; y++) {
+          for (let x = 0; x < mw; x++) {
+            const docX = originX + x, docY = originY + y
             if (docX < 0 || docX >= width || docY < 0 || docY >= height) continue
             const o = (docY * width + docX) * 4
-            md[o] = 255; md[o + 1] = 255; md[o + 2] = 255
             const pixel = mch[y * mw + x]
             md[o + 3] = mch instanceof Float32Array ? Math.round(pixel * 255) : mch instanceof Uint16Array ? Math.round(pixel / 257) : pixel
           }
@@ -1059,6 +1076,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       visible: rec.visible,
       clipped: rec.clipped,
       mask,
+      maskEnabled: !(rec.maskFlags & 2),
       fx: rec.fx ? structuredClone(rec.fx) : null,
       additionalInfo: rec.additionalInfo.map(b => b.slice()),
       blendingRanges: rec.blendingRanges.slice(),
@@ -1178,6 +1196,8 @@ export interface PsdLayerInput {
   additionalInfo?: Uint8Array[]
   /** Lossless passthrough of Photoshop source/destination blending ranges. */
   blendingRanges?: Uint8Array
+  /** Disabled Photoshop layer masks remain present but inactive. */
+  maskEnabled?: boolean
   /** Non-rendering Photoshop group delimiter. Has no pixel channels. */
   sectionMarker?: boolean
   /** Exact Photoshop folder blend key, e.g. 'pass'; other layer kinds use mapped modes. */
@@ -1502,7 +1522,7 @@ export function buildPsd(
       recordParts.push(
         u32(20),
         i32(0), i32(0), i32(height), i32(width), // mask rect = full document
-        new Uint8Array([0, 0, 0, 0]),            // default color 0, flags 0, 2 pad
+        new Uint8Array([0, p.input.maskEnabled === false ? 2 : 0, 0, 0]), // default black, mask disabled flag, pad
       )
     } else {
       recordParts.push(u32(0)) // no mask
