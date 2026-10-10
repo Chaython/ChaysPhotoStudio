@@ -130,4 +130,5 @@ for (let i = shuffled.length - 1; i > 0; i--) shuffled[i] = (shuffled[i] - shuff
 assert.deepEqual(Array.from(restorePsdPrediction(shuffled, 2, 1, 32)), Array.from(floats))
 assert.throws(() => restorePsdPrediction(Uint8Array.from([1,2,3]), 2, 1, 32), /Invalid PSD predicted/)
 
-console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode and PPI pass')\n
+console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode and PPI pass')
+
