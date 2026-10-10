@@ -823,16 +823,23 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   // Parse Photoshop Image Resource Blocks enough to recover ResolutionInfo
   // (0x0400). The Pascal name is padded to an even byte boundary and resource
   // data is also even-padded.
-  while (pos + 12 <= resEnd) {
+  while (pos < resEnd) {
+    // Resource blocks are tightly packed inside a length-prefixed section.
+    // Silently breaking on an invalid header loses any remaining ICC/EXIF
+    // blocks. Reject corrupt metadata instead of exporting a partial set.
+    if (resEnd - pos < 12) throw new Error('Truncated Photoshop image resource header')
     const blockStart = pos
     const signature = str4(pos)
-    if (signature !== '8BIM' && signature !== 'MeSa') break
+    if (signature !== '8BIM' && signature !== 'MeSa') {
+      throw new Error('Invalid Photoshop image resource signature')
+    }
     const id = view.getUint16(pos + 4)
     pos += 6
-    const nameLen = bytes[pos] ?? 0
-    pos += 1 + nameLen
-    if ((1 + nameLen) & 1) pos++
-    if (pos + 4 > resEnd) break
+    const nameLen = bytes[pos]
+    const paddedName = (1 + nameLen + 1) & ~1
+    if (paddedName > resEnd - pos) throw new Error('Truncated Photoshop image resource name')
+    pos += paddedName
+    if (pos + 4 > resEnd) throw new Error('Truncated Photoshop image resource length')
     const dataLen = view.getUint32(pos)
     pos += 4
     const dataStart = pos
