@@ -381,6 +381,8 @@ export interface PsdLayer {
   /** Opaque additional-layer-information blocks retained byte-for-byte.
    * Known blocks that we regenerate ('luni', parsed 'lrFX', 'chFX') are excluded. */
   additionalInfo: Uint8Array[]
+  /** Original Photoshop Blend If / blending-ranges bytes. */
+  blendingRanges: Uint8Array
 }
 
 export interface PsdDecoded {
@@ -424,6 +426,7 @@ interface PsdLayerRecord {
   maskRect: [number, number, number, number] | null // top, left, bottom, right
   fx: LayerFX | null
   additionalInfo: Uint8Array[]
+  blendingRanges: Uint8Array
 }
 
 type PsdPlane = Uint8Array | Uint16Array | Float32Array
@@ -782,7 +785,10 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         }
         // layer blending ranges
         const brLen = view.getUint32(pos)
-        pos += 4 + brLen
+        pos += 4
+        if (brLen > extraEnd - pos) throw new Error('Truncated Photoshop blending ranges')
+        const blendingRanges = bytes.slice(pos, pos + brLen)
+        pos += brLen
         // pascal name (padded to multiple of 4 including the length byte)
         const nameLen = bytes[pos]
         pos += 1
@@ -849,7 +855,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos = extraEnd
         records.push({
           top, left, bottom, right, channels, blendKey,
-          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, name, maskRect, fx, additionalInfo,
+          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, name, maskRect, fx, additionalInfo, blendingRanges,
         })
       }
 
@@ -936,6 +942,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       mask,
       fx: rec.fx ? structuredClone(rec.fx) : null,
       additionalInfo: rec.additionalInfo.map(b => b.slice()),
+      blendingRanges: rec.blendingRanges.slice(),
     })
   }
 
@@ -1033,6 +1040,8 @@ export interface PsdLayerInput {
   fx?: LayerFX | null
   /** Opaque PSD additional-layer-information blocks to preserve. */
   additionalInfo?: Uint8Array[]
+  /** Lossless passthrough of Photoshop source/destination blending ranges. */
+  blendingRanges?: Uint8Array
 }
 
 /** PackBits-encode one row; returns the packed bytes */
@@ -1332,7 +1341,8 @@ export function buildPsd(
     }
     const unicodeName = unicodeLayerNameBlock(p.input.name || 'Layer')
     const additionalInfoBytes = [...preservedInfo, ...generatedFx].reduce((n, b) => n + b.length, unicodeName.length)
-    const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + pascalTotal + pascalPad + additionalInfoBytes
+    const blendingRanges = p.input.blendingRanges ?? new Uint8Array(0)
+    const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + blendingRanges.length + pascalTotal + pascalPad + additionalInfoBytes
     recordParts.push(u32(extraLen))
     if (p.maskDoc) {
       // layer mask data: length 20 = rect(16) + default color + flags + pad
@@ -1344,7 +1354,7 @@ export function buildPsd(
     } else {
       recordParts.push(u32(0)) // no mask
     }
-    recordParts.push(u32(0)) // layer blending ranges: none
+    recordParts.push(u32(blendingRanges.length), blendingRanges) // original Photoshop Blend If ranges
     recordParts.push(new Uint8Array([nameBytes.length]), nameBytes, new Uint8Array(pascalPad))
     recordParts.push(unicodeName, ...preservedInfo, ...generatedFx)
     // channel image data blocks follow all records — store for later
