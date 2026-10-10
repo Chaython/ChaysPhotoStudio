@@ -100,14 +100,17 @@ for (const format of ['psd', 'psb'] as const) {
     0, 0.5, 3.75, 1,
     0.25, 0.25, 0.25, 0.5,
   ])
+  // Synthetic hdrt bytes validate preservation; Photoshop-authored fixtures remain necessary.
+  const toneMetadata = Uint8Array.from([0x68, 0x64, 0x72, 0x74, 0, 0, 0, 1])
   const blob = buildPsd(2, 2, [{
     name: 'HDR layer', canvas: image, left: 0, top: 0, opacity: 100,
     blendMode: 'normal', visible: true, hdrPixels: samples,
-  }], image, { format, depth: 32, compositeHdrPixels: samples })
+  }], image, { format, depth: 32, compositeHdrPixels: samples, colorModeData: toneMetadata })
   const data = new Uint8Array(await blob.arrayBuffer())
   assert.equal(new DataView(data.buffer).getUint16(22), 32)
   const decoded = await decodePsd(data)
   assert.equal(decoded.depth, 32)
+  assert.deepEqual(Array.from(decoded.colorModeData), Array.from(toneMetadata), 'HDR tone metadata survives export/import')
   assert.ok(decoded.hdrPixels)
   assert.deepEqual(Array.from(decoded.hdrPixels), Array.from(samples), 'HDR composite survives Photoshop float round-trip')
   assert.ok(decoded.layers[0].hdrPixels)
@@ -115,7 +118,11 @@ for (const format of ['psd', 'psb'] as const) {
   assert.throws(() => buildPsd(2, 2, [{
     name: 'Missing HDR', canvas: image, left: 0, top: 0, opacity: 100,
     blendMode: 'normal', visible: true,
-  }], image, { format, depth: 32, compositeHdrPixels: samples }), /full-resolution Float32/)
+  }], image, { format, depth: 32, compositeHdrPixels: samples, colorModeData: toneMetadata }), /full-resolution Float32/)
+  assert.throws(() => buildPsd(2, 2, [{
+    name: 'HDR layer', canvas: image, left: 0, top: 0, opacity: 100,
+    blendMode: 'normal', visible: true, hdrPixels: samples,
+  }], image, { format, depth: 32, compositeHdrPixels: samples }), /requires Photoshop-origin HDR color-mode data/)
 }
 
 
