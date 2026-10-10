@@ -1,0 +1,821 @@
+import assert from 'node:assert/strict'
+import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdGroupPaths, psdWillReplaceSourceFx, normalizePsdTaggedBlock } from '../src/editor/formats/psd'
+
+// Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
+// without requiring a graphics stack or a browser installation.
+class TestImageData {
+  data: Uint8ClampedArray
+  width: number
+  height: number
+  constructor(dataOrWidth: Uint8ClampedArray | number, widthOrHeight: number, height?: number) {
+    // Canvas ImageData supports both (typedArray, width, height) and
+    // (width, height). The latter is used by Photoshop mask reconstruction.
+    this.width = typeof dataOrWidth === 'number' ? dataOrWidth : widthOrHeight
+    this.height = typeof dataOrWidth === 'number' ? widthOrHeight : height!
+    this.data = typeof dataOrWidth === 'number'
+      ? new Uint8ClampedArray(this.width * this.height * 4)
+      : dataOrWidth
+  }
+}
+class TestCanvas {
+  width = 1
+  height = 1
+  pixels = new Uint8ClampedArray(0)
+  getContext() {
+    const canvas = this
+    return {
+      getContextAttributes: () => ({ colorType: 'unorm8', colorSpace: 'srgb' }),
+      getImageData(x: number, y: number, w: number, h: number) {
+        const data = new Uint8ClampedArray(w * h * 4)
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+          const source = ((y + j) * canvas.width + x + i) * 4
+          const dest = (j * w + i) * 4
+          data.set(canvas.pixels.subarray(source, source + 4), dest)
+        }
+        return new TestImageData(data, w, h)
+      },
+      putImageData(img: TestImageData, x: number, y: number) {
+        if (canvas.pixels.length !== canvas.width * canvas.height * 4) canvas.pixels = new Uint8ClampedArray(canvas.width * canvas.height * 4)
+        for (let j = 0; j < img.height; j++) for (let i = 0; i < img.width; i++) {
+          const source = (j * img.width + i) * 4
+          const dest = ((y + j) * canvas.width + x + i) * 4
+          canvas.pixels.set(img.data.subarray(source, source + 4), dest)
+        }
+      },
+      drawImage() { throw new Error('Unexpected Canvas2D flattening in PSD round-trip test') },
+    }
+  }
+}
+;(globalThis as any).ImageData = TestImageData
+;(globalThis as any).document = { createElement: (tag: string) => {
+  assert.equal(tag, 'canvas')
+  return new TestCanvas()
+} }
+
+function canvas(r: number, g: number, b: number, a = 255): HTMLCanvasElement {
+  const c = new TestCanvas()
+  c.width = 2
+  c.height = 2
+  c.pixels = new Uint8ClampedArray(Array.from({ length: 4 }, () => [r, g, b, a]).flat())
+  return c as unknown as HTMLCanvasElement
+}
+
+for (const format of ['psd', 'psb'] as const) {
+  const bottom = canvas(200, 0, 0)
+  const hidden = canvas(0, 180, 0, 127)
+  const blob = buildPsd(2, 2, [
+    { name: 'Base', canvas: bottom, left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true,
+      blendingRanges: Uint8Array.from([0, 0, 255, 255, 0, 0, 255, 255]) },
+    { name: 'Hidden ✓', canvas: hidden, left: 0, top: 0, opacity: 30, blendMode: 'normal', visible: false },
+  ], bottom, { format, depth: 8, resolutionPpi: 300 })
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  // Photoshop's canonical 1005/0x03ED ResolutionInfo resource.
+  const marker = Uint8Array.from([0x38, 0x42, 0x49, 0x4d, 0x03, 0xed])
+  assert.ok(bytes.some((_, at) => at + marker.length <= bytes.length &&
+    marker.every((value, i) => bytes[at + i] === value)), 'Photoshop ResolutionInfo must use resource ID 1005')
+  const view = new DataView(bytes.buffer)
+  assert.equal(view.getUint16(4), format === 'psb' ? 2 : 1, 'version matches export format')
+  assert.equal(view.getUint16(22), 8)
+  assert.equal(view.getUint16(24), 3)
+  const decoded = await decodePsd(bytes)
+  assert.equal(decoded.layers.length, 2)
+  assert.deepEqual(Array.from(decoded.layers[0].blendingRanges), [0,0,255,255,0,0,255,255], 'Photoshop Blend If ranges retained')
+  assert.deepEqual(decoded.layers.map(l => l.name), ['Base', 'Hidden ✓'])
+  assert.deepEqual(decoded.layers.map(l => l.visible), [true, false], 'Photoshop hidden flag is inverted')
+  assert.equal(decoded.layers[1].opacity, 30)
+  assert.equal(decoded.layers[0].canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[0], 200)
+  assert.equal(decoded.layers[1].canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 127)
+  assert.ok(Math.abs(decoded.resolutionPpi - 300) < 0.01)
+  const oldBytes = bytes.slice()
+  const oldMarker = oldBytes.findIndex((_, at) => at + 5 < oldBytes.length &&
+    marker.every((value, i) => oldBytes[at + i] === value))
+  assert.ok(oldMarker >= 0)
+  oldBytes[oldMarker + 4] = 0x04
+  oldBytes[oldMarker + 5] = 0x00
+  const oldDecoded = await decodePsd(oldBytes)
+  assert.ok(Math.abs(oldDecoded.resolutionPpi - 300) < 0.01, 'old Studio PPI metadata remains readable')
+}
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(84, 173, 246, 200)
+  const samples = new Float32Array([
+    2.5, 0.5, 0.25, 1,
+    1.25, 0.125, 0, 0.75,
+    0, 0.5, 3.75, 1,
+    0.25, 0.25, 0.25, 0.5,
+  ])
+  // Synthetic hdrt bytes validate preservation; Photoshop-authored fixtures remain necessary.
+  const toneMetadata = Uint8Array.from([0x68, 0x64, 0x72, 0x74, 0, 0, 0, 1])
+  const blob = buildPsd(2, 2, [{
+    name: 'HDR layer', canvas: image, left: 0, top: 0, opacity: 100,
+    blendMode: 'normal', visible: true, hdrPixels: samples,
+  }], image, { format, depth: 32, compositeHdrPixels: samples, colorModeData: toneMetadata })
+  const data = new Uint8Array(await blob.arrayBuffer())
+  assert.equal(new DataView(data.buffer).getUint16(22), 32)
+  const decoded = await decodePsd(data)
+  assert.equal(decoded.depth, 32)
+  assert.deepEqual(Array.from(decoded.colorModeData), Array.from(toneMetadata), 'HDR tone metadata survives export/import')
+  assert.ok(decoded.hdrPixels)
+  assert.deepEqual(Array.from(decoded.hdrPixels), Array.from(samples), 'HDR composite survives Photoshop float round-trip')
+  assert.ok(decoded.layers[0].hdrPixels)
+  assert.deepEqual(Array.from(decoded.layers[0].hdrPixels), Array.from(samples), 'HDR layer survives Photoshop float round-trip')
+  assert.throws(() => buildPsd(2, 2, [{
+    name: 'Missing HDR', canvas: image, left: 0, top: 0, opacity: 100,
+    blendMode: 'normal', visible: true,
+  }], image, { format, depth: 32, compositeHdrPixels: samples, colorModeData: toneMetadata }), /full-resolution Float32/)
+  assert.throws(() => buildPsd(2, 2, [{
+    name: 'HDR layer', canvas: image, left: 0, top: 0, opacity: 100,
+    blendMode: 'normal', visible: true, hdrPixels: samples,
+  }], image, { format, depth: 32, compositeHdrPixels: samples }), /requires Photoshop-origin HDR color-mode data/)
+}
+
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(50, 100, 150, 255)
+  const blob = buildPsd(2, 2, [{
+    name: '16-bit RGB', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], image, { format, depth: 16 })
+  const data = new Uint8Array(await blob.arrayBuffer())
+  assert.ok(Buffer.from(data).includes(Buffer.from('Lr16')), 'Photoshop high-depth layer section is present')
+  const decoded = await decodePsd(data)
+  assert.equal(decoded.depth, 16)
+  assert.equal(decoded.layers.length, 1, 'Lr16 contains editable layer records')
+  assert.equal(decoded.layers[0].name, '16-bit RGB')
+  assert.ok(decoded.warnings.some(w => w.includes('16-bit PSD') && w.includes('8-bit canvas')),
+    'Canvas2D runtimes without float16 support must warn when Photoshop precision is reduced')
+  assert.equal(decoded.layers[0].canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[0], 50)
+}
+assert.deepEqual(Array.from(restorePsdPrediction(Uint8Array.from([10,10,10]), 3, 1, 8)), [10,20,30])
+assert.deepEqual(Array.from(restorePsdPrediction(Uint8Array.from([0,10,0,10]), 2, 1, 16)), [0,10,0,20])
+const floats = new Uint8Array(8)
+const floatsView = new DataView(floats.buffer)
+floatsView.setFloat32(0, 2.5, false)
+floatsView.setFloat32(4, 0.125, false)
+const shuffled = Uint8Array.from([floats[0],floats[4],floats[1],floats[5],floats[2],floats[6],floats[3],floats[7]])
+for (let i = shuffled.length - 1; i > 0; i--) shuffled[i] = (shuffled[i] - shuffled[i - 1] + 256) & 255
+assert.deepEqual(Array.from(restorePsdPrediction(shuffled, 2, 1, 32)), Array.from(floats))
+assert.throws(() => restorePsdPrediction(Uint8Array.from([1,2,3]), 2, 1, 32), /Invalid PSD predicted/)
+
+
+function photoshopTaggedBlock(blocks: readonly Uint8Array[], key: string): Uint8Array {
+  const block = blocks.find(b => b.length >= 12 &&
+    new TextDecoder().decode(b.subarray(4, 8)) === key)
+  assert.ok(block, `Expected Photoshop additional-info block ${key}`)
+  return block
+}
+
+function sectionDivider(type: 1 | 2 | 3): Uint8Array {
+  const block = new Uint8Array(16)
+  block.set(new TextEncoder().encode('8BIMlsct'), 0)
+  new DataView(block.buffer).setUint32(8, 4)
+  new DataView(block.buffer).setUint32(12, type)
+  return block
+}
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(80, 130, 180)
+  const open = sectionDivider(1)
+  const close = sectionDivider(3)
+  const blob = buildPsd(2, 2, [
+    { name: 'Folder A', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', rawBlendKey: 'pass', visible: true,
+      sectionMarker: true, additionalInfo: [open] },
+    { name: 'Artwork', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true },
+    { name: '</Layer group>', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true,
+      additionalInfo: [close] },
+  ], image, { format, depth: 8 })
+  const decoded = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
+  assert.equal(decoded.layers.length, 1, 'group boundaries must not become drawable layers')
+  assert.deepEqual(decoded.sectionMarkers.map(m => m.beforeLayerIndex), [0, 1],
+    'group marker positions are stable relative to drawable layers')
+  assert.deepEqual(decoded.sectionMarkers.map(m => m.name), ['Folder A', '</Layer group>'])
+  assert.equal(decoded.sectionMarkers[0].blendKey, 'pass', 'folder pass-through blending survives')
+  assert.deepEqual(Array.from(photoshopTaggedBlock(decoded.sectionMarkers[0].additionalInfo, 'lsct')), Array.from(open))
+  assert.deepEqual(Array.from(photoshopTaggedBlock(decoded.sectionMarkers[1].additionalInfo, 'lsct')), Array.from(close))
+}
+
+
+function cmykComposite(c: number, m: number, y: number, k: number): Uint8Array {
+  // PSD: 26-byte header, three empty sections, raw planar CMYK composite.
+  const bytes = new Uint8Array(26 + 4 + 4 + 4 + 2 + 4)
+  bytes.set(new TextEncoder().encode('8BPS'))
+  const view = new DataView(bytes.buffer)
+  view.setUint16(4, 1)
+  view.setUint16(12, 4)
+  view.setUint32(14, 1)
+  view.setUint32(18, 1)
+  view.setUint16(22, 8)
+  view.setUint16(24, 4)
+  view.setUint16(38, 0)
+  bytes.set([c, m, y, k], 40)
+  return bytes
+}
+for (const [planes, expected] of [
+  [[255, 255, 255, 255], [255, 255, 255]],
+  [[0, 255, 255, 255], [0, 255, 255]],
+  [[255, 255, 255, 0], [0, 0, 0]],
+  [[128, 255, 255, 255], [128, 255, 255]],
+] as const) {
+  const decoded = await decodePsd(cmykComposite(planes[0], planes[1], planes[2], planes[3]))
+  assert.deepEqual(Array.from(decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data.slice(0, 3)),
+    Array.from(expected), 'PSD CMYK channels must use Photoshop inverted ink storage')
+}
+
+
+for (const format of ['psd', 'psb'] as const) {
+  const pixels = canvas(90, 80, 70)
+  const adjustmentBlock = new Uint8Array(16)
+  adjustmentBlock.set(new TextEncoder().encode('8BIMlevl'))
+  new DataView(adjustmentBlock.buffer).setUint32(8, 4)
+  const encoded = buildPsd(2, 2, [
+    { name: 'Artwork', canvas: pixels, left: 0, top: 0, opacity: 100, visible: true, blendMode: 'normal' },
+    { name: 'Levels', canvas: pixels, left: 0, top: 0, opacity: 100, visible: true,
+      blendMode: 'normal', sectionMarker: true, additionalInfo: [adjustmentBlock] },
+  ], pixels, { format, depth: 8 })
+  const decoded = await decodePsd(new Uint8Array(await encoded.arrayBuffer()))
+  assert.equal(decoded.layers.length, 1, 'unsupported Photoshop adjustment must not masquerade as raster')
+  assert.equal(decoded.sectionMarkers.length, 1)
+  assert.equal(decoded.sectionMarkers[0].kind, 'adjustment')
+  assert.equal(decoded.sectionMarkers[0].beforeLayerIndex, 1)
+  assert.deepEqual(Array.from(photoshopTaggedBlock(decoded.sectionMarkers[0].additionalInfo, 'levl')), Array.from(adjustmentBlock))
+  assert.ok(decoded.warnings.some(w => w.includes('not rendered or editable')))
+}
+
+
+function labComposite(l: number, a: number, b: number, depth: 8 | 16 = 8): Uint8Array {
+  const bytes = new Uint8Array(26 + 4 + 4 + 4 + 2 + 3 * (depth >>> 3))
+  bytes.set(new TextEncoder().encode('8BPS'))
+  const view = new DataView(bytes.buffer)
+  view.setUint16(4, 1)
+  view.setUint16(12, 3)
+  view.setUint32(14, 1)
+  view.setUint32(18, 1)
+  view.setUint16(22, depth)
+  view.setUint16(24, 9) // Lab
+  view.setUint16(38, 0) // raw composite channels
+  if (depth === 8) bytes.set([l, a, b], 40)
+  else for (const [i, value] of [l, a, b].entries()) view.setUint16(40 + i * 2, value, false)
+  return bytes
+}
+for (const [color, white] of [
+  [[255, 128, 128], true],
+  [[0, 128, 128], false],
+] as const) {
+  const decoded = await decodePsd(labComposite(color[0], color[1], color[2]))
+  const rgb = decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(rgb[i] - (white ? 255 : 0)) <= 2,
+    'Photoshop Lab neutral white/black converts approximately to sRGB')
+  assert.ok(decoded.warnings.some(w => w.includes('Lab was converted')))
+}
+const lab16 = await decodePsd(labComposite(65535, 32896, 32896, 16))
+assert.equal(lab16.depth, 16)
+assert.ok(lab16.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[0] >= 253,
+  'Photoshop 16-bit neutral Lab converts to a white preview')
+
+
+function indexedPsd(transparent: boolean): Uint8Array {
+  const palette = new Uint8Array(768)
+  palette[0] = 220; palette[1] = 17 // red plane
+  palette[256] = 20; palette[257] = 121 // green plane
+  palette[512] = 10; palette[513] = 240 // blue plane
+  const resource = transparent ? Uint8Array.from([
+    0x38, 0x42, 0x49, 0x4d, // 8BIM
+    0x04, 0x17, // transparency-index resource 1047
+    0, 0, // zero-length Pascal resource name
+    0, 0, 0, 2, // resource payload length
+    0, 1, // index 1 is transparent
+  ]) : new Uint8Array(0)
+  const bytes = new Uint8Array(26 + 4 + 768 + 4 + resource.length + 4 + 2 + 2)
+  const view = new DataView(bytes.buffer)
+  bytes.set(new TextEncoder().encode('8BPS'))
+  view.setUint16(4, 1)
+  view.setUint16(12, 1)
+  view.setUint32(14, 1)
+  view.setUint32(18, 2)
+  view.setUint16(22, 8)
+  view.setUint16(24, 2)
+  view.setUint32(26, palette.length)
+  bytes.set(palette, 30)
+  const resourcePosition = 30 + palette.length
+  view.setUint32(resourcePosition, resource.length)
+  bytes.set(resource, resourcePosition + 4)
+  const imagePosition = resourcePosition + 4 + resource.length + 4
+  view.setUint16(imagePosition, 0)
+  bytes.set([0, 1], imagePosition + 2)
+  return bytes
+}
+for (const transparent of [false, true]) {
+  const decoded = await decodePsd(indexedPsd(transparent))
+  const pixel = decoded.canvas.getContext('2d')!.getImageData(0, 0, 2, 1).data
+  assert.deepEqual(Array.from(pixel), [
+    220, 20, 10, 255, 17, 121, 240, transparent ? 0 : 255,
+  ], 'PSD indexed palette must use non-interleaved RGB planes and transparency index')
+  assert.equal(decoded.hasAlpha, transparent)
+}
+
+
+const literal = new Uint8Array(2)
+decodePackBitsRow(Uint8Array.from([1, 19, 31]), 0, 3, literal, 0, 2)
+assert.deepEqual(Array.from(literal), [19, 31])
+const repeated = new Uint8Array(3)
+decodePackBitsRow(Uint8Array.from([254, 55]), 0, 2, repeated, 0, 3)
+assert.deepEqual(Array.from(repeated), [55, 55, 55])
+assert.throws(() => decodePackBitsRow(Uint8Array.from([1, 19]), 0, 2, new Uint8Array(2), 0, 2), /Truncated/)
+assert.throws(() => decodePackBitsRow(Uint8Array.from([254, 19]), 0, 2, new Uint8Array(2), 0, 2), /oversized/)
+assert.throws(() => decodePackBitsRow(Uint8Array.from([0, 12]), 0, 2, new Uint8Array(2), 0, 2), /Incomplete/)
+assert.throws(() => decodePackBitsRow(Uint8Array.from([0, 12]), 0, 7, new Uint8Array(2), 0, 2), /Invalid/)
+
+
+function rgbWithExtraChannels(samples: number[]): Uint8Array {
+  const bytes = new Uint8Array(26 + 4 + 4 + 4 + 2 + samples.length)
+  const dv = new DataView(bytes.buffer)
+  bytes.set(new TextEncoder().encode('8BPS'))
+  dv.setUint16(4, 1)
+  dv.setUint16(12, samples.length)
+  dv.setUint32(14, 1)
+  dv.setUint32(18, 1)
+  dv.setUint16(22, 8)
+  dv.setUint16(24, 3)
+  dv.setUint16(38, 0)
+  bytes.set(samples, 40)
+  return bytes
+}
+for (const [samples, expected] of [
+  [[100, 150, 200], [100, 150, 200, 255]],
+  [[100, 150, 200, 45], [100, 150, 200, 45]],
+  [[100, 150, 200, 45, 255], [100, 150, 200, 45]],
+  [[100, 150, 200, 45, 255, 0], [100, 150, 200, 45]],
+] as const) {
+  const decoded = await decodePsd(rgbWithExtraChannels(Array.from(samples)))
+  assert.deepEqual(
+    Array.from(decoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data),
+    Array.from(expected), 'PSD spot channels must never override the first merged alpha channel')
+  assert.equal(decoded.hasAlpha, samples.length >= 4)
+  if (samples.length > 4) assert.ok(decoded.warnings.some(w => w.includes('Additional Photoshop spot/alpha channels')))
+}
+await assert.rejects(
+  () => decodePsd(rgbWithExtraChannels([100, 150])),
+  /Invalid Photoshop channel count/,
+)
+const corruptMerged = rgbWithExtraChannels([100, 150, 200])
+new DataView(corruptMerged.buffer).setUint16(38, 9)
+await assert.rejects(
+  () => decodePsd(corruptMerged),
+  /Cannot decode PSD merged image and no raster layers are available/,
+  'corrupt flattened PSD must never import as an apparently valid empty canvas',
+)
+await assert.rejects(
+  () => decodePsd(rgbWithExtraChannels([100, 150, 200]).subarray(0, 40)),
+  /Cannot decode PSD merged image and no raster layers are available/,
+  'truncated flattened PSD must fail rather than appear blank',
+)
+
+
+
+assert.equal(psdBlendKeyToMode('smud'), 'exclusion', 'Photoshop Exclusion must not be imported as Difference')
+assert.equal(blendModeToPsdKey('exclusion'), 'smud', 'Photoshop Exclusion must remain Exclusion on export')
+for (const format of ['psd', 'psb'] as const) {
+  const source = canvas(31, 62, 93)
+  const unsupported = buildPsd(2, 2, [{
+    name: 'Photoshop mode', canvas: source, left: 0, top: 0, opacity: 100,
+    blendMode: 'normal', visible: true, rawBlendKey: 'brst',
+  }], source, { format })
+  const decoded = await decodePsd(new Uint8Array(await unsupported.arrayBuffer()))
+  assert.equal(decoded.layers[0].blendKey, 'brst', 'Unknown Photoshop blend key must not be replaced by Normal')
+  assert.ok(decoded.warnings.some(w => w.includes('blend modes cannot be previewed faithfully')))
+  const reexport = buildPsd(2, 2, [{
+    name: decoded.layers[0].name, canvas: decoded.layers[0].canvas,
+    left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true,
+    rawBlendKey: decoded.layers[0].blendKey,
+  }], source, { format })
+  const recovered = await decodePsd(new Uint8Array(await reexport.arrayBuffer()))
+  assert.equal(recovered.layers[0].blendKey, 'brst', 'Unknown Photoshop blend key round trips')
+}
+
+
+function photoshopResource(id: number): Uint8Array {
+  return Uint8Array.from([
+    0x38, 0x42, 0x49, 0x4d, id >> 8, id & 255, 0, 0,
+    0, 0, 0, 4, 0xde, 0xad, 0xbe, 0xef,
+  ])
+}
+const iccResource = photoshopResource(0x040f)
+const indexedTransparencyResource = photoshopResource(0x0417)
+function containsResource(bytes: Uint8Array, id: number): boolean {
+  return bytes.some((_, i) => i + 6 <= bytes.length &&
+    bytes[i] === 0x38 && bytes[i + 1] === 0x42 &&
+    bytes[i + 2] === 0x49 && bytes[i + 3] === 0x4d &&
+    bytes[i + 4] === (id >> 8) && bytes[i + 5] === (id & 255))
+}
+for (const format of ['psd', 'psb'] as const) {
+  for (const colorMode of [3, 4, 9]) {
+    const image = canvas(75, 85, 95)
+    const output = buildPsd(2, 2, [{
+      name: 'Converted RGB', canvas: image, left: 0, top: 0,
+      opacity: 100, blendMode: 'normal', visible: true,
+    }], image, {
+      format, sourceColorMode: colorMode, imageResources: [iccResource, indexedTransparencyResource],
+    })
+    const bytes = new Uint8Array(await output.arrayBuffer())
+    assert.equal(containsResource(bytes, 0x040f), colorMode === 3,
+      'Original CMYK/Lab ICC profile must not be applied to RGB export')
+    assert.ok(!containsResource(bytes, 0x0417),
+      'Indexed transparency resource must not be applied to RGB export')
+    assert.ok(containsResource(bytes, 0x03ed), 'RGB export retains a canonical ResolutionInfo block')
+  }
+}
+
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(90, 120, 150)
+  const userMask = canvas(255, 255, 255, 100)
+  const source = buildPsd(2, 2, [{
+    name: 'Masked', canvas: image, left: 1, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    mask: userMask, maskEnabled: false,
+  }], image, { format })
+  const bytes = new Uint8Array(await source.arrayBuffer())
+  const decoded = await decodePsd(bytes)
+  assert.equal(decoded.layers.length, 1)
+  assert.ok(decoded.layers[0].mask, 'Photoshop disabled masks retain their pixel channels')
+  assert.equal(decoded.layers[0].maskEnabled, false, 'Photoshop disabled-mask bit is respected')
+  assert.equal(decoded.layers[0].mask!.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 100)
+
+  // Change the Photoshop mask metadata only: default outside-mask color is
+  // white and mask position is layer-relative. The original 2x2 mask
+  // pixels stay encoded intact so they still test the real channel decoder.
+  const changed = bytes.slice()
+  const maskHeader = Uint8Array.from([
+    0, 0, 0, 20, // mask metadata length
+    0, 0, 0, 0, 0, 0, 0, 0, // top/left
+    0, 0, 0, 2, 0, 0, 0, 2, // bottom/right
+    0, 2, 0, 0, // default black, disabled, padding
+  ])
+  const offset = changed.findIndex((_, at) =>
+    at + maskHeader.length <= changed.length &&
+    maskHeader.every((byte, i) => changed[at + i] === byte))
+  assert.ok(offset >= 0, 'Photoshop mask metadata is present')
+  changed[offset + 20] = 255 // white outside recorded bounds
+  changed[offset + 21] = 1 // position relative to layer, mask enabled
+  const relative = await decodePsd(changed)
+  assert.equal(relative.layers[0].maskEnabled, true)
+  const mask = relative.layers[0].mask!.getContext('2d')!
+  assert.equal(mask.getImageData(0, 0, 1, 1).data[3], 255,
+    'Outside relative mask rectangle, Photoshop default color must be used')
+  assert.equal(mask.getImageData(1, 0, 1, 1).data[3], 100,
+    'Relative mask position must include the layer x offset')
+}
+
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(20, 40, 60)
+  const userMask = canvas(255, 255, 255, 90)
+  const file = buildPsd(2, 2, [{
+    name: 'Real mask compatibility', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, mask: userMask,
+  }], image, { format })
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const channelIndex = bytes.findIndex((b, i) =>
+    b === 255 && bytes[i + 1] === 254 && i + (format === 'psb' ? 10 : 6) <= bytes.length)
+  assert.ok(channelIndex > 26, 'Mask channel identifier is present')
+  bytes[channelIndex + 1] = 253 // -2 user mask -> -3 real combined mask
+  const decoded = await decodePsd(bytes)
+  assert.equal(decoded.layers.length, 1, 'A real mask channel must not block PSD layer decoding')
+  assert.equal(decoded.layers[0].mask, null, 'Unrepresented real vector mask is not mislabeled as a user raster mask')
+  assert.equal(decoded.layers[0].unsupportedRealMask, true,
+    'Combined Photoshop real-mask loss must be tracked for export warnings')
+  assert.ok(decoded.warnings.some(w => w.includes('combined user/vector mask channel')))
+}
+
+
+function nativeDescriptor(key: string): Uint8Array {
+  assert.equal(key.length, 4)
+  const bytes = new Uint8Array(16)
+  bytes.set(new TextEncoder().encode('8BIM' + key), 0)
+  new DataView(bytes.buffer).setUint32(8, 4)
+  bytes.set([1, 2, 3, 4], 12)
+  return bytes
+}
+const nativeDescriptors = [
+  nativeDescriptor('TySh'),
+  nativeDescriptor('SoLd'),
+  nativeDescriptor('vmsk'),
+  nativeDescriptor('lfx2'),
+]
+assert.equal(psdNativeObjectKind([nativeDescriptors[0]]), 'text')
+assert.equal(psdNativeObjectKind([nativeDescriptors[1]]), 'smart')
+assert.equal(psdNativeObjectKind([nativeDescriptors[2]]), 'vector')
+assert.equal(psdNativeObjectKind([nativeDescriptors[3]]), null)
+const rasterOnlyBlocks = stripPsdNativeObjectBlocks(nativeDescriptors)
+assert.deepEqual(rasterOnlyBlocks, [nativeDescriptors[3]],
+  'Raster edits remove native Photoshop objects, but retain unrelated effects')
+assert.equal(psdNativeObjectKind(rasterOnlyBlocks), null)
+const sourceForNative = canvas(140, 60, 80)
+const initialFingerprint = psdPixelFingerprint(sourceForNative)
+assert.equal(initialFingerprint, psdPixelFingerprint(sourceForNative), 'fingerprint remains stable')
+const rasterCtx = sourceForNative.getContext('2d')!
+const edited = rasterCtx.getImageData(0, 0, 2, 2)
+edited.data[0] = 160
+rasterCtx.putImageData(edited, 0, 0)
+assert.notEqual(psdPixelFingerprint(sourceForNative), initialFingerprint,
+  'Native Photoshop descriptor provenance must detect raster edits')
+for (const format of ['psd', 'psb'] as const) {
+  const flattened = canvas(190, 90, 40)
+  const file = buildPsd(2, 2, [{
+    name: 'Text originally', canvas: flattened, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: nativeDescriptors,
+  }], flattened, { format })
+  const decoded = await decodePsd(new Uint8Array(await file.arrayBuffer()))
+  assert.equal(psdNativeObjectKind(decoded.layers[0].additionalInfo), 'text')
+  const rasterized = buildPsd(2, 2, [{
+    name: 'Edited raster copy', canvas: flattened, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: stripPsdNativeObjectBlocks(decoded.layers[0].additionalInfo),
+  }], flattened, { format })
+  const recovered = await decodePsd(new Uint8Array(await rasterized.arrayBuffer()))
+  assert.equal(psdNativeObjectKind(recovered.layers[0].additionalInfo), null,
+    'Edited Photoshop text must not retain a stale TySh native descriptor')
+  assert.ok(recovered.layers[0].additionalInfo.some(b => new TextDecoder().decode(b.subarray(4, 8)) === 'lfx2'),
+    'Non-native opaque Photoshop FX records remain after rasterizing text')
+}
+
+
+function syntheticGroupMarker(name: string, type: 1 | 2 | 3, beforeLayerIndex: number) {
+  return {
+    kind: 'group' as const,
+    name,
+    beforeLayerIndex,
+    visible: true,
+    opacity: 100,
+    blendKey: 'pass',
+    additionalInfo: [sectionDivider(type)],
+    blendingRanges: new Uint8Array(0),
+  }
+}
+const groupsBottomUp = [
+  syntheticGroupMarker('</Outer>', 3, 0),
+  syntheticGroupMarker('</Inner>', 3, 0),
+  syntheticGroupMarker('Inner', 1, 1),
+  syntheticGroupMarker('Outer', 1, 2),
+]
+assert.deepEqual(psdGroupPaths(2, groupsBottomUp), [
+  ['Outer', 'Inner'],
+  ['Outer'],
+], 'nested Photoshop groups must be reconstructed from bottom-up section records')
+assert.deepEqual(psdGroupPaths(2, []), [[], []], 'ordinary layers have no imported Photoshop folder')
+for (const format of ['psd', 'psb'] as const) {
+  const pixels = canvas(12, 44, 86)
+  const records = [
+    { name: '</Outer>', canvas: pixels, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true, additionalInfo: [sectionDivider(3)] },
+    { name: '</Inner>', canvas: pixels, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true, additionalInfo: [sectionDivider(3)] },
+    { name: 'Inside inner', canvas: pixels, left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true },
+    { name: 'Inner', canvas: pixels, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true, additionalInfo: [sectionDivider(1)] },
+    { name: 'Inside outer', canvas: pixels, left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true },
+    { name: 'Outer', canvas: pixels, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, sectionMarker: true, additionalInfo: [sectionDivider(1)] },
+  ]
+  const blob = buildPsd(2, 2, records, pixels, { format, depth: 8 })
+  const parsed = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
+  assert.deepEqual(parsed.layers.map(l => l.groupPath), [
+    ['Outer', 'Inner'], ['Outer'],
+  ], 'PSD/PSB file parsing must expose original nested group ancestry')
+}
+
+
+function photoshopLayerId(blocks: readonly Uint8Array[]): number {
+  const idBlock = blocks.find(b => b.length >= 16 &&
+    new TextDecoder().decode(b.subarray(4, 8)) === 'lyid')
+  assert.ok(idBlock, 'Every exported Photoshop layer needs a unique lyid record')
+  assert.equal(new DataView(idBlock.buffer, idBlock.byteOffset).getUint32(8), 4)
+  return new DataView(idBlock.buffer, idBlock.byteOffset).getUint32(12)
+}
+const originalIdRecord = nativeDescriptor('lyid')
+new DataView(originalIdRecord.buffer).setUint32(12, 42)
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(31, 63, 95)
+  const blob = buildPsd(2, 2, [
+    { name: 'Original ID', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, additionalInfo: [originalIdRecord] },
+    { name: 'Duplicated ID', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true, additionalInfo: [originalIdRecord] },
+    { name: 'New layer', canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: 'normal', visible: true },
+  ], image, { format, depth: 8 })
+  const parsed = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
+  const ids = parsed.layers.map(l => photoshopLayerId(l.additionalInfo))
+  assert.equal(ids[0], 42, 'Original imported Photoshop layer ID remains stable')
+  assert.equal(new Set(ids).size, 3, 'Duplicated Photoshop layer IDs are regenerated on export')
+  assert.ok(ids.every(id => id > 0), 'Generated IDs must be valid positive 32-bit values')
+  assert.equal(parsed.layers[0].additionalInfo.filter(b =>
+    new TextDecoder().decode(b.subarray(4, 8)) === 'lyid').length, 1)
+}
+
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(70, 80, 90)
+  const style = { dropShadow: {
+    enabled: true, color: '#223344', opacity: 70, angle: 30,
+    distance: 7, blur: 5, blendMode: 'multiply' as const,
+    spread: 0, noise: 0,
+  } }
+  const withEditableStyle = buildPsd(2, 2, [{
+    name: 'Photoshop effects', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, fx: style,
+  }], image, { format })
+  const studioDecoded = await decodePsd(new Uint8Array(await withEditableStyle.arrayBuffer()))
+  const legacyBlock = photoshopTaggedBlock(studioDecoded.layers[0].additionalInfo, 'lrFX')
+  // Simulate an authentic Photoshop source containing only a legacy lrFX block.
+  const photoshopOnly = buildPsd(2, 2, [{
+    name: 'Photoshop effects', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: [legacyBlock],
+  }], image, { format })
+  const imported = await decodePsd(new Uint8Array(await photoshopOnly.arrayBuffer()))
+  assert.ok(imported.layers[0].fx?.dropShadow, 'Photoshop legacy FX should be editable')
+  assert.equal(psdWillReplaceSourceFx(imported.layers[0].additionalInfo, imported.layers[0].fx), false,
+    'No-op legacy PSD export must not require destructive-FX confirmation')
+  assert.deepEqual(Array.from(photoshopTaggedBlock(imported.layers[0].additionalInfo, 'lrFX')),
+    Array.from(legacyBlock), 'Importer must retain source effect bytes')
+  const noOp = buildPsd(2, 2, [{
+    name: 'Unchanged style', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    fx: imported.layers[0].fx, additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const unmodified = await decodePsd(new Uint8Array(await noOp.arrayBuffer()))
+  assert.deepEqual(Array.from(photoshopTaggedBlock(unmodified.layers[0].additionalInfo, 'lrFX')),
+    Array.from(legacyBlock), 'Unchanged Photoshop legacy FX must survive byte-for-byte')
+  const modified = structuredClone(imported.layers[0].fx)!
+  modified.dropShadow!.opacity = 25
+  assert.equal(psdWillReplaceSourceFx(imported.layers[0].additionalInfo, modified), true,
+    'Changing imported legacy FX must warn that Photoshop effects are regenerated')
+  assert.equal(psdWillReplaceSourceFx([nativeDescriptor('lfx2')], modified), true,
+    'Replacing modern Photoshop FX descriptors requires explicit confirmation')
+  const editedExport = buildPsd(2, 2, [{
+    name: 'Changed style', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    fx: modified, additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const edited = await decodePsd(new Uint8Array(await editedExport.arrayBuffer()))
+  assert.notDeepEqual(Array.from(photoshopTaggedBlock(edited.layers[0].additionalInfo, 'lrFX')),
+    Array.from(legacyBlock), 'Edited native styles regenerate Photoshop effects')
+  assert.ok(edited.layers[0].fx?.dropShadow?.opacity !== imported.layers[0].fx?.dropShadow?.opacity)
+}
+
+
+function photoshopProtection(blocks: readonly Uint8Array[]): number {
+  const block = photoshopTaggedBlock(blocks, 'lspf')
+  return new DataView(block.buffer, block.byteOffset, block.byteLength).getUint32(12)
+}
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(21, 42, 63)
+  const partialProtection = nativeDescriptor('lspf')
+  new DataView(partialProtection.buffer).setUint32(12, 1) // transparency lock only
+  const importedFile = buildPsd(2, 2, [{
+    name: 'Source partial lock', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: [partialProtection],
+  }], image, { format })
+  const imported = await decodePsd(new Uint8Array(await importedFile.arrayBuffer()))
+  assert.equal(imported.layers[0].locked, true, 'Partial Photoshop protection must prevent unintended native editing')
+  assert.ok(imported.warnings.some(w => w.includes('Partially protected')))
+  const untouched = buildPsd(2, 2, [{
+    name: 'Unchanged lock', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, locked: true,
+    additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const preserved = await decodePsd(new Uint8Array(await untouched.arrayBuffer()))
+  assert.equal(photoshopProtection(preserved.layers[0].additionalInfo), 1,
+    'Unchanged partial protection survives PSD/PSB export byte-for-byte')
+  const unlocked = buildPsd(2, 2, [{
+    name: 'Unlocked', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, locked: false,
+    additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const reopened = await decodePsd(new Uint8Array(await unlocked.arrayBuffer()))
+  assert.equal(reopened.layers[0].locked, false)
+  assert.equal(photoshopProtection(reopened.layers[0].additionalInfo), 0)
+  const lockedNew = buildPsd(2, 2, [{
+    name: 'New lock', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, locked: true,
+  }], image, { format })
+  const parsedNew = await decodePsd(new Uint8Array(await lockedNew.arrayBuffer()))
+  assert.equal(parsedNew.layers[0].locked, true)
+  assert.equal(photoshopProtection(parsedNew.layers[0].additionalInfo), 7)
+}
+
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(44, 55, 66)
+  const source = buildPsd(2, 2, [{
+    name: 'Legacy protected transparency', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    sourceTransparencyProtected: true, locked: true,
+  }], image, { format })
+  const imported = await decodePsd(new Uint8Array(await source.arrayBuffer()))
+  assert.equal(imported.layers[0].transparencyProtected, true)
+  assert.equal(imported.layers[0].locked, true,
+    'Legacy PSD record transparency-protection bit must lock imported layer')
+  const unchanged = buildPsd(2, 2, [{
+    name: 'Still protected', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    sourceTransparencyProtected: imported.layers[0].transparencyProtected, locked: true,
+    additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const reread = await decodePsd(new Uint8Array(await unchanged.arrayBuffer()))
+  assert.equal(reread.layers[0].transparencyProtected, true)
+  const unlocked = buildPsd(2, 2, [{
+    name: 'Unprotected', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    sourceTransparencyProtected: true, locked: false,
+    additionalInfo: imported.layers[0].additionalInfo,
+  }], image, { format })
+  const updated = await decodePsd(new Uint8Array(await unlocked.arrayBuffer()))
+  assert.equal(updated.layers[0].transparencyProtected, false)
+  assert.equal(updated.layers[0].locked, false,
+    'Unlocking clears Photoshop layer-record protection in addition to lspf')
+}
+
+
+function taggedPsdBlock(key: string, payload: number[], wide = false): Uint8Array {
+  assert.equal(key.length, 4)
+  const data = Uint8Array.from(payload)
+  const headerSize = wide ? 16 : 12
+  const block = new Uint8Array(headerSize + data.length + (data.length & 1))
+  block.set(new TextEncoder().encode('8BIM' + key))
+  const view = new DataView(block.buffer)
+  if (wide) {
+    view.setUint32(8, 0)
+    view.setUint32(12, data.length)
+  } else view.setUint32(8, data.length)
+  block.set(data, headerSize)
+  return block
+}
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(31, 55, 79)
+  for (const terminalBlock of [
+    taggedPsdBlock('zT00', []),       // 12-byte minimum sized tag
+    taggedPsdBlock('zT01', [27]),     // 14-byte tag after even padding
+    ...(format === 'psb' ? [taggedPsdBlock('lnk2', [], true)] : []), // 64-bit PSB length
+  ]) {
+    const psd = buildPsd(2, 2, [{
+      name: 'Trailing metadata', canvas: image, left: 0, top: 0,
+      opacity: 100, blendMode: 'normal', visible: true,
+      additionalInfo: [terminalBlock],
+    }], image, { format })
+    const bytes = new Uint8Array(await psd.arrayBuffer())
+    const decoded = await decodePsd(bytes)
+    const key = new TextDecoder().decode(terminalBlock.subarray(4, 8))
+    const found = decoded.layers[0].additionalInfo.find(b =>
+      new TextDecoder().decode(b.subarray(4, 8)) === key)
+    assert.deepEqual(found ? Array.from(found) : null, Array.from(terminalBlock),
+      `Trailing Photoshop tagged block ${key} is losslessly retained in ${format}`)
+    if (key === 'zT01') {
+      const corrupted = bytes.slice()
+      const target = corrupted.findIndex((_, pos) =>
+        pos + 12 <= corrupted.length &&
+        terminalBlock.subarray(0, 8).every((value, j) => corrupted[pos + j] === value))
+      assert.ok(target >= 0)
+      new DataView(corrupted.buffer).setUint32(target + 8, 0xffffffff)
+      await assert.rejects(() => decodePsd(corrupted), /Truncated Photoshop tagged block zT01 payload/,
+        'Corrupt Photoshop layer descriptor lengths must not be silently clipped')
+    }
+  }
+}
+
+
+const linkedPayload = [0x21, 0x32, 0x43, 0x54, 0x65]
+const linkedShort = taggedPsdBlock('lnk2', linkedPayload)
+const linkedWide = taggedPsdBlock('lnk2', linkedPayload, true)
+assert.deepEqual(Array.from(normalizePsdTaggedBlock(linkedShort, true)), Array.from(linkedWide),
+  'PSD→PSB conversion must widen 64-bit-required length keys without changing their payload')
+assert.deepEqual(Array.from(normalizePsdTaggedBlock(linkedWide, false)), Array.from(linkedShort),
+  'PSB→PSD conversion must narrow compatible 64-bit length keys')
+assert.deepEqual(Array.from(normalizePsdTaggedBlock(linkedWide, true)), Array.from(linkedWide),
+  'No-op PSB export preserves source tagged blocks exactly')
+const malformedWideBlock = linkedWide.slice()
+new DataView(malformedWideBlock.buffer).setUint32(12, 1000)
+assert.throws(() => normalizePsdTaggedBlock(malformedWideBlock, false),
+  /Invalid Photoshop tagged block lnk2 length/, 'Invalid opaque tagged metadata is rejected')
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(55, 77, 99)
+  const input = format === 'psb' ? linkedShort : linkedWide
+  const blob = buildPsd(2, 2, [{
+    name: 'Cross-format metadata', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: [input],
+  }], image, { format })
+  const decoded = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
+  const matching = photoshopTaggedBlock(decoded.layers[0].additionalInfo, 'lnk2')
+  assert.deepEqual(Array.from(matching), Array.from(format === 'psb' ? linkedWide : linkedShort),
+    'PSD/PSB exporter must emit the target format tagged-length header')
+}
+
+console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
+

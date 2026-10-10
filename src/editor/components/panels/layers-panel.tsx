@@ -380,6 +380,13 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
             <div className="text-[9px] text-muted-foreground">
               {meta.kind === 'adjustment' ? meta.adjustmentType : `${meta.opacity}% · ${meta.blendMode}`}
             </div>
+            {meta.psdGroupPath?.length ? (
+              <div className="flex items-center gap-1 min-w-0 text-[9px] text-muted-foreground"
+                title={`Original Photoshop folders (read-only): ${meta.psdGroupPath.join(' / ')}`}>
+                <Icons.Folder size={10} className="shrink-0" aria-hidden />
+                <span className="truncate">{meta.psdGroupPath.join(' / ')}</span>
+              </div>
+            ) : null}
           </div>
 
           {/* quick actions on hover */}

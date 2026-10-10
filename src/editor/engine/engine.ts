@@ -625,6 +625,10 @@ export class Engine {
       sourceBitDepth: src.sourceBitDepth,
       workingColorSpace: src.workingColorSpace,
       psdImageResources: src.psdImageResources ? [...src.psdImageResources] : undefined,
+      psdColorModeData: src.psdColorModeData,
+      psdSourceColorMode: src.psdSourceColorMode,
+      psdSectionMarkers: src.psdSectionMarkers ? structuredClone(src.psdSectionMarkers) : undefined,
+      psdSectionLayerOrder: src.psdSectionLayerOrder?.map(id => layerIds.get(id) ?? id),
       metadata: src.metadata ? structuredClone(src.metadata) : undefined,
       proof: src.proof ? structuredClone(src.proof) : undefined,
       layers,
@@ -719,6 +723,12 @@ export class Engine {
       blendIf: layer.blendIf ? structuredClone(layer.blendIf) : null,
       fx: layer.fx ? structuredClone(layer.fx) : null,
       psdAdditionalInfo: layer.psdAdditionalInfo ? [...layer.psdAdditionalInfo] : layer.psdAdditionalInfo,
+      psdBlendingRanges: layer.psdBlendingRanges,
+      psdBlendKey: layer.psdBlendKey,
+      psdTransparencyProtected: layer.psdTransparencyProtected,
+      psdUnsupportedRealMask: layer.psdUnsupportedRealMask,
+      psdNativeOrigin: layer.psdNativeOrigin ? structuredClone(layer.psdNativeOrigin) : undefined,
+      psdGroupPath: layer.psdGroupPath ? [...layer.psdGroupPath] : undefined,
     }
   }
 
@@ -1415,6 +1425,12 @@ export class Engine {
       blendIf: src.blendIf ? structuredClone(src.blendIf) : null,
       fx: src.fx ? structuredClone(src.fx) : null,
       psdAdditionalInfo: src.psdAdditionalInfo ? [...src.psdAdditionalInfo] : src.psdAdditionalInfo,
+      psdBlendingRanges: src.psdBlendingRanges,
+      psdBlendKey: src.psdBlendKey,
+      psdTransparencyProtected: src.psdTransparencyProtected,
+      psdUnsupportedRealMask: src.psdUnsupportedRealMask,
+      psdNativeOrigin: src.psdNativeOrigin ? structuredClone(src.psdNativeOrigin) : undefined,
+      psdGroupPath: src.psdGroupPath ? [...src.psdGroupPath] : undefined,
       _v: src._v + 1,
       _mv: src._mv + 1,
     }
@@ -1759,6 +1775,13 @@ export class Engine {
       mask: l.maskEnabled && l.mask ? getMaskAlpha(l.mask) : undefined,
     }))
     return compositeHdrRasters(doc.width, doc.height, inputs)
+  }
+
+  /** Safe, scene-linear export surface. Refuse complex 32-bit documents that
+   * would require rasterizing Photoshop features through an SDR canvas. */
+  hdrCompositeForPsd(): Float32Array | null {
+    const doc = this.activeDoc
+    return doc && doc.workingBitDepth === 32 ? this.simpleHdrComposite(doc, doc.layers) : null
   }
 
   /** Photoshop Merge Down: source-over composition must BAKE both opacities

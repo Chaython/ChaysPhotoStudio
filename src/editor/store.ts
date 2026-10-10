@@ -22,6 +22,8 @@ export interface LayerMeta {
   adjustmentType: string | null
   hasBlendIf: boolean
   hasFx: boolean
+  /** Original Photoshop folder path; grouping remains read-only. */
+  psdGroupPath?: string[]
   /** 'detect' = lifted from an AI-detected object box */
   origin: string | null
   thumbV: number
@@ -928,6 +930,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         smartFilterCount: l.smartFilters?.length ?? 0,
         adjustmentType: l.adjustment?.type ?? null, hasBlendIf: !!l.blendIf, hasFx: !!l.fx,
         origin: l.origin ?? null,
+        psdGroupPath: l.psdGroupPath ? [...l.psdGroupPath] : undefined,
         thumbV: l._v + l._mv,
       })) : [],
       activeLayerId: doc?.activeLayerId ?? null,

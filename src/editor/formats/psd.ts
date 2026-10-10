@@ -11,7 +11,7 @@
 // Photoshop opens the files.
 // ============================================================
 
-import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels } from '../utils/canvas'
+import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels, hdrFloat32ToPreviewCanvas, canvasProfile } from '../utils/canvas'
 import type { BlendMode, LayerFX } from '../types'
 
 // ---------- blend mode mapping ----------
@@ -20,7 +20,7 @@ const PSD_TO_APP: Record<string, BlendMode> = {
   dark: 'darken', mul: 'multiply', mult: 'multiply',
   lite: 'lighten', scrn: 'screen', screen: 'screen',
   over: 'overlay', hard: 'hard-light', soft: 'soft-light',
-  diff: 'difference', smud: 'difference', xclu: 'difference',
+  diff: 'difference', smud: 'exclusion', xclu: 'exclusion',
   hue: 'hue', sat: 'saturation', colr: 'color', lum: 'luminosity',
   div: 'color-dodge', idiv: 'color-burn', dded: 'linear-dodge',
   lbrn: 'normal', lbrg: 'normal', vlig: 'hard-light', llig: 'linear-dodge', plig: 'hard-light',
@@ -29,7 +29,7 @@ const APP_TO_PSD: Record<BlendMode, string> = {
   normal: 'norm', multiply: 'mul ', screen: 'scrn', overlay: 'over',
   darken: 'dark', lighten: 'lite', 'color-dodge': 'div ', 'color-burn': 'idiv',
   'linear-dodge': 'dded', 'hard-light': 'hard', 'soft-light': 'soft',
-  difference: 'diff', exclusion: 'diff', hue: 'hue ', saturation: 'sat ',
+  difference: 'diff', exclusion: 'smud', hue: 'hue ', saturation: 'sat ',
   color: 'colr', luminosity: 'lum ',
 }
 
@@ -336,6 +336,17 @@ function legacyColorOverlayRecord(effect: NonNullable<LayerFX['colorOverlay']>):
   return fxEffectRecord('sofi', payload)
 }
 
+/** Warn before Photoshop-native style descriptors are replaced by the
+ * subset of effects the Studio renderer/editor currently understands. */
+export function psdWillReplaceSourceFx(blocks: readonly Uint8Array[], fx: LayerFX | null | undefined): boolean {
+  if (!fx) return false
+  if (blocks.some(b => ['lfx2', 'lmfx', 'lfxs'].includes(fxBlockKey(b)))) return true
+  const original = blocks.find(b => fxBlockKey(b) === 'lrFX')
+  if (!original) return false
+  const parsed = parseLegacyLayerFxBlock(original)
+  return !parsed || JSON.stringify(parsed) !== JSON.stringify(fx)
+}
+
 function legacyLayerFxBlock(fx: LayerFX): Uint8Array | null {
   const records: Uint8Array[] = []
   const supported = [
@@ -369,31 +380,101 @@ export interface PsdLayer {
   height: number
   opacity: number               // 0..100
   blendKey: string              // raw 4-char PSD key
+  /** Original Photoshop nested folder names, purely informational in Studio. */
+  groupPath?: string[]
   blendMode: string             // app blend mode id
   visible: boolean
   clipped: boolean
+  /** Photoshop composite/transparency/position protections mapped to Studio's layer lock. */
+  locked: boolean
+  /** Legacy Photoshop layer flags protect transparency independently of lspf. */
+  transparencyProtected: boolean
   mask: HTMLCanvasElement | null // full-document-size canvas, mask value in alpha
+  /** Layer mask can exist but be disabled by Photoshop. */
+  maskEnabled: boolean
+  /** Photoshop combined raster/vector mask (-3) that cannot round-trip natively. */
+  unsupportedRealMask: boolean
+  /** Raw 32-bit/channel scene-linear pixels, never reduced to a canvas preview. */
+  hdrPixels?: Float32Array
   /** Editable layer styles decoded from Chay's native style block or
    * Photoshop's legacy lrFX block when available. */
   fx: LayerFX | null
   /** Opaque additional-layer-information blocks retained byte-for-byte.
    * Known blocks that we regenerate ('luni', parsed 'lrFX', 'chFX') are excluded. */
   additionalInfo: Uint8Array[]
+  /** Original Photoshop Blend If / blending-ranges bytes. */
+  blendingRanges: Uint8Array
+}
+
+export interface PsdSectionMarker {
+  /** A Photoshop-only non-rendering structure, not an editable native layer. */
+  kind: 'group' | 'adjustment'
+  /** Position among raster layers in the original Photoshop record sequence. */
+  beforeLayerIndex: number
+  name: string
+  opacity: number
+  visible: boolean
+  blendKey: string
+  /** Original opaque Photoshop lsct/lsdk and other layer-info records. */
+  additionalInfo: Uint8Array[]
+  blendingRanges: Uint8Array
+}
+
+/** Group delimiters are recorded bottom-to-top in Photoshop storage order.
+ * A folder-opening marker appears AFTER its child records, so walk the flat
+ * records backwards to build the original nested path for each raster layer.
+ * No editable group model is inferred from these advisory names. */
+export function psdGroupPaths(layerCount: number, markers: readonly PsdSectionMarker[]): string[][] {
+  if (!Number.isSafeInteger(layerCount) || layerCount < 0) throw new Error('Invalid Photoshop layer count')
+  const byPosition = new Map<number, PsdSectionMarker[]>()
+  for (const m of markers) {
+    if (m.kind !== 'group' || !Number.isSafeInteger(m.beforeLayerIndex) ||
+        m.beforeLayerIndex < 0 || m.beforeLayerIndex > layerCount) continue
+    const bucket = byPosition.get(m.beforeLayerIndex) ?? []
+    bucket.push(m)
+    byPosition.set(m.beforeLayerIndex, bucket)
+  }
+  const output: string[][] = Array.from({ length: layerCount }, () => [])
+  const openFolders: string[] = []
+  for (let boundary = layerCount; boundary >= 0; boundary--) {
+    const records = byPosition.get(boundary) ?? []
+    for (let i = records.length - 1; i >= 0; i--) {
+      const marker = records[i]
+      const divider = marker.additionalInfo.find(b => b.length >= 16 &&
+        (fxBlockKey(b) === 'lsct' || fxBlockKey(b) === 'lsdk'))
+      if (!divider) continue
+      const type = new DataView(divider.buffer, divider.byteOffset, divider.byteLength).getUint32(12)
+      if (type === 1 || type === 2) openFolders.push(marker.name)
+      else if (type === 3) openFolders.pop()
+    }
+    if (boundary > 0) output[boundary - 1] = [...openFolders]
+  }
+  return output
 }
 
 export interface PsdDecoded {
+  /** Original PSD color mode; RGB-only exports cannot reuse CMYK/Lab ICC profiles. */
+  colorMode: number
   canvas: HTMLCanvasElement      // merged composite
   width: number
   height: number
   /** Original PSD/PSB component depth. 16-bit files are retained in
    * float16 canvases when the runtime supports them. */
-  depth: 8 | 16
+  depth: 8 | 16 | 32
+  /** Raw merged 32-bit/channel scene-linear pixels when present. */
+  hdrPixels?: Float32Array
   hasAlpha: boolean
-  layers: PsdLayer[]             // bottom-first (PSD storage order)
+  layers: PsdLayer[]             // storage order
+  /** Photoshop folder and opaque zero-channel adjustment records retained separately. */
+  sectionMarkers: PsdSectionMarker[]
   /** ResolutionInfo image-resource metadata, pixels per inch. */
   resolutionPpi: number
   /** Opaque non-resolution image-resource blocks retained byte-for-byte. */
   imageResources: Uint8Array[]
+  /** Original Photoshop color-mode section payload (especially 32-bit hdrt). */
+  colorModeData: Uint8Array
+  /** Unsupported Photoshop objects retained as opaque blocks only. */
+  warnings: string[]
 }
 
 async function inflateZlib(data: Uint8Array): Promise<Uint8Array> {
@@ -414,16 +495,20 @@ interface PsdLayerRecord {
   opacity: number
   visible: boolean
   clipped: boolean
+  transparencyProtected: boolean
   name: string
   maskRect: [number, number, number, number] | null // top, left, bottom, right
+  maskDefaultColor: number
+  maskFlags: number
   fx: LayerFX | null
   additionalInfo: Uint8Array[]
+  blendingRanges: Uint8Array
 }
 
-type PsdPlane = Uint8Array | Uint16Array
+type PsdPlane = Uint8Array | Uint16Array | Float32Array
 
 function emptyPsdPlane(depth: number, n: number): PsdPlane {
-  return depth === 16 ? new Uint16Array(n) : new Uint8Array(n)
+  return depth === 32 ? new Float32Array(n) : depth === 16 ? new Uint16Array(n) : new Uint8Array(n)
 }
 
 function psdPlaneFromBytes(raw: Uint8Array, depth: number, n: number): PsdPlane {
@@ -432,13 +517,57 @@ function psdPlaneFromBytes(raw: Uint8Array, depth: number, n: number): PsdPlane 
     out.set(raw.subarray(0, n))
     return out
   }
+  if (depth === 32) {
+    const out = new Float32Array(n)
+    const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
+    for (let i = 0; i < Math.min(n, raw.length >>> 2); i++) out[i] = view.getFloat32(i * 4, false)
+    return out
+  }
   const out = new Uint16Array(n)
   const count = Math.min(n, raw.length >> 1)
   for (let i = 0, p = 0; i < count; i++, p += 2) out[i] = (raw[p] << 8) | raw[p + 1]
   return out
 }
 
-/** Decode one channel (raw / RLE / ZIP) without reducing 16-bit samples. */
+/** Reverse Photoshop's ZIP-with-prediction transform on one planar channel.
+ * 8/16-bit delta prediction runs on samples; 32-bit floats are byte-shuffled,
+ * delta-predicted as bytes, then unshuffled by component. */
+export function restorePsdPrediction(encoded: Uint8Array, width: number, height: number, depth: number): Uint8Array {
+  const bytesPerSample = depth >>> 3
+  if (![8, 16, 32].includes(depth) || encoded.length !== width * height * bytesPerSample) {
+    throw new Error('Invalid PSD predicted ZIP channel length or bit depth')
+  }
+  const raw = new Uint8Array(encoded)
+  const rowBytes = width * bytesPerSample
+  if (depth === 16) {
+    const view = new DataView(raw.buffer)
+    for (let y = 0; y < height; y++) {
+      const offset = y * rowBytes
+      for (let x = 1; x < width; x++) {
+        const at = offset + x * 2
+        view.setUint16(at, (view.getUint16(at) + view.getUint16(at - 2)) & 0xffff, false)
+      }
+    }
+  } else {
+    for (let y = 0; y < height; y++) {
+      const offset = y * rowBytes
+      for (let i = 1; i < rowBytes; i++) raw[offset + i] = (raw[offset + i] + raw[offset + i - 1]) & 255
+    }
+    if (depth === 32) {
+      const restored = new Uint8Array(raw.length)
+      for (let y = 0; y < height; y++) {
+        const offset = y * rowBytes
+        for (let x = 0; x < width; x++) for (let component = 0; component < 4; component++) {
+          restored[offset + x * 4 + component] = raw[offset + component * width + x]
+        }
+      }
+      return restored
+    }
+  }
+  return raw
+}
+
+/** Decode one channel (raw / RLE / ZIP) without reducing 16/32-bit samples. */
 async function decodePsdChannel(
   bytes: Uint8Array, view: DataView, pos: number, compr: number,
   w: number, h: number, depth: number, dataLen: number, rowLenBytes: 2 | 4 = 2,
@@ -448,59 +577,86 @@ async function decodePsdChannel(
   const n = w * h
   if (w <= 0 || h <= 0) return emptyPsdPlane(depth, n)
   if (compr === 0) {
-    const raw = bytes.subarray(pos, Math.min(pos + rowBytes * h, bytes.length))
+    if (rowBytes * h > Math.min(dataLen, bytes.length - pos)) throw new Error('Truncated raw PSD channel')
+    const raw = bytes.subarray(pos, pos + rowBytes * h)
     return psdPlaneFromBytes(raw, depth, n)
   }
   if (compr === 1) {
-    if (pos + rowLenBytes * h > bytes.length) return emptyPsdPlane(depth, n)
-    let p = pos
+    if (pos + rowLenBytes * h > bytes.length) throw new Error('Truncated PSD RLE row-length table')
+    // Photoshop stores the entire table of compressed row lengths FIRST,
+    // followed by all encoded rows. The former interleaved parser consumed
+    // row-length bytes as pixel data and corrupted even simple PSD imports.
+    const tableEnd = pos + rowLenBytes * h
+    if (tableEnd > bytes.length || tableEnd > pos + dataLen) throw new Error('Truncated PSD RLE row table')
+    const lengths: number[] = []
+    for (let y = 0, p = pos; y < h; y++, p += rowLenBytes) {
+      lengths.push(rowLenBytes === 4 ? view.getUint32(p) : view.getUint16(p))
+    }
     const raw = new Uint8Array(rowBytes * h)
+    const channelEnd = Math.min(bytes.length, pos + dataLen)
+    let p = tableEnd
     for (let y = 0; y < h; y++) {
-      const rowLen = rowLenBytes === 4 ? view.getUint32(p) : view.getUint16(p)
-      p += rowLenBytes
-      decodePackBitsRow(bytes, p, Math.min(bytes.length, p + rowLen), raw, y * rowBytes, rowBytes)
+      const rowLen = lengths[y]
+      if (rowLen > channelEnd - p) throw new Error('Truncated PSD RLE row')
+      decodePackBitsRow(bytes, p, p + rowLen, raw, y * rowBytes, rowBytes)
       p += rowLen
     }
     return psdPlaneFromBytes(raw, depth, n)
   }
-  if (compr === 2) {
+  if (compr === 2 || compr === 3) {
     const data = await inflateZlib(bytes.subarray(pos, pos + Math.max(0, dataLen)))
-    return psdPlaneFromBytes(data, depth, n)
+    if (data.length !== rowBytes * h) throw new Error('Invalid Photoshop ZIP channel size')
+    return psdPlaneFromBytes(compr === 3 ? restorePsdPrediction(data, w, h, depth) : data, depth, n)
   }
-  return emptyPsdPlane(depth, n)
+  throw new Error(`Unsupported PSD channel compression ${compr}`)
 }
 
-function decodePackBitsRow(src: Uint8Array, start: number, end: number, out: Uint8Array, outOff: number, outLen: number): void {
+export function decodePackBitsRow(src: Uint8Array, start: number, end: number, out: Uint8Array, outOff: number, outLen: number): void {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end > src.length ||
+      start > end || outOff < 0 || outLen < 0 || outOff + outLen > out.length) {
+    throw new Error('Invalid Photoshop PackBits row bounds')
+  }
   let sp = start
   let op = outOff
   const outEnd = outOff + outLen
   while (sp < end && op < outEnd) {
     const n = src[sp++]
     if (n < 128) {
-      const cnt = n + 1
-      for (let i = 0; i < cnt && op < outEnd; i++) out[op++] = src[sp++]
+      const count = n + 1
+      if (sp + count > end || op + count > outEnd) throw new Error('Truncated or oversized Photoshop PackBits literal')
+      out.set(src.subarray(sp, sp + count), op)
+      op += count
+      sp += count
     } else if (n > 128) {
-      const cnt = 257 - n
-      const v = sp < end ? src[sp++] : 0
-      for (let i = 0; i < cnt && op < outEnd; i++) out[op++] = v
+      const count = 257 - n
+      if (sp >= end || op + count > outEnd) throw new Error('Truncated or oversized Photoshop PackBits run')
+      const value = src[sp++]
+      out.fill(value, op, op + count)
+      op += count
     }
+    // 128 is a PackBits no-op.
   }
+  if (op !== outEnd) throw new Error('Incomplete Photoshop PackBits row')
 }
 
 /** combine channel planes → RGBA (RGBA / gray / CMYK / indexed) */
 function channelsToRgba(
   chans: Map<number, PsdPlane>, w: number, h: number,
-  colorMode: number, clut: Uint8Array | null,
-): { rgba: Uint8ClampedArray<ArrayBuffer>; rgba16?: Uint16Array; hasAlpha: boolean } {
+  colorMode: number, clut: Uint8Array | null, transparentIndex: number | null = null,
+): { rgba: Uint8ClampedArray<ArrayBuffer>; rgba16?: Uint16Array; rgbaFloat?: Float32Array; hasAlpha: boolean } {
   const n = w * h
   const out = new Uint8ClampedArray(n * 4)
+  const floating = Array.from(chans.values()).some(v => v instanceof Float32Array)
   const high = Array.from(chans.values()).some(v => v instanceof Uint16Array)
   const out16 = high ? new Uint16Array(n * 4) : undefined
+  const outFloat = floating ? new Float32Array(n * 4) : undefined
   const r = chans.get(0), g = chans.get(1), b = chans.get(2), k = chans.get(3), a = chans.get(-1)
+  const sFloat = (p: PsdPlane | undefined, i: number, fallback = 0): number =>
+    !p ? fallback : p instanceof Float32Array ? p[i] : p instanceof Uint16Array ? p[i] / 65535 : p[i] / 255
   const s16 = (p: PsdPlane | undefined, i: number, fallback = 0): number =>
-    !p ? fallback : p instanceof Uint16Array ? p[i] : p[i] * 257
+    !p ? fallback : p instanceof Float32Array ? Math.round(Math.max(0, Math.min(1, p[i])) * 65535) : p instanceof Uint16Array ? p[i] : p[i] * 257
   const s8 = (p: PsdPlane | undefined, i: number, fallback = 0): number =>
-    !p ? fallback : p instanceof Uint16Array ? Math.round(p[i] / 257) : p[i]
+    !p ? fallback : p instanceof Float32Array ? Math.round(Math.max(0, Math.min(1, p[i])) * 255) : p instanceof Uint16Array ? Math.round(p[i] / 257) : p[i]
   let hasAlpha = false
 
   for (let i = 0, o = 0; i < n; i++, o += 4) {
@@ -508,7 +664,15 @@ function channelsToRgba(
     const av8 = Math.round(av16 / 257)
     out[o + 3] = av8
     if (out16) out16[o + 3] = av16
-    if (av16 < 65535) hasAlpha = true
+    if ((floating ? sFloat(a, i, 1) : av16 / 65535) < 1) hasAlpha = true
+    if (outFloat) {
+      const alpha = sFloat(a, i, 1)
+      if (![sFloat(r, i), sFloat(g, i), sFloat(b, i), alpha].every(Number.isFinite)) throw new Error('Invalid floating-point PSD sample')
+      outFloat[o] = sFloat(r, i)
+      outFloat[o + 1] = sFloat(g, i)
+      outFloat[o + 2] = sFloat(b, i)
+      outFloat[o + 3] = alpha
+    }
 
     let rr16 = 0, gg16 = 0, bb16 = 0
     switch (colorMode) {
@@ -520,19 +684,56 @@ function channelsToRgba(
         rr16 = gg16 = bb16 = s16(r, i)
         break
       case 4: {
+        // In Photoshop PSD storage, 0 means 100% ink and max means 0% ink.
+        // Values are already inverted relative to the usual normalized CMYK
+        // equation. Multiply by the (inverted) K channel instead of inverting
+        // again. An embedded CMYK ICC profile would give better print colors;
+        // this remains an explicitly approximate RGB preview conversion.
         const cc = s16(r, i), mm = s16(g, i), yy = s16(b, i), kk = s16(k, i)
-        const inv = 65535 - kk
-        rr16 = Math.round(((65535 - cc) * inv) / 65535)
-        gg16 = Math.round(((65535 - mm) * inv) / 65535)
-        bb16 = Math.round(((65535 - yy) * inv) / 65535)
+        rr16 = Math.round((cc * kk) / 65535)
+        gg16 = Math.round((mm * kk) / 65535)
+        bb16 = Math.round((yy * kk) / 65535)
+        break
+      }
+      case 9: {
+        // Photoshop Lab storage: L in 0..100 and a/b encoded with 128 as
+        // the neutral 8-bit center. Convert D50 Lab to display sRGB using a
+        // fixed D50-adapted matrix. This is an approximate RGB preview, not
+        // a replacement for full ICC/Lab editing or Lab-preserving export.
+        const L = s16(r, i) * (100 / 65535)
+        const aLab = s16(g, i) * (255 / 65535) - 128
+        const bLab = s16(b, i) * (255 / 65535) - 128
+        const fy = (L + 16) / 116
+        const fx = fy + aLab / 500
+        const fz = fy - bLab / 200
+        const delta = 6 / 29
+        const cube = (t: number) => t > delta ? t * t * t : 3 * delta * delta * (t - 4 / 29)
+        const X = cube(fx) * 0.96422
+        const Y = cube(fy)
+        const Z = cube(fz) * 0.82521
+        const gamma = (v: number) => {
+          const c = Math.max(0, Math.min(1, v))
+          return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055
+        }
+        rr16 = Math.round(gamma(3.1338561 * X - 1.6168667 * Y - 0.4906146 * Z) * 65535)
+        gg16 = Math.round(gamma(-0.9787684 * X + 1.9161415 * Y + 0.0334540 * Z) * 65535)
+        bb16 = Math.round(gamma(0.0719453 * X - 0.2289914 * Y + 1.4052427 * Z) * 65535)
         break
       }
       case 2: {
-        const idx = s8(r, i) * 3
-        if (clut && idx + 2 < clut.length) {
-          rr16 = clut[idx] * 257
-          gg16 = clut[idx + 1] * 257
-          bb16 = clut[idx + 2] * 257
+        // Adobe PSD indexed palettes are PLANAR, not RGB triplets:
+        // [256 red samples][256 green samples][256 blue samples].
+        const index = s8(r, i)
+        if (clut && clut.length >= 768) {
+          rr16 = clut[index] * 257
+          gg16 = clut[256 + index] * 257
+          bb16 = clut[512 + index] * 257
+        }
+        if (transparentIndex === index) {
+          out[o + 3] = 0
+          if (out16) out16[o + 3] = 0
+          if (outFloat) outFloat[o + 3] = 0
+          hasAlpha = true
         }
         break
       }
@@ -546,10 +747,11 @@ function channelsToRgba(
       out16[o] = rr16; out16[o + 1] = gg16; out16[o + 2] = bb16
     }
   }
-  return { rgba: out, rgba16: out16, hasAlpha }
+  return { rgba: out, rgba16: out16, rgbaFloat: outFloat, hasAlpha }
 }
 
-function rgbaToCanvas2(rgba: Uint8ClampedArray<ArrayBuffer>, w: number, h: number, rgba16?: Uint16Array): HTMLCanvasElement {
+function rgbaToCanvas2(rgba: Uint8ClampedArray<ArrayBuffer>, w: number, h: number, rgba16?: Uint16Array, rgbaFloat?: Float32Array): HTMLCanvasElement {
+  if (rgbaFloat) return hdrFloat32ToPreviewCanvas(rgbaFloat, w, h)
   const c = createCanvas(w, h, { bitDepth: rgba16 ? 16 : 8, colorSpace: 'srgb' })
   if (rgba16) {
     const values = new Float32Array(rgba16.length)
@@ -577,9 +779,12 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   if (width <= 0 || height <= 0 || width * height > 268435456) {
     throw new Error(`Invalid PSD dimensions ${width}×${height}`)
   }
-  if (depth !== 8 && depth !== 16) throw new Error(`Unsupported PSD depth ${depth} bits (only 8/16)`)
-  if (colorMode === 0 || colorMode === 7 || colorMode === 9) {
-    throw new Error(`Unsupported PSD color mode ${colorMode} (bitmap / multichannel / Lab)`)
+  if (depth !== 8 && depth !== 16 && depth !== 32) throw new Error(`Unsupported PSD depth ${depth} bits (only 8/16/32)`)
+  if (depth === 32 && colorMode !== 3) throw new Error('32-bit PSD currently supports RGB color mode only')
+  const baseChannels = colorMode === 3 || colorMode === 9 ? 3 : colorMode === 4 ? 4 : 1
+  if (channels < baseChannels || channels > 56) throw new Error(`Invalid Photoshop channel count ${channels} for color mode ${colorMode}`)
+  if (colorMode === 0 || colorMode === 7) {
+    throw new Error(`Unsupported PSD color mode ${colorMode} (bitmap / multichannel)`)
   }
   const readLength = (p: number): number =>
     psb ? view.getUint32(p) * 4294967296 + view.getUint32(p + 4) : view.getUint32(p)
@@ -589,7 +794,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   // ---- color mode data (holds the CLUT for indexed files) ----
   const cmdLen = view.getUint32(pos)
   pos += 4
-  const clut = colorMode === 2 && cmdLen >= 768 ? bytes.subarray(pos, pos + 768) : null
+  if (cmdLen > bytes.length - pos) throw new Error('Truncated Photoshop color-mode data')
+  const colorModeData = bytes.slice(pos, pos + cmdLen)
+  const clut = colorMode === 2 && cmdLen >= 768 ? colorModeData.subarray(0, 768) : null
   pos += cmdLen
   // ---- image resources ----
   const resLen = view.getUint32(pos)
@@ -597,6 +804,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const resStart = pos
   const resEnd = Math.min(bytes.length, resStart + resLen)
   let resolutionPpi = 72
+  let transparencyIndex: number | null = null
   const imageResources: Uint8Array[] = []
   // Parse Photoshop Image Resource Blocks enough to recover ResolutionInfo
   // (0x0400). The Pascal name is padded to an even byte boundary and resource
@@ -614,7 +822,16 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const dataLen = view.getUint32(pos)
     pos += 4
     const dataStart = pos
-    if (id === 0x0400 && dataLen >= 16 && dataStart + 16 <= resEnd) {
+    if (id === 0x0417 && colorMode === 2 && dataLen >= 2 && dataStart + 2 <= resEnd) {
+      const candidate = view.getUint16(dataStart)
+      if (candidate < 256) transparencyIndex = candidate
+    }
+    // Photoshop's ResolutionInfo resource is 1005 (0x03ED), NOT 1024
+    // (0x0400). Some older Studio exports accidentally used 0x0400, so
+    // recognize that legacy 16-byte payload only when its units match.
+    const legacyResolution = id === 0x0400 && dataLen === 16 && dataStart + 16 <= resEnd &&
+      view.getUint16(dataStart + 4) === 1 && view.getUint16(dataStart + 12) === 1
+    if ((id === 0x03ed || legacyResolution) && dataLen >= 16 && dataStart + 16 <= resEnd) {
       const hFixed = view.getUint32(dataStart)
       const vFixed = view.getUint32(dataStart + 8)
       const h = hFixed / 65536
@@ -623,7 +840,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       if (Number.isFinite(ppi) && ppi > 0) resolutionPpi = Math.max(1, Math.min(12000, ppi))
     }
     pos = dataStart + dataLen + (dataLen & 1)
-    if (id !== 0x0400 && pos <= resEnd) imageResources.push(bytes.slice(blockStart, pos))
+    if (id !== 0x03ed && !legacyResolution && pos <= resEnd) imageResources.push(bytes.slice(blockStart, pos))
   }
   pos = resEnd
   // ---- layer & mask info ----
@@ -631,12 +848,46 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   pos += lenSize
   const lmEnd = pos + lmLen
 
+  const compatibilityWarnings = new Set<string>()
+  const faithfullyMappedBlendKeys = new Set(['norm', 'dark', 'mul', 'mult', 'lite', 'scrn', 'screen',
+    'over', 'hard', 'soft', 'diff', 'smud', 'xclu', 'hue', 'sat', 'colr', 'lum', 'div', 'idiv', 'dded'])
+  if (channels > baseChannels + 1) compatibilityWarnings.add('Additional Photoshop spot/alpha channels beyond merged transparency are not reconstructed in the canvas preview')
+  if (colorMode === 9) compatibilityWarnings.add('Photoshop Lab was converted to an approximate sRGB preview; editable Lab/ICC color data is not retained')
+  if (colorMode === 4) compatibilityWarnings.add('Photoshop CMYK was converted to an approximate RGB preview; an ICC-managed conversion is not available')
   const records: PsdLayerRecord[] = []
   const layerChannels: Map<number, PsdPlane>[] = []
   if (lmLen > 0 && lmEnd <= bytes.length) {
-    // layer info
-    const liLen = readLength(pos)
+    // Photoshop stores 16/32-bit layer records in the global Lr16/Lr32
+    // tagged block instead of the ordinary (8-bit) layer-info section.
+    // Retain the legacy location as a compatibility fallback for third-party writers.
+    let liLen = readLength(pos)
     pos += lenSize
+    if (liLen === 0 && (depth === 16 || depth === 32)) {
+      let scan = pos
+      if (scan + 4 <= lmEnd) {
+        const globalMaskLength = view.getUint32(scan)
+        scan += 4 + globalMaskLength
+      }
+      const tagKey = depth === 16 ? 'Lr16' : 'Lr32'
+      while (scan + 12 <= lmEnd) {
+        const signature = str4(scan)
+        if (signature !== '8BIM' && signature !== '8B64') break
+        const key = str4(scan + 4)
+        const taggedLengthSize = psb && (key === 'Lr16' || key === 'Lr32') ? 8 : 4
+        if (scan + 8 + taggedLengthSize > lmEnd) break
+        const size = taggedLengthSize === 8
+          ? view.getUint32(scan + 8) * 4294967296 + view.getUint32(scan + 12)
+          : view.getUint32(scan + 8)
+        const dataStart = scan + 8 + taggedLengthSize
+        if (!Number.isSafeInteger(size) || size < 0 || dataStart + size > lmEnd) break
+        if (key === tagKey) {
+          liLen = size
+          pos = dataStart
+          break
+        }
+        scan = dataStart + size + (size & 1)
+      }
+    }
     const liEnd = pos + liLen
     if (liLen > 0) {
       const layerCount = Math.abs(view.getInt16(pos))
@@ -658,6 +909,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         }
         pos += 4 // blend signature '8BIM'
         const blendKey = str4(pos)
+        if (!faithfullyMappedBlendKeys.has(blendKey.trimEnd()) && blendKey.trimEnd() !== 'pass') {
+          compatibilityWarnings.add('Some Photoshop blend modes cannot be previewed faithfully by Studio; original mode keys are retained for Photoshop re-export')
+        }
         pos += 4
         const opacity = bytes[pos]
         const clipping = bytes[pos + 1]
@@ -668,17 +922,26 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const extraEnd = pos + extraLen
         // layer mask data
         let maskRect: [number, number, number, number] | null = null
+        let maskDefaultColor = 0
+        let maskFlags = 0
         const maskLen = view.getUint32(pos)
         pos += 4
+        if (maskLen > extraEnd - pos) throw new Error('Truncated Photoshop layer mask metadata')
         if (maskLen > 0) {
-          if (maskLen >= 16) {
-            maskRect = [view.getInt32(pos), view.getInt32(pos + 4), view.getInt32(pos + 8), view.getInt32(pos + 12)]
-          }
+          if (maskLen < 18) throw new Error('Invalid Photoshop layer mask metadata length')
+          maskRect = [view.getInt32(pos), view.getInt32(pos + 4), view.getInt32(pos + 8), view.getInt32(pos + 12)]
+          maskDefaultColor = bytes[pos + 16]
+          maskFlags = bytes[pos + 17]
+          if (maskFlags & 4) compatibilityWarnings.add('Legacy inverted Photoshop masks are retained as previews; mask inversion must be verified in Photoshop')
+          if (maskFlags & 16) compatibilityWarnings.add('Photoshop layer mask density/feather cannot yet be edited natively')
           pos += maskLen
         }
         // layer blending ranges
         const brLen = view.getUint32(pos)
-        pos += 4 + brLen
+        pos += 4
+        if (brLen > extraEnd - pos) throw new Error('Truncated Photoshop blending ranges')
+        const blendingRanges = bytes.slice(pos, pos + brLen)
+        pos += brLen
         // pascal name (padded to multiple of 4 including the length byte)
         const nameLen = bytes[pos]
         pos += 1
@@ -692,26 +955,35 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         let fx: LayerFX | null = null
         let legacyFx: LayerFX | null = null
         let hasDescriptorFx = false
-        while (pos + 8 + lenSize <= extraEnd) {
+        // PSB changes the length field to 64-bit only for specific keys.
+        // Most PSB tagged blocks are still 12-byte records with a uint32
+        // length. Requiring 16 bytes here silently dropped short final tags.
+        while (pos + 12 <= extraEnd) {
           const blockStart = pos
-          const s0 = bytes[pos]
-          const s1 = bytes[pos + 1]
-          if (s0 !== 0x38 /* 8 */ || s1 !== 0x42 /* B */) break
+          const signature = str4(pos)
+          if (signature !== '8BIM' && signature !== '8B64') break
           const key = str4(pos + 4)
-          pos += 8
-          const blockLen = readLength(pos)
-          pos += lenSize
-          const dataStart = pos
-          if (key === 'luni' && blockLen >= 4 && dataStart + 4 <= bytes.length) {
+          // Only specific PSB tagged blocks use 64-bit lengths; normal 8BIM
+          // layer descriptors still have 32-bit lengths (Adobe specification).
+          const uses64Length = psb && PSB_WIDE_TAG_KEYS.has(key)
+          const headerSize = uses64Length ? 16 : 12
+          if (blockStart + headerSize > extraEnd) throw new Error(`Truncated Photoshop tagged block ${key} header`)
+          const blockLen = uses64Length ? readLength(blockStart + 8) : view.getUint32(blockStart + 8)
+          const dataStart = blockStart + headerSize
+          if (!Number.isSafeInteger(blockLen) || blockLen < 0 || blockLen + (blockLen & 1) > extraEnd - dataStart) {
+            throw new Error(`Truncated Photoshop tagged block ${key} payload`)
+          }
+          const blockEnd = dataStart + blockLen + (blockLen & 1)
+          if (key === 'luni' && blockLen >= 4) {
             const charCount = view.getUint32(dataStart)
+            if (charCount > (blockLen - 4) / 2) throw new Error('Truncated Photoshop Unicode layer name')
             let uni = ''
-            for (let ci = 0; ci < charCount && dataStart + 4 + ci * 2 + 1 < bytes.length; ci++) {
+            for (let ci = 0; ci < charCount; ci++) {
               uni += String.fromCharCode(view.getUint16(dataStart + 4 + ci * 2))
             }
             if (uni) name = uni
           }
-          const blockEnd = Math.min(extraEnd, dataStart + blockLen + (blockLen & 1))
-          if (blockEnd > blockStart && key !== 'luni') {
+          if (key !== 'luni') {
             const raw = bytes.slice(blockStart, blockEnd)
             if (key === 'chFX') {
               const parsed = parseChaysLayerFxBlock(raw)
@@ -720,9 +992,18 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
             } else if (key === 'lrFX') {
               const parsed = parseLegacyLayerFxBlock(raw)
               if (parsed) legacyFx = parsed
-              else additionalInfo.push(raw)
+              // Retain the source binary even when it was parsed into editable
+              // controls: unknown Photoshop fields must survive no-op saves.
+              additionalInfo.push(raw)
             } else {
-              if (key === 'lfx2' || key === 'lmfx' || key === 'lfxs') hasDescriptorFx = true
+              if (key === 'lfx2' || key === 'lmfx' || key === 'lfxs') {
+                hasDescriptorFx = true
+                compatibilityWarnings.add('Modern Photoshop layer styles are retained as opaque descriptors, not fully editable')
+              }
+              if (key === 'lsct' || key === 'lsdk') compatibilityWarnings.add('Photoshop layer groups are not reconstructed; saving can lose folder organization')
+              if (key === 'TySh') compatibilityWarnings.add('Native Photoshop text layer editing is not yet supported')
+              if (key === 'SoLd' || key === 'PlLd' || key === 'lnk2') compatibilityWarnings.add('Embedded/linked Photoshop Smart Objects are not reconstructed as native editable objects')
+              if (key === 'vmsk' || key === 'vsms') compatibilityWarnings.add('Photoshop vector masks are retained as opaque descriptors, not native editable masks')
               additionalInfo.push(raw)
             }
           }
@@ -735,7 +1016,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos = extraEnd
         records.push({
           top, left, bottom, right, channels, blendKey,
-          opacity, visible: (flags & 2) !== 0, clipped: clipping === 1, name, maskRect, fx, additionalInfo,
+          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, transparencyProtected: (flags & 1) !== 0, name, maskRect, maskDefaultColor, maskFlags, fx, additionalInfo, blendingRanges,
         })
       }
 
@@ -746,6 +1027,17 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const lh = rec.bottom - rec.top
         for (const ch of rec.channels) {
           const chStart = pos
+          // -3 is Photoshop's combined user/vector mask and has an
+          // independent rectangle in the mask metadata. Never decode it
+          // against the raster layer dimensions: that turns valid Photoshop
+          // files into bogus RLE/ZIP channel-size failures. The separate
+          // user mask (-2), when present, remains imported below.
+          if (ch.id === -3) {
+            compatibilityWarnings.add('Photoshop combined user/vector mask channel (-3) is not rendered or editable; original mask appearance may differ')
+            if (ch.len < 2 || ch.len > liEnd - chStart) throw new Error('Invalid Photoshop real mask channel length')
+            pos = chStart + ch.len
+            continue
+          }
           const compr = view.getUint16(pos)
           pos += 2
           const isMask = ch.id === -2
@@ -753,8 +1045,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           const mh = isMask && rec.maskRect ? rec.maskRect[2] - rec.maskRect[0] : lh
           try {
             chans.set(ch.id, await decodePsdChannel(bytes, view, pos, compr, Math.max(0, mw), Math.max(0, mh), depth, Math.max(0, ch.len - 2), psb ? 4 : 2))
-          } catch {
-            chans.set(ch.id, emptyPsdPlane(depth, Math.max(0, mw) * Math.max(0, mh)))
+          } catch (error) {
+            throw new Error(`Cannot decode PSD layer ${rec.name} channel ${ch.id}: ${error instanceof Error ? error.message : String(error)}`)
           }
           pos = chStart + ch.len // lengths cover compression + row table + data
         }
@@ -767,43 +1059,91 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
 
   // ---- build layer canvases ----
   const layers: PsdLayer[] = []
+  const sectionMarkers: PsdSectionMarker[] = []
   for (let i = 0; i < records.length; i++) {
     const rec = records[i]
     const chans = layerChannels[i]
     const lw = rec.right - rec.left
     const lh = rec.bottom - rec.top
-    if (lw <= 0 || lh <= 0) continue
-    let canvas: HTMLCanvasElement
-    try {
-      const { rgba, rgba16 } = channelsToRgba(chans, lw, lh, colorMode, clut)
-      canvas = rgbaToCanvas2(rgba, lw, lh, rgba16)
-    } catch {
+    if (lw <= 0 || lh <= 0) {
+      // Group boundaries are zero-sized, zero-channel layer records with a
+      // section-divider tag. Retain their Photoshop metadata and position.
+      const divider = rec.additionalInfo.find(block =>
+        block.length >= 16 && ['lsct', 'lsdk'].includes(String.fromCharCode(...block.subarray(4, 8))))
+      const sectionType = divider ? new DataView(divider.buffer, divider.byteOffset).getUint32(12) : 0
+      const isGroup = !!divider && [1, 2, 3].includes(sectionType)
+      // Only zero-pixel, zero-channel adjustments can be preserved verbatim
+      // without interpreting pixel/mask channels that the editor cannot render.
+      const adjustmentKeys = new Set(['levl', 'curv', 'brit', 'hue2', 'blnc', 'blwh',
+        'selc', 'vibA', 'expA', 'grdm', 'phfl', 'SoCo', 'GdFl', 'PtFl'])
+      const isAdjustment = rec.additionalInfo.some(block =>
+        block.length >= 12 && adjustmentKeys.has(String.fromCharCode(...block.subarray(4, 8))))
+      if ((isGroup || isAdjustment) && rec.channels.length === 0) {
+        sectionMarkers.push({
+          kind: isGroup ? 'group' : 'adjustment',
+          beforeLayerIndex: layers.length, name: rec.name, visible: rec.visible,
+          opacity: Math.round(rec.opacity * 100 / 255), blendKey: rec.blendKey,
+          additionalInfo: rec.additionalInfo.map(b => b.slice()),
+          blendingRanges: rec.blendingRanges.slice(),
+        })
+        if (isAdjustment) compatibilityWarnings.add('Photoshop adjustment records are retained for re-export but not rendered or editable in Studio')
+      } else compatibilityWarnings.add('One or more non-raster Photoshop layer records could not be preserved')
       continue
     }
-    // user mask → full-document-size canvas with the mask value in alpha
+    let canvas: HTMLCanvasElement
+    let hdrPixels: Float32Array | undefined
+    try {
+      const { rgba, rgba16, rgbaFloat } = channelsToRgba(chans, lw, lh, colorMode, clut, transparencyIndex)
+      hdrPixels = rgbaFloat
+      canvas = rgbaToCanvas2(rgba, lw, lh, rgba16, rgbaFloat)
+      if (depth === 16 && canvasProfile(canvas).bitDepth !== 16) {
+        compatibilityWarnings.add('16-bit PSD layer precision was reduced to an 8-bit canvas preview by this browser; edits and export may quantize high-precision samples')
+      }
+    } catch (error) {
+      throw new Error(`Unable to restore Photoshop layer ${rec.name}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    // User masks are stored within a rectangle; outside it Photoshop uses
+    // the explicit default color (commonly WHITE). Position can be relative
+    // to the layer bounds, and the disabled flag must remain meaningful.
     let mask: HTMLCanvasElement | null = null
     if (rec.maskRect) {
-      const mTop = rec.maskRect[0], mLeft = rec.maskRect[1]
-      const mw = rec.maskRect[3] - mLeft
-      const mh = rec.maskRect[2] - mTop
+      const [mTop, mLeft, mBottom, mRight] = rec.maskRect
+      const mw = mRight - mLeft, mh = mBottom - mTop
       const mch = chans.get(-2)
       if (mw > 0 && mh > 0 && mch && mch.length >= mw * mh) {
         mask = createCanvas(width, height)
         const mimg = new ImageData(width, height)
         const md = mimg.data
-        for (let y = 0; y < Math.min(mh, height - mTop); y++) {
-          for (let x = 0; x < Math.min(mw, width - mLeft); x++) {
-            const o = ((mTop + y) * width + (mLeft + x)) * 4
-            md[o] = 255; md[o + 1] = 255; md[o + 2] = 255
-            md[o + 3] = mch instanceof Uint16Array ? Math.round(mch[y * mw + x] / 257) : mch[y * mw + x]
+        for (let pixelIndex = 0; pixelIndex < width * height; pixelIndex++) {
+          const p = pixelIndex * 4
+          md[p] = md[p + 1] = md[p + 2] = 255
+          md[p + 3] = rec.maskDefaultColor
+        }
+        const originX = mLeft + ((rec.maskFlags & 1) ? rec.left : 0)
+        const originY = mTop + ((rec.maskFlags & 1) ? rec.top : 0)
+        for (let y = 0; y < mh; y++) {
+          for (let x = 0; x < mw; x++) {
+            const docX = originX + x, docY = originY + y
+            if (docX < 0 || docX >= width || docY < 0 || docY >= height) continue
+            const o = (docY * width + docX) * 4
+            const pixel = mch[y * mw + x]
+            md[o + 3] = mch instanceof Float32Array ? Math.round(pixel * 255) : mch instanceof Uint16Array ? Math.round(pixel / 257) : pixel
           }
         }
         ctx2d(mask).putImageData(mimg, 0, 0)
       }
     }
+    const protectionRecord = rec.additionalInfo.find(block => fxBlockKey(block) === 'lspf' && block.length >= 16)
+    const protection = protectionRecord
+      ? new DataView(protectionRecord.buffer, protectionRecord.byteOffset, protectionRecord.byteLength).getUint32(12)
+      : 0
+    if ((protection & 0x7) !== 0 && (protection & 0x7) !== 0x7) {
+      compatibilityWarnings.add('Partially protected Photoshop layers are conservatively locked in Studio; their original protection flags are preserved on unchanged export')
+    }
     layers.push({
       name: rec.name || `Layer ${i + 1}`,
       canvas,
+      hdrPixels,
       left: rec.left,
       top: rec.top,
       width: lw,
@@ -813,14 +1153,24 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       blendMode: psdBlendKeyToMode(rec.blendKey),
       visible: rec.visible,
       clipped: rec.clipped,
+      locked: (protection & 0x7) !== 0 || rec.transparencyProtected,
+      transparencyProtected: rec.transparencyProtected,
       mask,
+      maskEnabled: !(rec.maskFlags & 2),
+      unsupportedRealMask: rec.channels.some(ch => ch.id === -3),
       fx: rec.fx ? structuredClone(rec.fx) : null,
       additionalInfo: rec.additionalInfo.map(b => b.slice()),
+      blendingRanges: rec.blendingRanges.slice(),
     })
   }
 
+  const groupPaths = psdGroupPaths(layers.length, sectionMarkers)
+  for (let i = 0; i < layers.length; i++) layers[i].groupPath = groupPaths[i]
+
   // ---- merged composite (Image Data section) ----
   let composite: HTMLCanvasElement | null = null
+  let compositeError: unknown = null
+  let hdrComposite: Float32Array | undefined
   let hasAlpha = false
   try {
     pos = Math.min(lmEnd, bytes.length)
@@ -829,12 +1179,15 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const bpc = depth >> 3
     const rowBytes = width * bpc
     const chans = new Map<number, PsdPlane>()
-    const compositeId = (c: number): number =>
-      (colorMode === 3 && c < 3) || (colorMode === 4 && c < 4) || (colorMode === 1 && c < 1) || (colorMode === 2 && c < 1) || (colorMode === 8 && c < 1) ? c : -1
+    // Extra spot/alpha channels must never overwrite the first merged
+    // transparency channel. A five-channel RGB PSD contains R/G/B, alpha,
+    // then a fifth independent channel—not a replacement for transparency.
+    const compositeId = (c: number): number => c < baseChannels ? c : c === baseChannels ? -1 : -1000 - c
     if (compr === 0) {
       for (let c = 0; c < channels; c++) {
         const chan = await decodePsdChannel(bytes, view, pos, compr, width, height, depth, rowBytes * height)
-        chans.set(compositeId(c), chan)
+        const id = compositeId(c)
+        if (id >= -1) chans.set(id, chan)
         pos += rowBytes * height
       }
     } else if (compr === 1) {
@@ -842,8 +1195,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       const totalRows = channels * height
       const rowLens: number[] = []
       for (let i = 0; i < totalRows && pos + 2 <= bytes.length; i++) {
-        rowLens.push(view.getUint16(pos))
-        pos += 2
+        rowLens.push(psb ? view.getUint32(pos) : view.getUint16(pos))
+        pos += psb ? 4 : 2
       }
       for (let c = 0; c < channels; c++) {
         const raw = new Uint8Array(rowBytes * height)
@@ -852,26 +1205,40 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           decodePackBitsRow(bytes, pos, pos + rl, raw, y * rowBytes, rowBytes)
           pos += rl
         }
-        chans.set(compositeId(c), psdPlaneFromBytes(raw, depth, width * height))
+        const id = compositeId(c)
+        if (id >= -1) chans.set(id, psdPlaneFromBytes(raw, depth, width * height))
       }
-    } else if (compr === 2) {
+    } else if (compr === 2 || compr === 3) {
       const data = await inflateZlib(bytes.subarray(pos))
       const channelBytes = rowBytes * height
+      if (data.length !== channelBytes * channels) throw new Error('Invalid Photoshop ZIP composite size')
       for (let ci = 0; ci < channels; ci++) {
         const raw = data.subarray(ci * channelBytes, (ci + 1) * channelBytes)
-        chans.set(compositeId(ci), psdPlaneFromBytes(raw, depth, width * height))
+        const id = compositeId(ci)
+        if (id >= -1) chans.set(id, psdPlaneFromBytes(compr === 3 ? restorePsdPrediction(raw, width, height, depth) : raw, depth, width * height))
       }
     } else {
       throw new Error(`Unsupported composite compression ${compr}`)
     }
-    const res = channelsToRgba(chans, width, height, colorMode, clut)
-    composite = rgbaToCanvas2(res.rgba, width, height, res.rgba16)
+    const res = channelsToRgba(chans, width, height, colorMode, clut, transparencyIndex)
+    composite = rgbaToCanvas2(res.rgba, width, height, res.rgba16, res.rgbaFloat)
+    if (depth === 16 && canvasProfile(composite).bitDepth !== 16) {
+      compatibilityWarnings.add('16-bit PSD precision was reduced to an 8-bit canvas preview by this browser; edits and export may quantize high-precision samples')
+    }
+    hdrComposite = res.rgbaFloat
     hasAlpha = res.hasAlpha
-  } catch {
+  } catch (error) {
+    compositeError = error
     composite = null
   }
 
   if (!composite) {
+    // Do not silently import a blank canvas when both the merged image and
+    // drawable Photoshop layers are absent. That previously looked like a
+    // successful open, then saving destroyed the only original source data.
+    if (!layers.length) throw new Error(`Cannot decode PSD merged image and no raster layers are available: ${compositeError instanceof Error ? compositeError.message : String(compositeError)}`)
+    compatibilityWarnings.add('PSD merged composite could not be decoded; preview was rebuilt from layers and may differ from Photoshop')
+    if (depth === 32) compatibilityWarnings.add('HDR merged image unavailable: layer-based fallback preview cannot retain the original scene-linear composite')
     // fallback: render the composite from the decoded layers
     composite = createCanvas(width, height)
     const cctx = ctx2d(composite)
@@ -883,9 +1250,10 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       cctx.drawImage(l.canvas, l.left, l.top)
       cctx.restore()
     }
+    hasAlpha = getImageData(composite).data.some((v, i) => i % 4 === 3 && v < 255)
   }
 
-  return { canvas: composite, width, height, depth: depth as 8 | 16, hasAlpha, layers, resolutionPpi, imageResources }
+  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, colorModeData, warnings: [...compatibilityWarnings] }
 }
 
 // ============================================================
@@ -901,13 +1269,27 @@ export interface PsdLayerInput {
   blendMode: string  // app blend mode id ('normal', 'multiply', …)
   visible: boolean
   clipped?: boolean
+  /** Photoshop lspf protection flags are generated from the current lock when changed. */
+  locked?: boolean
+  /** Photoshop legacy layer flags bit0. Preserve when source layer stays locked. */
+  sourceTransparencyProtected?: boolean
   /** full-document-size mask canvas — mask value lives in the ALPHA channel */
   mask?: HTMLCanvasElement | null
+  /** Authoritative linear RGB floats for 32-bit Photoshop interchange. */
+  hdrPixels?: Float32Array
   /** Native editable layer style stack. Photoshop-readable legacy effects
    * are regenerated; the complete stack is retained in chFX for Chay's Studio. */
   fx?: LayerFX | null
   /** Opaque PSD additional-layer-information blocks to preserve. */
   additionalInfo?: Uint8Array[]
+  /** Lossless passthrough of Photoshop source/destination blending ranges. */
+  blendingRanges?: Uint8Array
+  /** Disabled Photoshop layer masks remain present but inactive. */
+  maskEnabled?: boolean
+  /** Non-rendering Photoshop group delimiter. Has no pixel channels. */
+  sectionMarker?: boolean
+  /** Exact Photoshop folder blend key, e.g. 'pass'; other layer kinds use mapped modes. */
+  rawBlendKey?: string
 }
 
 /** PackBits-encode one row; returns the packed bytes */
@@ -938,7 +1320,7 @@ function packBitsRow(src: Uint8Array, off: number, n: number): Uint8Array {
 }
 
 /** one channel block: [u16 compression=1][2h row lengths][packed rows] */
-function encodeRleChannel(chan: Uint8Array, w: number, h: number): Uint8Array {
+function encodeRleChannel(chan: Uint8Array, w: number, h: number, rowLenBytes: 2 | 4 = 2): Uint8Array {
   const rows: Uint8Array[] = []
   const rowLens: number[] = []
   let dataBytes = 0
@@ -948,19 +1330,38 @@ function encodeRleChannel(chan: Uint8Array, w: number, h: number): Uint8Array {
     rowLens.push(row.length)
     dataBytes += row.length
   }
-  const out = new Uint8Array(2 + 2 * h + dataBytes)
+  // PSD stores 16-bit RLE row sizes; a too-wide row must use raw data.
+  if (rowLenBytes === 2 && rowLens.some(len => len > 0xffff)) {
+    const raw = new Uint8Array(2 + chan.length)
+    raw.set(chan, 2)
+    return raw
+  }
+  const out = new Uint8Array(2 + rowLenBytes * h + dataBytes)
   const view = new DataView(out.buffer)
   view.setUint16(0, 1)
-  for (let y = 0; y < h; y++) view.setUint16(2 + y * 2, rowLens[y])
-  let o = 2 + 2 * h
+  for (let y = 0; y < h; y++) {
+    if (rowLenBytes === 4) view.setUint32(2 + y * 4, rowLens[y])
+    else view.setUint16(2 + y * 2, rowLens[y])
+  }
+  let o = 2 + rowLenBytes * h
   for (const row of rows) { out.set(row, o); o += row.length }
   return out
 }
 
-function splitCanvasChannels(canvas: HTMLCanvasElement, depth: 8 | 16): { r: Uint8Array; g: Uint8Array; b: Uint8Array; a: Uint8Array } {
+function splitCanvasChannels(canvas: HTMLCanvasElement, depth: 8 | 16 | 32, hdrPixels?: Float32Array): { r: Uint8Array; g: Uint8Array; b: Uint8Array; a: Uint8Array } {
   const n = canvas.width * canvas.height
   const bpc = depth >> 3
   const r = new Uint8Array(n * bpc), g = new Uint8Array(n * bpc), b = new Uint8Array(n * bpc), a = new Uint8Array(n * bpc)
+  if (depth === 32) {
+    if (!hdrPixels || hdrPixels.length !== n * 4) throw new Error('32-bit PSD export requires full-resolution Float32 pixels for every layer')
+    const views = [r, g, b, a].map(buf => new DataView(buf.buffer))
+    for (let i = 0; i < n; i++) for (let c = 0; c < 4; c++) {
+      const value = hdrPixels[i * 4 + c]
+      if (!Number.isFinite(value)) throw new Error('Non-finite PSD HDR pixel value')
+      views[c].setFloat32(i * 4, value, false)
+    }
+    return { r, g, b, a }
+  }
   if (depth === 16) {
     const hi = getFloat16ImageData(canvas)
     const fallback = hi?.data ? null : getImageData(canvas).data
@@ -992,7 +1393,7 @@ function splitCanvasChannels(canvas: HTMLCanvasElement, depth: 8 | 16): { r: Uin
   return { r, g, b, a }
 }
 
-function maskChannelBytes(canvas: HTMLCanvasElement, depth: 8 | 16): Uint8Array {
+function maskChannelBytes(canvas: HTMLCanvasElement, depth: 8 | 16 | 32): Uint8Array {
   const d = getImageData(canvas).data
   const n = canvas.width * canvas.height
   if (depth === 8) {
@@ -1000,7 +1401,12 @@ function maskChannelBytes(canvas: HTMLCanvasElement, depth: 8 | 16): Uint8Array 
     for (let i = 0, o = 3; i < n; i++, o += 4) out[i] = d[o]
     return out
   }
-  const out = new Uint8Array(n * 2)
+  const out = new Uint8Array(n * (depth >> 3))
+  if (depth === 32) {
+    const view = new DataView(out.buffer)
+    for (let i = 0; i < n; i++) view.setFloat32(i * 4, d[i * 4 + 3] / 255, false)
+    return out
+  }
   for (let i = 0, o = 3; i < n; i++, o += 4) {
     const v = d[o] * 257
     out[i * 2] = v >>> 8
@@ -1026,6 +1432,15 @@ function concatUint8(parts: Uint8Array[]): Uint8Array {
 
 function pad4(n: number): number {
   return n + ((4 - (n & 3)) & 3)
+}
+
+function u64(v: number): Uint8Array {
+  if (!Number.isSafeInteger(v) || v < 0) throw new Error('Invalid PSB section length')
+  const out = new Uint8Array(8)
+  const view = new DataView(out.buffer)
+  view.setUint32(0, Math.floor(v / 0x100000000))
+  view.setUint32(4, v >>> 0)
+  return out
 }
 
 function u32(v: number): Uint8Array {
@@ -1059,6 +1474,91 @@ function unicodeLayerNameBlock(name: string): Uint8Array {
   return out
 }
 
+/** Photoshop-native layer descriptors which must not remain attached to a
+ * rasterized/edited preview. Photoshop prioritizes these objects over raster
+ * pixels, potentially discarding edits if their stale descriptors survive. */
+const PSD_NATIVE_OBJECT_KEYS = new Set([
+  'TySh', 'tySh',             // Live type layers
+  'SoLd', 'PlLd', 'SoLE',      // Placed/embedded Smart Objects
+  'vmsk', 'vsms', 'vscg', 'vogk', 'vstk', // Live vector/shape data
+])
+
+export function psdNativeObjectKind(blocks: readonly Uint8Array[]): 'text' | 'smart' | 'vector' | null {
+  const keys = new Set(blocks.filter(b => b.length >= 8).map(fxBlockKey))
+  if (keys.has('TySh') || keys.has('tySh')) return 'text'
+  if (keys.has('SoLd') || keys.has('PlLd') || keys.has('SoLE')) return 'smart'
+  if (['vmsk', 'vsms', 'vscg', 'vogk', 'vstk'].some(k => keys.has(k))) return 'vector'
+  return null
+}
+
+export function stripPsdNativeObjectBlocks(blocks: readonly Uint8Array[]): Uint8Array[] {
+  return blocks.filter(block => !PSD_NATIVE_OBJECT_KEYS.has(fxBlockKey(block)))
+}
+
+/** Pixel-content fingerprint, used ONLY to avoid exporting stale Photoshop
+ * native descriptors after raster edits. Two independent 32-bit accumulators
+ * plus dimensions reduce accidental collisions without async crypto or a
+ * large persistent pixel copy. This is not a security checksum. */
+export function psdPixelFingerprint(canvas: HTMLCanvasElement, hdr?: Float32Array | null): string {
+  const highData = !hdr && canvasProfile(canvas).bitDepth === 16 ? getFloat16ImageData(canvas) : null
+  const bytes = hdr
+    ? new Uint8Array(hdr.buffer, hdr.byteOffset, hdr.byteLength)
+    : highData?.data && ArrayBuffer.isView(highData.data)
+      ? new Uint8Array(highData.data.buffer, highData.data.byteOffset, highData.data.byteLength)
+      : getImageData(canvas).data
+  let a = 0x811c9dc5, b = 0x9e3779b9
+  for (let i = 0; i < bytes.length; i++) {
+    a = Math.imul(a ^ bytes[i], 16777619)
+    b = Math.imul(b ^ bytes[i], 2246822519)
+  }
+  return `${canvas.width}x${canvas.height}:${bytes.length}:${(a >>> 0).toString(16)}:${(b >>> 0).toString(16)}`
+}
+
+/** These Adobe PSB additional-layer keys use 64-bit payload lengths;
+ * all other additional-info records still use 32-bit lengths. */
+const PSB_WIDE_TAG_KEYS = new Set([
+  'LMsk', 'Lr16', 'Lr32', 'Layr', 'Mt16', 'Mt32', 'Mtrn',
+  'Alph', 'FMsk', 'lnk2', 'FEid', 'FXid', 'PxSD',
+])
+
+/** Transcode an opaque tagged block's LENGTH HEADER when switching PSD↔PSB.
+ * Preserve signature, key, payload and trailing even-byte padding exactly.
+ * Guessing a header without validating the declared length corrupts linked
+ * Smart Object or effect data, so reject ambiguous/malformed input. */
+export function normalizePsdTaggedBlock(block: Uint8Array, targetPsb: boolean): Uint8Array {
+  if (block.length < 12) throw new Error('Truncated Photoshop tagged block')
+  const signature = readAscii4(block, 0)
+  if (signature !== '8BIM' && signature !== '8B64') throw new Error('Invalid Photoshop tagged block signature')
+  const key = fxBlockKey(block)
+  if (!PSB_WIDE_TAG_KEYS.has(key)) return block
+  const view = new DataView(block.buffer, block.byteOffset, block.byteLength)
+  const shortLength = view.getUint32(8)
+  const shortValid = 12 + shortLength + (shortLength & 1) === block.length
+  const wideLength = block.length >= 16 ? view.getUint32(8) * 4294967296 + view.getUint32(12) : -1
+  const wideValid = Number.isSafeInteger(wideLength) && wideLength >= 0 &&
+    16 + wideLength + (wideLength & 1) === block.length
+  const sourceWide = wideValid && !shortValid
+  if (!shortValid && !wideValid) throw new Error(`Invalid Photoshop tagged block ${key} length`)
+  if (sourceWide === targetPsb) return block
+  if (sourceWide) {
+    if (wideLength > 0xffffffff) throw new Error(`Cannot export 64-bit Photoshop block ${key} in PSD`)
+    const data = block.subarray(16)
+    const result = new Uint8Array(12 + data.length)
+    result.set(block.subarray(0, 8))
+    new DataView(result.buffer).setUint32(8, wideLength)
+    result.set(data, 12)
+    return result
+  }
+  const data = block.subarray(12)
+  const result = new Uint8Array(16 + data.length)
+  result.set(block.subarray(0, 8))
+  const output = new DataView(result.buffer)
+  output.setUint32(8, 0)
+  output.setUint32(12, shortLength)
+  result.set(data, 16)
+  return result
+}
+
 function saneAdditionalInfoBlock(block: Uint8Array): boolean {
   if (!(block instanceof Uint8Array) || block.length < 12) return false
   const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
@@ -1069,9 +1569,22 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number; depth?: 8 | 16; imageResources?: Uint8Array[] } = {},
+  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; sourceColorMode?: number; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array } = {},
 ): Blob {
-  const depth: 8 | 16 = options.depth === 16 ? 16 : 8
+  const depth: 8 | 16 | 32 = options.depth === 32 ? 32 : options.depth === 16 ? 16 : 8
+  const psb = options.format === 'psb'
+  // Photoshop 32-bit RGB documents require their HDR tone-preview data
+  // ('hdrt') in the color-mode section. No verified generic writer exists
+  // yet; round-trip the Photoshop-authored bytes instead of fabricating it.
+  const colorModeData = depth === 32 ? options.colorModeData : undefined
+  if (depth === 32 && !(colorModeData instanceof Uint8Array && colorModeData.length >= 8 &&
+    String.fromCharCode(...colorModeData.subarray(0, 4)) === 'hdrt')) {
+    throw new Error('32-bit PSD/PSB export requires Photoshop-origin HDR color-mode data (hdrt); use the native project format for new HDR documents')
+  }
+  if (!psb && (width > 30000 || height > 30000)) throw new Error('PSD maximum dimension exceeded; export PSB instead')
+  if (width > 300000 || height > 300000 || width < 1 || height < 1) throw new Error('Invalid PSD/PSB dimensions')
+  const sectionLength = psb ? u64 : u32
+  const rowLenBytes: 2 | 4 = psb ? 4 : 2
   const bpc = depth >> 3
   // normalize: composite must be doc-size
   let flat = composite
@@ -1079,8 +1592,8 @@ export function buildPsd(
     flat = createCanvas(width, height)
     ctx2d(flat).drawImage(composite, 0, 0, width, height)
   }
-  let list = layers.filter(l => l.canvas && l.canvas.width > 0 && l.canvas.height > 0)
-  if (!list.length) {
+  let list = layers.filter(l => l.sectionMarker || (l.canvas && l.canvas.width > 0 && l.canvas.height > 0))
+  if (!list.some(l => !l.sectionMarker)) {
     list = [{ name: 'Background', canvas: flat, left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true }]
   }
 
@@ -1090,17 +1603,49 @@ export function buildPsd(
     channels: { id: number; block: Uint8Array }[]
     maskDoc: { w: number; h: number; chan: Uint8Array } | null
   }
+  if (list.length > 32767) throw new Error('Photoshop PSD/PSB supports at most 32767 layer records per layer-info section')
+  // Photoshop layer IDs (lyid) must be unique. Duplication in the editor
+  // often preserves the source opaque metadata, so reusing that original ID
+  // verbatim would create two Photoshop layers with the same identifier.
+  const sourceLayerId = (input: PsdLayerInput): number | null => {
+    const block = input.additionalInfo?.find(b => fxBlockKey(b) === 'lyid' && b.length >= 16)
+    if (!block) return null
+    const id = new DataView(block.buffer, block.byteOffset, block.byteLength).getUint32(12)
+    return id > 0 ? id : null
+  }
+  const reservedLayerIds = new Set<number>()
+  for (const input of list) {
+    const id = sourceLayerId(input)
+    if (id !== null) reservedLayerIds.add(id)
+  }
+  const usedLayerIds = new Set<number>()
+  let nextLayerId = 1
+  const uniqueLayerId = (input: PsdLayerInput): number => {
+    const existing = sourceLayerId(input)
+    if (existing !== null && !usedLayerIds.has(existing)) {
+      usedLayerIds.add(existing)
+      return existing
+    }
+    while (reservedLayerIds.has(nextLayerId) || usedLayerIds.has(nextLayerId)) nextLayerId++
+    if (nextLayerId > 0xffffffff) throw new Error('Exhausted Photoshop layer ID range')
+    usedLayerIds.add(nextLayerId)
+    return nextLayerId++
+  }
   const prepared: Prepared[] = []
   for (const input of list) {
+    if (input.sectionMarker) {
+      prepared.push({ input, channels: [], maskDoc: null })
+      continue
+    }
     const w = input.canvas.width
     const h = input.canvas.height
-    const { r, g, b, a } = splitCanvasChannels(input.canvas, depth)
+    const { r, g, b, a } = splitCanvasChannels(input.canvas, depth, input.hdrPixels)
     const rowBytes = w * bpc
     const channels: { id: number; block: Uint8Array }[] = [
-      { id: 0, block: encodeRleChannel(r, rowBytes, h) },
-      { id: 1, block: encodeRleChannel(g, rowBytes, h) },
-      { id: 2, block: encodeRleChannel(b, rowBytes, h) },
-      { id: -1, block: encodeRleChannel(a, rowBytes, h) },
+      { id: 0, block: encodeRleChannel(r, rowBytes, h, rowLenBytes) },
+      { id: 1, block: encodeRleChannel(g, rowBytes, h, rowLenBytes) },
+      { id: 2, block: encodeRleChannel(b, rowBytes, h, rowLenBytes) },
+      { id: -1, block: encodeRleChannel(a, rowBytes, h, rowLenBytes) },
     ]
     // mask: full-document-size canvas → doc-sized channel
     let maskDoc: { w: number; h: number; chan: Uint8Array } | null = null
@@ -1117,13 +1662,18 @@ export function buildPsd(
   }
 
   // ---- layer records ----
-  const recordParts: Uint8Array[] = [u16(prepared.length)]
+  // A negative layer count tells Photoshop channel 4 is merged transparency,
+  // not an unrelated extra alpha channel. The ordinary layer order is unchanged.
+  const compositeAlpha = depth === 32 && options.compositeHdrPixels
+    ? options.compositeHdrPixels.some((v, i) => i % 4 === 3 && v < 1)
+    : getImageData(flat).data.some((v, i) => i % 4 === 3 && v < 255)
+  const recordParts: Uint8Array[] = [i16(compositeAlpha ? -prepared.length : prepared.length)]
   const channelDataParts: Uint8Array[] = []
   for (const p of prepared) {
-    const w = p.input.canvas.width
-    const h = p.input.canvas.height
+    const w = p.input.sectionMarker ? 0 : p.input.canvas.width
+    const h = p.input.sectionMarker ? 0 : p.input.canvas.height
     const allChannels = p.maskDoc
-      ? [...p.channels, { id: -2, block: encodeRleChannel(p.maskDoc.chan, p.maskDoc.w * bpc, p.maskDoc.h) }]
+      ? [...p.channels, { id: -2, block: encodeRleChannel(p.maskDoc.chan, p.maskDoc.w * bpc, p.maskDoc.h, rowLenBytes) }]
       : p.channels
     // record
     recordParts.push(
@@ -1131,13 +1681,14 @@ export function buildPsd(
       u16(allChannels.length),
     )
     for (const ch of allChannels) {
-      recordParts.push(i16(ch.id), u32(ch.block.length))
+      recordParts.push(i16(ch.id), sectionLength(ch.block.length))
     }
-    recordParts.push(asciiBytes('8BIM'), asciiBytes(blendModeToPsdKey(p.input.blendMode)))
+    recordParts.push(asciiBytes('8BIM'), asciiBytes(typeof p.input.rawBlendKey === 'string' && /^[\x20-\x7e]{4}$/.test(p.input.rawBlendKey)
+      ? p.input.rawBlendKey : blendModeToPsdKey(p.input.blendMode)))
     recordParts.push(new Uint8Array([
       Math.max(0, Math.min(255, Math.round((p.input.opacity * 255) / 100))), // opacity
       p.input.clipped ? 1 : 0,   // clipping
-      p.input.visible ? 2 : 0,   // flags (bit 1 = visible)
+      (p.input.visible ? 0 : 2) | (p.input.sourceTransparencyProtected && p.input.locked !== false ? 1 : 0), // hidden + legacy protected transparency
       0,                          // filler
     ]))
     // extra data: mask block + blending ranges + pascal name
@@ -1145,16 +1696,34 @@ export function buildPsd(
     const nameBytes = asciiBytes(name)
     const pascalTotal = 1 + nameBytes.length
     const pascalPad = (4 - (pascalTotal & 3)) & 3
-    const replacingFx = !!p.input.fx
+    const originalLegacyFx = p.input.additionalInfo?.find(block => fxBlockKey(block) === 'lrFX')
+    const parsedOriginalFx = originalLegacyFx ? parseLegacyLayerFxBlock(originalLegacyFx) : null
+    const unchangedLegacyFx = !!p.input.fx && !!parsedOriginalFx &&
+      JSON.stringify(parsedOriginalFx) === JSON.stringify(p.input.fx)
+    // When Photoshop's editable legacy effects were not modified, retain
+    // the original effect bytes; regenerating them loses fields our native
+    // LayerFX model has not yet implemented.
+    const replacingFx = !!p.input.fx && !unchangedLegacyFx
+    const originalProtection = p.input.additionalInfo?.find(block => fxBlockKey(block) === 'lspf' && block.length >= 16)
+    const originalProtectionFlags = originalProtection
+      ? new DataView(originalProtection.buffer, originalProtection.byteOffset, originalProtection.byteLength).getUint32(12)
+      : 0
+    const sourceLocked = (originalProtectionFlags & 0x7) !== 0 || p.input.sourceTransparencyProtected === true
+    const updatingProtection = p.input.locked !== undefined && p.input.locked !== sourceLocked
     const preservedInfo = (p.input.additionalInfo ?? [])
       .filter(saneAdditionalInfoBlock)
       .filter(block => {
+        // Regenerate exactly one valid, unique ID for every layer.
+        if (fxBlockKey(block) === 'lyid') return false
+        if (updatingProtection && fxBlockKey(block) === 'lspf') return false
         if (!replacingFx) return true
         const key = fxBlockKey(block)
         return key !== 'lrFX' && key !== 'chFX' && key !== 'lfx2' && key !== 'lmfx' && key !== 'lfxs'
       })
+      .map(block => normalizePsdTaggedBlock(block, psb))
     const generatedFx: Uint8Array[] = []
-    if (p.input.fx) {
+    if (updatingProtection) generatedFx.push(additionalInfoBlock('lspf', u32(p.input.locked ? 0x7 : 0)))
+    if (p.input.fx && !unchangedLegacyFx) {
       // chFX is an app-private, ignored-by-Photoshop copy of the complete
       // native stack. lrFX provides interoperable shadows/glows/bevel/fill.
       generatedFx.push(chaysLayerFxBlock(p.input.fx))
@@ -1162,22 +1731,24 @@ export function buildPsd(
       if (legacy) generatedFx.push(legacy)
     }
     const unicodeName = unicodeLayerNameBlock(p.input.name || 'Layer')
-    const additionalInfoBytes = [...preservedInfo, ...generatedFx].reduce((n, b) => n + b.length, unicodeName.length)
-    const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + pascalTotal + pascalPad + additionalInfoBytes
+    const layerIdBlock = concatUint8([asciiBytes('8BIM'), asciiBytes('lyid'), u32(4), u32(uniqueLayerId(p.input))])
+    const additionalInfoBytes = [...preservedInfo, ...generatedFx].reduce((n, b) => n + b.length, unicodeName.length + layerIdBlock.length)
+    const blendingRanges = p.input.blendingRanges ?? new Uint8Array(0)
+    const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + blendingRanges.length + pascalTotal + pascalPad + additionalInfoBytes
     recordParts.push(u32(extraLen))
     if (p.maskDoc) {
       // layer mask data: length 20 = rect(16) + default color + flags + pad
       recordParts.push(
         u32(20),
         i32(0), i32(0), i32(height), i32(width), // mask rect = full document
-        new Uint8Array([0, 0, 0, 0]),            // default color 0, flags 0, 2 pad
+        new Uint8Array([0, p.input.maskEnabled === false ? 2 : 0, 0, 0]), // default black, mask disabled flag, pad
       )
     } else {
       recordParts.push(u32(0)) // no mask
     }
-    recordParts.push(u32(0)) // layer blending ranges: none
+    recordParts.push(u32(blendingRanges.length), blendingRanges) // original Photoshop Blend If ranges
     recordParts.push(new Uint8Array([nameBytes.length]), nameBytes, new Uint8Array(pascalPad))
-    recordParts.push(unicodeName, ...preservedInfo, ...generatedFx)
+    recordParts.push(unicodeName, layerIdBlock, ...preservedInfo, ...generatedFx)
     // channel image data blocks follow all records — store for later
     for (const ch of allChannels) channelDataParts.push(ch.block)
   }
@@ -1185,14 +1756,23 @@ export function buildPsd(
   // ---- layer info section (records + channel data, padded to 4) ----
   const layerInfoContent = concatUint8([...recordParts, ...channelDataParts])
   const liPad = (4 - (layerInfoContent.length & 3)) & 3
-  const layerInfo = concatUint8([u32(pad4(layerInfoContent.length)), layerInfoContent, new Uint8Array(liPad)])
+  const highDepthTag = depth === 16 || depth === 32
+    ? concatUint8([
+        asciiBytes(psb ? '8B64' : '8BIM'),
+        asciiBytes(depth === 16 ? 'Lr16' : 'Lr32'),
+        sectionLength(pad4(layerInfoContent.length)),
+        layerInfoContent,
+        new Uint8Array(liPad),
+      ]) : null
+  const layerInfo = highDepthTag ? sectionLength(0)
+    : concatUint8([sectionLength(pad4(layerInfoContent.length)), layerInfoContent, new Uint8Array(liPad)])
 
-  // ---- layer & mask info: layer info + empty global mask info ----
-  const lmContent = concatUint8([layerInfo, u32(0)])
+  // ---- layer & mask info: high-depth Photoshop layers live in Lr16/Lr32 ----
+  const lmContent = concatUint8(highDepthTag ? [layerInfo, u32(0), highDepthTag] : [layerInfo, u32(0)])
   const lmPad = (4 - (lmContent.length & 3)) & 3
-  const lmSection = concatUint8([u32(pad4(lmContent.length)), lmContent, new Uint8Array(lmPad)])
+  const lmSection = concatUint8([sectionLength(pad4(lmContent.length)), lmContent, new Uint8Array(lmPad)])
 
-  // ---- image resources: ResolutionInfo (0x0400) ----
+  // ---- image resources: Photoshop ResolutionInfo (1005 / 0x03ED) ----
   const resolutionPpi = Math.max(1, Math.min(12000, Number(options.resolutionPpi) || 72))
   const fixedPpi = Math.max(1, Math.min(0xffffffff, Math.round(resolutionPpi * 65536)))
   const resData = new Uint8Array(16)
@@ -1203,16 +1783,21 @@ export function buildPsd(
   resView.setUint32(8, fixedPpi)    // vRes
   resView.setUint16(12, 1)          // vResUnit
   resView.setUint16(14, 1)          // heightUnit
-  const resolutionResource = concatUint8([asciiBytes('8BIM'), u16(0x0400), new Uint8Array([0, 0]), u32(resData.length), resData])
+  const resolutionResource = concatUint8([asciiBytes('8BIM'), u16(0x03ed), new Uint8Array([0, 0]), u32(resData.length), resData])
   const preservedResources = (options.imageResources ?? []).filter(block => {
     if (!(block instanceof Uint8Array) || block.length < 12) return false
     const sig = String.fromCharCode(block[0], block[1], block[2], block[3])
-    return sig === '8BIM' || sig === 'MeSa'
+    const id = (block[4] << 8) | block[5]
+    // Writer owns ResolutionInfo. Indexed transparency (1047) does not
+    // belong in an RGB export, and a CMYK/Lab ICC profile (1039) would
+    // misinterpret the RGB pixels if carried over unchanged.
+    return (sig === '8BIM' || sig === 'MeSa') && id !== 0x03ed && id !== 0x0417 &&
+      !(id === 0x040f && options.sourceColorMode !== undefined && options.sourceColorMode !== 3)
   })
   const resources = concatUint8([resolutionResource, ...preservedResources])
 
   // ---- merged composite: RLE with a shared channels × height row table ----
-  const comp = splitCanvasChannels(flat, depth)
+  const comp = splitCanvasChannels(flat, depth, options.compositeHdrPixels)
   const compChannels: { id: number; chan: Uint8Array }[] = [
     { id: 0, chan: comp.r }, { id: 1, chan: comp.g }, { id: 2, chan: comp.b }, { id: -1, chan: comp.a },
   ]
@@ -1221,23 +1806,31 @@ export function buildPsd(
     for (let y = 0; y < height; y++) rows.push(packBitsRow(c.chan, y * width * bpc, width * bpc))
     return rows
   })
-  const tableSize = 2 * compChannels.length * height
+  const oversizedPsdRow = !psb && compRows.some(rows => rows.some(row => row.length > 0xffff))
+  const tableSize = rowLenBytes * compChannels.length * height
   let compDataBytes = 0
   for (const rows of compRows) for (const r of rows) compDataBytes += r.length
-  const compositeSection = new Uint8Array(2 + tableSize + compDataBytes)
-  const compView = new DataView(compositeSection.buffer)
-  compView.setUint16(0, 1) // compression: RLE
-  let cp = 2
-  for (const rows of compRows) {
-    for (const r of rows) {
-      compView.setUint16(cp, r.length)
-      cp += 2
+  let compositeSection: Uint8Array
+  if (oversizedPsdRow) {
+    // Both PSD and PSB accept raw composite channels. Never truncate RLE row sizes.
+    compositeSection = concatUint8([u16(0), ...compChannels.map(c => c.chan)])
+  } else {
+    compositeSection = new Uint8Array(2 + tableSize + compDataBytes)
+    const compView = new DataView(compositeSection.buffer)
+    compView.setUint16(0, 1)
+    let cp = 2
+    for (const rows of compRows) {
+      for (const r of rows) {
+        if (psb) compView.setUint32(cp, r.length)
+        else compView.setUint16(cp, r.length)
+        cp += rowLenBytes
+      }
     }
-  }
-  for (const rows of compRows) {
-    for (const r of rows) {
-      compositeSection.set(r, cp)
-      cp += r.length
+    for (const rows of compRows) {
+      for (const r of rows) {
+        compositeSection.set(r, cp)
+        cp += r.length
+      }
     }
   }
 
@@ -1245,7 +1838,7 @@ export function buildPsd(
   const header = new Uint8Array(26)
   const hv = new DataView(header.buffer)
   header.set([0x38, 0x42, 0x50, 0x53], 0) // '8BPS'
-  hv.setUint16(4, 1)      // version 1 (PSD)
+  hv.setUint16(4, psb ? 2 : 1) // PSD=1, large-document PSB=2
   // bytes 6..11 reserved (zero)
   hv.setUint16(12, 4)     // channels
   hv.setUint32(14, height)
@@ -1253,7 +1846,8 @@ export function buildPsd(
   hv.setUint16(22, depth) // depth
   hv.setUint16(24, 3)     // color mode: RGB
 
-  return new Blob([header, u32(0), u32(resources.length), resources, lmSection, compositeSection] as unknown as BlobPart[], {
+  const colorModeSection = depth === 32 ? colorModeData! : new Uint8Array(0)
+  return new Blob([header, u32(colorModeSection.length), colorModeSection, u32(resources.length), resources, lmSection, compositeSection] as unknown as BlobPart[], {
     type: 'image/vnd.adobe.photoshop',
   })
 }

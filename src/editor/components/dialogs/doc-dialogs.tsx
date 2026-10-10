@@ -10,7 +10,7 @@ import { engine, type TransformMode, type TransformReference } from '../../engin
 import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob, canvasPixelCapabilities } from '../../utils/canvas'
 import { compositeDocument, getFlatComposite } from '../../engine/document'
-import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster } from '../../formats'
+import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster, psdBlendKeyToMode, psdPixelFingerprint, stripPsdNativeObjectBlocks, psdWillReplaceSourceFx } from '../../formats'
 import type { PsdLayerInput } from '../../formats'
 import type { DialogProps } from './generic-dialogs'
 import { TransformWarpEditor } from './transform-warp-editor'
@@ -292,7 +292,7 @@ export function ExportDialog({ onClose }: DialogProps) {
   const [busy, setBusy] = useState(false)
 
   const info = FORMAT_INFO.find(f => f.id === format) ?? FORMAT_INFO[0]
-  const isPsd = info.id === 'psd' || format === 'ora'
+  const isPsd = format === 'psd' || format === 'psb' || format === 'ora'
   // icon entries can't exceed the source dimensions
   const icoPool = ICO_SIZE_POOL.filter(s => s <= Math.min(doc?.width ?? 256, doc?.height ?? 256))
   const effectiveIcoSizes = icoSizes.filter(s => icoPool.includes(s))
@@ -335,9 +335,62 @@ export function ExportDialog({ onClose }: DialogProps) {
         downloadBlob(blob, `${outName}.ora`)
         store.pushToast(`Exported ${outName}.ora — ${layers.length} layers (complex effects may be rasterized)`, 'success')
       } else if (isPsd) {
-        // ---- layered PSD: one record per layer (bottom-first = doc order) ----
-        const inputs: PsdLayerInput[] = []
+        const hdrComposite = doc.workingBitDepth === 32 ? engine.hdrCompositeForPsd() : null
+        if (doc.workingBitDepth === 32 && !hdrComposite) throw new Error('Complex 32-bit HDR layers cannot be encoded losslessly as PSD/PSB. Simplify the document or preserve it in the native format.')
+        const originalRealMasks = doc.layers.filter(l => l.psdUnsupportedRealMask)
+        if (originalRealMasks.length && !window.confirm(`${originalRealMasks.length} imported Photoshop layer(s) contain combined raster/vector masks (-3). Studio cannot export those original mask channels. Continue with a potentially destructive compatibility export?`)) return
+        const staleNative = new Set<string>()
         for (const l of doc.layers) {
+          const origin = l.psdNativeOrigin
+          if (!origin) continue
+          const maskHash = l.mask ? psdPixelFingerprint(l.mask) : null
+          if (!l.canvas || l.kind !== 'raster' || !!l.transform || l.smartFilters.some(filter => filter.enabled) ||
+              l.canvas.width !== origin.width || l.canvas.height !== origin.height ||
+              (l.offsetX ?? 0) !== origin.left || (l.offsetY ?? 0) !== origin.top ||
+              psdPixelFingerprint(l.canvas, l.hdrPixels) !== origin.pixelFingerprint ||
+              maskHash !== origin.maskFingerprint ||
+              (!!l.mask && l.maskEnabled) !== origin.maskEnabled) staleNative.add(l.id)
+        }
+        if (staleNative.size && !window.confirm(`${staleNative.size} Photoshop-native text/Smart Object/vector layer(s) have changed since import. Photoshop's original live descriptors no longer match the pixels or geometry and will be removed from this PSD/PSB export to preserve your raster edits. Continue?`)) return
+        const replacedSourceFx = doc.layers.filter(l => l.fx && l.psdAdditionalInfo?.length &&
+          psdWillReplaceSourceFx(l.psdAdditionalInfo.map(base64Bytes), l.fx))
+        if (replacedSourceFx.length && !window.confirm(`${replacedSourceFx.length} Photoshop layer style(s) have changed and will be rebuilt from Studio's supported effect parameters. Photoshop-specific effect settings that Studio cannot edit may be lost. Continue exporting?`)) return
+        const unsupported = doc.layers.filter(l => ['adjustment', 'text', 'shape', 'smart'].includes(l.kind))
+        if (unsupported.length && !window.confirm(`${unsupported.length} editable layer(s) (adjustment/text/shape/Smart Object) cannot round-trip natively in Photoshop. Adjustment layers will be omitted and other layers rasterized. Continue exporting a compatibility copy?`)) return
+        // Group delimiters are byte-preserved only if the original drawable layer
+        // sequence is intact. Reordering or inserting layers can invalidate the
+        // Photoshop nesting, so never silently emit stale folder boundaries.
+        const sectionMarkers = doc.psdSectionMarkers ?? []
+        const originalOrder = doc.psdSectionLayerOrder ?? []
+        const preserveGroups = sectionMarkers.length > 0 &&
+          unsupported.length === 0 &&
+          originalOrder.length === doc.layers.length &&
+          doc.layers.every((l, i) => l.id === originalOrder[i] && l.kind === 'raster') &&
+          sectionMarkers.every(m => Number.isSafeInteger(m.beforeLayerIndex) &&
+            m.beforeLayerIndex >= 0 && m.beforeLayerIndex <= doc.layers.length)
+        if (sectionMarkers.length && !preserveGroups &&
+            !window.confirm('The layer order or layer types changed since this PSD was opened. Original Photoshop folder/adjustment records cannot be preserved safely. Export without those records?')) return
+        if (preserveGroups && sectionMarkers.some(m => m.kind === 'adjustment') &&
+            !window.confirm('This PSD contains Photoshop-only adjustment layers. Studio cannot render or edit these adjustments, but the original records can be retained for Photoshop. The appearance after opening in Photoshop may differ from the Studio preview. Continue?')) return
+        // ---- layered PSD: raster records and safe, opaque folder delimiters ----
+        const inputs: PsdLayerInput[] = []
+        const markerSurface = preserveGroups ? createCanvas(1, 1) : null
+        const addMarkers = (at: number) => {
+          if (!preserveGroups || !markerSurface) return
+          for (const m of sectionMarkers) {
+            if (m.beforeLayerIndex !== at) continue
+            inputs.push({
+              sectionMarker: true, name: m.name, canvas: markerSurface,
+              left: 0, top: 0, opacity: m.opacity, visible: m.visible,
+              blendMode: 'normal', rawBlendKey: m.blendKey,
+              additionalInfo: m.additionalInfo.map(base64Bytes),
+              blendingRanges: m.blendingRanges ? base64Bytes(m.blendingRanges) : undefined,
+            })
+          }
+        }
+        for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
+          addMarkers(layerIndex)
+          const l = doc.layers[layerIndex]
           if (l.kind === 'adjustment') continue // no pixels of their own
           const c = engine.layerCanvas(l.id)
           if (!c || c.width === 0 || c.height === 0) continue
@@ -349,14 +402,25 @@ export function ExportDialog({ onClose }: DialogProps) {
             top: docSpace ? 0 : l.offsetY ?? 0,
             opacity: l.opacity,
             blendMode: l.blendMode,
+            rawBlendKey: l.psdBlendKey && l.blendMode === psdBlendKeyToMode(l.psdBlendKey) ? l.psdBlendKey : undefined,
             visible: l.visible,
             clipped: l.clipped,
-            mask: l.maskEnabled ? l.mask : null,
+            locked: l.locked,
+            sourceTransparencyProtected: l.psdTransparencyProtected,
+            mask: l.mask,
+            maskEnabled: l.maskEnabled,
+            hdrPixels: doc.workingBitDepth === 32 ? l.hdrPixels ?? undefined : undefined,
             fx: l.fx ? structuredClone(l.fx) : null,
-            additionalInfo: l.psdAdditionalInfo?.map(base64Bytes),
+            additionalInfo: l.psdAdditionalInfo
+              ? (staleNative.has(l.id)
+                ? stripPsdNativeObjectBlocks(l.psdAdditionalInfo.map(base64Bytes))
+                : l.psdAdditionalInfo.map(base64Bytes))
+              : undefined,
+            blendingRanges: l.psdBlendingRanges ? base64Bytes(l.psdBlendingRanges) : undefined,
           })
         }
-        showProgress('Building PSD…')
+        addMarkers(doc.layers.length)
+        showProgress(format === 'psb' ? 'Building PSB…' : 'Building PSD…')
         await sleep(16) // let the progress bar paint before the sync encode
         const preservedResources = (doc.psdImageResources ?? [])
           .map(base64Bytes)
@@ -367,11 +431,16 @@ export function ExportDialog({ onClose }: DialogProps) {
         const metadataResources = includeMetadata ? buildPhotoshopMetadataResources(doc.metadata) : []
         const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), {
           resolutionPpi: doc.resolutionPpi ?? 72,
-          depth: doc.workingBitDepth === 32 ? 16 : doc.workingBitDepth === 16 ? 16 : 8,
+          depth: doc.workingBitDepth === 32 ? 32 : doc.workingBitDepth === 16 ? 16 : 8,
+          compositeHdrPixels: hdrComposite ?? undefined,
+          colorModeData: doc.workingBitDepth === 32 && doc.psdColorModeData
+            ? base64Bytes(doc.psdColorModeData) : undefined,
+          sourceColorMode: doc.psdSourceColorMode,
+          format: format === 'psb' ? 'psb' : 'psd',
           imageResources: [...preservedResources, ...metadataResources],
         })
-        downloadBlob(blob, `${outName}.psd`)
-        store.pushToast(`Exported ${outName}.psd — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
+        downloadBlob(blob, `${outName}.${format}`)
+        store.pushToast(`Exported ${outName}.${format} — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
       } else {
         // ---- flattened raster formats ----
         const flat = compositeDocument(doc)
@@ -407,7 +476,7 @@ export function ExportDialog({ onClose }: DialogProps) {
     }
   }
 
-  const opts = info.options
+  const opts = format === 'psb' ? (['psdLayers'] as typeof info.options) : info.options
   const canExport = !!doc && !busy && (!opts.includes('icoSizes') || effectiveIcoSizes.length > 0)
 
   return (
@@ -429,13 +498,14 @@ export function ExportDialog({ onClose }: DialogProps) {
                     {f.label}
                   </SelectItem>
                 ))}
+                <SelectItem value="psb" className="text-xs">PSB (large document, layered)</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
-        <div className="text-[10px] text-muted-foreground -mt-1.5">{info.hint}</div>
+        <div className="text-[10px] text-muted-foreground -mt-1.5">{format === 'psb' ? 'PSB v2 large-document layered export (8/16/32-bit RGB). Advanced Photoshop layer objects require compatibility rasterization.' : info.hint}</div>
 
-        {['png', 'jpeg', 'webp', 'tiff', 'psd'].includes(info.id) && (
+        {['png', 'jpeg', 'webp', 'tiff', 'psd'].includes(info.id) || format === 'psb' && (
           <div className="rounded border border-border/60 p-2 space-y-1">
             <label className="flex items-center gap-2 text-[11px] cursor-pointer">
               <input

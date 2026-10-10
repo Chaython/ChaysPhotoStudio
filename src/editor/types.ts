@@ -387,6 +387,28 @@ export interface Layer {
    * that Chay's Photo Studio writes itself (e.g. the Unicode layer name) are
    * regenerated on export rather than stored here. */
   psdAdditionalInfo?: string[]
+  /** Opaque Photoshop Blend If ranges, base64; preserved when editing raster pixels. */
+  psdBlendingRanges?: string
+  /** Original 4-byte Photoshop blend mode, including unsupported native modes. */
+  psdBlendKey?: string
+  /** Photoshop layer-record bit0, independent of lspf protection flags. */
+  psdTransparencyProtected?: boolean
+  /** Imported Photoshop channel -3 exists; warn before destructive PSD re-export. */
+  psdUnsupportedRealMask?: boolean
+  /** Source Photoshop-native layer descriptor, safe to preserve only while
+   * raster pixels AND geometry remain unchanged from the original import. */
+  /** Imported Photoshop nested folder names for read-only Layers panel context. */
+  psdGroupPath?: string[]
+  psdNativeOrigin?: {
+    kind: 'text' | 'smart' | 'vector'
+    pixelFingerprint: string
+    maskFingerprint: string | null
+    maskEnabled: boolean
+    left: number
+    top: number
+    width: number
+    height: number
+  }
   /** provenance marker — 'detect' = lifted from an AI-detected object box
    *  (Detect Objects dialog → "Layer"); lets the Layers panel badge it */
   origin?: 'detect'
@@ -630,6 +652,24 @@ export interface PsDocument {
   sourceBitDepth?: number
   /** Opaque Photoshop image-resource blocks retained from imported PSD/PSB. */
   psdImageResources?: string[]
+  /** Original Photoshop 32-bit HDR tone-preview settings, base64. */
+  psdColorModeData?: string
+  /** Original Photoshop color mode for compatible ICC/resource preservation. */
+  psdSourceColorMode?: number
+  /** Opaque Photoshop folder delimiters / zero-channel adjustment records.
+   * Re-exported only while original source layer ordering remains unchanged. */
+  psdSectionMarkers?: Array<{
+    kind?: 'group' | 'adjustment'
+    beforeLayerIndex: number
+    name: string
+    opacity: number
+    visible: boolean
+    blendKey: string
+    additionalInfo: string[]
+    blendingRanges?: string
+  }>
+  /** Original drawable-layer IDs in Photoshop storage order. */
+  psdSectionLayerOrder?: string[]
   /** Source-file EXIF/XMP/IPTC/ICC/container metadata captured before decoding. */
   metadata?: ImageMetadata
   /** Working canvas color space. The current default is sRGB; Display-P3 is
