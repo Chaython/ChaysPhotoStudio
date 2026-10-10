@@ -81,6 +81,7 @@ export interface DecodedImage {
     /** Photoshop 4-byte source blend key retained across a no-change export. */
     rawBlendKey?: string
     locked?: boolean
+    transparencyProtected?: boolean
     /** Photoshop folder ancestry; informational, not native editable groups. */
     groupPath?: string[]
     visible: boolean
@@ -401,6 +402,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           blendMode: psdBlendKeyToMode(l.blendKey),
           rawBlendKey: l.blendKey,
           locked: l.locked,
+          transparencyProtected: l.transparencyProtected,
           groupPath: l.groupPath ? [...l.groupPath] : [],
           visible: l.visible,
           clipped: l.clipped,
