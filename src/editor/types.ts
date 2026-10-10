@@ -632,6 +632,8 @@ export interface PsDocument {
   sourceBitDepth?: number
   /** Opaque Photoshop image-resource blocks retained from imported PSD/PSB. */
   psdImageResources?: string[]
+  /** Original Photoshop 32-bit HDR tone-preview settings, base64. */
+  psdColorModeData?: string
   /** Opaque Photoshop folder delimiters / zero-channel adjustment records.
    * Re-exported only while original source layer ordering remains unchanged. */
   psdSectionMarkers?: Array<{
