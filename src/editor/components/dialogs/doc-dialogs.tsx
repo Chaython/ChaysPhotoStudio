@@ -10,7 +10,7 @@ import { engine, type TransformMode, type TransformReference } from '../../engin
 import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob, canvasPixelCapabilities } from '../../utils/canvas'
 import { compositeDocument, getFlatComposite } from '../../engine/document'
-import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster, psdBlendKeyToMode, psdPixelFingerprint, stripPsdNativeObjectBlocks } from '../../formats'
+import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster, psdBlendKeyToMode, psdPixelFingerprint, stripPsdNativeObjectBlocks, psdWillReplaceSourceFx } from '../../formats'
 import type { PsdLayerInput } from '../../formats'
 import type { DialogProps } from './generic-dialogs'
 import { TransformWarpEditor } from './transform-warp-editor'
@@ -352,6 +352,9 @@ export function ExportDialog({ onClose }: DialogProps) {
               (!!l.mask && l.maskEnabled) !== origin.maskEnabled) staleNative.add(l.id)
         }
         if (staleNative.size && !window.confirm(`${staleNative.size} Photoshop-native text/Smart Object/vector layer(s) have changed since import. Photoshop's original live descriptors no longer match the pixels or geometry and will be removed from this PSD/PSB export to preserve your raster edits. Continue?`)) return
+        const replacedSourceFx = doc.layers.filter(l => l.fx && l.psdAdditionalInfo?.length &&
+          psdWillReplaceSourceFx(l.psdAdditionalInfo.map(base64Bytes), l.fx))
+        if (replacedSourceFx.length && !window.confirm(`${replacedSourceFx.length} Photoshop layer style(s) have changed and will be rebuilt from Studio's supported effect parameters. Photoshop-specific effect settings that Studio cannot edit may be lost. Continue exporting?`)) return
         const unsupported = doc.layers.filter(l => ['adjustment', 'text', 'shape', 'smart'].includes(l.kind))
         if (unsupported.length && !window.confirm(`${unsupported.length} editable layer(s) (adjustment/text/shape/Smart Object) cannot round-trip natively in Photoshop. Adjustment layers will be omitted and other layers rasterized. Continue exporting a compatibility copy?`)) return
         // Group delimiters are byte-preserved only if the original drawable layer
