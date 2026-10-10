@@ -387,6 +387,8 @@ export interface PsdLayer {
   clipped: boolean
   /** Photoshop composite/transparency/position protections mapped to Studio's layer lock. */
   locked: boolean
+  /** Legacy Photoshop layer flags protect transparency independently of lspf. */
+  transparencyProtected: boolean
   mask: HTMLCanvasElement | null // full-document-size canvas, mask value in alpha
   /** Layer mask can exist but be disabled by Photoshop. */
   maskEnabled: boolean
@@ -493,6 +495,7 @@ interface PsdLayerRecord {
   opacity: number
   visible: boolean
   clipped: boolean
+  transparencyProtected: boolean
   name: string
   maskRect: [number, number, number, number] | null // top, left, bottom, right
   maskDefaultColor: number
@@ -1007,7 +1010,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos = extraEnd
         records.push({
           top, left, bottom, right, channels, blendKey,
-          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, name, maskRect, maskDefaultColor, maskFlags, fx, additionalInfo, blendingRanges,
+          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, transparencyProtected: (flags & 1) !== 0, name, maskRect, maskDefaultColor, maskFlags, fx, additionalInfo, blendingRanges,
         })
       }
 
@@ -1144,7 +1147,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       blendMode: psdBlendKeyToMode(rec.blendKey),
       visible: rec.visible,
       clipped: rec.clipped,
-      locked: (protection & 0x7) !== 0,
+      locked: (protection & 0x7) !== 0 || rec.transparencyProtected,
+      transparencyProtected: rec.transparencyProtected,
       mask,
       maskEnabled: !(rec.maskFlags & 2),
       unsupportedRealMask: rec.channels.some(ch => ch.id === -3),
@@ -1261,6 +1265,8 @@ export interface PsdLayerInput {
   clipped?: boolean
   /** Photoshop lspf protection flags are generated from the current lock when changed. */
   locked?: boolean
+  /** Photoshop legacy layer flags bit0. Preserve when source layer stays locked. */
+  sourceTransparencyProtected?: boolean
   /** full-document-size mask canvas — mask value lives in the ALPHA channel */
   mask?: HTMLCanvasElement | null
   /** Authoritative linear RGB floats for 32-bit Photoshop interchange. */
@@ -1631,7 +1637,7 @@ export function buildPsd(
     recordParts.push(new Uint8Array([
       Math.max(0, Math.min(255, Math.round((p.input.opacity * 255) / 100))), // opacity
       p.input.clipped ? 1 : 0,   // clipping
-      p.input.visible ? 0 : 2,   // Photoshop bit 1 is HIDDEN (inverted)
+      (p.input.visible ? 0 : 2) | (p.input.sourceTransparencyProtected && p.input.locked !== false ? 1 : 0), // hidden + legacy protected transparency
       0,                          // filler
     ]))
     // extra data: mask block + blending ranges + pascal name
@@ -1651,7 +1657,7 @@ export function buildPsd(
     const originalProtectionFlags = originalProtection
       ? new DataView(originalProtection.buffer, originalProtection.byteOffset, originalProtection.byteLength).getUint32(12)
       : 0
-    const sourceLocked = (originalProtectionFlags & 0x7) !== 0
+    const sourceLocked = (originalProtectionFlags & 0x7) !== 0 || p.input.sourceTransparencyProtected === true
     const updatingProtection = p.input.locked !== undefined && p.input.locked !== sourceLocked
     const preservedInfo = (p.input.additionalInfo ?? [])
       .filter(saneAdditionalInfoBlock)
