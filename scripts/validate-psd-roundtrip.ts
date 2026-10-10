@@ -138,6 +138,8 @@ for (const format of ['psd', 'psb'] as const) {
   assert.equal(decoded.depth, 16)
   assert.equal(decoded.layers.length, 1, 'Lr16 contains editable layer records')
   assert.equal(decoded.layers[0].name, '16-bit RGB')
+  assert.ok(decoded.warnings.some(w => w.includes('16-bit PSD') && w.includes('8-bit canvas')),
+    'Canvas2D runtimes without float16 support must warn when Photoshop precision is reduced')
   assert.equal(decoded.layers[0].canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[0], 50)
 }
 assert.deepEqual(Array.from(restorePsdPrediction(Uint8Array.from([10,10,10]), 3, 1, 8)), [10,20,30])
