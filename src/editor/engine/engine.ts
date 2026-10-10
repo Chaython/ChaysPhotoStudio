@@ -507,7 +507,7 @@ export class Engine {
   addCanvasDocument(
     canvas: HTMLCanvasElement,
     name: string,
-    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16 | 32; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number; hdrPixels?: Float32Array; metadata?: ImageMetadata } = {},
+    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16 | 32; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number; hdrPixels?: Float32Array; metadata?: ImageMetadata; psdImageResources?: string[]; psdSourceColorMode?: number; psdColorModeData?: string; psdExtraMergedChannels?: string[] } = {},
   ): PsDocument {
     const incoming = canvasProfile(canvas)
     const requestedDepth = meta.workingBitDepth ?? incoming.bitDepth
@@ -523,6 +523,10 @@ export class Engine {
       resolutionPpi: clamp(Number(meta.resolutionPpi) || 72, 1, 12000),
       workingBitDepth,
       sourceBitDepth: meta.sourceBitDepth ?? workingBitDepth,
+      psdImageResources: meta.psdImageResources ? [...meta.psdImageResources] : undefined,
+      psdSourceColorMode: meta.psdSourceColorMode,
+      psdColorModeData: meta.psdColorModeData,
+      psdExtraMergedChannels: meta.psdExtraMergedChannels ? [...meta.psdExtraMergedChannels] : undefined,
       workingColorSpace: profile.colorSpace,
       metadata: meta.metadata ? structuredClone(meta.metadata) : undefined,
       layers: [], activeLayerId: null,
