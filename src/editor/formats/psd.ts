@@ -1461,7 +1461,7 @@ export function buildPsd(
     for (const ch of allChannels) {
       recordParts.push(i16(ch.id), sectionLength(ch.block.length))
     }
-    recordParts.push(asciiBytes('8BIM'), asciiBytes(typeof p.input.rawBlendKey === 'string' && /^[\\x20-\\x7e]{4}$/.test(p.input.rawBlendKey)
+    recordParts.push(asciiBytes('8BIM'), asciiBytes(typeof p.input.rawBlendKey === 'string' && /^[\x20-\x7e]{4}$/.test(p.input.rawBlendKey)
       ? p.input.rawBlendKey : blendModeToPsdKey(p.input.blendMode)))
     recordParts.push(new Uint8Array([
       Math.max(0, Math.min(255, Math.round((p.input.opacity * 255) / 100))), // opacity
