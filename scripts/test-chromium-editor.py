@@ -320,12 +320,15 @@ def main():
                         content = response.read()
                     git_sha = hashlib.sha1(b"blob " + str(len(content)).encode() + bytes([0]) + content).hexdigest()
                     check(git_sha == expected_sha, f"Independent {name} binary changed")
+                    previous_doc_id = page.evaluate(
+                        "() => window.__zphotoEngine.activeDoc?.id ?? null")
                     page.locator('input[type="file"]').first.set_input_files(
                         {"name": name, "mimeType": "image/vnd.adobe.photoshop", "buffer": content})
-                    page.wait_for_function("""() => {
+                    page.wait_for_function("""previousId => {
                       const doc = window.__zphotoEngine.activeDoc
-                      return doc && doc.width === 32 && doc.height === 32 && doc.layers.length === 1
-                    }""", timeout=30000)
+                      return doc && doc.id !== previousId &&
+                        doc.width === 32 && doc.height === 32 && doc.layers.length === 1
+                    }""", arg=previous_doc_id, timeout=30000)
                     result = page.evaluate("""() => {
                       const doc = window.__zphotoEngine.activeDoc
                       const layer = doc.layers[0], image = layer.canvas
