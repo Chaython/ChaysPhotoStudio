@@ -12,7 +12,7 @@
 // ============================================================
 
 import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels, hdrFloat32ToPreviewCanvas, canvasProfile } from '../utils/canvas'
-import type { BlendMode, LayerFX } from '../types'
+import type { BlendIfSettings, BlendIfSlider, BlendMode, LayerFX } from '../types'
 
 // ---------- blend mode mapping ----------
 const PSD_TO_APP: Record<string, BlendMode> = {
@@ -43,6 +43,94 @@ export function blendModeToPsdKey(mode: string): string {
   return APP_TO_PSD[mode as BlendMode] ?? 'norm'
 }
 
+
+
+/**
+ * Photoshop Blend If stores eight bytes per channel: four split values for
+ * source (blackA, blackB, whiteA, whiteB) and four for destination.
+ * Channel zero is composite gray, followed by R/G/B. Studio renders only
+ * one channel at a time; every other source range must survive unchanged.
+ */
+const PSD_BLEND_IF_CHANNELS = ['gray', 'r', 'g', 'b'] as const
+const PSD_DEFAULT_BLEND_RANGE = [0, 0, 255, 255, 0, 0, 255, 255] as const
+
+function psdBlendRangeIsDefault(bytes: Uint8Array, at: number): boolean {
+  return PSD_DEFAULT_BLEND_RANGE.every((value, i) => bytes[at + i] === value)
+}
+
+function psdBlendIfSlider(bytes: Uint8Array, at: number): BlendIfSlider {
+  return {
+    lo: bytes[at + 1],
+    loSoft: Math.max(0, bytes[at + 1] - bytes[at]),
+    hi: bytes[at + 2],
+    hiSoft: Math.max(0, bytes[at + 3] - bytes[at + 2]),
+  }
+}
+
+export function parsePsdBlendIfRanges(bytes: Uint8Array): BlendIfSettings | null {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 8 || bytes.length % 8 !== 0) return null
+  for (let i = 0; i < Math.min(4, bytes.length / 8); i++) {
+    const at = i * 8
+    if (psdBlendRangeIsDefault(bytes, at)) continue
+    return {
+      channel: PSD_BLEND_IF_CHANNELS[i],
+      thisLayer: psdBlendIfSlider(bytes, at),
+      underLayer: psdBlendIfSlider(bytes, at + 4),
+    }
+  }
+  return null
+}
+
+/** More than one non-default range cannot be rendered simultaneously by Studio. */
+export function psdHasAdditionalBlendIfRanges(bytes: Uint8Array): boolean {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 8 || bytes.length % 8 !== 0) return false
+  let count = 0
+  for (let at = 0; at + 8 <= bytes.length; at += 8) {
+    if (!psdBlendRangeIsDefault(bytes, at) && ++count > 1) return true
+  }
+  return false
+}
+
+function blendIfByte(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(Number.isFinite(value) ? value : 0)))
+}
+
+function writePsdBlendIfSlider(out: Uint8Array, at: number, slider: BlendIfSlider): void {
+  const lo = blendIfByte(slider.lo)
+  const hi = blendIfByte(slider.hi)
+  out[at] = Math.max(0, lo - blendIfByte(slider.loSoft))
+  out[at + 1] = lo
+  out[at + 2] = hi
+  out[at + 3] = Math.min(255, hi + blendIfByte(slider.hiSoft))
+}
+
+/** Update just the active range; all unknown/extra Photoshop ranges remain opaque. */
+export function encodePsdBlendIfRanges(source: Uint8Array | undefined, settings: BlendIfSettings | null | undefined): Uint8Array {
+  const original = source ?? new Uint8Array(0)
+  if (settings === undefined) return original.slice()
+  if (original.length && (original.length < 8 || original.length % 8 !== 0)) {
+    if (settings === null) return original.slice()
+    throw new Error('Cannot edit malformed Photoshop blending ranges without losing source metadata')
+  }
+  const previous = parsePsdBlendIfRanges(original)
+  if (!previous && settings === null) return original.slice()
+  const channelIndex = settings ? PSD_BLEND_IF_CHANNELS.indexOf(settings.channel) : -1
+  if (settings && channelIndex < 0) throw new Error('Invalid Photoshop Blend If channel')
+  const outputLength = settings ? Math.max(original.length, (channelIndex + 1) * 8) : original.length
+  const output = new Uint8Array(outputLength)
+  for (let at = 0; at < outputLength; at += 8) output.set(PSD_DEFAULT_BLEND_RANGE, at)
+  output.set(original)
+  if (previous) {
+    const oldAt = PSD_BLEND_IF_CHANNELS.indexOf(previous.channel) * 8
+    output.set(PSD_DEFAULT_BLEND_RANGE, oldAt)
+  }
+  if (settings) {
+    const at = channelIndex * 8
+    writePsdBlendIfSlider(output, at, settings.thisLayer)
+    writePsdBlendIfSlider(output, at + 4, settings.underLayer)
+  }
+  return output
+}
 
 function clampFx(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, Number.isFinite(n) ? n : lo))
@@ -403,6 +491,8 @@ export interface PsdLayer {
   /** Opaque additional-layer-information blocks retained byte-for-byte.
    * Known blocks that we regenerate ('luni', parsed 'lrFX', 'chFX') are excluded. */
   additionalInfo: Uint8Array[]
+  /** Parsed editable RGB Blend If sliders (only one Photoshop range at a time). */
+  blendIf: BlendIfSettings | null
   /** Original Photoshop Blend If / blending-ranges bytes. */
   blendingRanges: Uint8Array
 }
@@ -1207,6 +1297,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     } catch (error) {
       throw new Error(`Unable to restore Photoshop layer ${rec.name}: ${error instanceof Error ? error.message : String(error)}`)
     }
+    if (colorMode === 3 && psdHasAdditionalBlendIfRanges(rec.blendingRanges)) {
+      compatibilityWarnings.add('Photoshop Blend If contains multiple active channel ranges; Studio previews one range at a time but preserves the other source ranges for export')
+    }
     // User masks are stored within a rectangle; outside it Photoshop uses
     // the explicit default color (commonly WHITE). Position can be relative
     // to the layer bounds, and the disabled flag must remain meaningful.
@@ -1264,6 +1357,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       mask,
       maskEnabled: !(rec.maskFlags & 2),
       unsupportedRealMask: rec.channels.some(ch => ch.id === -3),
+      blendIf: colorMode === 3 ? parsePsdBlendIfRanges(rec.blendingRanges) : null,
       fx: rec.fx ? structuredClone(rec.fx) : null,
       additionalInfo: rec.additionalInfo.map(b => b.slice()),
       blendingRanges: rec.blendingRanges.slice(),
@@ -1406,6 +1500,8 @@ export interface PsdLayerInput {
   fx?: LayerFX | null
   /** Opaque PSD additional-layer-information blocks to preserve. */
   additionalInfo?: Uint8Array[]
+  /** Editable Studio Blend If, applied to the matching Photoshop source range. */
+  blendIf?: BlendIfSettings | null
   /** Lossless passthrough of Photoshop source/destination blending ranges. */
   blendingRanges?: Uint8Array
   /** Disabled Photoshop layer masks remain present but inactive. */
@@ -1856,7 +1952,7 @@ export function buildPsd(
     const unicodeName = unicodeLayerNameBlock(p.input.name || 'Layer')
     const layerIdBlock = concatUint8([asciiBytes('8BIM'), asciiBytes('lyid'), u32(4), u32(uniqueLayerId(p.input))])
     const additionalInfoBytes = [...preservedInfo, ...generatedFx].reduce((n, b) => n + b.length, unicodeName.length + layerIdBlock.length)
-    const blendingRanges = p.input.blendingRanges ?? new Uint8Array(0)
+    const blendingRanges = encodePsdBlendIfRanges(p.input.blendingRanges, p.input.blendIf)
     const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + blendingRanges.length + pascalTotal + pascalPad + additionalInfoBytes
     recordParts.push(u32(extraLen))
     if (p.maskDoc) {
