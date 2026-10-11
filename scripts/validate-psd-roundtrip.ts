@@ -1151,5 +1151,31 @@ for (const format of ['psd', 'psb'] as const) {
   assert.equal(reread.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 255)
 }
 
+
+for (const [mode, adobeKey, legacyStudioKey] of [
+  ['hard-light', 'hLit', 'hard'],
+  ['soft-light', 'sLit', 'soft'],
+  ['linear-dodge', 'lddg', 'dded'],
+] as const) {
+  assert.equal(blendModeToPsdKey(mode), adobeKey,
+    `Photoshop ${mode} must use Adobe's documented blend identifier`)
+  assert.equal(psdBlendKeyToMode(adobeKey), mode)
+  assert.equal(psdBlendKeyToMode(legacyStudioKey), mode,
+    'Older Studio PSD files must remain compatible with corrected blend-key parsing')
+  for (const format of ['psd', 'psb'] as const) {
+    const image = canvas(17, 45, 83)
+    const output = buildPsd(2, 2, [{
+      name: mode, canvas: image, left: 0, top: 0, opacity: 100,
+      blendMode: mode, visible: true,
+    }], image, { format })
+    const parsed = await decodePsd(new Uint8Array(await output.arrayBuffer()))
+    assert.equal(parsed.layers[0].blendKey, adobeKey,
+      `Exported ${format} layer must use the Adobe ${adobeKey} blend key`)
+    assert.equal(psdBlendKeyToMode(parsed.layers[0].blendKey), mode)
+    assert.ok(!parsed.warnings.some(w => w.includes('blend modes cannot be previewed faithfully')),
+      `Known Adobe ${adobeKey} must not be flagged as an unknown blend mode`)
+  }
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
