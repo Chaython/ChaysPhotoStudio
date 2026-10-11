@@ -332,6 +332,65 @@ for (const format of ['psd', 'psb'] as const) {
 }
 
 
+// Real Photoshop combined user/vector-mask channels (-3) must not be erased
+// by an unchanged PSD/PSB export. Their compressed channel bytes and mask
+// metadata are independent from the editable Studio raster mask.
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(70, 90, 110)
+  const metadata = new Uint8Array(36)
+  const metaView = new DataView(metadata.buffer)
+  metaView.setInt32(8, 2)
+  metaView.setInt32(12, 2)
+  metadata[16] = 255 // outside user-mask default
+  const real = Uint8Array.from([0, 0, 7, 18, 39, 63])
+  const user = Uint8Array.from([0, 0, 40, 80, 120, 160])
+  const preserved = {
+    metadata, real, user, sourceFormat: format, depth: 8 as const,
+    docWidth: 2, docHeight: 2, left: 0, top: 0, width: 2, height: 2,
+  }
+  const encoded = buildPsd(2, 2, [{
+    name: 'Adobe real mask', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    preservedMaskChannels: preserved,
+  }], image, { format })
+  const decoded = await decodePsd(new Uint8Array(await encoded.arrayBuffer()))
+  const retained = decoded.layers[0].preservedMaskChannels
+  assert.ok(retained, 'Combined mask data must survive a PSD/PSB binary read')
+  assert.equal(decoded.layers[0].unsupportedRealMask, true)
+  assert.deepEqual(Array.from(retained.metadata), Array.from(metadata))
+  assert.deepEqual(Array.from(retained.real), Array.from(real))
+  assert.deepEqual(Array.from(retained.user!), Array.from(user))
+  assert.equal(retained.sourceFormat, format)
+  assert.equal(retained.depth, 8)
+  assert.ok(decoded.layers[0].mask, 'Conventional -2 user mask remains independently editable')
+  const exported = buildPsd(2, 2, [{
+    name: decoded.layers[0].name, canvas: decoded.layers[0].canvas,
+    left: decoded.layers[0].left, top: decoded.layers[0].top,
+    opacity: decoded.layers[0].opacity, blendMode: decoded.layers[0].blendMode,
+    visible: true, preservedMaskChannels: retained,
+  }], decoded.canvas, { format })
+  const again = await decodePsd(new Uint8Array(await exported.arrayBuffer()))
+  assert.deepEqual(Array.from(again.layers[0].preservedMaskChannels!.metadata), Array.from(metadata))
+  assert.deepEqual(Array.from(again.layers[0].preservedMaskChannels!.real), Array.from(real))
+  assert.deepEqual(Array.from(again.layers[0].preservedMaskChannels!.user!), Array.from(user))
+  const input = {
+    name: 'Unsafe converted mask', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    preservedMaskChannels: preserved,
+  }
+  assert.throws(() => buildPsd(2, 2, [input], image, {
+    format: format === 'psd' ? 'psb' : 'psd',
+  }), /combined mask passthrough requires original/,
+  'Compressed Photoshop RLE mask data must not be copied between PSD and PSB formats')
+  assert.throws(() => buildPsd(2, 2, [{ ...input, left: 1 }], image, { format }),
+    /combined mask passthrough requires original/,
+    'Combined mask channel geometry cannot survive unadjusted layer translation')
+  assert.throws(() => buildPsd(2, 2, [input], image, { format, depth: 16 }),
+    /combined mask passthrough requires original/,
+    'Combined mask compression must not be reinterpreted at a new bit depth')
+}
+
+
 function cmykComposite(c: number, m: number, y: number, k: number): Uint8Array {
   // PSD: 26-byte header, three empty sections, raw planar CMYK composite.
   const bytes = new Uint8Array(26 + 4 + 4 + 4 + 2 + 4)
