@@ -100,9 +100,9 @@ assert.deepEqual(Array.from(movedBlendRange.slice(8, 16)), Array.from(photoshopR
   'unsupported simultaneous Photoshop channel ranges remain untouched')
 assert.deepEqual(Array.from(movedBlendRange.slice(16, 24)),
   [30, 40, 210, 215, 0, 6, 250, 255], 'edited RGB Blend If writes split slider bytes')
-assert.deepEqual(parsePsdBlendIfRanges(movedBlendRange)?.thisLayer,
+assert.deepEqual(parsePsdBlendIfRanges(movedBlendRange)?.underLayer,
   { lo: 48, loSoft: 24, hi: 218, hiSoft: 22 },
-  'the remaining original red range is chosen for preview when multiple are active')
+  'the remaining original red destination range is chosen for preview when multiple are active')
 
 for (const format of ['psd', 'psb'] as const) {
   const image = canvas(110, 160, 230)
