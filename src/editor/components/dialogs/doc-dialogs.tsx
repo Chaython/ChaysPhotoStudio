@@ -428,6 +428,9 @@ export function ExportDialog({ onClose }: DialogProps) {
                 : l.psdAdditionalInfo.map(base64Bytes))
               : undefined,
             blendingRanges: l.psdBlendingRanges ? base64Bytes(l.psdBlendingRanges) : undefined,
+            // Non-RGB source ranges have different semantics; retain those
+            // opaque bytes without treating them as editable RGB sliders.
+            blendIf: doc.psdSourceColorMode === 3 || !l.psdBlendingRanges ? l.blendIf : undefined,
           })
         }
         addMarkers(doc.layers.length)
