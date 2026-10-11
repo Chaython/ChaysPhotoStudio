@@ -150,7 +150,7 @@ export async function openFiles(files: File[], asLayer = false) {
           workingBitDepth: decoded.sourceFloatPixels ? 32 : canvasProfile(decoded.canvas).bitDepth,
           hdrPixels: decoded.sourceFloatPixels,
           resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata,
-          psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
+          psdImageResources: decoded.psdImageResources?.map(bytesToBase64),          psdGlobalLayerMaskData: decoded.psdGlobalLayerMaskData?.length ? bytesToBase64(decoded.psdGlobalLayerMaskData) : undefined,          psdGlobalAdditionalInfo: decoded.psdGlobalAdditionalInfo?.map(bytesToBase64),
           psdSourceColorMode: decoded.psdSourceColorMode,
           psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
           psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
@@ -308,7 +308,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
     workingBitDepth: decoded.sourceBitDepth === 32 && decoded.psdLayers?.some(l => l.hdrPixels) ? 32 : canvasProfile(decoded.canvas).bitDepth,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
-    psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
+    psdImageResources: decoded.psdImageResources?.map(bytesToBase64),    psdGlobalLayerMaskData: decoded.psdGlobalLayerMaskData?.length ? bytesToBase64(decoded.psdGlobalLayerMaskData) : undefined,    psdGlobalAdditionalInfo: decoded.psdGlobalAdditionalInfo?.map(bytesToBase64),
     psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
     psdSourceColorMode: decoded.psdSourceColorMode,
     psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
@@ -504,6 +504,8 @@ export interface SerializedProject {
     proof?: import('../types').ProofSettings
     resolutionPpi?: number
     psdImageResources?: string[]
+    psdGlobalLayerMaskData?: string
+    psdGlobalAdditionalInfo?: string[]
     psdColorModeData?: string
     psdSourceColorMode?: number
     psdExtraMergedChannels?: string[]
@@ -626,6 +628,8 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       proof: doc.proof ? structuredClone(doc.proof) : undefined,
       resolutionPpi: doc.resolutionPpi ?? 72,
       psdImageResources: doc.psdImageResources ? [...doc.psdImageResources] : undefined,
+      psdGlobalLayerMaskData: doc.psdGlobalLayerMaskData,
+      psdGlobalAdditionalInfo: doc.psdGlobalAdditionalInfo ? [...doc.psdGlobalAdditionalInfo] : undefined,
       psdColorModeData: doc.psdColorModeData,
       psdSourceColorMode: doc.psdSourceColorMode,
       psdExtraMergedChannels: doc.psdExtraMergedChannels ? [...doc.psdExtraMergedChannels] : undefined,
@@ -829,6 +833,9 @@ export async function openSerializedProject(project: SerializedProject, label = 
     psdExtraMergedChannels: Array.isArray(project.doc.psdExtraMergedChannels)
       ? project.doc.psdExtraMergedChannels.filter((v: unknown) => typeof v === 'string')
       : undefined,
+    psdGlobalLayerMaskData: typeof project.doc.psdGlobalLayerMaskData === 'string' ? project.doc.psdGlobalLayerMaskData : undefined,
+    psdGlobalAdditionalInfo: Array.isArray(project.doc.psdGlobalAdditionalInfo)
+      ? project.doc.psdGlobalAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
     psdImageResources: Array.isArray(project.doc.psdImageResources)
       ? project.doc.psdImageResources.filter((v: unknown) => typeof v === 'string')
       : undefined,
