@@ -356,6 +356,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
       }
     }
     if (psd.blendingRanges?.length) layer.psdBlendingRanges = bytesToBase64(psd.blendingRanges)
+    if (psd.blendIf) layer.blendIf = structuredClone(psd.blendIf)
     doc.layers.push(layer as Layer)
   }
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
