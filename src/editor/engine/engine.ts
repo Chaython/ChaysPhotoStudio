@@ -736,6 +736,8 @@ export class Engine {
       psdBlendKey: layer.psdBlendKey,
       psdTransparencyProtected: layer.psdTransparencyProtected,
       psdUnsupportedRealMask: layer.psdUnsupportedRealMask,
+      psdPreservedMaskChannels: layer.psdPreservedMaskChannels
+        ? structuredClone(layer.psdPreservedMaskChannels) : undefined,
       psdNativeOrigin: layer.psdNativeOrigin ? structuredClone(layer.psdNativeOrigin) : undefined,
       psdGroupPath: layer.psdGroupPath ? [...layer.psdGroupPath] : undefined,
     }
@@ -1438,6 +1440,8 @@ export class Engine {
       psdBlendKey: src.psdBlendKey,
       psdTransparencyProtected: src.psdTransparencyProtected,
       psdUnsupportedRealMask: src.psdUnsupportedRealMask,
+      psdPreservedMaskChannels: src.psdPreservedMaskChannels
+        ? structuredClone(src.psdPreservedMaskChannels) : undefined,
       psdNativeOrigin: src.psdNativeOrigin ? structuredClone(src.psdNativeOrigin) : undefined,
       psdGroupPath: src.psdGroupPath ? [...src.psdGroupPath] : undefined,
       _v: src._v + 1,
