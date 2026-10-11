@@ -342,6 +342,20 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     layer.clipped = !!psd.clipped
     if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = psd.maskEnabled !== false }
     if (psd.unsupportedRealMask) layer.psdUnsupportedRealMask = true
+    if (psd.preservedMaskChannels) {
+      const data = psd.preservedMaskChannels
+      layer.psdPreservedMaskChannels = {
+        metadata: bytesToBase64(data.metadata),
+        real: bytesToBase64(data.real),
+        user: data.user ? bytesToBase64(data.user) : undefined,
+        sourceFormat: data.sourceFormat, depth: data.depth,
+        docWidth: data.docWidth, docHeight: data.docHeight,
+        left: data.left, top: data.top,
+        width: data.width, height: data.height,
+        maskFingerprint: psd.mask ? psdPixelFingerprint(psd.mask) : null,
+        maskEnabled: psd.mask ? psd.maskEnabled !== false : false,
+      }
+    }
     if (psd.fx) layer.fx = structuredClone(psd.fx)
     if (psd.additionalInfo?.length) {
       layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
