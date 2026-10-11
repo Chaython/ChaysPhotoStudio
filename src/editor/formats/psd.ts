@@ -1156,7 +1156,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
                 hasDescriptorFx = true
                 compatibilityWarnings.add('Modern Photoshop layer styles are retained as opaque descriptors, not fully editable')
               }
-              if (key === 'lsct' || key === 'lsdk') compatibilityWarnings.add('Photoshop layer groups are not reconstructed; saving can lose folder organization')
+              if (key === 'lsct' || key === 'lsdk') compatibilityWarnings.add('Photoshop group boundaries are preserved when possible, but editable nested folders are not yet implemented')
               if (key === 'TySh') compatibilityWarnings.add('Native Photoshop text layer editing is not yet supported')
               if (key === 'SoLd' || key === 'PlLd' || key === 'lnk2') compatibilityWarnings.add('Embedded/linked Photoshop Smart Objects are not reconstructed as native editable objects')
               if (key === 'vmsk' || key === 'vsms') compatibilityWarnings.add('Photoshop vector masks are retained as opaque descriptors, not native editable masks')
@@ -1293,7 +1293,16 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         'selc', 'vibA', 'expA', 'grdm', 'phfl', 'SoCo', 'GdFl', 'PtFl'])
       const isAdjustment = rec.additionalInfo.some(block =>
         block.length >= 12 && adjustmentKeys.has(String.fromCharCode(...block.subarray(4, 8))))
-      if ((isGroup || isAdjustment) && rec.channels.length === 0) {
+      // Some Adobe group boundary records declare channels whose only data is
+      // the two-byte compression header. These channels have no pixels when
+      // either rectangle dimension is zero, so serializing the group as a
+      // zero-channel marker preserves its Photoshop nesting/descriptors.
+      // Never do this for a nonempty channel, real mask, or adjustment:
+      // those records may contain meaningful Photoshop-only imagery.
+      const emptyGroupChannels = rec.channels.every(ch =>
+        ch.len === 2 && ch.id >= -1 && ch.id <= 3)
+      if ((isGroup && emptyGroupChannels) ||
+          (isAdjustment && rec.channels.length === 0)) {
         sectionMarkers.push({
           kind: isGroup ? 'group' : 'adjustment',
           beforeLayerIndex: layers.length, name: rec.name, visible: rec.visible,
