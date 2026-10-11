@@ -471,6 +471,10 @@ export interface PsdDecoded {
   resolutionPpi: number
   /** Opaque non-resolution image-resource blocks retained byte-for-byte. */
   imageResources: Uint8Array[]
+  /** Original document-level global layer-mask payload. */
+  globalLayerMaskData: Uint8Array
+  /** Non-layer-data global additional-info blocks (including linked object records). */
+  globalAdditionalInfo: Uint8Array[]
   /** Original Photoshop color-mode section payload (especially 32-bit hdrt). */
   colorModeData: Uint8Array
   /** Opaque extra RGB merged spot/alpha planes beyond RGBA. */
@@ -874,6 +878,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   pos += lenSize
   if (lmLen > bytes.length - pos) throw new Error('Truncated Photoshop layer and mask section')
   const lmEnd = pos + lmLen
+  let globalLayerMaskData = new Uint8Array(0)
+  const globalAdditionalInfo: Uint8Array[] = []
 
   const compatibilityWarnings = new Set<string>()
   const faithfullyMappedBlendKeys = new Set(['norm', 'dark', 'mul', 'mult', 'lite', 'scrn', 'screen',
@@ -892,6 +898,11 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     if (pos + lenSize > lmEnd) throw new Error('Truncated Photoshop layer info length')
     let liLen = readLength(pos)
     pos += lenSize
+    // The original layer-info section ends before the global mask and
+    // global tagged blocks. High-depth Lr16/Lr32 records are stored later
+    // within those tags and must not change this starting offset.
+    const originalLayerInfoEnd = pos + liLen
+    if (liLen > lmEnd - pos) throw new Error('Truncated Photoshop layer info section')
     if (liLen === 0 && (depth === 16 || depth === 32)) {
       let scan = pos
       if (scan + 4 <= lmEnd) {
@@ -1106,7 +1117,37 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       }
       pos = liEnd
     }
-    pos = lmEnd // skip global mask info + global additional blocks
+    // Photoshop global layer-mask data and global additional layer-info tags
+    // are document-level data, not part of any single raster layer. They can
+    // hold embedded/linked Smart Object references needed for round-tripping.
+    let gp = originalLayerInfoEnd
+    if (gp + 4 > lmEnd) throw new Error('Truncated Photoshop global layer mask length')
+    const globalMaskLength = view.getUint32(gp)
+    gp += 4
+    if (globalMaskLength > lmEnd - gp) throw new Error('Truncated Photoshop global layer mask data')
+    globalLayerMaskData = bytes.slice(gp, gp + globalMaskLength)
+    gp += globalMaskLength
+    const sourceLayerBlocks = new Set(['Lr16', 'Lr32', 'Layr', 'Mt16', 'Mt32', 'Mtrn'])
+    while (gp + 12 <= lmEnd) {
+      const sig = str4(gp)
+      if (sig !== '8BIM' && sig !== '8B64') break
+      const key = str4(gp + 4)
+      const wide = psb && PSB_WIDE_TAG_KEYS.has(key)
+      const headerSize = wide ? 16 : 12
+      if (gp + headerSize > lmEnd) throw new Error(`Truncated Photoshop global tag ${key} header`)
+      const blockLength = wide ? readLength(gp + 8) : view.getUint32(gp + 8)
+      const start = gp + headerSize
+      if (blockLength + (blockLength & 1) > lmEnd - start) {
+        throw new Error(`Truncated Photoshop global tag ${key} payload`)
+      }
+      const end = start + blockLength + (blockLength & 1)
+      if (!sourceLayerBlocks.has(key)) globalAdditionalInfo.push(bytes.slice(gp, end))
+      gp = end
+    }
+    if (gp < lmEnd && bytes.subarray(gp, lmEnd).some(value => value !== 0)) {
+      throw new Error('Malformed Photoshop global additional-layer metadata')
+    }
+    pos = lmEnd
   }
 
   // ---- build layer canvases ----
@@ -1316,7 +1357,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     hasAlpha = getImageData(composite).data.some((v, i) => i % 4 === 3 && v < 255)
   }
 
-  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, colorModeData, extraMergedChannels, warnings: [...compatibilityWarnings] }
+  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, globalLayerMaskData, globalAdditionalInfo, colorModeData, extraMergedChannels, warnings: [...compatibilityWarnings] }
 }
 
 // ============================================================
@@ -1632,7 +1673,7 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; sourceColorMode?: number; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array; extraMergedChannels?: Uint8Array[] } = {},
+  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; sourceColorMode?: number; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array; extraMergedChannels?: Uint8Array[]; globalLayerMaskData?: Uint8Array; globalAdditionalInfo?: Uint8Array[] } = {},
 ): Blob {
   const depth: 8 | 16 | 32 = options.depth === 32 ? 32 : options.depth === 16 ? 16 : 8
   const psb = options.format === 'psb'
@@ -1831,7 +1872,15 @@ export function buildPsd(
     : concatUint8([sectionLength(pad4(layerInfoContent.length)), layerInfoContent, new Uint8Array(liPad)])
 
   // ---- layer & mask info: high-depth Photoshop layers live in Lr16/Lr32 ----
-  const lmContent = concatUint8(highDepthTag ? [layerInfo, u32(0), highDepthTag] : [layerInfo, u32(0)])
+  const globalMask = options.globalLayerMaskData ?? new Uint8Array(0)
+  if (!(globalMask instanceof Uint8Array)) throw new Error('Invalid Photoshop global layer-mask payload')
+  const sourceLayerBlocks = new Set(['Lr16', 'Lr32', 'Layr', 'Mt16', 'Mt32', 'Mtrn'])
+  const globalTags = (options.globalAdditionalInfo ?? []).filter(block => {
+    if (!(block instanceof Uint8Array) || block.length < 12) throw new Error('Invalid Photoshop global metadata block')
+    return !sourceLayerBlocks.has(fxBlockKey(block))
+  }).map(block => normalizePsdTaggedBlock(block, psb))
+  const lmContent = concatUint8([layerInfo, u32(globalMask.length), globalMask,
+    ...globalTags, ...(highDepthTag ? [highDepthTag] : [])])
   const lmPad = (4 - (lmContent.length & 3)) & 3
   const lmSection = concatUint8([sectionLength(pad4(lmContent.length)), lmContent, new Uint8Array(lmPad)])
 
