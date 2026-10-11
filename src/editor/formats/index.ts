@@ -26,7 +26,7 @@ import { decodeFits } from './scientific-fits'
 import { decodeDicom } from './scientific-dicom'
 import type { RawDevelopSettings } from './raw-develop'
 import type { ParsedDocumentLayer } from './document-parser-types'
-import type { ImageMetadata, LayerFX } from '../types'
+import type { BlendIfSettings, ImageMetadata, LayerFX } from '../types'
 import { buildWritableXmp, embedRasterMetadata } from './metadata-write'
 
 export type { ImportFormatId, RawImage } from './decoders'
@@ -100,6 +100,8 @@ export interface DecodedImage {
     hdrPixels?: Float32Array
     /** editable layer style decoded from PSD effect metadata when supported */
     fx?: LayerFX | null
+    /** Editable Photoshop Blend If range currently previewed by Studio. */
+    blendIf?: BlendIfSettings | null
     /** Raw Photoshop blending ranges (Blend If) retained for round-trip. */
     blendingRanges?: Uint8Array
     /** opaque Photoshop additional-layer-information blocks */
@@ -418,6 +420,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           unsupportedRealMask: l.unsupportedRealMask,
           hdrPixels: l.hdrPixels,
           blendingRanges: l.blendingRanges.slice(),
+          blendIf: l.blendIf ? structuredClone(l.blendIf) : null,
           fx: l.fx ? structuredClone(l.fx) : null,
           additionalInfo: l.additionalInfo.map(b => b.slice()),
         })),
