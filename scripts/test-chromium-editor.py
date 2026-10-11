@@ -308,7 +308,7 @@ def main():
                            f"/tests/psd_files/layers/{name}")
                     with urllib.request.urlopen(url, timeout=25) as response:
                         content = response.read()
-                    git_sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\\0" + content).hexdigest()
+                    git_sha = hashlib.sha1(b"blob " + str(len(content)).encode() + bytes([0]) + content).hexdigest()
                     check(git_sha == expected_sha, f"Independent {name} binary changed")
                     page.locator('input[type="file"]').first.set_input_files(
                         {"name": name, "mimeType": "image/vnd.adobe.photoshop", "buffer": content})
