@@ -337,8 +337,35 @@ export function ExportDialog({ onClose }: DialogProps) {
       } else if (isPsd) {
         const hdrComposite = doc.workingBitDepth === 32 ? engine.hdrCompositeForPsd() : null
         if (doc.workingBitDepth === 32 && !hdrComposite) throw new Error('Complex 32-bit HDR layers cannot be encoded losslessly as PSD/PSB. Simplify the document or preserve it in the native format.')
-        const originalRealMasks = doc.layers.filter(l => l.psdUnsupportedRealMask)
-        if (originalRealMasks.length && !window.confirm(`${originalRealMasks.length} imported Photoshop layer(s) contain combined raster/vector masks (-3). Studio cannot export those original mask channels. Continue with a potentially destructive compatibility export?`)) return
+        // Never silently drop a Photoshop -3 combined mask. Its original
+        // compressed bytes can be emitted only in the same PSD/PSB container,
+        // at the same depth/geometry and with an unchanged editable mask.
+        const preservedRealMasks = new Map<string, NonNullable<PsdLayerInput['preservedMaskChannels']>>()
+        const lostRealMasks: string[] = []
+        for (const l of doc.layers.filter(layer => layer.psdUnsupportedRealMask)) {
+          const source = l.psdPreservedMaskChannels
+          const maskFingerprint = l.mask ? psdPixelFingerprint(l.mask) : null
+          const maskEnabled = !!l.mask && l.maskEnabled !== false
+          if (source && l.kind === 'raster' && l.canvas && !l.vectorMask &&
+              source.sourceFormat === format &&
+              source.depth === doc.workingBitDepth &&
+              source.docWidth === doc.width && source.docHeight === doc.height &&
+              source.width === l.canvas.width && source.height === l.canvas.height &&
+              source.left === (l.offsetX ?? 0) && source.top === (l.offsetY ?? 0) &&
+              source.maskFingerprint === maskFingerprint && source.maskEnabled === maskEnabled) {
+            preservedRealMasks.set(l.id, {
+              metadata: base64Bytes(source.metadata),
+              real: base64Bytes(source.real),
+              user: source.user ? base64Bytes(source.user) : undefined,
+              sourceFormat: source.sourceFormat, depth: source.depth,
+              docWidth: source.docWidth, docHeight: source.docHeight,
+              left: source.left, top: source.top, width: source.width, height: source.height,
+            })
+          } else lostRealMasks.push(l.name)
+        }
+        if (lostRealMasks.length && !window.confirm(
+          `${lostRealMasks.length} Photoshop combined raster/vector mask(s) (-3) cannot be preserved after mask/geometry/depth changes or PSD↔PSB conversion. These original mask channels and native vector-mask descriptors must be discarded in this compatibility export. Save your editable .zproj.json first. Continue?`
+        )) return
         const staleNative = new Set<string>()
         for (const l of doc.layers) {
           const origin = l.psdNativeOrigin
@@ -420,12 +447,16 @@ export function ExportDialog({ onClose }: DialogProps) {
             sourceTransparencyProtected: l.psdTransparencyProtected,
             mask: l.mask,
             maskEnabled: l.maskEnabled,
+            preservedMaskChannels: preservedRealMasks.get(l.id),
             hdrPixels: doc.workingBitDepth === 32 ? l.hdrPixels ?? undefined : undefined,
             fx: l.fx ? structuredClone(l.fx) : null,
             additionalInfo: l.psdAdditionalInfo
               ? (staleNative.has(l.id)
                 ? stripPsdNativeObjectBlocks(l.psdAdditionalInfo.map(base64Bytes))
-                : l.psdAdditionalInfo.map(base64Bytes))
+                : lostRealMasks.includes(l.name)
+                  ? l.psdAdditionalInfo.map(base64Bytes).filter(block =>
+                      !['vmsk', 'vsms'].includes(new TextDecoder().decode(block.subarray(4, 8))))
+                  : l.psdAdditionalInfo.map(base64Bytes))
               : undefined,
             blendingRanges: l.psdBlendingRanges ? base64Bytes(l.psdBlendingRanges) : undefined,
             // Non-RGB source ranges have different semantics; retain those
