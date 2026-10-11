@@ -460,6 +460,22 @@ function legacyLayerFxBlock(fx: LayerFX): Uint8Array | null {
 // reading
 // ============================================================
 
+/** Original Photoshop mask rectangles, flags and compressed -2/-3 channel
+ * payloads. Only safe to copy when file type, depth and geometry match. */
+export interface PsdPreservedMaskChannels {
+  metadata: Uint8Array
+  real: Uint8Array
+  user?: Uint8Array
+  sourceFormat: 'psd' | 'psb'
+  depth: 8 | 16 | 32
+  docWidth: number
+  docHeight: number
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 export interface PsdLayer {
   name: string
   canvas: HTMLCanvasElement     // pixels of the layer rect (RGBA)
@@ -481,8 +497,9 @@ export interface PsdLayer {
   mask: HTMLCanvasElement | null // full-document-size canvas, mask value in alpha
   /** Layer mask can exist but be disabled by Photoshop. */
   maskEnabled: boolean
-  /** Photoshop combined raster/vector mask (-3) that cannot round-trip natively. */
+  /** Photoshop combined mask exists; retained as opaque bytes when safe. */
   unsupportedRealMask: boolean
+  preservedMaskChannels?: PsdPreservedMaskChannels
   /** Raw 32-bit/channel scene-linear pixels, never reduced to a canvas preview. */
   hdrPixels?: Float32Array
   /** Editable layer styles decoded from Chay's native style block or
@@ -597,6 +614,9 @@ interface PsdLayerRecord {
   maskRect: [number, number, number, number] | null // top, left, bottom, right
   maskDefaultColor: number
   maskFlags: number
+  maskMetadata: Uint8Array
+  rawRealMask?: Uint8Array
+  rawUserMask?: Uint8Array
   fx: LayerFX | null
   additionalInfo: Uint8Array[]
   blendingRanges: Uint8Array
@@ -1077,10 +1097,12 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         let maskRect: [number, number, number, number] | null = null
         let maskDefaultColor = 0
         let maskFlags = 0
+        let maskMetadata = new Uint8Array(0)
         if (pos + 4 > extraEnd) throw new Error('Truncated Photoshop mask length')
         const maskLen = view.getUint32(pos)
         pos += 4
         if (maskLen > extraEnd - pos) throw new Error('Truncated Photoshop layer mask metadata')
+        maskMetadata = bytes.slice(pos, pos + maskLen)
         if (maskLen > 0) {
           if (maskLen < 18) throw new Error('Invalid Photoshop layer mask metadata length')
           maskRect = [view.getInt32(pos), view.getInt32(pos + 4), view.getInt32(pos + 8), view.getInt32(pos + 12)]
@@ -1173,7 +1195,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         pos = extraEnd
         records.push({
           top, left, bottom, right, channels, blendKey,
-          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, transparencyProtected: (flags & 1) !== 0, name, maskRect, maskDefaultColor, maskFlags, fx, additionalInfo, blendingRanges,
+          opacity, visible: (flags & 2) === 0, clipped: clipping === 1, transparencyProtected: (flags & 1) !== 0, name, maskRect, maskDefaultColor, maskFlags, maskMetadata, fx, additionalInfo, blendingRanges,
         })
       }
 
@@ -1202,10 +1224,16 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           // files into bogus RLE/ZIP channel-size failures. The separate
           // user mask (-2), when present, remains imported below.
           if (ch.id === -3) {
-            compatibilityWarnings.add('Photoshop combined user/vector mask channel (-3) is not rendered or editable; original mask appearance may differ')
+            if (rec.rawRealMask) throw new Error('Duplicate Photoshop combined mask channels')
+            rec.rawRealMask = bytes.slice(chStart, chStart + ch.len)
+            compatibilityWarnings.add('Photoshop combined user/vector mask channel (-3) is preserved as opaque data for unchanged compatible exports, but is not editable or fully rendered in Studio')
             if (ch.len < 2 || ch.len > liEnd - chStart) throw new Error('Invalid Photoshop real mask channel length')
             pos = chStart + ch.len
             continue
+          }
+          if (ch.id === -2) {
+            if (rec.rawUserMask) throw new Error('Duplicate Photoshop user mask channels')
+            rec.rawUserMask = bytes.slice(chStart, chStart + ch.len)
           }
           const compr = view.getUint16(pos)
           pos += 2
@@ -1393,7 +1421,13 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       transparencyProtected: rec.transparencyProtected,
       mask,
       maskEnabled: !(rec.maskFlags & 2),
-      unsupportedRealMask: rec.channels.some(ch => ch.id === -3),
+      unsupportedRealMask: !!rec.rawRealMask,
+      preservedMaskChannels: rec.rawRealMask ? {
+        metadata: rec.maskMetadata.slice(), real: rec.rawRealMask.slice(),
+        user: rec.rawUserMask?.slice(), sourceFormat: psb ? 'psb' : 'psd',
+        depth: depth as 8 | 16 | 32, docWidth: width, docHeight: height,
+        left: rec.left, top: rec.top, width: lw, height: lh,
+      } : undefined,
       blendIf: colorMode === 3 ? parsePsdBlendIfRanges(rec.blendingRanges) : null,
       fx: rec.fx ? structuredClone(rec.fx) : null,
       additionalInfo: rec.additionalInfo.map(b => b.slice()),
@@ -1543,6 +1577,8 @@ export interface PsdLayerInput {
   blendingRanges?: Uint8Array
   /** Disabled Photoshop layer masks remain present but inactive. */
   maskEnabled?: boolean
+  /** Byte-exact unchanged Photoshop mask channel passthrough. */
+  preservedMaskChannels?: PsdPreservedMaskChannels
   /** Non-rendering Photoshop group delimiter. Has no pixel channels. */
   sectionMarker?: boolean
   /** Exact Photoshop folder blend key, e.g. 'pass'; other layer kinds use mapped modes. */
@@ -1859,6 +1895,7 @@ export function buildPsd(
     input: PsdLayerInput
     channels: { id: number; block: Uint8Array }[]
     maskDoc: { w: number; h: number; chan: Uint8Array } | null
+    maskSource?: PsdPreservedMaskChannels
   }
   if (list.length > 32767) throw new Error('Photoshop PSD/PSB supports at most 32767 layer records per layer-info section')
   // Photoshop layer IDs (lyid) must be unique. Duplication in the editor
@@ -1904,9 +1941,26 @@ export function buildPsd(
       { id: 2, block: encodeRleChannel(b, rowBytes, h, rowLenBytes) },
       { id: -1, block: encodeRleChannel(a, rowBytes, h, rowLenBytes) },
     ]
+    // Copy original -2/-3 compression only for an unchanged source layout.
+    // Photoshop's PSB RLE row tables have a different width from PSD.
+    const maskSource = input.preservedMaskChannels
+    if (maskSource) {
+      if (maskSource.sourceFormat !== (psb ? 'psb' : 'psd') ||
+          maskSource.depth !== depth || maskSource.docWidth !== width ||
+          maskSource.docHeight !== height || maskSource.left !== input.left ||
+          maskSource.top !== input.top || maskSource.width !== w ||
+          maskSource.height !== h || !(maskSource.metadata instanceof Uint8Array) ||
+          maskSource.metadata.length < 18 || !(maskSource.real instanceof Uint8Array) ||
+          maskSource.real.length < 2 ||
+          (maskSource.user && (!(maskSource.user instanceof Uint8Array) || maskSource.user.length < 2))) {
+        throw new Error('Photoshop combined mask passthrough requires original PSD/PSB format, depth, mask metadata and unchanged geometry')
+      }
+      if (maskSource.user) channels.push({ id: -2, block: maskSource.user.slice() })
+      channels.push({ id: -3, block: maskSource.real.slice() })
+    }
     // mask: full-document-size canvas → doc-sized channel
     let maskDoc: { w: number; h: number; chan: Uint8Array } | null = null
-    if (input.mask && input.mask.width > 0 && input.mask.height > 0) {
+    if (!maskSource && input.mask && input.mask.width > 0 && input.mask.height > 0) {
       let mCanvas = input.mask
       if (mCanvas.width !== width || mCanvas.height !== height) {
         mCanvas = createCanvas(width, height)
@@ -1915,7 +1969,7 @@ export function buildPsd(
       const mchan = maskChannelBytes(mCanvas, depth)
       maskDoc = { w: width, h: height, chan: mchan }
     }
-    prepared.push({ input, channels, maskDoc })
+    prepared.push({ input, channels, maskDoc, maskSource })
   }
 
   // ---- layer records ----
@@ -1990,9 +2044,12 @@ export function buildPsd(
     const layerIdBlock = concatUint8([asciiBytes('8BIM'), asciiBytes('lyid'), u32(4), u32(uniqueLayerId(p.input))])
     const additionalInfoBytes = [...preservedInfo, ...generatedFx].reduce((n, b) => n + b.length, unicodeName.length + layerIdBlock.length)
     const blendingRanges = encodePsdBlendIfRanges(p.input.blendingRanges, p.input.blendIf)
-    const extraLen = (p.maskDoc ? 4 + 20 : 4) + 4 + blendingRanges.length + pascalTotal + pascalPad + additionalInfoBytes
+    const maskMetaLength = p.maskSource ? p.maskSource.metadata.length : p.maskDoc ? 20 : 0
+    const extraLen = 4 + maskMetaLength + 4 + blendingRanges.length + pascalTotal + pascalPad + additionalInfoBytes
     recordParts.push(u32(extraLen))
-    if (p.maskDoc) {
+    if (p.maskSource) {
+      recordParts.push(u32(p.maskSource.metadata.length), p.maskSource.metadata.slice())
+    } else if (p.maskDoc) {
       // layer mask data: length 20 = rect(16) + default color + flags + pad
       recordParts.push(
         u32(20),
