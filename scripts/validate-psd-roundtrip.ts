@@ -1407,6 +1407,18 @@ if (process.env.PSD_REAL_CORPUS === '1') {
     { name: '16bit5x5.psb', sha: '834c4dab9d11f528adb1ff3933ab513bbeb08812', size: 23482 },
     { name: 'layers/pixel-layer.psd', sha: '0d3ee59728ebd8237e4c2c8eee1997e42e3ee82d', size: 24987 },
     { name: 'layers/type-layer.psd', sha: '1cdcf08f88b103a50b74de7f3b70a7ccf63122e5', size: 43717 },
+    { name: '32bit5x5.psb', sha: 'd8edd353ee87d28e4402dc4608d22f0e2645761e', size: 20954 },
+    { name: 'advanced-blending.psd', sha: 'a52475596c36c42d176929ed97b5f357f9885463', size: 961076 },
+    { name: 'clipping-mask.psd', sha: '9a96be9cdc59baa5b454bfb1719d0a3d987e7286', size: 95259 },
+    { name: 'group.psd', sha: '60dbe4c37171cd6d4dc7bdb81e2d49f04a108fa5', size: 31480 },
+    { name: 'hidden-groups.psd', sha: '70c27dd2d992afc979a1a7923181c6752dd05fb9', size: 33178 },
+    { name: 'layer_mask_data.psd', sha: '9e1ee6f835aa0f1f016a9eaa1e4ea49b094dfb24', size: 116702 },
+    { name: 'mask-disabled.psd', sha: '94fd3a07fde97799629f8fe84f4ac63583710b64', size: 91988 },
+    { name: 'mask-parameters-no-real-channel.psd', sha: 'db774029f8d7ba63c7345fa11e1b63cafeeab507', size: 117792 },
+    { name: 'mask_parameters.psd', sha: 'd7dc91233d0e5285e7aafd969dd97f5da9449250', size: 36214 },
+    { name: 'masks3.psd', sha: 'df8cc6cfa16e5e59ac8d4772ee84ee0419842afe', size: 28634 },
+    { name: 'placedLayer.psd', sha: '707df934bb10bbcbb699c46d4bcde5580e48c036', size: 114796 },
+    { name: 'smart-object-slice.psb', sha: '2485a0653148f243fc7c601a78ac909d1b9bae77', size: 1085326 },
   ] as const
   const failures: string[] = []
   for (const fixture of fixtures) {
@@ -1428,6 +1440,12 @@ if (process.env.PSD_REAL_CORPUS === '1') {
       assert.equal(decoded.depth === 8 || decoded.depth === 16 || decoded.depth === 32, true)
       assert.ok(decoded.layers.length > 0, 'Layered source must not silently import as a flattened/empty project')
       assert.equal(decoded.layers.every(layer => layer.canvas.width >= 0 && layer.canvas.height >= 0), true)
+      for (const layer of decoded.layers) {
+        if (!layer.unsupportedRealMask) continue
+        assert.ok(layer.preservedMaskChannels, 'Real source -3 channel must be retained as opaque data')
+        assert.ok(layer.preservedMaskChannels.real.length >= 2, 'Real Photoshop mask channel bytes are nonempty')
+        assert.equal(layer.preservedMaskChannels.sourceFormat, fixture.name.endsWith('.psb') ? 'psb' : 'psd')
+      }
       if (fixture.name === '16bit5x5.psb') {
         assert.equal(decoded.depth, 16, 'Real Photoshop 16-bit PSB must retain its source depth')
       }
