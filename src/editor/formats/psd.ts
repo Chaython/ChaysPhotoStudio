@@ -889,6 +889,10 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     : 'Additional Photoshop spot/alpha channels beyond merged transparency are not reconstructed in the canvas preview')
   if (colorMode === 9) compatibilityWarnings.add('Photoshop Lab was converted to an approximate sRGB preview; editable Lab/ICC color data is not retained')
   if (colorMode === 4) compatibilityWarnings.add('Photoshop CMYK was converted to an approximate RGB preview; an ICC-managed conversion is not available')
+  // In a layered PSD, the signed layer count determines whether the first
+  // extra merged channel is transparency or an independent alpha/spot plane.
+  // null means the file has no layer records, where the meaning is ambiguous.
+  let mergedTransparencyFlag: boolean | null = null
   const records: PsdLayerRecord[] = []
   const layerChannels: Map<number, PsdPlane>[] = []
   if (lmLen > 0 && lmEnd <= bytes.length) {
@@ -935,7 +939,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const liEnd = pos + liLen
     if (liLen > 0) {
       if (pos + 2 > liEnd) throw new Error('Truncated Photoshop layer count')
-      const layerCount = Math.abs(view.getInt16(pos))
+      const signedLayerCount = view.getInt16(pos)
+      mergedTransparencyFlag = signedLayerCount < 0
+      const layerCount = Math.abs(signedLayerCount)
       pos += 2
       for (let i = 0; i < layerCount; i++) {
         if (pos + 18 > liEnd) throw new Error('Truncated Photoshop layer record')
@@ -1276,10 +1282,14 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     const rowBytes = width * bpc
     const chans = new Map<number, PsdPlane>()
     const retainedExtras: Uint8Array[] = []
-    // Extra spot/alpha channels must never overwrite the first merged
-    // transparency channel. A five-channel RGB PSD contains R/G/B, alpha,
-    // then a fifth independent channel—not a replacement for transparency.
-    const compositeId = (c: number): number => c < baseChannels ? c : c === baseChannels ? -1 : -1000 - c
+    // Adobe specifies a NEGATIVE layer count when the first extra merged
+    // channel carries transparency. A positive layered count means channel
+    // four is an independent spot/alpha channel, not merged opacity.
+    // Without layer records, treat the first extra as alpha for compatibility
+    // with flattened PSDs that do not expose this flag.
+    const alphaIndex = mergedTransparencyFlag === false ? -1 : baseChannels
+    const compositeId = (c: number): number =>
+      c < baseChannels ? c : c === alphaIndex ? -1 : -1000 - c
     if (compr === 0) {
       for (let c = 0; c < channels; c++) {
         const chan = await decodePsdChannel(bytes, view, pos, compr, width, height, depth, rowBytes * height)
@@ -1325,6 +1335,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       throw new Error(`Unsupported composite compression ${compr}`)
     }
     const res = channelsToRgba(chans, width, height, colorMode, clut, transparencyIndex)
+    if (colorMode === 3 && mergedTransparencyFlag === false && channels > baseChannels) {
+      compatibilityWarnings.add('PSD positive layer count declares merged RGB alpha/spot channels, not transparency; extra channel bytes are retained separately')
+    }
     extraMergedChannels = retainedExtras
     composite = rgbaToCanvas2(res.rgba, width, height, res.rgba16, res.rgbaFloat)
     if (depth === 16 && canvasProfile(composite).bitDepth !== 16) {
@@ -1768,12 +1781,11 @@ export function buildPsd(
   }
 
   // ---- layer records ----
-  // A negative layer count tells Photoshop channel 4 is merged transparency,
-  // not an unrelated extra alpha channel. The ordinary layer order is unchanged.
-  const compositeAlpha = depth === 32 && options.compositeHdrPixels
-    ? options.compositeHdrPixels.some((v, i) => i % 4 === 3 && v < 1)
-    : getImageData(flat).data.some((v, i) => i % 4 === 3 && v < 255)
-  const recordParts: Uint8Array[] = [i16(compositeAlpha ? -prepared.length : prepared.length)]
+  // The writer always includes a dedicated merged transparency channel,
+  // even if all samples happen to be opaque. Signal this with a negative
+  // layer count per Adobe's PSD specification. Positive counts would cause
+  // compliant readers to treat our fourth RGBA plane as an unrelated spot.
+  const recordParts: Uint8Array[] = [i16(-prepared.length)]
   const channelDataParts: Uint8Array[] = []
   for (const p of prepared) {
     const w = p.input.sectionMarker ? 0 : p.input.canvas.width
