@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import hashlib
+import urllib.request
 import struct
 import sys
 import traceback
@@ -295,6 +297,41 @@ def main():
                 check(value["afterRedo"] == value["added"], "redo did not restore added layer")
                 check(not errors, f"image import/history threw uncaught errors: {errors[:3]}")
 
+            def real_psd_browser_import():
+                _, page, errors = app_page(browser)
+                upstream = "b58704c1c9c9b2459f961560b1e368dfb102b513"
+                for name, expected_sha in [
+                    ("pixel-layer.psd", "0d3ee59728ebd8237e4c2c8eee1997e42e3ee82d"),
+                    ("type-layer.psd", "1cdcf08f88b103a50b74de7f3b70a7ccf63122e5"),
+                ]:
+                    url = (f"https://raw.githubusercontent.com/psd-tools/psd-tools/{upstream}"
+                           f"/tests/psd_files/layers/{name}")
+                    with urllib.request.urlopen(url, timeout=25) as response:
+                        content = response.read()
+                    git_sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\\0" + content).hexdigest()
+                    check(git_sha == expected_sha, f"Independent {name} binary changed")
+                    page.locator('input[type="file"]').first.set_input_files(
+                        {"name": name, "mimeType": "image/vnd.adobe.photoshop", "buffer": content})
+                    page.wait_for_function("""() => {
+                      const doc = window.__zphotoEngine.activeDoc
+                      return doc && doc.width === 32 && doc.height === 32 && doc.layers.length === 1
+                    }""", timeout=30000)
+                    result = page.evaluate("""() => {
+                      const doc = window.__zphotoEngine.activeDoc
+                      const layer = doc.layers[0], image = layer.canvas
+                      const ctx = image && image.getContext('2d')
+                      const pixels = ctx && ctx.getImageData(0, 0, image.width, image.height).data
+                      return {
+                        width: doc.width, height: doc.height, layers: doc.layers.length,
+                        layerName: layer.name, raster: layer.kind === 'raster',
+                        pixelCount: pixels ? pixels.length : 0,
+                      }
+                    }""")
+                    print(f"  Real {name} browser import: {result}", flush=True)
+                    check(result["raster"] and result["pixelCount"] > 0,
+                          f"Real {name} didn't become a decoded raster layer")
+                check(not errors, f"real PSD browser imports threw JS errors: {errors[:3]}")
+
             def mobile_start():
                 _, page, errors = app_page(browser, size=(430, 850))
                 check(page.locator("body").bounding_box()["width"] <= 431,
@@ -310,6 +347,7 @@ def main():
                 ("dock_context_move_float", context_float),
                 ("workspace_all_tools_dialog", workspace_and_dialog),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
+                ("real_psd_chromium_import", real_psd_browser_import),
                 ("mobile_editor_startup", mobile_start),
             ]:
                 run_test(name, fn)
