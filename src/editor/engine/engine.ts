@@ -507,7 +507,7 @@ export class Engine {
   addCanvasDocument(
     canvas: HTMLCanvasElement,
     name: string,
-    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16 | 32; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number; hdrPixels?: Float32Array; metadata?: ImageMetadata; psdImageResources?: string[]; psdSourceColorMode?: number; psdColorModeData?: string; psdExtraMergedChannels?: string[] } = {},
+    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16 | 32; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number; hdrPixels?: Float32Array; metadata?: ImageMetadata; psdImageResources?: string[]; psdGlobalLayerMaskData?: string; psdGlobalAdditionalInfo?: string[]; psdSourceColorMode?: number; psdColorModeData?: string; psdExtraMergedChannels?: string[] } = {},
   ): PsDocument {
     const incoming = canvasProfile(canvas)
     const requestedDepth = meta.workingBitDepth ?? incoming.bitDepth
@@ -524,6 +524,8 @@ export class Engine {
       workingBitDepth,
       sourceBitDepth: meta.sourceBitDepth ?? workingBitDepth,
       psdImageResources: meta.psdImageResources ? [...meta.psdImageResources] : undefined,
+      psdGlobalLayerMaskData: meta.psdGlobalLayerMaskData,
+      psdGlobalAdditionalInfo: meta.psdGlobalAdditionalInfo ? [...meta.psdGlobalAdditionalInfo] : undefined,
       psdSourceColorMode: meta.psdSourceColorMode,
       psdColorModeData: meta.psdColorModeData,
       psdExtraMergedChannels: meta.psdExtraMergedChannels ? [...meta.psdExtraMergedChannels] : undefined,
@@ -629,6 +631,8 @@ export class Engine {
       sourceBitDepth: src.sourceBitDepth,
       workingColorSpace: src.workingColorSpace,
       psdImageResources: src.psdImageResources ? [...src.psdImageResources] : undefined,
+      psdGlobalLayerMaskData: src.psdGlobalLayerMaskData,
+      psdGlobalAdditionalInfo: src.psdGlobalAdditionalInfo ? [...src.psdGlobalAdditionalInfo] : undefined,
       psdColorModeData: src.psdColorModeData,
       psdSourceColorMode: src.psdSourceColorMode,
       psdExtraMergedChannels: src.psdExtraMergedChannels ? [...src.psdExtraMergedChannels] : undefined,
