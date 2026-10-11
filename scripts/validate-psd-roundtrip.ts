@@ -1302,7 +1302,38 @@ if (process.env.PSD_REAL_CORPUS === '1') {
       assert.equal(decoded.canvas.width, decoded.width)
       assert.equal(decoded.canvas.height, decoded.height)
       assert.equal(decoded.depth === 8 || decoded.depth === 16 || decoded.depth === 32, true)
+      assert.ok(decoded.layers.length > 0, 'Layered source must not silently import as a flattened/empty project')
       assert.equal(decoded.layers.every(layer => layer.canvas.width >= 0 && layer.canvas.height >= 0), true)
+      if (fixture.name === '16bit5x5.psb') {
+        assert.equal(decoded.depth, 16, 'Real Photoshop 16-bit PSB must retain its source depth')
+      }
+      // Export a real source image through Studio and import it again.
+      // This covers more than byte-level import but is NOT a substitute for
+      // opening the exported file in Adobe Photoshop or comparing rendered FX.
+      if (fixture.name === '1layer.psd' || fixture.name === '2layers.psd') {
+        const exported = buildPsd(decoded.width, decoded.height, decoded.layers.map(layer => ({
+          name: layer.name, canvas: layer.canvas, left: layer.left, top: layer.top,
+          opacity: layer.opacity, blendMode: layer.blendMode,
+          rawBlendKey: layer.blendKey, visible: layer.visible, clipped: layer.clipped,
+          mask: layer.mask, maskEnabled: layer.maskEnabled,
+          additionalInfo: layer.additionalInfo,
+          blendingRanges: layer.blendingRanges,
+        })), decoded.canvas, {
+          depth: 8, imageResources: decoded.imageResources, resolutionPpi: decoded.resolutionPpi,
+          globalLayerMaskData: decoded.globalLayerMaskData,
+          globalAdditionalInfo: decoded.globalAdditionalInfo,
+        })
+        const again = await decodePsd(new Uint8Array(await exported.arrayBuffer()))
+        assert.deepEqual(again.layers.map(layer => layer.name), decoded.layers.map(layer => layer.name),
+          'Real Photoshop raster layer names must round-trip through Studio export')
+        assert.equal(again.width, decoded.width)
+        assert.equal(again.height, decoded.height)
+        assert.deepEqual(
+          Array.from(again.canvas.getContext('2d')!.getImageData(0, 0, again.width, again.height).data),
+          Array.from(decoded.canvas.getContext('2d')!.getImageData(0, 0, decoded.width, decoded.height).data),
+          'Real Photoshop merged composite pixels must survive Studio raster round-trip',
+        )
+      }
       const output = {
         fixture: fixture.name,
         source: `PSD/PSB v${sourceVersion}`,
