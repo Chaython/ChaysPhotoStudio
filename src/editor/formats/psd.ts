@@ -19,16 +19,17 @@ const PSD_TO_APP: Record<string, BlendMode> = {
   norm: 'normal', diss: 'normal', pass: 'normal', brst: 'normal',
   dark: 'darken', mul: 'multiply', mult: 'multiply',
   lite: 'lighten', scrn: 'screen', screen: 'screen',
-  over: 'overlay', hard: 'hard-light', soft: 'soft-light',
+  over: 'overlay', hard: 'hard-light', hLit: 'hard-light',
+  soft: 'soft-light', sLit: 'soft-light',
   diff: 'difference', smud: 'exclusion', xclu: 'exclusion',
   hue: 'hue', sat: 'saturation', colr: 'color', lum: 'luminosity',
-  div: 'color-dodge', idiv: 'color-burn', dded: 'linear-dodge',
+  div: 'color-dodge', idiv: 'color-burn', dded: 'linear-dodge', lddg: 'linear-dodge',
   lbrn: 'normal', lbrg: 'normal', vlig: 'hard-light', llig: 'linear-dodge', plig: 'hard-light',
 }
 const APP_TO_PSD: Record<BlendMode, string> = {
   normal: 'norm', multiply: 'mul ', screen: 'scrn', overlay: 'over',
   darken: 'dark', lighten: 'lite', 'color-dodge': 'div ', 'color-burn': 'idiv',
-  'linear-dodge': 'dded', 'hard-light': 'hard', 'soft-light': 'soft',
+  'linear-dodge': 'lddg', 'hard-light': 'hLit', 'soft-light': 'sLit',
   difference: 'diff', exclusion: 'smud', hue: 'hue ', saturation: 'sat ',
   color: 'colr', luminosity: 'lum ',
 }
@@ -883,7 +884,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
 
   const compatibilityWarnings = new Set<string>()
   const faithfullyMappedBlendKeys = new Set(['norm', 'dark', 'mul', 'mult', 'lite', 'scrn', 'screen',
-    'over', 'hard', 'soft', 'diff', 'smud', 'xclu', 'hue', 'sat', 'colr', 'lum', 'div', 'idiv', 'dded'])
+    'over', 'hard', 'hLit', 'soft', 'sLit', 'diff', 'smud', 'xclu',
+    'hue', 'sat', 'colr', 'lum', 'div', 'idiv', 'dded', 'lddg'])
   if (channels > baseChannels + 1) compatibilityWarnings.add(colorMode === 3
     ? 'Extra Photoshop RGB spot/alpha channels are retained for compatible export but are not editable or visible in the canvas preview'
     : 'Additional Photoshop spot/alpha channels beyond merged transparency are not reconstructed in the canvas preview')
