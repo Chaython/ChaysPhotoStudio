@@ -497,6 +497,20 @@ for (const format of ['psd', 'psb'] as const) {
     'Outside relative mask rectangle, Photoshop default color must be used')
   assert.equal(mask.getImageData(1, 0, 1, 1).data[3], 100,
     'Relative mask position must include the layer x offset')
+  const inverted = changed.slice()
+  inverted[offset + 21] = 5 // layer-relative plus inverse-mask flag
+  const inverseLayer = (await decodePsd(inverted)).layers[0]
+  const inverseMask = inverseLayer.mask!.getContext('2d')!
+  assert.equal(inverseMask.getImageData(0, 0, 1, 1).data[3], 0,
+    'Inverted masks must complement the Photoshop outside-rectangle default')
+  assert.equal(inverseMask.getImageData(1, 0, 1, 1).data[3], 155,
+    'Inverted masks must complement actual raster samples')
+  const inverseRoundTrip = await decodePsd(new Uint8Array(await buildPsd(2, 2, [{
+    name: 'Inverted normalized', canvas: image, left: 1, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true, mask: inverseLayer.mask,
+  }], image, { format }).arrayBuffer()))
+  assert.equal(inverseRoundTrip.layers[0].mask!.getContext('2d')!.getImageData(1, 0, 1, 1).data[3], 155,
+    'Normalized inverse mask must retain the same visible alpha through Photoshop export')
 }
 
 
