@@ -274,11 +274,14 @@ for (const format of ['psd', 'psb'] as const) {
 for (const format of ['psd', 'psb'] as const) {
   const image = canvas(47, 83, 151)
   const source = new Uint8Array(await buildPsd(2, 2, [
+    { name: '</Adobe folder>', canvas: image, left: 0, top: 0,
+      opacity: 100, blendMode: 'normal', visible: true, sectionMarker: true,
+      additionalInfo: [sectionDivider(3)] },
+    { name: 'Child', canvas: image, left: 0, top: 0,
+      opacity: 100, blendMode: 'normal', visible: true },
     { name: 'Adobe folder', canvas: image, left: 0, top: 0,
       opacity: 100, blendMode: 'normal', visible: true, sectionMarker: true,
       additionalInfo: [sectionDivider(1)] },
-    { name: 'Child', canvas: image, left: 0, top: 0,
-      opacity: 100, blendMode: 'normal', visible: true },
   ], image, { format }).arrayBuffer())
   const sourceView = new DataView(source.buffer)
   const lenSize = format === 'psb' ? 8 : 4
@@ -289,15 +292,17 @@ for (const format of ['psd', 'psb'] as const) {
   pos += lenSize
   const layerLengthAt = pos
   pos += lenSize
-  assert.equal(Math.abs(sourceView.getInt16(pos)), 2)
+  assert.equal(Math.abs(sourceView.getInt16(pos)), 3)
   const markerAt = pos + 2
   assert.equal(sourceView.getUint16(markerAt + 16), 0)
   const addedChannelTableBytes = 2 + lenSize
-  const markerExtraAt = markerAt + 18 + 12
-  const childAt = markerExtraAt + 4 + sourceView.getUint32(markerExtraAt)
-  const childChannels = sourceView.getUint16(childAt + 16)
-  const childExtraAt = childAt + 18 + childChannels * (2 + lenSize) + 12
-  const channelDataAt = childExtraAt + 4 + sourceView.getUint32(childExtraAt)
+  let nextRecordAt = markerAt
+  for (let record = 0; record < 3; record++) {
+    const channelCount = sourceView.getUint16(nextRecordAt + 16)
+    const extraAt = nextRecordAt + 18 + channelCount * (2 + lenSize) + 12
+    nextRecordAt = extraAt + 4 + sourceView.getUint32(extraAt)
+  }
+  const channelDataAt = nextRecordAt
   assert.ok(channelDataAt < source.length, 'Synthetic PSD has layer channel data')
 
   // Insert channel id 0, length 2 into the group record, followed by its
@@ -318,8 +323,8 @@ for (const format of ['psd', 'psb'] as const) {
   }
   const decoded = await decodePsd(extended)
   assert.equal(decoded.layers.length, 1, 'Empty folder channels must not become drawable layers')
-  assert.deepEqual(decoded.sectionMarkers.map(m => m.name), ['Adobe folder'],
-    'Photoshop folder markers with empty channel headers must be retained')
+  assert.deepEqual(decoded.sectionMarkers.map(m => m.name), ['</Adobe folder>', 'Adobe folder'],
+    'Photoshop folder boundaries with empty channel headers must be retained')
   assert.deepEqual(decoded.layers[0].groupPath, ['Adobe folder'],
     'Real-world empty-channel folder delimiters must preserve child ancestry')
   assert.ok(!decoded.warnings.some(w => w.includes('non-raster Photoshop layer records could not be preserved')),
