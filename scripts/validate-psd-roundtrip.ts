@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdGroupPaths, psdWillReplaceSourceFx, normalizePsdTaggedBlock } from '../src/editor/formats/psd'
+import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdGroupPaths, psdWillReplaceSourceFx, normalizePsdTaggedBlock, parsePsdBlendIfRanges, encodePsdBlendIfRanges, psdHasAdditionalBlendIfRanges } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
 // without requiring a graphics stack or a browser installation.
@@ -58,6 +58,75 @@ function canvas(r: number, g: number, b: number, a = 255): HTMLCanvasElement {
   c.height = 2
   c.pixels = new Uint8ClampedArray(Array.from({ length: 4 }, () => [r, g, b, a]).flat())
   return c as unknown as HTMLCanvasElement
+}
+
+
+const photoshopGrayRange = Uint8Array.from([
+  12, 36, 202, 228, // This Layer, split black and white
+  8, 25, 225, 242, // Underlying Layer, split black and white
+])
+const photoshopRedRange = Uint8Array.from([
+  0, 0, 255, 255, 24, 48, 218, 240,
+])
+const photoshopDefault = Uint8Array.from([0, 0, 255, 255, 0, 0, 255, 255])
+const importedBlendIf = parsePsdBlendIfRanges(photoshopGrayRange)
+assert.deepEqual(importedBlendIf, {
+  channel: 'gray',
+  thisLayer: { lo: 36, loSoft: 24, hi: 202, hiSoft: 26 },
+  underLayer: { lo: 25, loSoft: 17, hi: 225, hiSoft: 17 },
+}, 'Photoshop split Blend If values map to native sliders')
+assert.deepEqual(Array.from(encodePsdBlendIfRanges(photoshopGrayRange, importedBlendIf)),
+  Array.from(photoshopGrayRange), 'unchanged Photoshop Blend If retains original bytes')
+assert.deepEqual(Array.from(encodePsdBlendIfRanges(photoshopGrayRange, null)),
+  Array.from(photoshopDefault), 'clearing imported Blend If resets its Photoshop range')
+assert.equal(parsePsdBlendIfRanges(photoshopDefault), null, 'default Blend If stays inactive')
+assert.equal(parsePsdBlendIfRanges(Uint8Array.from([1, 2, 3])), null, 'truncated blending range stays opaque')
+assert.deepEqual(Array.from(encodePsdBlendIfRanges(Uint8Array.from([1, 2, 3]), null)), [1, 2, 3],
+  'unsupported blending range bytes are not silently discarded')
+assert.throws(() => encodePsdBlendIfRanges(Uint8Array.from([1, 2, 3]), importedBlendIf),
+  /malformed Photoshop blending ranges/, 'editing invalid data fails safely')
+
+const multiBlendRange = Uint8Array.from([...photoshopGrayRange, ...photoshopRedRange, ...photoshopDefault, ...photoshopDefault])
+assert.equal(psdHasAdditionalBlendIfRanges(multiBlendRange), true, 'multiple active Photoshop ranges must be warned about')
+const greenBlendIf = {
+  channel: 'g' as const,
+  thisLayer: { lo: 40, loSoft: 10, hi: 210, hiSoft: 5 },
+  underLayer: { lo: 6, loSoft: 6, hi: 250, hiSoft: 5 },
+}
+const movedBlendRange = encodePsdBlendIfRanges(multiBlendRange, greenBlendIf)
+assert.deepEqual(Array.from(movedBlendRange.slice(0, 8)), Array.from(photoshopDefault),
+  'switching a slider to another channel clears the prior represented channel')
+assert.deepEqual(Array.from(movedBlendRange.slice(8, 16)), Array.from(photoshopRedRange),
+  'unsupported simultaneous Photoshop channel ranges remain untouched')
+assert.deepEqual(Array.from(movedBlendRange.slice(16, 24)),
+  [30, 40, 210, 215, 0, 6, 250, 255], 'edited RGB Blend If writes split slider bytes')
+assert.deepEqual(parsePsdBlendIfRanges(movedBlendRange)?.thisLayer,
+  { lo: 48, loSoft: 24, hi: 218, hiSoft: 22 },
+  'the remaining original red range is chosen for preview when multiple are active')
+
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(110, 160, 230)
+  const blob = buildPsd(2, 2, [{
+    name: 'Blend If editable', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    blendIf: greenBlendIf,
+    blendingRanges: Uint8Array.from([...photoshopDefault, ...photoshopRedRange, ...photoshopDefault, ...photoshopDefault]),
+  }], image, { format })
+  const decoded = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
+  assert.deepEqual(Array.from(decoded.layers[0].blendingRanges.slice(8, 16)),
+    Array.from(photoshopRedRange), 'PSD/PSB exporter must retain unrelated Photoshop range bytes')
+  assert.deepEqual(Array.from(decoded.layers[0].blendingRanges.slice(16, 24)),
+    [30, 40, 210, 215, 0, 6, 250, 255], 'PSD/PSB exports edited green-channel slider bytes')
+  assert.ok(decoded.warnings.some(w => w.includes('multiple active channel ranges')),
+    'lossy native preview of multiple Photoshop Blend If channels must be disclosed')
+  const single = await decodePsd(new Uint8Array(await buildPsd(2, 2, [{
+    name: 'Only gray', canvas: image, left: 0, top: 0, opacity: 100,
+    blendMode: 'normal', visible: true, blendIf: importedBlendIf,
+  }], image, { format }).arrayBuffer()))
+  assert.deepEqual(single.layers[0].blendIf, importedBlendIf,
+    'editable Blend If must survive an end-to-end PSD/PSB round trip')
+  assert.deepEqual(Array.from(single.layers[0].blendingRanges), Array.from(photoshopGrayRange),
+    'new Blend If settings must export Adobe-compatible split-slider range bytes')
 }
 
 for (const format of ['psd', 'psb'] as const) {
