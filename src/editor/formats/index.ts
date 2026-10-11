@@ -94,8 +94,9 @@ export interface DecodedImage {
     mask?: HTMLCanvasElement | null
     /** Photoshop bit1-disabled layer masks remain present but inactive. */
     maskEnabled?: boolean
-    /** Photoshop combined raster/vector mask payload is not preserved by Studio export. */
+    /** Photoshop combined raster/vector mask is not natively editable. */
     unsupportedRealMask?: boolean
+    preservedMaskChannels?: import('./psd').PsdPreservedMaskChannels
     /** Scene-linear 32-bit Photoshop raster backing pixels. */
     hdrPixels?: Float32Array
     /** editable layer style decoded from PSD effect metadata when supported */
@@ -418,6 +419,12 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           mask: l.mask,
           maskEnabled: l.maskEnabled,
           unsupportedRealMask: l.unsupportedRealMask,
+          preservedMaskChannels: l.preservedMaskChannels ? {
+            ...l.preservedMaskChannels,
+            metadata: l.preservedMaskChannels.metadata.slice(),
+            real: l.preservedMaskChannels.real.slice(),
+            user: l.preservedMaskChannels.user?.slice(),
+          } : undefined,
           hdrPixels: l.hdrPixels,
           blendingRanges: l.blendingRanges.slice(),
           blendIf: l.blendIf ? structuredClone(l.blendIf) : null,
