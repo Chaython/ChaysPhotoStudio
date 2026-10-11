@@ -1077,6 +1077,21 @@ for (const format of ['psd', 'psb'] as const) {
 }
 
 
+// A flattened PSD may carry an explicit zero-layer layer-info section.
+// Negative zero cannot signal transparency, so retain legacy merged-alpha
+// decoding for this otherwise ambiguous Photoshop representation.
+const zeroLayers = rgbWithExtraChannels([11, 22, 33, 88])
+const zeroLayerSection = new Uint8Array(zeroLayers.length + 10)
+zeroLayerSection.set(zeroLayers.subarray(0, 38), 0)
+zeroLayerSection.set([0, 0, 0, 2, 0, 0, 0, 0, 0, 0], 38)
+zeroLayerSection.set(zeroLayers.subarray(38), 48)
+new DataView(zeroLayerSection.buffer).setUint32(34, 10)
+const zeroLayerDecoded = await decodePsd(zeroLayerSection)
+assert.equal(zeroLayerDecoded.layers.length, 0)
+assert.equal(zeroLayerDecoded.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 88)
+assert.equal(zeroLayerDecoded.hasAlpha, true)
+assert.equal(zeroLayerDecoded.extraMergedChannels.length, 0)
+
 for (const format of ['psd', 'psb'] as const) {
   const semiTransparent = canvas(38, 76, 114, 73)
   const original = buildPsd(2, 2, [{
