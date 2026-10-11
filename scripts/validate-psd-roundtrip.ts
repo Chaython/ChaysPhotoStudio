@@ -1030,5 +1030,51 @@ await assert.rejects(() => decodePsd(invalidIndexedDepth),
   /Photoshop indexed-color PSD requires 8-bit palette indices/,
   'Photoshop indexed-color must not decode incompatible 16-bit indices')
 
+
+for (const format of ['psd', 'psb'] as const) {
+  for (const depth of [8, 16] as const) {
+    const pixels = canvas(44, 88, 132)
+    const globalMask = Uint8Array.from([13, 37, 61, 85])
+    const linkedPayload = Uint8Array.from([71, 23, 117, 201])
+    // lnk2 must use a 64-bit length in PSB, and a uint32 length in PSD.
+    // Feed the *opposite* source representation to exercise conversion.
+    const linked = taggedPsdBlock('lnk2', Array.from(linkedPayload), format === 'psd')
+    const shared = taggedPsdBlock('Patt', [9, 18, 27, 36])
+    const source = buildPsd(2, 2, [{
+      name: 'Global linked-data source', canvas: pixels,
+      left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true,
+    }], pixels, { format, depth,
+      globalLayerMaskData: globalMask,
+      globalAdditionalInfo: [linked, shared] })
+    const decoded = await decodePsd(new Uint8Array(await source.arrayBuffer()))
+    assert.equal(decoded.layers.length, 1, 'Global tags must not hide raster layer records')
+    assert.deepEqual(Array.from(decoded.globalLayerMaskData), Array.from(globalMask),
+      'Global Photoshop mask payload must survive the decoder')
+    assert.deepEqual(decoded.globalAdditionalInfo.map(b => new TextDecoder().decode(b.subarray(4, 8))),
+      ['lnk2', 'Patt'], 'Linked and pattern blocks remain document-global')
+    const linkedDecoded = photoshopTaggedBlock(decoded.globalAdditionalInfo, 'lnk2')
+    assert.deepEqual(Array.from(linkedDecoded), Array.from(taggedPsdBlock(
+      'lnk2', Array.from(linkedPayload), format === 'psb')),
+      'Global linked data must use the destination PSD/PSB length header')
+    assert.ok(!decoded.globalAdditionalInfo.some(block =>
+      ['Lr16', 'Lr32'].includes(new TextDecoder().decode(block.subarray(4, 8)))),
+      'High-depth Photoshop layer records must never be preserved as stale global tags')
+    const swappedFormat = format === 'psd' ? 'psb' : 'psd'
+    const roundtrip = buildPsd(2, 2, [{
+      name: 'Round-trip global metadata', canvas: pixels,
+      left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true,
+    }], pixels, { format: swappedFormat, depth,
+      globalLayerMaskData: decoded.globalLayerMaskData,
+      globalAdditionalInfo: decoded.globalAdditionalInfo })
+    const reread = await decodePsd(new Uint8Array(await roundtrip.arrayBuffer()))
+    assert.deepEqual(Array.from(reread.globalLayerMaskData), Array.from(globalMask))
+    assert.deepEqual(Array.from(photoshopTaggedBlock(reread.globalAdditionalInfo, 'lnk2')),
+      Array.from(taggedPsdBlock('lnk2', Array.from(linkedPayload), swappedFormat === 'psb')),
+      'PSD↔PSB conversion must preserve global linked-object payload bytes')
+    assert.equal(reread.layers.length, 1,
+      'High-depth layer records are still discoverable after linked-object conversion')
+  }
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
