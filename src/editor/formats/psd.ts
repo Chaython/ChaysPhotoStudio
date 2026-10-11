@@ -914,7 +914,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         const signature = str4(scan)
         if (signature !== '8BIM' && signature !== '8B64') break
         const key = str4(scan + 4)
-        const taggedLengthSize = psb && (key === 'Lr16' || key === 'Lr32') ? 8 : 4
+        // Global linked-object tags can appear before Lr16/Lr32 and also
+        // use PSB-wide lengths. Scan by each tag's real header size.
+        const taggedLengthSize = psb && PSB_WIDE_TAG_KEYS.has(key) ? 8 : 4
         if (scan + 8 + taggedLengthSize > lmEnd) break
         const size = taggedLengthSize === 8
           ? view.getUint32(scan + 8) * 4294967296 + view.getUint32(scan + 12)
