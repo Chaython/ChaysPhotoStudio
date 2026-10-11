@@ -1262,3 +1262,64 @@ for (const [mode, adobeKey, legacyStudioKey] of [
 
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
+
+
+// Independent, externally authored PSD/PSB fixture corpus. Unlike the cases
+// above, these files were not made by buildPsd. Opt in for CI/manual network
+// validation: PSD_REAL_CORPUS=1 bun scripts/validate-psd-roundtrip.ts
+//
+// Source: psd-tools/psd-tools, MIT repository (tests/psd_files).
+// Pin the upstream commit and verify Git blob SHA-1 before parsing so changes
+// in an upstream fixture cannot silently alter our regression expectations.
+if (process.env.PSD_REAL_CORPUS === '1') {
+  const { createHash } = await import('node:crypto')
+  const upstream = 'b58704c1c9c9b2459f961560b1e368dfb102b513'
+  const fixtures = [
+    { name: '1layer.psd', sha: '2420ee826ae9c2271cd80a0b01ec394d26b38c07', size: 6476 },
+    { name: '2layers.psd', sha: '8e5f89d87d7c74e0e4ec59b03a3c64c1938e5a28', size: 14176 },
+    { name: 'mask.psd', sha: '461802afc140cf2eabf228a5cfbdd0276697e99a', size: 72905 },
+    { name: 'text.psd', sha: 'c424e40ae25c8d05ab7652ce5ee83eab1ac56744', size: 93949 },
+    { name: 'group.psb', sha: '762ade19b89edfe280c0c302567a7a9dbe52612d', size: 36590 },
+    { name: '16bit5x5.psb', sha: '834c4dab9d11f528adb1ff3933ab513bbeb08812', size: 23482 },
+    { name: 'layers/pixel-layer.psd', sha: '0d3ee59728ebd8237e4c2c8eee1997e42e3ee82d', size: 24987 },
+    { name: 'layers/type-layer.psd', sha: '1cdcf08f88b103a50b74de7f3b70a7ccf63122e5', size: 43717 },
+  ] as const
+  const failures: string[] = []
+  for (const fixture of fixtures) {
+    try {
+      const url = `https://raw.githubusercontent.com/psd-tools/psd-tools/${upstream}/tests/psd_files/${fixture.name}`
+      const response = await fetch(url, { signal: AbortSignal.timeout(20000) })
+      if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`)
+      const data = new Uint8Array(await response.arrayBuffer())
+      assert.equal(data.length, fixture.size, 'Pinned source size mismatch')
+      const gitBlobHash = createHash('sha1')
+        .update(`blob ${data.length}\\0`).update(data).digest('hex')
+      assert.equal(gitBlobHash, fixture.sha, 'Pinned source Git blob hash mismatch')
+      assert.equal(new TextDecoder().decode(data.subarray(0, 4)), '8BPS', 'Authentic PSD/PSB header')
+      const sourceVersion = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint16(4)
+      const decoded = await decodePsd(data)
+      assert.equal(decoded.width > 0 && decoded.height > 0, true)
+      assert.equal(decoded.canvas.width, decoded.width)
+      assert.equal(decoded.canvas.height, decoded.height)
+      assert.equal(decoded.depth === 8 || decoded.depth === 16 || decoded.depth === 32, true)
+      assert.equal(decoded.layers.every(layer => layer.canvas.width >= 0 && layer.canvas.height >= 0), true)
+      const output = {
+        fixture: fixture.name,
+        source: `PSD/PSB v${sourceVersion}`,
+        dimensions: `${decoded.width}x${decoded.height}`,
+        depth: decoded.depth,
+        colorMode: decoded.colorMode,
+        layers: decoded.layers.length,
+        groupsOrAdjustments: decoded.sectionMarkers.length,
+        warnings: decoded.warnings,
+      }
+      console.log('REAL PSD PASS', JSON.stringify(output))
+    } catch (error) {
+      const message = `${fixture.name}: ${error instanceof Error ? error.message : String(error)}`
+      failures.push(message)
+      console.error('REAL PSD FAIL', message)
+    }
+  }
+  assert.deepEqual(failures, [], 'Independent PSD/PSB fixture compatibility regressions')
+  console.log(`Independent PSD/PSB binary corpus: ${fixtures.length} files passed`)
+}
