@@ -1223,12 +1223,17 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     // are document-level data, not part of any single raster layer. They can
     // hold embedded/linked Smart Object references needed for round-tripping.
     let gp = originalLayerInfoEnd
-    if (gp + 4 > lmEnd) throw new Error('Truncated Photoshop global layer mask length')
-    const globalMaskLength = view.getUint32(gp)
-    gp += 4
-    if (globalMaskLength > lmEnd - gp) throw new Error('Truncated Photoshop global layer mask data')
-    globalLayerMaskData = bytes.slice(gp, gp + globalMaskLength)
-    gp += globalMaskLength
+    // Photoshop documents can end immediately after the layer-info section,
+    // omitting the optional global-mask field entirely. Distinguish that
+    // valid zero-byte tail from a partially written four-byte length.
+    if (gp < lmEnd) {
+      if (gp + 4 > lmEnd) throw new Error('Truncated Photoshop global layer mask length')
+      const globalMaskLength = view.getUint32(gp)
+      gp += 4
+      if (globalMaskLength > lmEnd - gp) throw new Error('Truncated Photoshop global layer mask data')
+      globalLayerMaskData = bytes.slice(gp, gp + globalMaskLength)
+      gp += globalMaskLength
+    }
     const sourceLayerBlocks = new Set(['Lr16', 'Lr32', 'Layr', 'Mt16', 'Mt32', 'Mtrn'])
     while (gp + 12 <= lmEnd) {
       const sig = str4(gp)
@@ -1247,7 +1252,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       gp = end
     }
     if (gp < lmEnd && bytes.subarray(gp, lmEnd).some(value => value !== 0)) {
-      throw new Error('Malformed Photoshop global additional-layer metadata')
+      const preview = Array.from(bytes.subarray(gp, Math.min(lmEnd, gp + 24)))
+        .map(value => value.toString(16).padStart(2, '0')).join(' ')
+      throw new Error(`Malformed Photoshop global additional-layer metadata (offset ${gp}, ${lmEnd - gp} bytes, hex ${preview})`)
     }
     pos = lmEnd
   }
