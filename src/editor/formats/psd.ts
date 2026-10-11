@@ -1919,7 +1919,10 @@ export function buildPsd(
     // Writer owns ResolutionInfo. Indexed transparency (1047) does not
     // belong in an RGB export, and a CMYK/Lab ICC profile (1039) would
     // misinterpret the RGB pixels if carried over unchanged.
-    return (sig === '8BIM' || sig === 'MeSa') && id !== 0x03ed && id !== 0x0417 &&
+    // Cached Photoshop thumbnails (1033/1036) refer to ORIGINAL pixels and
+    // must not be copied into an edited PSD/PSB as misleading old previews.
+    return (sig === '8BIM' || sig === 'MeSa') &&
+      id !== 0x03ed && id !== 0x0417 && id !== 0x0409 && id !== 0x040c &&
       !(id === 0x040f && options.sourceColorMode !== undefined && options.sourceColorMode !== 3)
   })
   const resources = concatUint8([resolutionResource, ...preservedResources])
