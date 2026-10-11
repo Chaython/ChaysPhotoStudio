@@ -448,6 +448,8 @@ export function ExportDialog({ onClose }: DialogProps) {
             ? base64Bytes(doc.psdColorModeData) : undefined,
           sourceColorMode: doc.psdSourceColorMode,
           extraMergedChannels: canPreserveExtras ? storedExtras : undefined,
+          globalLayerMaskData: doc.psdGlobalLayerMaskData ? base64Bytes(doc.psdGlobalLayerMaskData) : undefined,
+          globalAdditionalInfo: doc.psdGlobalAdditionalInfo?.map(base64Bytes),
           format: format === 'psb' ? 'psb' : 'psd',
           imageResources: [...preservedResources, ...metadataResources],
         })
