@@ -940,7 +940,9 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     if (liLen > 0) {
       if (pos + 2 > liEnd) throw new Error('Truncated Photoshop layer count')
       const signedLayerCount = view.getInt16(pos)
-      mergedTransparencyFlag = signedLayerCount < 0
+      // Zero-layer files cannot encode a negative zero; retain the flattened
+      // RGB alpha-channel compatibility heuristic for that ambiguous case.
+      mergedTransparencyFlag = signedLayerCount === 0 ? null : signedLayerCount < 0
       const layerCount = Math.abs(signedLayerCount)
       pos += 2
       for (let i = 0; i < layerCount; i++) {
