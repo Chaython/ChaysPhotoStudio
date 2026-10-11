@@ -1236,6 +1236,19 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     }
     const sourceLayerBlocks = new Set(['Lr16', 'Lr32', 'Layr', 'Mt16', 'Mt32', 'Mtrn'])
     while (gp + 12 <= lmEnd) {
+      // Real Photoshop PSD/PSB files can insert 1–3 zero padding bytes
+      // before the next tagged record (e.g. two bytes before FMsk/LMsk).
+      // Skip padding ONLY when immediately followed by a full valid header;
+      // reject nonzero and incomplete trailing structures as before.
+      if (str4(gp) !== '8BIM' && str4(gp) !== '8B64') {
+        for (let pad = 1; pad <= 3 && gp + pad + 12 <= lmEnd; pad++) {
+          if (bytes.subarray(gp, gp + pad).every(value => value === 0) &&
+              (str4(gp + pad) === '8BIM' || str4(gp + pad) === '8B64')) {
+            gp += pad
+            break
+          }
+        }
+      }
       const sig = str4(gp)
       if (sig !== '8BIM' && sig !== '8B64') break
       const key = str4(gp + 4)
