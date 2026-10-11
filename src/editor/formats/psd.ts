@@ -995,7 +995,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           maskRect = [view.getInt32(pos), view.getInt32(pos + 4), view.getInt32(pos + 8), view.getInt32(pos + 12)]
           maskDefaultColor = bytes[pos + 16]
           maskFlags = bytes[pos + 17]
-          if (maskFlags & 4) compatibilityWarnings.add('Legacy inverted Photoshop masks are retained as previews; mask inversion must be verified in Photoshop')
+          if (maskFlags & 4) compatibilityWarnings.add('Inverted Photoshop raster masks are normalized to editable alpha; the original inversion flag is not retained on export')
           if (maskFlags & 16) compatibilityWarnings.add('Photoshop layer mask density/feather cannot yet be edited natively')
           pos += maskLen
         }
@@ -1222,7 +1222,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
         for (let pixelIndex = 0; pixelIndex < width * height; pixelIndex++) {
           const p = pixelIndex * 4
           md[p] = md[p + 1] = md[p + 2] = 255
-          md[p + 3] = rec.maskDefaultColor
+          md[p + 3] = (rec.maskFlags & 4) ? 255 - rec.maskDefaultColor : rec.maskDefaultColor
         }
         const originX = mLeft + ((rec.maskFlags & 1) ? rec.left : 0)
         const originY = mTop + ((rec.maskFlags & 1) ? rec.top : 0)
@@ -1232,7 +1232,8 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
             if (docX < 0 || docX >= width || docY < 0 || docY >= height) continue
             const o = (docY * width + docX) * 4
             const pixel = mch[y * mw + x]
-            md[o + 3] = mch instanceof Float32Array ? Math.round(pixel * 255) : mch instanceof Uint16Array ? Math.round(pixel / 257) : pixel
+            const sample = mch instanceof Float32Array ? Math.round(pixel * 255) : mch instanceof Uint16Array ? Math.round(pixel / 257) : pixel
+            md[o + 3] = (rec.maskFlags & 4) ? 255 - sample : sample
           }
         }
         ctx2d(mask).putImageData(mimg, 0, 0)
