@@ -267,6 +267,66 @@ for (const format of ['psd', 'psb'] as const) {
 }
 
 
+// Genuine Photoshop folder markers sometimes include channel table entries
+// containing only the two-byte compression code (no pixels). Emulate exactly
+// this variant in both PSD and PSB by adding a zero-area channel to the
+// folder record, not by changing the decoder's in-memory record objects.
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(47, 83, 151)
+  const source = new Uint8Array(await buildPsd(2, 2, [
+    { name: 'Adobe folder', canvas: image, left: 0, top: 0,
+      opacity: 100, blendMode: 'normal', visible: true, sectionMarker: true,
+      additionalInfo: [sectionDivider(1)] },
+    { name: 'Child', canvas: image, left: 0, top: 0,
+      opacity: 100, blendMode: 'normal', visible: true },
+  ], image, { format }).arrayBuffer())
+  const sourceView = new DataView(source.buffer)
+  const lenSize = format === 'psb' ? 8 : 4
+  let pos = 26
+  pos += 4 + sourceView.getUint32(pos)
+  pos += 4 + sourceView.getUint32(pos)
+  const lmLengthAt = pos
+  pos += lenSize
+  const layerLengthAt = pos
+  pos += lenSize
+  assert.equal(Math.abs(sourceView.getInt16(pos)), 2)
+  const markerAt = pos + 2
+  assert.equal(sourceView.getUint16(markerAt + 16), 0)
+  const addedChannelTableBytes = 2 + lenSize
+  const markerExtraAt = markerAt + 18 + 12
+  const childAt = markerExtraAt + 4 + sourceView.getUint32(markerExtraAt)
+  const childChannels = sourceView.getUint16(childAt + 16)
+  const childExtraAt = childAt + 18 + childChannels * (2 + lenSize) + 12
+  const channelDataAt = childExtraAt + 4 + sourceView.getUint32(childExtraAt)
+  assert.ok(channelDataAt < source.length, 'Synthetic PSD has layer channel data')
+
+  // Insert channel id 0, length 2 into the group record, followed by its
+  // RAW compression code before the child's genuine pixel-channel payload.
+  const entry = new Uint8Array(addedChannelTableBytes)
+  new DataView(entry.buffer).setUint32(addedChannelTableBytes - 4, 2)
+  const extended = new Uint8Array(source.length + entry.length + 2)
+  extended.set(source.subarray(0, markerAt + 18))
+  extended.set(entry, markerAt + 18)
+  extended.set(source.subarray(markerAt + 18, channelDataAt), markerAt + 18 + entry.length)
+  extended.set([0, 0], channelDataAt + entry.length)
+  extended.set(source.subarray(channelDataAt), channelDataAt + entry.length + 2)
+  const finalView = new DataView(extended.buffer)
+  finalView.setUint16(markerAt + 16, 1)
+  for (const lengthAt of [lmLengthAt, layerLengthAt]) {
+    const lengthLowAt = lengthAt + lenSize - 4
+    finalView.setUint32(lengthLowAt, sourceView.getUint32(lengthLowAt) + entry.length + 2)
+  }
+  const decoded = await decodePsd(extended)
+  assert.equal(decoded.layers.length, 1, 'Empty folder channels must not become drawable layers')
+  assert.deepEqual(decoded.sectionMarkers.map(m => m.name), ['Adobe folder'],
+    'Photoshop folder markers with empty channel headers must be retained')
+  assert.deepEqual(decoded.layers[0].groupPath, ['Adobe folder'],
+    'Real-world empty-channel folder delimiters must preserve child ancestry')
+  assert.ok(!decoded.warnings.some(w => w.includes('non-raster Photoshop layer records could not be preserved')),
+    'Safe empty-channel folder records should not trigger a destructive loss warning')
+}
+
+
 function cmykComposite(c: number, m: number, y: number, k: number): Uint8Array {
   // PSD: 26-byte header, three empty sections, raw planar CMYK composite.
   const bytes = new Uint8Array(26 + 4 + 4 + 4 + 2 + 4)
