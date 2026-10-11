@@ -652,6 +652,10 @@ export interface PsDocument {
   sourceBitDepth?: number
   /** Opaque Photoshop image-resource blocks retained from imported PSD/PSB. */
   psdImageResources?: string[]
+  /** Photoshop global layer-mask payload retained for lossless native project round-trip. */
+  psdGlobalLayerMaskData?: string
+  /** Document-wide Photoshop linked-object and other tagged layer-info blocks. */
+  psdGlobalAdditionalInfo?: string[]
   /** Original Photoshop 32-bit HDR tone-preview settings, base64. */
   psdColorModeData?: string
   /** Original Photoshop color mode for compatible ICC/resource preservation. */
