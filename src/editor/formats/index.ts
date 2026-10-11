@@ -64,6 +64,8 @@ export interface DecodedImage {
   documentLayers?: ParsedDocumentLayer[]
   warnings?: string[]
   psdImageResources?: Uint8Array[]
+  psdGlobalLayerMaskData?: Uint8Array
+  psdGlobalAdditionalInfo?: Uint8Array[]
   /** Photoshop-origin 32-bit HDR color-mode payload (hdrt) for exact passthrough. */
   psdColorModeData?: Uint8Array
   psdSourceColorMode?: number
@@ -387,6 +389,8 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
         sourceColorSpace: psd.depth === 32 ? 'linear-srgb' : undefined,
         resolutionPpi: psd.resolutionPpi,
         psdImageResources: psd.imageResources.map(b => b.slice()),
+        psdGlobalLayerMaskData: psd.globalLayerMaskData.slice(),
+        psdGlobalAdditionalInfo: psd.globalAdditionalInfo.map(b => b.slice()),
         psdColorModeData: psd.depth === 32 ? psd.colorModeData.slice() : undefined,
         psdSourceColorMode: psd.colorMode,
         psdExtraMergedChannels: psd.extraMergedChannels.map(c => c.slice()),
