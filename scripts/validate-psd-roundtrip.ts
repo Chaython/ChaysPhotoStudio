@@ -1076,5 +1076,46 @@ for (const format of ['psd', 'psb'] as const) {
   }
 }
 
+
+for (const format of ['psd', 'psb'] as const) {
+  const semiTransparent = canvas(38, 76, 114, 73)
+  const original = buildPsd(2, 2, [{
+    name: 'Signed layer count', canvas: semiTransparent, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], semiTransparent, { format })
+  const bytes = new Uint8Array(await original.arrayBuffer())
+  const countOffset = firstPhotoshopLayerRecord(bytes).record - 2
+  assert.equal(new DataView(bytes.buffer).getInt16(countOffset), -1,
+    'Writer must signal the fourth merged channel as alpha with a negative layer count')
+  const transparent = await decodePsd(bytes)
+  assert.equal(transparent.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 73)
+  assert.equal(transparent.hasAlpha, true)
+  assert.equal(transparent.extraMergedChannels.length, 0,
+    'Merged transparency is not an independently editable spot channel')
+
+  // Adobe specifies that a POSITIVE layer count means the extra merged
+  // channel is unrelated alpha/spot data rather than composite transparency.
+  const positiveCount = bytes.slice()
+  new DataView(positiveCount.buffer).setInt16(countOffset, 1)
+  const withSpot = await decodePsd(positiveCount)
+  assert.equal(withSpot.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 255,
+    'A positive layer count must never make a Photoshop RGB preview transparent')
+  assert.equal(withSpot.hasAlpha, false)
+  assert.deepEqual(withSpot.extraMergedChannels.map(c => Array.from(c)), [[73, 73, 73, 73]],
+    'Source alpha/spot channel samples must be retained for re-export')
+  assert.ok(withSpot.warnings.some(w => w.includes('positive layer count')))
+
+  const opaque = canvas(38, 76, 114)
+  const restored = buildPsd(2, 2, [{
+    name: 'Preserved spot', canvas: opaque, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], opaque, { format, extraMergedChannels: withSpot.extraMergedChannels })
+  const restoredBytes = new Uint8Array(await restored.arrayBuffer())
+  assert.equal(new DataView(restoredBytes.buffer).getInt16(firstPhotoshopLayerRecord(restoredBytes).record - 2), -1)
+  const reread = await decodePsd(restoredBytes)
+  assert.deepEqual(reread.extraMergedChannels.map(c => Array.from(c)), [[73, 73, 73, 73]])
+  assert.equal(reread.canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[3], 255)
+}
+
 console.log('PSD/PSB 8-/16-/32-bit round-trip: version, layers, visibility, alpha, Unicode PPI and folder structure and CMYK previews and Photoshop-only adjustment passthrough and Lab previews and indexed palettes pass')
 
