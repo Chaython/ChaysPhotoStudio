@@ -987,6 +987,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   let mergedTransparencyFlag: boolean | null = null
   const records: PsdLayerRecord[] = []
   const layerChannels: Map<number, PsdPlane>[] = []
+  const emptyGroupChannelHeaders: boolean[] = []
   if (lmLen > 0 && lmEnd <= bytes.length) {
     // Photoshop stores 16/32-bit layer records in the global Lr16/Lr32
     // tagged block instead of the ordinary (8-bit) layer-info section.
@@ -1185,9 +1186,16 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
             lw * lh * (depth >> 3) > 536870912) {
           throw new Error(`Invalid Photoshop layer dimensions: ${rec.name}`)
         }
+        let emptyGroupHeadersAreSafe = true
         for (const ch of rec.channels) {
           const chStart = pos
           if (ch.len > liEnd - chStart || ch.len < 2) throw new Error('Truncated Photoshop layer channel payload')
+          // Empty section-divider channels contain ONLY a compression header.
+          // An unsupported compression code, actual payload or mask channel
+          // must not be discarded when reconstructing a Photoshop folder.
+          if (ch.len !== 2 || ch.id < -1 || ch.id > 3 || view.getUint16(chStart) > 3) {
+            emptyGroupHeadersAreSafe = false
+          }
           // -3 is Photoshop's combined user/vector mask and has an
           // independent rectangle in the mask metadata. Never decode it
           // against the raster layer dimensions: that turns valid Photoshop
@@ -1216,6 +1224,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           pos = chStart + ch.len // lengths cover compression + row table + data
         }
         layerChannels.push(chans)
+        emptyGroupChannelHeaders.push(emptyGroupHeadersAreSafe)
       }
       pos = liEnd
     }
@@ -1299,8 +1308,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       // zero-channel marker preserves its Photoshop nesting/descriptors.
       // Never do this for a nonempty channel, real mask, or adjustment:
       // those records may contain meaningful Photoshop-only imagery.
-      const emptyGroupChannels = rec.channels.every(ch =>
-        ch.len === 2 && ch.id >= -1 && ch.id <= 3)
+      const emptyGroupChannels = emptyGroupChannelHeaders[i]
       if ((isGroup && emptyGroupChannels) ||
           (isAdjustment && rec.channels.length === 0)) {
         sectionMarkers.push({
