@@ -60,6 +60,9 @@ jobs:
       - name: Validate camera, HDR, scientific and multi-page formats
         run: bun run formats:validate
 
+      - name: Validate independent PSD/PSB binary fixtures
+        run: bun run psd:real-validate
+
       - name: Validate retouch stroke safety
         run: bun run retouch-safety:validate
 
