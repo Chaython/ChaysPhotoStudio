@@ -110,7 +110,7 @@ for (const format of ['psd', 'psb'] as const) {
     name: 'Blend If editable', canvas: image, left: 0, top: 0,
     opacity: 100, blendMode: 'normal', visible: true,
     blendIf: greenBlendIf,
-    blendingRanges: Uint8Array.from([...photoshopDefault, ...photoshopRedRange, ...photoshopDefault, ...photoshopDefault]),
+    blendingRanges: Uint8Array.from([...photoshopGrayRange, ...photoshopRedRange, ...photoshopDefault, ...photoshopDefault]),
   }], image, { format })
   const decoded = await decodePsd(new Uint8Array(await blob.arrayBuffer()))
   assert.deepEqual(Array.from(decoded.layers[0].blendingRanges.slice(8, 16)),
