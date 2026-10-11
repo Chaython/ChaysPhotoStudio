@@ -341,7 +341,7 @@ export function ExportDialog({ onClose }: DialogProps) {
         // compressed bytes can be emitted only in the same PSD/PSB container,
         // at the same depth/geometry and with an unchanged editable mask.
         const preservedRealMasks = new Map<string, NonNullable<PsdLayerInput['preservedMaskChannels']>>()
-        const lostRealMasks: string[] = []
+        const lostRealMasks = new Set<string>()
         for (const l of doc.layers.filter(layer => layer.psdUnsupportedRealMask)) {
           const source = l.psdPreservedMaskChannels
           const maskFingerprint = l.mask ? psdPixelFingerprint(l.mask) : null
@@ -361,10 +361,10 @@ export function ExportDialog({ onClose }: DialogProps) {
               docWidth: source.docWidth, docHeight: source.docHeight,
               left: source.left, top: source.top, width: source.width, height: source.height,
             })
-          } else lostRealMasks.push(l.name)
+          } else lostRealMasks.add(l.id)
         }
-        if (lostRealMasks.length && !window.confirm(
-          `${lostRealMasks.length} Photoshop combined raster/vector mask(s) (-3) cannot be preserved after mask/geometry/depth changes or PSD↔PSB conversion. These original mask channels and native vector-mask descriptors must be discarded in this compatibility export. Save your editable .zproj.json first. Continue?`
+        if (lostRealMasks.size && !window.confirm(
+          `${lostRealMasks.size} Photoshop combined raster/vector mask(s) (-3) cannot be preserved after mask/geometry/depth changes or PSD↔PSB conversion. These original mask channels and native vector-mask descriptors must be discarded in this compatibility export. Save your editable .zproj.json first. Continue?`
         )) return
         const staleNative = new Set<string>()
         for (const l of doc.layers) {
@@ -453,7 +453,7 @@ export function ExportDialog({ onClose }: DialogProps) {
             additionalInfo: l.psdAdditionalInfo
               ? (staleNative.has(l.id)
                 ? stripPsdNativeObjectBlocks(l.psdAdditionalInfo.map(base64Bytes))
-                : lostRealMasks.includes(l.name)
+                : lostRealMasks.has(l.id)
                   ? l.psdAdditionalInfo.map(base64Bytes).filter(block =>
                       !['vmsk', 'vsms'].includes(new TextDecoder().decode(block.subarray(4, 8))))
                   : l.psdAdditionalInfo.map(base64Bytes))
