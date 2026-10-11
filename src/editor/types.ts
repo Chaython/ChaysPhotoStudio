@@ -393,8 +393,25 @@ export interface Layer {
   psdBlendKey?: string
   /** Photoshop layer-record bit0, independent of lspf protection flags. */
   psdTransparencyProtected?: boolean
-  /** Imported Photoshop channel -3 exists; warn before destructive PSD re-export. */
+  /** Imported Photoshop channel -3 exists; preserve only when unchanged. */
   psdUnsupportedRealMask?: boolean
+  /** Opaque original compressed user/real Photoshop mask channels and metadata.
+   * Base64 survives native project/history serialization. */
+  psdPreservedMaskChannels?: {
+    metadata: string
+    real: string
+    user?: string
+    sourceFormat: 'psd' | 'psb'
+    depth: 8 | 16 | 32
+    docWidth: number
+    docHeight: number
+    left: number
+    top: number
+    width: number
+    height: number
+    maskFingerprint: string | null
+    maskEnabled: boolean
+  }
   /** Source Photoshop-native layer descriptor, safe to preserve only while
    * raster pixels AND geometry remain unchanged from the original import. */
   /** Imported Photoshop nested folder names for read-only Layers panel context. */
