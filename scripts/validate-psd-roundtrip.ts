@@ -1293,7 +1293,7 @@ if (process.env.PSD_REAL_CORPUS === '1') {
       const data = new Uint8Array(await response.arrayBuffer())
       assert.equal(data.length, fixture.size, 'Pinned source size mismatch')
       const gitBlobHash = createHash('sha1')
-        .update(`blob ${data.length}\\0`).update(data).digest('hex')
+        .update('blob ' + data.length + String.fromCharCode(0)).update(data).digest('hex')
       assert.equal(gitBlobHash, fixture.sha, 'Pinned source Git blob hash mismatch')
       assert.equal(new TextDecoder().decode(data.subarray(0, 4)), '8BPS', 'Authentic PSD/PSB header')
       const sourceVersion = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint16(4)
