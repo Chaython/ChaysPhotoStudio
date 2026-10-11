@@ -1449,6 +1449,34 @@ if (process.env.PSD_REAL_CORPUS === '1') {
       if (fixture.name === '16bit5x5.psb') {
         assert.equal(decoded.depth, 16, 'Real Photoshop 16-bit PSB must retain its source depth')
       }
+      if (fixture.name === 'layer_mask_data.psd' || fixture.name === 'mask_parameters.psd') {
+        const originalMasks = decoded.layers.filter(layer => layer.preservedMaskChannels)
+        assert.ok(originalMasks.length > 0, 'Photoshop test fixture must contain real -3 mask channels')
+        const saved = buildPsd(decoded.width, decoded.height, decoded.layers.map(layer => ({
+          name: layer.name, canvas: layer.canvas,
+          left: layer.left, top: layer.top,
+          opacity: layer.opacity, blendMode: layer.blendMode,
+          visible: layer.visible, clipped: layer.clipped,
+          mask: layer.mask, maskEnabled: layer.maskEnabled,
+          preservedMaskChannels: layer.preservedMaskChannels,
+          additionalInfo: layer.additionalInfo, blendingRanges: layer.blendingRanges,
+        })), decoded.canvas, { format: 'psd', depth: decoded.depth })
+        const reopened = await decodePsd(new Uint8Array(await saved.arrayBuffer()))
+        const copiedMasks = reopened.layers.filter(layer => layer.preservedMaskChannels)
+        assert.equal(copiedMasks.length, originalMasks.length,
+          'Genuine Photoshop -3 channels must survive the editor export')
+        for (let maskIndex = 0; maskIndex < originalMasks.length; maskIndex++) {
+          const original = originalMasks[maskIndex].preservedMaskChannels!
+          const savedMask = copiedMasks[maskIndex].preservedMaskChannels!
+          assert.deepEqual(Array.from(savedMask.real), Array.from(original.real),
+            'Genuine Photoshop combined-mask compressed bytes must remain exact')
+          assert.deepEqual(Array.from(savedMask.metadata), Array.from(original.metadata),
+            'Genuine Photoshop mask flags, rectangles and metadata must remain exact')
+          assert.deepEqual(savedMask.user ? Array.from(savedMask.user) : null,
+            original.user ? Array.from(original.user) : null,
+            'Genuine Photoshop user raster-mask bytes must not be rewritten')
+        }
+      }
       // Export a real source image through Studio and import it again.
       // This covers more than byte-level import but is NOT a substitute for
       // opening the exported file in Adobe Photoshop or comparing rendered FX.
