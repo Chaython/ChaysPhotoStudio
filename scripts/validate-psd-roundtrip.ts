@@ -413,6 +413,25 @@ function photoshopResource(id: number): Uint8Array {
     0, 0, 0, 4, 0xde, 0xad, 0xbe, 0xef,
   ])
 }
+for (const format of ['psd', 'psb'] as const) {
+  const image = canvas(19, 57, 105)
+  const staleJpeg4Thumbnail = photoshopResource(0x0409) // Photoshop 4.0 BGR thumbnail
+  const staleJpeg5Thumbnail = photoshopResource(0x040c) // Photoshop 5+ RGB thumbnail
+  const unrelatedMetadata = photoshopResource(0x0428)
+  const output = buildPsd(2, 2, [{
+    name: 'Thumbnail regression', canvas: image, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], image, { format, sourceColorMode: 3,
+    imageResources: [staleJpeg4Thumbnail, staleJpeg5Thumbnail, unrelatedMetadata] })
+  const bytes = new Uint8Array(await output.arrayBuffer())
+  assert.ok(!containsResource(bytes, 0x0409) && !containsResource(bytes, 0x040c),
+    'PSD/PSB exports must not carry stale Photoshop thumbnail image resources')
+  assert.ok(containsResource(bytes, 0x0428),
+    'Unrelated Photoshop image-resource metadata remains intact')
+  const reopened = await decodePsd(bytes)
+  assert.equal(reopened.imageResources.some(b => b[4] === 0x04 && b[5] === 0x28), true)
+}
+
 const iccResource = photoshopResource(0x040f)
 const indexedTransparencyResource = photoshopResource(0x0417)
 function containsResource(bytes: Uint8Array, id: number): boolean {
