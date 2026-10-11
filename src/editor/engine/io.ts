@@ -597,6 +597,8 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       psdBlendKey: l.psdBlendKey,
       psdTransparencyProtected: l.psdTransparencyProtected,
       psdUnsupportedRealMask: l.psdUnsupportedRealMask,
+      psdPreservedMaskChannels: l.psdPreservedMaskChannels
+        ? structuredClone(l.psdPreservedMaskChannels) : undefined,
       psdNativeOrigin: l.psdNativeOrigin ? structuredClone(l.psdNativeOrigin) : undefined,
       psdGroupPath: l.psdGroupPath ? [...l.psdGroupPath] : undefined,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
@@ -756,6 +758,21 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     psdBlendKey: typeof sl.props.psdBlendKey === 'string' && sl.props.psdBlendKey.length === 4 ? sl.props.psdBlendKey : undefined,
     psdTransparencyProtected: sl.props.psdTransparencyProtected === true,
     psdUnsupportedRealMask: sl.props.psdUnsupportedRealMask === true,
+    psdPreservedMaskChannels: (() => {
+      const m = sl.props.psdPreservedMaskChannels
+      if (!m || typeof m.metadata !== 'string' || typeof m.real !== 'string' ||
+          (m.user !== undefined && typeof m.user !== 'string') ||
+          !['psd', 'psb'].includes(m.sourceFormat) || ![8, 16, 32].includes(m.depth) ||
+          ![m.docWidth, m.docHeight, m.left, m.top, m.width, m.height].every(Number.isSafeInteger) ||
+          !Number.isSafeInteger(m.docWidth) || m.docWidth <= 0 || m.docHeight <= 0 ||
+          m.width < 0 || m.height < 0 ||
+          typeof m.maskEnabled !== 'boolean' ||
+          (m.maskFingerprint !== null && typeof m.maskFingerprint !== 'string') ||
+          m.metadata.length > 1024 * 1024 ||
+          m.real.length > 512 * 1024 * 1024 ||
+          (m.user?.length ?? 0) > 512 * 1024 * 1024) return undefined
+      return structuredClone(m) as Layer['psdPreservedMaskChannels']
+    })(),
     psdGroupPath: Array.isArray(sl.props.psdGroupPath) && sl.props.psdGroupPath.every((name: unknown) => typeof name === 'string')
       ? sl.props.psdGroupPath.slice(0, 64) : undefined,
     psdNativeOrigin: ['text', 'smart', 'vector'].includes(sl.props.psdNativeOrigin?.kind) &&
