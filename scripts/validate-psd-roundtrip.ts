@@ -1148,7 +1148,7 @@ for (const format of ['psd', 'psb'] as const) {
   const duplicateColor = bytes.slice()
   const duplicateView = new DataView(duplicateColor.buffer)
   assert.ok(count >= 2, 'PSD layer must contain at least two color channels')
-  duplicateView.setInt16(record + 20 + 2 + lenSize, 0)
+  duplicateView.setInt16(record + 20 + lenSize, 0)
   await assert.rejects(() => decodePsd(duplicateColor),
     /Duplicate Photoshop layer channel ID 0/,
     'Ambiguous duplicate red channels must not corrupt the imported image')
