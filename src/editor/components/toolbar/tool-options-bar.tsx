@@ -13,6 +13,7 @@ import { BrushTipPicker } from './brush-tip-picker'
 import { cn } from '@/lib/utils'
 import * as gradientPresets from '../../plugins/gradient-presets'
 import { cleanMixerBrush, loadMixerBrushFromForeground } from '../../tools/mixer-brush'
+import { saveCurrentMeasurement, clearCurrentMeasurement } from '../../tools/measure'
 
 /** fixed-height vertical divider — shadcn Separator stretches h-full which
  *  breaks in a wrapping flex row, so the options bar uses plain divs */
@@ -440,6 +441,20 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
               title="Clean the Mixer Brush reservoir; the next stroke starts by picking up canvas color"
             >
               Clean
+            </button>
+          </div>
+        )
+      }
+      if (control.customId === 'measure-actions') {
+        return (
+          <div className="flex items-center gap-1 shrink-0 h-7">
+            <button type="button" className="h-6 rounded border border-border px-2 text-[10px] hover:bg-accent"
+              onClick={() => saveCurrentMeasurement()} title="Save the current ruler to the Info panel">
+              Save Ruler
+            </button>
+            <button type="button" className="h-6 rounded border border-border px-2 text-[10px] hover:bg-accent"
+              onClick={() => clearCurrentMeasurement()} title="Clear the current ruler">
+              Clear
             </button>
           </div>
         )

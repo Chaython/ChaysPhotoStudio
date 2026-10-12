@@ -281,6 +281,72 @@ def main():
                 check(page.get_by_role("list", name="Available tools").get_by_role("listitem").count() >= 10,
                       "All Tools dialog did not render its registered tools")
 
+            def editable_layer_context_menu():
+                _, page, errors = app_page(browser)
+                page.evaluate("""() => {
+                    window.__zphotoEngine.newDocument({
+                        name: 'Context menu smoke', width: 80, height: 80, fill: 'white'
+                    })
+                    window.__zphotoStore.getState().setTool('move')
+                }""")
+                page.wait_for_function("() => !!window.__zphotoEngine.activeDoc?.activeLayerId")
+                host = page.locator('div.absolute.inset-0.touch-none').first
+                host.click(button="right")
+                page.get_by_role("menuitem", name=re.compile("Edit context menu", re.I)).click()
+                dialog = page.get_by_role("dialog", name="Edit right-click menu")
+                dialog.wait_for(state="visible", timeout=10000)
+                dialog.get_by_role("checkbox", name="Show Free Transform").uncheck()
+                dialog.get_by_role("button", name="Move Paste Layer up").click()
+                state = page.evaluate("""() => JSON.parse(
+                    localStorage.getItem('zphoto-layer-context-menu-v1')
+                )""")
+                check('transform' in state["hidden"], "visibility toggle was not persisted")
+                check(state["order"]["edit"] == ['undo', 'redo', 'paste', 'cut'],
+                      f"reorder did not persist: {state['order']['edit']}")
+                dialog.get_by_role("button", name="Done").click()
+                dialog.wait_for(state="hidden")
+                page.wait_for_timeout(400)  # let Radix menu/dialog focus restore
+                host.click(button="right")
+                menu = page.get_by_role("menu", name=re.compile("Layer actions"))
+                check(menu.get_by_role("menuitem", name=re.compile("Free Transform")).count() == 0,
+                      "hidden transform command still appeared")
+                # The panel must share visibility/order and the editor, not a legacy hardcoded menu.
+                page.keyboard.press("Escape")
+                page.evaluate("() => window.__zphotoEngine.addRasterLayer('Top test layer')")
+                page.wait_for_function("() => window.__zphotoEngine.activeDoc.layers.length >= 2")
+                page.wait_for_timeout(300)
+                # Right-click the non-active bottom row: context commands must target it.
+                bottom_id = page.evaluate("() => window.__zphotoEngine.activeDoc.layers[0].id")
+                layer_row = page.get_by_role("list", name="Layers").get_by_role("listitem").last
+                layer_row.click(button="right")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.activeLayerId") == bottom_id,
+                      "right-clicking a different row did not focus its layer")
+                panel_menu = page.get_by_role("menu", name=re.compile("Layer actions"))
+                check(panel_menu.get_by_role("menuitem", name=re.compile("Free Transform")).count() == 0,
+                      "Layers panel ignored hidden canvas action")
+                check(panel_menu.get_by_role("menuitem", name=re.compile("Add Mask from Selection")).count() == 1,
+                      "Layers panel lost its mask actions")
+                panel_menu.get_by_role("menuitem", name=re.compile("Edit context menu", re.I)).click()
+                dialog = page.get_by_role("dialog", name="Edit right-click menu")
+                dialog.wait_for(state="visible")
+                dialog.get_by_role("checkbox", name="Show Free Transform").check()
+                dialog.get_by_role("button", name="Done").click()
+                dialog.wait_for(state="hidden")
+                page.wait_for_timeout(400)
+                host.click(button="right")
+                check(page.get_by_role("menuitem", name=re.compile("Free Transform")).count() == 1,
+                      "Canvas menu did not update after panel editor change")
+                page.get_by_role("menuitem", name=re.compile("Edit context menu", re.I)).click()
+                dialog = page.get_by_role("dialog", name="Edit right-click menu")
+                dialog.get_by_role("button", name="Reset defaults").click()
+                reset = page.evaluate("""() => JSON.parse(
+                    localStorage.getItem('zphoto-layer-context-menu-v1')
+                )""")
+                check(not reset["hidden"] and reset["order"]["edit"] == ['undo', 'redo', 'cut', 'paste'],
+                      "reset did not restore all menu defaults")
+                dialog.get_by_role("button", name="Done").click()
+                check(not errors, f"context menu customizer threw JavaScript errors: {errors[:3]}")
+
             def png_import_undo_redo():
                 _, page, errors = app_page(browser)
                 page.locator('input[type="file"]').first.set_input_files(
@@ -451,6 +517,7 @@ def main():
                 ("dock_resize_reset_persistence", resize_reset),
                 ("dock_context_move_float", context_float),
                 ("workspace_all_tools_dialog", workspace_and_dialog),
+                ("editable_layer_context_menu", editable_layer_context_menu),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
                 ("real_psd_chromium_import", real_psd_browser_import),
                 ("gimp_lazy_interpreters", gimp_lazy_interpreters),

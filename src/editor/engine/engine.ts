@@ -358,6 +358,21 @@ export class Engine {
     const d = this.activeDoc
     return d ? d.layers.find(l => l.id === id) ?? null : null
   }
+
+  /**
+   * Right-click action targets must match the layer under the pointer.
+   * Keep an existing multi-selection when its member is clicked; otherwise
+   * select only the clicked layer. Selection changes are UI state, not History.
+   */
+  focusLayerFromContextMenu(id: string): void {
+    const doc = this.activeDoc
+    if (!doc || !doc.layers.some(layer => layer.id === id)) return
+    const selected = doc.selectedLayerIds ?? []
+    if (doc.activeLayerId === id && selected.includes(id)) return
+    if (!selected.includes(id)) doc.selectedLayerIds = [id]
+    doc.activeLayerId = id
+    this.emit()
+  }
   layerCanvas(layerId: string): HTMLCanvasElement | null {
     const l = this.layerById(layerId)
     if (!l) return null

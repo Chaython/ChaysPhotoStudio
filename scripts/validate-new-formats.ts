@@ -3,6 +3,10 @@ import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
+import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
+import { applyRawCurves, evaluateRawCurve, normalizeRawCurves, DEFAULT_RAW_CURVES } from '../src/editor/formats/raw-curves'
+import { applyRawColorMix, normalizeRawColorMix, DEFAULT_RAW_COLOR_MIX } from '../src/editor/formats/raw-color-mix'
+import { downsampleRawPreview, rawPreviewHistogram } from '../src/editor/formats/raw-preview'
 import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
 function check(v:unknown,description:string) { if(!v)throw new Error(description) }
 const enc=new TextEncoder()
@@ -215,6 +219,63 @@ check(corrected.sourceBitDepth===16 && corrected.rgba16?.length===sample16.lengt
 check(sample16.every((value,i)=>value===original16[i]),'Lens source samples must not mutate')
 check(corrected.rgba16?.[12*4]===sample16[12*4],'Lens optical center stays fixed')
 
+
+const rawToneSample = {width:3,height:1,sourceBitDepth:16,rgba:new Uint8ClampedArray([
+  48,48,48,255, 128,110,96,255, 210,210,210,255
+]) as Uint8ClampedArray<ArrayBuffer>,rgba16:Uint16Array.from([
+  12336,12336,12336,65535, 32896,28270,24672,65535, 53970,53970,53970,65535
+])}
+const originalToneBytes = rawToneSample.rgba16.slice()
+check(applyRawTone(rawToneSample,{}).rgba16===rawToneSample.rgba16,'Neutral RAW develop must be an identity operation')
+const shadowTone=applyRawTone(rawToneSample,{shadows:60})
+check(shadowTone.rgba16![0]>rawToneSample.rgba16[0],'Shadow control must lift dark pixels')
+const contrastTone=applyRawTone(rawToneSample,{contrast:60})
+check(contrastTone.rgba16![0]<rawToneSample.rgba16[0],'Contrast should darken shadow pixels')
+const colorTone=applyRawTone(rawToneSample,{temperature:80,vibrance:40})
+check(colorTone.rgba16![4]>colorTone.rgba16![6],'Warmth should increase red relative to blue')
+check(rawToneSample.rgba16.every((v,i)=>v===originalToneBytes[i]),'RAW source samples must remain unchanged')
+check(colorTone.rgba16![3]===65535 && colorTone.rgba16![7]===65535,'RAW alpha must not receive tonal changes')
+check(normalizeRawTone({contrast:Number.POSITIVE_INFINITY, saturation:400}).contrast===0,'Invalid RAW tone input must normalize')
+check(normalizeRawTone({saturation:400}).saturation===100,'RAW tone must enforce control range')
+
+// RAW tone curves: independent composite and RGB 16-bit LUTs, older recipes,
+// safe endpoints, alpha, neutral identity, and conservative input normalization.
+const neutralCurve=applyRawCurves(rawToneSample,DEFAULT_RAW_CURVES)
+check(neutralCurve===rawToneSample && neutralCurve.rgba16===rawToneSample.rgba16,
+  'Neutral RAW point curves must be a zero-allocation identity')
+check(evaluateRawCurve([0,25,50,75,100],0.125)===0.125,
+  'Identity point curve must preserve values between knots')
+check(Math.abs(evaluateRawCurve([0,20,50,85,100],0.5)-0.5)<1e-8,
+  'Midpoint curve hits its authored knot')
+check(evaluateRawCurve([0,20,50,85,100],0.75)===0.85,
+  'Point curve reaches the authored highlight knot')
+const brightCurve=normalizeRawCurves({rgb:[0,35,60,86,100]})
+const developedCurve=applyRawCurves(rawToneSample,brightCurve)
+check(developedCurve.rgba16![0]>rawToneSample.rgba16[0] &&
+  developedCurve.rgba16![8]>rawToneSample.rgba16[8],
+  'RGB point curve lifts highlights and shadow values in 16-bit buffer')
+check(developedCurve.rgba16![3]===65535 &&
+  rawToneSample.rgba16.every((v,i)=>v===originalToneBytes[i]),
+  'RAW curves keep alpha and original sensor samples untouched')
+const redOnly=applyRawCurves(rawToneSample,{red:[0,30,60,80,100]})
+check(redOnly.rgba16![4]>rawToneSample.rgba16[4] &&
+  Math.abs(redOnly.rgba16![5]-rawToneSample.rgba16[5])<=1 &&
+  Math.abs(redOnly.rgba16![6]-rawToneSample.rgba16[6])<=1,
+  'Per-channel red curve changes red without altering green/blue')
+check(normalizeRawCurves(undefined).blue[2]===50 &&
+  normalizeRawCurves({rgb:[-100,25,Infinity,99,250]}).rgb.join(',')==='0,25,50,99,100',
+  'Missing and corrupt curve recipes default safely')
+const invertedCurve=normalizeRawCurves({rgb:[100,75,50,25,0]})
+check(evaluateRawCurve(invertedCurve.rgb,0)===1 &&
+  evaluateRawCurve(invertedCurve.rgb,1)===0,
+  'Creative inverted curves stay inside bounds with valid endpoints')
+const eightBitCurve=applyRawCurves({
+  width:1,height:1,rgba:new Uint8ClampedArray([128,64,32,192]) as Uint8ClampedArray<ArrayBuffer>,
+  sourceBitDepth:8,
+},{rgb:[0,40,60,80,100]})
+check(eightBitCurve.rgba[0]>128 && eightBitCurve.rgba[3]===192 && !eightBitCurve.rgba16,
+  'Display-only 8-bit fallback does not invent source precision')
+
 const correctedLensfun=applyLensProfile({
   width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
 },{
@@ -229,6 +290,61 @@ check(correctedLensfun.rgba16?.length===sample16.length && correctedLensfun.sour
   'Lensfun-calibrated RAW remap retains 16-bit geometry')
 check(sample16.every((v,i)=>v===original16[i]),'Lensfun correction does not mutate RAW samples')
 
+// Color Mixer: true 16-bit output, neutral identity, hue bands, safe alpha.
+const mixSample={width:3,height:1,sourceBitDepth:16,
+  rgba:new Uint8ClampedArray([255,0,0,255,0,0,255,255,128,128,128,255]) as Uint8ClampedArray<ArrayBuffer>,
+  rgba16:Uint16Array.from([65535,0,0,65535,0,0,65535,65535,32768,32768,32768,65535])}
+const mixOriginal=mixSample.rgba16.slice()
+check(applyRawColorMix(mixSample,{}).rgba16===mixSample.rgba16,'Neutral HSL Color Mix is no-op')
+const desaturated=applyRawColorMix(mixSample,{red:{hue:0,saturation:-100,luminance:0}})
+check(desaturated.rgba16 && Math.abs(desaturated.rgba16[0]-desaturated.rgba16[1])<2 &&
+  Math.abs(desaturated.rgba16[1]-desaturated.rgba16[2])<2,'Red saturation -100 removes chroma')
+check(desaturated.rgba16![4]===0 && desaturated.rgba16![6]===65535,'Red mix does not change unrelated blue')
+const mixedHue=applyRawColorMix(mixSample,{blue:{hue:-100,saturation:0,luminance:30}})
+check(mixedHue.rgba16![4]!==mixOriginal[4]||mixedHue.rgba16![5]!==mixOriginal[5],
+  'Blue hue/luminance controls edit matching blue')
+check(mixedHue.rgba16![8]===32768 && mixedHue.rgba16![9]===32768,'Color Mixer does not tint neutrals')
+check(mixSample.rgba16.every((v,i)=>v===mixOriginal[i]),'Color Mixer keeps original 16-bit samples')
+check(mixedHue.rgba16![7]===65535,'Color Mixer alpha preservation')
+check(normalizeRawColorMix({red:{hue:500,saturation:Number.NaN,luminance:-300}}).red.hue===100 &&
+  normalizeRawColorMix({red:{hue:500,saturation:Number.NaN,luminance:-300}}).red.luminance===-100,
+  'Color Mixer must bound persisted/user values')
+check(DEFAULT_RAW_COLOR_MIX.red.saturation===0,'Default RAW mixer neutral')
+
+// RAW preview sampling must be bounded and lossless for selected 16-bit
+// samples, keep alpha, and never mutate the original decoded sensor image.
+const previewFull16=new Uint16Array(64*8*4)
+const previewFull8=new Uint8ClampedArray(64*8*4)
+for(let y=0;y<8;y++)for(let x=0;x<64;x++){
+  const i=(y*64+x)*4
+  previewFull16[i]=x*500;previewFull16[i+1]=y*5000
+  previewFull16[i+2]=32768;previewFull16[i+3]=65535
+  previewFull8[i]=Math.round(previewFull16[i]/257)
+  previewFull8[i+1]=Math.round(previewFull16[i+1]/257)
+  previewFull8[i+2]=128;previewFull8[i+3]=255
+}
+const fullPreview={width:64,height:8,rgba:previewFull8 as Uint8ClampedArray<ArrayBuffer>,
+  rgba16:previewFull16,sourceBitDepth:16}
+const smallPreview=downsampleRawPreview(fullPreview,32)
+check(smallPreview.width===32&&smallPreview.height===4,'RAW preview must bound longest edge')
+const chosenX=Math.min(63,Math.floor((0.5)*64/32))
+const chosenY=Math.min(7,Math.floor((0.5)*8/4))
+check(smallPreview.rgba16?.[0]===previewFull16[(chosenY*64+chosenX)*4],
+  'RAW preview must preserve selected 16-bit source samples')
+check(smallPreview.rgba16?.[3]===65535,'RAW preview preserves alpha')
+check(fullPreview.rgba16[0]===0&&fullPreview.rgba16[4]===500,'RAW preview leaves source untouched')
+const histSample={width:3,height:1,rgba:new Uint8ClampedArray([
+  0,0,0,255,255,0,0,255,255,255,255,0,
+]) as Uint8ClampedArray<ArrayBuffer>,sourceBitDepth:8}
+const hist=rawPreviewHistogram(histSample)
+check(hist.pixels===2&&hist.clippedShadows===1&&hist.clippedHighlights===1,
+  'RAW histogram must count only visible pixels and track clipping')
+check(hist.bins[0]===1&&hist.bins[255]===1&&hist.bins[256]===2,
+  'RAW histogram RGB channel alignment')
+const histHigh=rawPreviewHistogram(mixSample)
+check(histHigh.pixels===3&&histHigh.bins[255]===1&&histHigh.bins[256+0]===2,
+  'RAW histogram handles native 16-bit pixel buffers')
+check(downsampleRawPreview(mixSample)===mixSample,'Small RAW preview should reuse source')
 // Two separate TIFF IFDs, each containing an 8-bit grayscale page.
 const tiff=new Uint8Array(258);const tv=new DataView(tiff.buffer)
 tiff[0]=73;tiff[1]=73;tv.setUint16(2,42,true);tv.setUint32(4,8,true)

@@ -15,23 +15,19 @@ import type { Tool, PointerInfo, ToolId, Vec } from '../types'
 import { engine } from '../engine/engine'
 import { drawCross, getOptions } from './shared'
 import { clamp } from '../utils/canvas'
+import { pixelsPerMeasureUnit } from './measure-utils'
 
-// 'measure' is added to the ToolId union by the Lead when wiring
-// registry.ts / TOOL_DEFS; the double-cast keeps this module compiling
-// both before and after that lands.
-const TOOL_ID = 'measure' as unknown as ToolId
+const TOOL_ID: ToolId = 'measure'
 
 const AMBER = '#e8a33d'
 
 function pixelsPerUnit(unit: string, opts = getOptions(TOOL_ID)): number {
-  if (unit === 'px') return 1
-  if (opts.useDocResolution !== false) {
-    const ppi = Math.max(.001, Number(engine.activeDoc?.resolutionPpi) || 72)
-    if (unit === 'in') return ppi
-    if (unit === 'cm') return ppi / 2.54
-    if (unit === 'mm') return ppi / 25.4
-  }
-  return pixelsPerUnit(unit, opts)
+  return pixelsPerMeasureUnit(
+    unit,
+    opts.useDocResolution !== false,
+    Number(engine.activeDoc?.resolutionPpi),
+    Number(opts.pixelsPerUnit),
+  )
 }
 
 // ---------- state ----------
@@ -39,10 +35,16 @@ let start: Vec | null = null
 let end: Vec | null = null
 let dragging = false
 let segments: { a: Vec; b: Vec }[] = []
+let measurementDocId: string | null = null
+
+function belongsToActiveDocument(): boolean {
+  return !!measurementDocId && measurementDocId === engine.activeDoc?.id
+}
 
 /** publish the current measurement (or null) for the status bar */
 function publish(): void {
   const g = window as any
+  if (!belongsToActiveDocument()) { g.__zphotoMeasure = null; return }
   const active = start && end ? [{ a: start, b: end }] : []
   const all = [...segments, ...active]
   if (!all.length) {
@@ -75,11 +77,18 @@ function clearMeasurement(): void {
   end = null
   segments = []
   dragging = false
+  measurementDocId = null
   publish()
   engine.pokeOverlay()
 }
 
+export function clearCurrentMeasurement(): void { clearMeasurement() }
+
 export function saveCurrentMeasurement(name?: string): string | null {
+  if (!belongsToActiveDocument()) {
+    engine.ui?.toast('Draw a ruler measurement first', 'info')
+    return null
+  }
   const active = start && end ? [{ a: { ...start }, b: { ...end } }] : []
   const all = [...segments.map(s => ({ a: { ...s.a }, b: { ...s.b } })), ...active]
   if (!all.length) {
@@ -100,7 +109,7 @@ export function saveCurrentMeasurement(name?: string): string | null {
 }
 
 export function hasCurrentMeasurement(): boolean {
-  return segments.length > 0 || !!(start && end)
+  return belongsToActiveDocument() && (segments.length > 0 || !!(start && end))
 }
 
 /** Shift constrains to the selected angular increment, preserving length. */
@@ -155,7 +164,13 @@ export const measureTool: Tool = {
   cursor: 'crosshair',
 
   onPointerDown(p: PointerInfo) {
-    if (p.button !== 0) return
+    if (p.button !== 0 || !engine.activeDoc) return
+    if (!belongsToActiveDocument()) {
+      segments = []
+      start = null
+      end = null
+    }
+    measurementDocId = engine.activeDoc.id
     const chain = getOptions(TOOL_ID).chain === true
     if (!chain) segments = []
     start = chain && segments.length ? { ...segments[segments.length - 1].b } : { x: p.docX, y: p.docY }
@@ -166,7 +181,7 @@ export const measureTool: Tool = {
   },
 
   onPointerMove(p: PointerInfo) {
-    if (!dragging || !start) return
+    if (!dragging || !start || !belongsToActiveDocument()) return
     const raw = { x: p.docX, y: p.docY }
     end = p.shift ? constrainAngle(start, raw) : raw
     publish()
@@ -175,6 +190,7 @@ export const measureTool: Tool = {
 
   onPointerUp() {
     if (!dragging) return
+    if (!belongsToActiveDocument()) { dragging = false; return }
     dragging = false
     const len = start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0
     if (len >= 0.5 && start && end) {
@@ -188,8 +204,9 @@ export const measureTool: Tool = {
   },
 
   onKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      if (start || end) { clearMeasurement(); return true }
+    if ((e.key === 'Escape' || e.key === 'Delete' || e.key === 'Backspace') && hasCurrentMeasurement()) {
+      clearMeasurement()
+      return true
     }
     return false
   },
@@ -203,6 +220,7 @@ export const measureTool: Tool = {
   },
 
   renderOverlay(ctx, view, w, h, mouse) {
+    if (!belongsToActiveDocument()) { drawCross(ctx, mouse); return }
     if (segments.length || (start && end)) {
       for (let i = 0; i < segments.length; i++) {
         const show = i === segments.length - 1 && !(start && end)
@@ -225,6 +243,20 @@ export const measureTool: Tool = {
       ctx.restore()
     }
   },
+}
+
+/** Draw the kept ruler when another tool is selected; never draw its idle hint/cursor. */
+export function renderPersistentMeasurementOverlay(
+  ctx: CanvasRenderingContext2D,
+  view: { zoom: number; panX: number; panY: number },
+  w: number,
+  h: number,
+): void {
+  if (!belongsToActiveDocument() || getOptions(TOOL_ID).persist === false) return
+  for (let i = 0; i < segments.length; i++) {
+    drawMeasurement(ctx, view, w, h, segments[i].a, segments[i].b, i === segments.length - 1 && !(start && end))
+  }
+  if (start && end) drawMeasurement(ctx, view, w, h, start, end, true)
 }
 
 function drawMeasurement(

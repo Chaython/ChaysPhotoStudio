@@ -4,7 +4,11 @@ import * as Icons from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { CanvasLayerMenuContent } from '../workspace/canvas-context-menu'
+import { LayerContextMenuEditor } from '../workspace/layer-context-menu-editor'
+import { useLayerContextMenuPreferences } from '../workspace/use-layer-context-menu-preferences'
+import type { LayerContextMenuPreferences } from '../workspace/layer-context-menu-config'
 import { BLEND_MODES } from '../../constants/tools'
 import { useEditorStore, type LayerMeta } from '../../store'
 import { engine } from '../../engine/engine'
@@ -24,6 +28,8 @@ export function LayersPanel() {
   const [renameValue, setRenameValue] = useState('')
   const [query, setQuery] = useState('')
   const [kindFilter, setKindFilter] = useState('all')
+  const [contextPreferences, updateContextPreferences] = useLayerContextMenuPreferences()
+  const [editingContextMenu, setEditingContextMenu] = useState(false)
   const dragId = useRef<string | null>(null)
   const soloBackup = useRef<Record<string, boolean> | null>(null)
 
@@ -62,6 +68,10 @@ export function LayersPanel() {
     }
     engine.emit()
   }
+
+  // Right-click targets the row under the pointer, not a previously
+  // active layer. Preserve multi-selection if the target is already selected.
+  const activateContextLayer = (id: string) => engine.focusLayerFromContextMenu(id)
 
   const reorder = (id: string, displayIdx: number) => {
     // display index 0 = top → array index = len-1-displayIdx
@@ -196,12 +206,18 @@ export function LayersPanel() {
             }}
             onMoveUp={displayIdx > 0 ? () => engine.moveLayerBy(meta.id, 1) : undefined}
             onMoveDown={displayIdx < layers.length - 1 ? () => engine.moveLayerBy(meta.id, -1) : undefined}
+            preferences={contextPreferences}
+            onContextActivate={() => activateContextLayer(meta.id)}
+            onCustomize={() => setEditingContextMenu(true)}
             />
           )
         })}
         {!layers.length && <div className="p-4 text-[11px] text-muted-foreground text-center">No layers</div>}
         {!!layers.length && !visibleLayers.length && <div className="p-4 text-[11px] text-muted-foreground text-center">No layers match this filter</div>}
       </FancyScroll>
+
+      <LayerContextMenuEditor open={editingContextMenu} onOpenChange={setEditingContextMenu}
+        preferences={contextPreferences} onChange={updateContextPreferences} />
 
       {/* footer buttons */}
       <div className="flex items-center gap-0.5 p-1 border-t bg-panel/50">
@@ -223,7 +239,7 @@ export function LayersPanel() {
   )
 }
 
-function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActivate, onToggleVisibility, onStartRename, onRename, onRenameChange, onDragStart, onDropAt, onMoveUp, onMoveDown }: {
+function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActivate, onToggleVisibility, onStartRename, onRename, onRenameChange, onDragStart, onDropAt, onMoveUp, onMoveDown, preferences, onContextActivate, onCustomize }: {
   meta: LayerMeta
   tick: number
   active: boolean
@@ -239,9 +255,13 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
   onDropAt(targetId: string): void
   onMoveUp?(): void
   onMoveDown?(): void
+  preferences: LayerContextMenuPreferences
+  onContextActivate(): void
+  onCustomize(): void
 }) {
   const thumbRef = useRef<HTMLCanvasElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
+  const [contextOpen, setContextOpen] = useState(false)
   const doc = engine.activeDoc
   const layer = doc?.layers.find(l => l.id === meta.id)
 
@@ -279,7 +299,7 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
   const KindIcon = (Icons as any)[kind.icon] ?? Icons.Image
 
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={setContextOpen}>
       <ContextMenuTrigger asChild>
         <div
           role="listitem"
@@ -288,6 +308,7 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
           onDragOver={e => e.preventDefault()}
           onDrop={e => { e.preventDefault(); onDropAt(meta.id) }}
           onClick={onActivate}
+          onContextMenu={onContextActivate}
           onDoubleClick={onStartRename}
           className={cn(
             'flex items-center gap-2 px-2 py-1.5 cursor-pointer border-b border-border/30 group',
@@ -396,39 +417,8 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
           </div>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="z-50">
-        <ContextMenuItem onClick={() => onStartRename()}><Icons.Pencil /> Rename…</ContextMenuItem>
-        <ContextMenuItem onClick={() => useEditorStore.getState().openDialog('layer-styles', { layerId: meta.id })}><Icons.Sparkles /> Layer Style…</ContextMenuItem>
-        <ContextMenuItem disabled={!meta.hasFx} onClick={() => engine.copyLayerStyle(meta.id)}><Icons.Copy /> Copy Layer Style</ContextMenuItem>
-        <ContextMenuItem disabled={meta.kind === 'adjustment' || !engine.canPasteLayerStyle} onClick={() => engine.pasteLayerStyle(meta.id)}><Icons.ClipboardPaste /> Paste Layer Style</ContextMenuItem>
-        <ContextMenuItem disabled={!meta.hasFx} onClick={() => engine.clearLayerStyle(meta.id)}><Icons.Eraser /> Clear Layer Style</ContextMenuItem>
-        <ContextMenuSub>
-          <ContextMenuSubTrigger disabled={meta.kind === 'adjustment' || meta.locked}><Icons.Sparkles /> Matting</ContextMenuSubTrigger>
-          <ContextMenuSubContent className="z-50">
-            <ContextMenuItem onClick={() => {
-              const raw = prompt('Defringe width (pixels):', '1')
-              if (raw === null) return
-              const px = Math.max(1, Math.min(64, Math.round(Number(raw) || 1)))
-              engine.defringeLayer(meta.id, px)
-            }}>Defringe…</ContextMenuItem>
-            <ContextMenuItem onClick={() => engine.removeLayerMatte(meta.id, 'black')}>Remove Black Matte</ContextMenuItem>
-            <ContextMenuItem onClick={() => engine.removeLayerMatte(meta.id, 'white')}>Remove White Matte</ContextMenuItem>
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuItem onClick={() => engine.duplicateLayer(meta.id)}><Icons.CopyPlus /> Duplicate Layer</ContextMenuItem>
-        <ContextMenuItem disabled={engine.docs.length < 2} onClick={() => useEditorStore.getState().openDialog('duplicate-layer', { layerId: meta.id })}><Icons.Copy /> Duplicate Into…</ContextMenuItem>
-        <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, true)}><Icons.SquareDashed /> Add Mask from Selection</ContextMenuItem>
-        <ContextMenuItem onClick={() => engine.addLayerMask(meta.id, false)}><Icons.Square /> Add Mask (Reveal All)</ContextMenuItem>
-        {meta.hasMask && <ContextMenuItem onClick={() => engine.deleteLayerMask(meta.id, true)}><Icons.Stamp /> Apply Mask</ContextMenuItem>}
-        {meta.hasMask && <ContextMenuItem onClick={() => engine.deleteLayerMask(meta.id, false)}><Icons.Trash2 /> Delete Mask</ContextMenuItem>}
-        {meta.hasVectorMask && <ContextMenuItem onClick={() => engine.toggleVectorMask(meta.id)}><Icons.PenTool /> {meta.vectorMaskEnabled ? 'Disable' : 'Enable'} Vector Mask</ContextMenuItem>}
-        {meta.hasVectorMask && <ContextMenuItem onClick={() => engine.deleteVectorMask(meta.id)}><Icons.Trash2 /> Delete Vector Mask</ContextMenuItem>}
-        <ContextMenuItem onClick={() => engine.toggleClipping(meta.id)}><Icons.CornerDownRight /> Toggle Clipping</ContextMenuItem>
-        <ContextMenuItem onClick={() => engine.rasterizeLayer(meta.id)}><Icons.Grid2x2 /> Rasterize</ContextMenuItem>
-        <ContextMenuItem onClick={() => engine.trimLayerToContent(meta.id)}><Icons.ScanLine /> Trim to Content</ContextMenuItem>
-        <ContextMenuItem onClick={() => engine.mergeDown(meta.id)}><Icons.Combine /> Merge Down</ContextMenuItem>
-        <ContextMenuItem onClick={() => engine.deleteLayer(meta.id)} className="text-destructive"><Icons.Trash2 className="text-destructive" /> Delete Layer</ContextMenuItem>
-      </ContextMenuContent>
+      {contextOpen && <CanvasLayerMenuContent layerId={meta.id} preferences={preferences}
+        onCustomize={onCustomize} onRename={onStartRename} />}
     </ContextMenu>
   )
 }
