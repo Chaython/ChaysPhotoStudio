@@ -182,6 +182,17 @@ const dataOffset = 6 + pascalNameLength + 4
 new DataView(unsupportedPath.buffer).setUint16(dataOffset + 26, 7) // clipboard path record
 assert.deepEqual(readPsdPaths([unsupportedPath], 120, 200), [],
   'Unknown Photoshop path records must never become partially editable native paths')
+const duplicatePathBlocks = [photoshopPathResources[0], photoshopPathResources[0].slice()]
+assert.deepEqual(readPsdPaths(duplicatePathBlocks, 120, 200), [],
+  'Duplicate Photoshop path resource IDs must not be exposed as editable objects')
+assert.deepEqual(writePsdPaths(duplicatePathBlocks, [], [], 120, 200),
+  duplicatePathBlocks, 'Duplicate opaque Photoshop paths are retained unchanged')
+const legacyNonAsciiPath = photoshopPathResources[0].slice()
+legacyNonAsciiPath[7] = 0xe9
+assert.deepEqual(readPsdPaths([legacyNonAsciiPath], 120, 200), [],
+  'Legacy Photoshop path names must not be decoded into mojibake')
+assert.equal(writePsdPaths([legacyNonAsciiPath], [], [], 120, 200)[0],
+  legacyNonAsciiPath, 'Unrecognized legacy path names are preserved byte-for-byte')
 const preservedUnknown = writePsdPaths([unsupportedPath], [], [], 120, 200)
 assert.equal(preservedUnknown[0], unsupportedPath,
   'Unsupported path resource must remain byte-identical during a no-op export')
