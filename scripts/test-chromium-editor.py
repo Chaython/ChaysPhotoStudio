@@ -333,9 +333,21 @@ def main():
                         guide_data += struct.pack(">IBIB", 400, 0, 200, 1)
                         guide_resource = b"8BIM" + struct.pack(">H", 1032) + bytes(2)
                         guide_resource += struct.pack(">I", len(guide_data)) + guide_data
+                        path_data = struct.pack(">H", 6) + bytes(24)
+                        path_data += struct.pack(">HH", 3, 2) + bytes(22)
+                        for x, y in [(8, 12), (24, 18)]:
+                            fixed_x = x * (1 << 19)  # fixed 8.24 normalized by width=32
+                            fixed_y = y * (1 << 19)
+                            path_data += struct.pack(">Hiiiiii", 5,
+                                fixed_y, fixed_x, fixed_y, fixed_x, fixed_y, fixed_x)
+                        path_name = b"Vector trail"
+                        path_resource = (b"8BIM" + struct.pack(">H", 2000) +
+                            bytes([len(path_name)]) + path_name + bytes(1) +
+                            struct.pack(">I", len(path_data)) + path_data)
+                        added_resources = guide_resource + path_resource
                         content = (content[:resource_len_at] +
-                                   struct.pack(">I", old_len + len(guide_resource)) +
-                                   guide_resource + content[resource_len_at + 4:])
+                                   struct.pack(">I", old_len + len(added_resources)) +
+                                   added_resources + content[resource_len_at + 4:])
                     previous_doc_id = page.evaluate(
                         "() => window.__zphotoEngine.activeDoc?.id ?? null")
                     page.locator('input[type="file"]').first.set_input_files(
@@ -357,6 +369,10 @@ def main():
                         smartOrigin: layer.psdNativeOrigin?.kind === 'smart',
                         sourcePixels: pixels?.length ?? 0,
                         guides: doc.guides?.map(g => ({ orientation: g.orientation, pos: g.pos })) ?? [],
+                        paths: doc.savedPaths?.map(p => ({
+                          name: p.name, closed: p.closed, psdPathResourceId: p.psdPathResourceId,
+                          knots: p.anchors.map(a => [a.x, a.y]),
+                        })) ?? [],
                         rendered: !!rendered && rendered.width > 0 && rendered.height > 0,
                         smartDocSized: !!rendered && rendered.width === doc.width && rendered.height === doc.height,
                       }
@@ -370,6 +386,10 @@ def main():
                             {"orientation": "v", "pos": 12.5},
                             {"orientation": "h", "pos": 6.25},
                         ], f"Photoshop native guides were not restored into the editor: {result['guides']}")
+                        check(result["paths"] == [{
+                            "name": "Vector trail", "closed": False, "psdPathResourceId": 2000,
+                            "knots": [[8, 12], [24, 18]],
+                        }], f"Photoshop editable saved paths were not restored: {result['paths']}")
                     if is_smart:
                         check(result["smartOrigin"] and result["smartDocSized"],
                               "Photoshop Smart Object lost its descriptor provenance or document-space rendering")
