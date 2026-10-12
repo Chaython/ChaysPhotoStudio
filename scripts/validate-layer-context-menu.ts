@@ -12,7 +12,7 @@ const defaults = defaultLayerContextPreferences()
 const all = LAYER_CONTEXT_MENU_SECTIONS.flatMap(group => group.entries.map(entry => entry.id))
 assert.equal(new Set(all).size, all.length, 'Action IDs must be globally unique')
 assert.equal(Object.keys(defaults.order).length, LAYER_CONTEXT_MENU_SECTIONS.length)
-assert.deepEqual(defaults.hidden, [])
+assert.equal(defaults.hidden.length, 0)
 assert.deepEqual(normalizeLayerContextPreferences(null), defaults)
 
 const hidden = setLayerContextActionVisible(defaults, 'transform', false)
