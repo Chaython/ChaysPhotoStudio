@@ -76,7 +76,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       label.textContent=labelText
       label.style.cssText='font-size:12px'
       const input=type==='select'?document.createElement('select'):document.createElement('input')
-      if(type!=='select')input.type=type
+      if(type!=='select')(input as HTMLInputElement).type=type
       input.setAttribute('aria-label',labelText)
       input.style.cssText='padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--foreground);width:100%'
       if(type==='select'&&options)for(const str of options){
