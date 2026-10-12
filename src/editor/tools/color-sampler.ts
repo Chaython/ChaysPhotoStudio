@@ -11,6 +11,11 @@ import { getOptions, drawCross } from './shared'
 
 let draggingId: string | null = null
 let selectedId: string | null = null
+let selectedDocId: string | null = null
+
+function currentSelection(): string | null {
+  return selectedDocId === engine.activeDoc?.id ? selectedId : null
+}
 
 function sampleRadius(): number {
   const size = Math.max(1, Number(getOptions('color-sampler').radius) || 1)
@@ -39,7 +44,7 @@ export const colorSamplerTool: Tool = {
     if (p.alt) {
       if (hit) {
         engine.removeColorSampler(hit)
-        if (selectedId === hit) selectedId = null
+        if (currentSelection() === hit) selectedId = null
       }
       return
     }
@@ -47,6 +52,7 @@ export const colorSamplerTool: Tool = {
     if (hit) {
       draggingId = hit
       selectedId = hit
+      selectedDocId = engine.activeDoc?.id ?? null
       return
     }
 
@@ -54,6 +60,7 @@ export const colorSamplerTool: Tool = {
     if (id) {
       draggingId = id
       selectedId = id
+      selectedDocId = engine.activeDoc?.id ?? null
     }
   },
 
@@ -65,16 +72,29 @@ export const colorSamplerTool: Tool = {
   onPointerUp() { draggingId = null },
 
   onKeyDown(e: KeyboardEvent) {
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
-      engine.removeColorSampler(selectedId)
+    const id = currentSelection()
+    if (e.key === 'Escape') {
+      if (!draggingId && !id) return false
+      draggingId = null
+      selectedId = null
+      engine.pokeOverlay()
+      return true
+    }
+    if (!id || e.ctrlKey || e.altKey || e.metaKey) return false
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      engine.removeColorSampler(id)
       selectedId = null
       return true
     }
-    if (e.key === 'Escape' && draggingId) {
-      draggingId = null
-      return true
+    const delta: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
     }
-    return false
+    const direction = delta[e.key]
+    const point = engine.activeDoc?.colorSamplers?.find(sample => sample.id === id)
+    if (!direction || !point) return false
+    const step = e.shiftKey ? 10 : 1
+    engine.moveColorSampler(id, point.x + direction[0] * step, point.y + direction[1] * step)
+    return true
   },
 
   onDeactivate() { draggingId = null },
@@ -94,8 +114,8 @@ export const colorSamplerTool: Tool = {
       const p = pts[i]
       const sx = view.panX + p.x * view.zoom
       const sy = view.panY + p.y * view.zoom
-      const selected = p.id === selectedId
-      const hex = engine.sampleColor(p.x, p.y, scope, radius) ?? '#000000'
+      const selected = p.id === currentSelection()
+      const hex = engine.sampleColor(p.x, p.y, scope, radius)
 
       ctx.strokeStyle = selected ? '#e8a33d' : '#ffffff'
       ctx.lineWidth = selected ? 2 : 1.25
@@ -105,14 +125,19 @@ export const colorSamplerTool: Tool = {
       ctx.moveTo(sx, sy - 11); ctx.lineTo(sx, sy + 11)
       ctx.stroke()
 
+      const showColor = opts.showLabels !== false
+      const label = showColor ? `${i + 1}  ${hex?.toUpperCase() ?? 'Transparent'}` : String(i + 1)
+      const boxWidth = ctx.measureText(label).width + (showColor ? 33 : 12)
+      const lx = Math.max(2, Math.min(sx + 12, w - boxWidth - 2))
+      const ly = Math.max(2, Math.min(sy - 8, h - 18))
       ctx.fillStyle = 'rgba(0,0,0,.82)'
-      const label = opts.showLabels === false ? String(i + 1) : `${i + 1}  ${hex.toUpperCase()}`
-      const tw = ctx.measureText(label).width + 9
-      ctx.fillRect(sx + 10, sy - 8, tw, 16)
-      ctx.fillStyle = hex
-      ctx.fillRect(sx + 12, sy - 5, 6, 10)
+      ctx.fillRect(lx, ly, boxWidth, 16)
+      if (showColor) {
+        ctx.fillStyle = hex ?? '#555555'
+        ctx.fillRect(lx + 3, ly + 3, 7, 10)
+      }
       ctx.fillStyle = '#fff'
-      ctx.fillText(label, sx + (opts.showLabels === false ? 14 : 21), sy)
+      ctx.fillText(label, lx + (showColor ? 14 : 6), ly + 8)
     }
     ctx.restore()
     drawCross(ctx, mouse)

@@ -51,6 +51,9 @@ jobs:
       - name: Validate all editor tools
         run: bun run tools:validate
 
+      - name: Validate ruler calibration and persistent-tool overlays
+        run: bun scripts/validate-measure.ts
+
       - name: Validate content-sized docks
         run: bun run dock-sizing:validate
 

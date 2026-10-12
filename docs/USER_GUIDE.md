@@ -669,3 +669,15 @@ Discover compatible GIMP assets and use supported external GIMP procedures witho
 - Native GIMP 3 is Electron-only, installed separately, and runs with OS permissions; scripts are not sandboxed.
 - Pyodide is downloaded from a pinned remote CDN on first explicit request and may not work offline.
 - Embedded interpreters do not implement native GIMP GI, PDB or direct image editing; PNG interchange is not HDR/RAW round-tripping.
+
+## Ruler measurements and color sampler points
+
+**Where:** Measure tool (K), Color Sampler (I tool group), Window → Info.
+
+1. Drag with **Measure** to read pixel length, angle, and horizontal/vertical distances. Hold **Shift** to constrain the angle, or enable **Multi-segment** to measure a connected path.
+2. Select physical units (in, cm, mm) and **Use Document Resolution** for PPI-based measurements. Turn that option off to enter a custom **px / unit** calibration (for example, 50 pixels per millimeter). Pixels never depend on PPI.
+3. Use **Save Ruler** to preserve a measurement in the Info panel, or **Clear** / **Escape** to remove the live ruler. When **Keep Measurement** is enabled, the ruler remains visible while using other tools, but does not appear on other documents.
+4. Use **Color Sampler** to place up to 10 persistent readout points. Drag a point to move it, Alt/Option-click to remove it, or select it and use arrow keys to nudge by 1 pixel (Shift+Arrow for 10). Delete removes the selected point; Escape deselects it.
+5. Sample-point markers remain visible while using other tools; the Info panel offers color values and saved measurements.
+
+**Notes and tips:** Point samples over fully transparent pixels display as transparent rather than black. Saved measurements are stored with the project, unlike the temporary live ruler.
