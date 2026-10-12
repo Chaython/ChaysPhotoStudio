@@ -1479,6 +1479,7 @@ if (process.env.PSD_REAL_CORPUS === '1') {
     { name: '16bit5x5.psb', sha: '834c4dab9d11f528adb1ff3933ab513bbeb08812', size: 23482 },
     { name: 'layers/pixel-layer.psd', sha: '0d3ee59728ebd8237e4c2c8eee1997e42e3ee82d', size: 24987 },
     { name: 'layers/type-layer.psd', sha: '1cdcf08f88b103a50b74de7f3b70a7ccf63122e5', size: 43717 },
+    { name: 'layers/smartobject-layer.psd', sha: '924e5866581b25ffa1d2cbc8cbf34217929e4295', size: 26417 },
     { name: '32bit5x5.psb', sha: 'd8edd353ee87d28e4402dc4608d22f0e2645761e', size: 20954 },
     { name: 'advanced-blending.psd', sha: 'a52475596c36c42d176929ed97b5f357f9885463', size: 961076 },
     { name: 'clipping-mask.psd', sha: '9a96be9cdc59baa5b454bfb1719d0a3d987e7286', size: 95259 },
@@ -1517,6 +1518,10 @@ if (process.env.PSD_REAL_CORPUS === '1') {
         assert.ok(layer.preservedMaskChannels, 'Real source -3 channel must be retained as opaque data')
         assert.ok(layer.preservedMaskChannels.real.length >= 2, 'Real Photoshop mask channel bytes are nonempty')
         assert.equal(layer.preservedMaskChannels.sourceFormat, fixture.name.endsWith('.psb') ? 'psb' : 'psd')
+      }
+      if (fixture.name === 'layers/smartobject-layer.psd') {
+        assert.ok(decoded.layers.some(layer => psdNativeObjectKind(layer.additionalInfo) === 'smart'),
+          'Real Photoshop Smart Object test file must expose at least one live placed-layer descriptor')
       }
       if (fixture.name === '16bit5x5.psb') {
         assert.equal(decoded.depth, 16, 'Real Photoshop 16-bit PSB must retain its source depth')
