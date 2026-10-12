@@ -92,11 +92,17 @@ function parsePath(resource: Uint8Array, width: number, height: number): ParsedP
 
 export function readPsdPaths(resources: readonly Uint8Array[], width: number, height: number): PsdPath[] {
   const paths: PsdPath[] = []
-  const seen = new Set<number>()
+  // Duplicate IDs are ambiguous even if both copies decode cleanly. Never
+  // surface either copy as an editable path; preserve both source records.
+  const idCounts = new Map<number, number>()
+  for (const resource of resources) {
+    if (!isSavedPathResource(resource)) continue
+    const id = pathId(resource)
+    idCounts.set(id, (idCounts.get(id) ?? 0) + 1)
+  }
   for (const resource of resources) {
     const parsed = parsePath(resource, width, height)
-    if (!parsed || seen.has(parsed.id)) continue
-    seen.add(parsed.id)
+    if (!parsed || idCounts.get(parsed.id) !== 1) continue
     paths.push({
       psdPathResourceId: parsed.id, name: parsed.name || 'Path',
       anchors: parsed.knots, closed: parsed.closed, visible: true,
@@ -117,7 +123,7 @@ function fixed(value: number, dimension: number): number {
 }
 
 function samePath(original: ParsedPathResource, path: PsdPath | SavedPath, width: number, height: number): boolean {
-  if (original.name !== path.name || original.closed !== path.closed ||
+  if ((original.name || 'Path') !== path.name || original.closed !== path.closed ||
       original.knots.length !== path.anchors.length) return false
   return path.anchors.every((a, i) => {
     const b = original.knots[i]
