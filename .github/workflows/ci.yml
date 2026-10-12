@@ -54,6 +54,9 @@ jobs:
       - name: Validate ruler calibration and persistent-tool overlays
         run: bun scripts/validate-measure.ts
 
+      - name: Validate color sampler CSV and Info controls
+        run: bun scripts/validate-sampler-report.ts
+
       - name: Validate editable canvas context menu
         run: bun scripts/validate-layer-context-menu.ts
 

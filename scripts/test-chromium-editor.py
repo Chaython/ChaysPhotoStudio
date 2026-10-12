@@ -503,6 +503,50 @@ def main():
                 check(not errors, f"GIMP script UI produced JavaScript errors: {errors[:3]}")
                 print("  GIMP lazy-load workers:", counts, flush=True)
 
+            def color_sampler_info_panel():
+                _, page, errors = app_page(browser)
+                page.evaluate("""() => {
+                  const e = window.__zphotoEngine
+                  e.newDocument({name: 'Sampler smoke', width: 16, height: 16, fill: 'transparent'})
+                  e.addColorSampler(2, 3)
+                  window.__zphotoStore.getState().setRightPanelTab('info')
+                }""")
+                panel = page.get_by_label("Info panel")
+                panel.wait_for(state="visible", timeout=20000)
+                check(panel.get_by_text("Transparent", exact=True).count() >= 1,
+                      "fully transparent pixel was displayed as a black HEX color")
+                check(panel.get_by_text("No sampled color", exact=False).count() >= 1,
+                      "transparent sample must have no made-up RGB/Lab/CMYK values")
+                x_input = panel.get_by_role("spinbutton", name="Sampler 1 X coordinate")
+                y_input = panel.get_by_role("spinbutton", name="Sampler 1 Y coordinate")
+                x_input.fill("5.3")
+                x_input.press("Enter")
+                check(abs(page.evaluate("() => window.__zphotoEngine.activeDoc.colorSamplers[0].x") - 5.3) < .001,
+                      "numeric X coordinate was not saved")
+                y_input.fill("5")
+                y_input.press("Enter")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.colorSamplers[0].y") == 5,
+                      "numeric Y coordinate was not saved")
+                # Use a real editor document operation: direct edits to the backing
+                # HTMLCanvasElement bypass render cache invalidation and cannot
+                # represent an ordinary painting operation.
+                page.evaluate("""() => {
+                  const e = window.__zphotoEngine
+                  e.newDocument({name: 'Colored sampler smoke',
+                                 width: 16, height: 16, fill: '#12ab34'})
+                  e.addColorSampler(5.3, 5)
+                }""")
+                panel.get_by_text("#12AB34").wait_for(state="visible", timeout=10000)
+                with page.expect_download() as download_event:
+                    panel.get_by_role("button", name="CSV").first.click()
+                export = download_event.value
+                csv = Path(export.path()).read_text(encoding="utf-8")
+                check("12AB34" in csv and '"5.30"' in csv and '"Current Layer"' not in csv,
+                      f"sample CSV did not preserve data/source: {csv[:260]}")
+                check(export.suggested_filename.endswith("-color-samplers.csv"),
+                      "sampler export filename was incorrect")
+                check(not errors, f"Info panel caused JavaScript errors: {errors[:3]}")
+
             def mobile_start():
                 _, page, errors = app_page(browser, size=(430, 850))
                 check(page.locator("body").bounding_box()["width"] <= 431,
@@ -518,6 +562,7 @@ def main():
                 ("dock_context_move_float", context_float),
                 ("workspace_all_tools_dialog", workspace_and_dialog),
                 ("editable_layer_context_menu", editable_layer_context_menu),
+                ("color_sampler_info_panel", color_sampler_info_panel),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
                 ("real_psd_chromium_import", real_psd_browser_import),
                 ("gimp_lazy_interpreters", gimp_lazy_interpreters),

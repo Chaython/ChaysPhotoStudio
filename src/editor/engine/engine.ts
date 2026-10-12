@@ -4474,7 +4474,7 @@ export class Engine {
   // ================================================== color samplers / Info panel
   addColorSampler(x: number, y: number): string | null {
     const doc = this.activeDoc
-    if (!doc) return null
+    if (!doc || !Number.isFinite(x) || !Number.isFinite(y)) return null
     if (!doc.colorSamplers) doc.colorSamplers = []
     if (doc.colorSamplers.length >= 10) {
       this.ui?.toast('Color Sampler supports up to 10 points', 'info')
@@ -4494,9 +4494,12 @@ export class Engine {
   moveColorSampler(id: string, x: number, y: number) {
     const doc = this.activeDoc
     const p = doc?.colorSamplers?.find(s => s.id === id)
-    if (!doc || !p) return
-    p.x = clamp(x, 0, Math.max(0, doc.width - 1))
-    p.y = clamp(y, 0, Math.max(0, doc.height - 1))
+    if (!doc || !p || !Number.isFinite(x) || !Number.isFinite(y)) return
+    const nextX = clamp(x, 0, Math.max(0, doc.width - 1))
+    const nextY = clamp(y, 0, Math.max(0, doc.height - 1))
+    if (nextX === p.x && nextY === p.y) return
+    p.x = nextX
+    p.y = nextY
     doc.dirty = true
     this.emitOverlay()
   }
