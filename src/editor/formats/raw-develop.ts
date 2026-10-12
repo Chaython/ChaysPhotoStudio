@@ -1,5 +1,7 @@
-import { DEFAULT_RAW_TONE, normalizeRawTone, type RawToneSettings } from './raw-tone'
-import { RAW_MIX_BANDS, DEFAULT_RAW_COLOR_MIX, normalizeRawColorMix, type RawColorMix, type RawMixChannel } from './raw-color-mix'
+import { DEFAULT_RAW_TONE, normalizeRawTone, applyRawTone, type RawToneSettings } from './raw-tone'
+import { RAW_MIX_BANDS, DEFAULT_RAW_COLOR_MIX, normalizeRawColorMix, applyRawColorMix, type RawColorMix, type RawMixChannel } from './raw-color-mix'
+import { downsampleRawPreview, rawPreviewHistogram } from './raw-preview'
+import type { RawImage } from './decoders'
 import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
 import type { ImageMetadata } from '../types'
 import { cameraExif, importLensfunXml, loadedLensfunCount, matchLensfun } from './lensfun-xml'
@@ -46,7 +48,7 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
   }
 }
 
-export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings, metadata?:ImageMetadata):Promise<RawDevelopSettings|null> {
+export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings, metadata?:ImageMetadata, sourceFile?:File):Promise<RawDevelopSettings|null> {
   const current=initial?normalizeRawSettings(initial):rawSettingsFromSaved()
   // Never carry a calibrated lens from a previously opened camera into a new
   // unrelated RAW. Re-match using this file's EXIF or leave only manual values.
@@ -252,24 +254,165 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       },{once:true})
       input.click()
     })
+    const readSettings=():RawDevelopSettings=>normalizeRawSettings({
+      exposureEv:exposure.valueAsNumber,
+      whiteBalance:whiteBalance.value as RawDevelopSettings['whiteBalance'],
+      interpolation:Number(interpolation.value) as RawDevelopSettings['interpolation'],
+      highlight:highlight.valueAsNumber,
+      denoise:denoise.valueAsNumber,
+      halfSize:half.value==='half',
+      smartObject:smart.value==='yes',
+      tone:normalizeRawTone(Object.fromEntries(Object.entries(toneInputs).map(([key,input])=>[key,input.valueAsNumber]))),
+      colorMix:normalizeRawColorMix(Object.fromEntries(RAW_MIX_BANDS.map(band=>[
+        band,Object.fromEntries(mixProperties.map(property=>[property,mixInputs[band][property].valueAsNumber])),
+      ]))),
+      lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,
+        tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
+    })
+    // The LibRaw sensor stage is expensive. Decode it only on explicit request
+    // at half resolution, then update Basic/HSL adjustments on a bounded
+    // 480 px high-depth sample as controls change. No preview touches the RAW.
+    const previewSection=document.createElement('details')
+    previewSection.open=true
+    previewSection.style.cssText='border-top:1px solid var(--border);margin-top:12px;padding-top:10px'
+    const previewSummary=document.createElement('summary')
+    previewSummary.textContent='Develop Preview / RGB Histogram'
+    previewSummary.style.cssText='cursor:pointer;font-weight:600;font-size:13px'
+    const previewPanel=document.createElement('div')
+    previewPanel.style.cssText='margin-top:8px'
+    const previewButton=document.createElement('button')
+    previewButton.type='button'
+    previewButton.textContent='Load / Refresh RAW preview'
+    previewButton.style.cssText=cancel.style.cssText
+    previewButton.disabled=!sourceFile || sourceFile.size>256*1024*1024
+    const previewStatus=document.createElement('p')
+    previewStatus.style.cssText='font-size:12px;opacity:.8;overflow-wrap:anywhere;margin:8px 0'
+    previewStatus.setAttribute('role','status')
+    previewStatus.textContent=!sourceFile?'Preview not available for this source':
+      sourceFile.size>256*1024*1024?'Preview disabled for RAW files over 256 MiB':
+      'Load once to enable live Basic/HSL preview. Sensor and lens changes require Refresh.'
+    const compare=document.createElement('div')
+    compare.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px'
+    const makePane=(title:string)=>{
+      const pane=document.createElement('div')
+      const label=document.createElement('div')
+      label.textContent=title
+      label.style.cssText='font-size:12px;margin-bottom:4px'
+      const canvas=document.createElement('canvas')
+      canvas.style.cssText='width:100%;height:auto;max-height:250px;object-fit:contain;background:#171717;border:1px solid var(--border);border-radius:6px'
+      canvas.setAttribute('aria-label',title+' preview')
+      canvas.width=1;canvas.height=1
+      pane.append(label,canvas)
+      compare.append(pane)
+      return canvas
+    }
+    const beforeCanvas=makePane('Before: camera and optics')
+    const afterCanvas=makePane('After: Basic tone and HSL')
+    const histogramCanvas=document.createElement('canvas')
+    histogramCanvas.width=256;histogramCanvas.height=100
+    histogramCanvas.style.cssText='width:100%;height:100px;margin-top:8px;border-radius:6px;background:#171717'
+    histogramCanvas.setAttribute('aria-label','RGB and luminance histogram for adjusted preview')
+    previewPanel.append(previewButton,previewStatus,compare,histogramCanvas)
+    previewSection.append(previewSummary,previewPanel)
+    let previewBase:RawImage|null=null
+    let previewKey=''
+    let previewGeneration=0
+    let previewLoading=false
+    let previewTimer:ReturnType<typeof setTimeout>|undefined
+    const sensorKey=(settings:RawDevelopSettings)=>JSON.stringify({
+      ev:settings.exposureEv,wb:settings.whiteBalance,interpolation:settings.interpolation,
+      highlight:settings.highlight,denoise:settings.denoise,lens:settings.lensProfile,
+    })
+    const paint=(canvas:HTMLCanvasElement,image:RawImage)=>{
+      const ctx=canvas.getContext('2d')
+      if(!ctx)return
+      canvas.width=image.width;canvas.height=image.height
+      ctx.putImageData(new ImageData(image.rgba,image.width,image.height),0,0)
+    }
+    const renderPreview=()=>{
+      if(!previewBase||!dialog.isConnected)return
+      const settings=readSettings()
+      if(sensorKey(settings)!==previewKey){
+        previewStatus.textContent='Sensor or optics settings changed. Refresh RAW preview to see their effect.'
+        return
+      }
+      const adjusted=applyRawColorMix(applyRawTone(previewBase,settings.tone),settings.colorMix)
+      paint(beforeCanvas,previewBase);paint(afterCanvas,adjusted)
+      const hist=rawPreviewHistogram(adjusted)
+      const ctx=histogramCanvas.getContext('2d')
+      if(ctx){
+        const h=histogramCanvas.height,w=histogramCanvas.width
+        ctx.clearRect(0,0,w,h)
+        const maximum=Math.max(1,...hist.bins)
+        const colors=['#f87171','#86efac','#93c5fd','#dedede']
+        for(let channel=0;channel<4;channel++){
+          ctx.beginPath();ctx.strokeStyle=colors[channel];ctx.lineWidth=1
+          for(let bin=0;bin<256;bin++){
+            const x=bin*w/255,y=h-(hist.bins[channel*256+bin]/maximum)*(h-3)
+            if(bin===0)ctx.moveTo(x,y)
+            else ctx.lineTo(x,y)
+          }
+          ctx.stroke()
+        }
+      }
+      const ratio=hist.pixels?100/hist.pixels:0
+      previewStatus.textContent='Live tone/HSL preview (not final export) — '+
+        previewBase.width+' × '+previewBase.height+
+        '; clipped shadows '+(hist.clippedShadows*ratio).toFixed(1)+'%, highlights '+
+        (hist.clippedHighlights*ratio).toFixed(1)+'%.'
+    }
+    const schedulePreview=()=>{
+      if(!previewBase||previewLoading)return
+      if(previewTimer!==undefined)clearTimeout(previewTimer)
+      previewTimer=setTimeout(()=>{previewTimer=undefined;renderPreview()},100)
+    }
+    previewButton.addEventListener('click',async()=>{
+      if(!sourceFile||previewLoading||!dialog.open)return
+      previewLoading=true
+      const generation=++previewGeneration
+      previewButton.disabled=true
+      previewStatus.textContent='Developing half-resolution preview from original RAW…'
+      const settings=readSettings()
+      const fingerprint=sensorKey(settings)
+      try{
+        // Lazy import: the heavy WASM decoder is not loaded at editor startup.
+        const {decodeCameraRaw}=await import('./wasm-codecs')
+        const decoded=await decodeCameraRaw(await sourceFile.arrayBuffer(),{
+          ...settings,halfSize:true,tone:{...DEFAULT_RAW_TONE},
+          colorMix:normalizeRawColorMix(DEFAULT_RAW_COLOR_MIX),
+        })
+        if(generation!==previewGeneration||!dialog.open)return
+        previewBase=downsampleRawPreview(decoded,480)
+        previewKey=fingerprint
+        renderPreview()
+      }catch(error){
+        if(generation===previewGeneration&&dialog.open)
+          previewStatus.textContent='RAW preview failed: '+(error instanceof Error?error.message:String(error))
+      }finally{
+        if(generation===previewGeneration){
+          previewLoading=false
+          if(dialog.open)previewButton.disabled=false
+        }
+      }
+    })
+    for(const input of Object.values(toneInputs))input.addEventListener('input',schedulePreview)
+    for(const band of RAW_MIX_BANDS)
+      for(const property of mixProperties)mixInputs[band][property].addEventListener('input',schedulePreview)
+    const sensorInputs=[exposure,whiteBalance,interpolation,highlight,denoise,
+      k1,k2,tca,vignette,lensName]
+    for(const input of sensorInputs)input.addEventListener('input',schedulePreview)
+    matchButton.addEventListener('click',schedulePreview)
+    // Imported presets update input values programmatically and do not
+    // dispatch input events. Refresh the live preview explicitly.
+    loadPreset.addEventListener('change',schedulePreview)
     presetTools.append(savePreset,loadPreset,presetStatus)
     actions.append(cancel,apply)
-    dialog.append(heading,caption,form,basic.details,mix.details,optics.details,presetTools,actions)
+    dialog.append(heading,caption,previewSection,form,basic.details,mix.details,optics.details,presetTools,actions)
     dialog.addEventListener('close',()=>{
-      const result=dialog.returnValue==='apply'?normalizeRawSettings({
-        exposureEv:exposure.valueAsNumber,
-        whiteBalance:whiteBalance.value as RawDevelopSettings['whiteBalance'],
-        interpolation:Number(interpolation.value) as RawDevelopSettings['interpolation'],
-        highlight:highlight.valueAsNumber,
-        denoise:denoise.valueAsNumber,
-        halfSize:half.value==='half',
-        smartObject:smart.value==='yes',
-        tone:normalizeRawTone(Object.fromEntries(Object.entries(toneInputs).map(([key,input])=>[key,input.valueAsNumber]))),
-        colorMix:normalizeRawColorMix(Object.fromEntries(RAW_MIX_BANDS.map(band=>[
-          band,Object.fromEntries(mixProperties.map(property=>[property,mixInputs[band][property].valueAsNumber])),
-        ]))),
-        lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
-      }):null
+      previewGeneration++
+      previewBase=null
+      if(previewTimer!==undefined)clearTimeout(previewTimer)
+      const result=dialog.returnValue==='apply'?readSettings():null
       if(result)try{localStorage.setItem(storageKey,JSON.stringify(result))}catch{}
       dialog.remove();resolve(result)
     },{once:true})
