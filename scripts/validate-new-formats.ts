@@ -5,6 +5,7 @@ import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { applyRawColorMix, normalizeRawColorMix, DEFAULT_RAW_COLOR_MIX } from '../src/editor/formats/raw-color-mix'
+import { downsampleRawPreview, rawPreviewHistogram } from '../src/editor/formats/raw-preview'
 import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
 function check(v:unknown,description:string) { if(!v)throw new Error(description) }
 const enc=new TextEncoder()
@@ -271,6 +272,40 @@ check(normalizeRawColorMix({red:{hue:500,saturation:Number.NaN,luminance:-300}})
   'Color Mixer must bound persisted/user values')
 check(DEFAULT_RAW_COLOR_MIX.red.saturation===0,'Default RAW mixer neutral')
 
+// RAW preview sampling must be bounded and lossless for selected 16-bit
+// samples, keep alpha, and never mutate the original decoded sensor image.
+const previewFull16=new Uint16Array(64*8*4)
+const previewFull8=new Uint8ClampedArray(64*8*4)
+for(let y=0;y<8;y++)for(let x=0;x<64;x++){
+  const i=(y*64+x)*4
+  previewFull16[i]=x*500;previewFull16[i+1]=y*5000
+  previewFull16[i+2]=32768;previewFull16[i+3]=65535
+  previewFull8[i]=Math.round(previewFull16[i]/257)
+  previewFull8[i+1]=Math.round(previewFull16[i+1]/257)
+  previewFull8[i+2]=128;previewFull8[i+3]=255
+}
+const fullPreview={width:64,height:8,rgba:previewFull8 as Uint8ClampedArray<ArrayBuffer>,
+  rgba16:previewFull16,sourceBitDepth:16}
+const smallPreview=downsampleRawPreview(fullPreview,32)
+check(smallPreview.width===32&&smallPreview.height===4,'RAW preview must bound longest edge')
+const chosenX=Math.min(63,Math.floor((0.5)*64/32))
+const chosenY=Math.min(7,Math.floor((0.5)*8/4))
+check(smallPreview.rgba16?.[0]===previewFull16[(chosenY*64+chosenX)*4],
+  'RAW preview must preserve selected 16-bit source samples')
+check(smallPreview.rgba16?.[3]===65535,'RAW preview preserves alpha')
+check(fullPreview.rgba16[0]===0&&fullPreview.rgba16[4]===500,'RAW preview leaves source untouched')
+const histSample={width:3,height:1,rgba:new Uint8ClampedArray([
+  0,0,0,255,255,0,0,255,255,255,255,0,
+]) as Uint8ClampedArray<ArrayBuffer>,sourceBitDepth:8}
+const hist=rawPreviewHistogram(histSample)
+check(hist.pixels===2&&hist.clippedShadows===1&&hist.clippedHighlights===1,
+  'RAW histogram must count only visible pixels and track clipping')
+check(hist.bins[0]===1&&hist.bins[255]===1&&hist.bins[256]===2,
+  'RAW histogram RGB channel alignment')
+const histHigh=rawPreviewHistogram(mixSample)
+check(histHigh.pixels===3&&histHigh.bins[255]===1&&histHigh.bins[256+0]===2,
+  'RAW histogram handles native 16-bit pixel buffers')
+check(downsampleRawPreview(mixSample)===mixSample,'Small RAW preview should reuse source')
 // Two separate TIFF IFDs, each containing an 8-bit grayscale page.
 const tiff=new Uint8Array(258);const tv=new DataView(tiff.buffer)
 tiff[0]=73;tiff[1]=73;tv.setUint16(2,42,true);tv.setUint32(4,8,true)
