@@ -50,9 +50,9 @@ function parsePath(resource: Uint8Array, width: number, height: number): ParsedP
   // Photoshop's path-name Pascal string can use legacy MacRoman encodings,
   // with optional Unicode descriptors elsewhere. Avoid presenting mojibake as
   // editable path names; preserve unrecognized non-ASCII resources verbatim.
-  const nameBytes = resource.subarray(7, 7 + nameLen)
-  if (nameBytes.some(byte => byte < 0x20 || byte > 0x7e)) return null
-  const name = String.fromCharCode(...nameBytes)
+  const encodedName = resource.subarray(7, 7 + nameLen)
+  if (encodedName.some(byte => byte < 0x20 || byte > 0x7e)) return null
+  const name = String.fromCharCode(...encodedName)
   const recordCount = size / RECORD_SIZE
   if (recordCount > 100000) return null
   let at = dataStart
