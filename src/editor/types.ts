@@ -452,6 +452,8 @@ export interface SavedPath {
   anchors: PathAnchor[]
   closed: boolean
   visible: boolean
+  /** Original Photoshop saved-path image-resource ID (2000–2997). */
+  psdPathResourceId?: number
 }
 
 // ---------- Selection ----------
@@ -669,6 +671,9 @@ export interface PsDocument {
   sourceBitDepth?: number
   /** Opaque Photoshop image-resource blocks retained from imported PSD/PSB. */
   psdImageResources?: string[]
+  /** IDs of editable Photoshop path resources imported with this document.
+   * Used to recognize deleted paths without dropping opaque compound paths. */
+  psdEditablePathResourceIds?: number[]
   /** Photoshop global layer-mask payload retained for lossless native project round-trip. */
   psdGlobalLayerMaskData?: string
   /** Document-wide Photoshop linked-object and other tagged layer-info blocks. */
