@@ -368,6 +368,25 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
         left: psd.left, top: psd.top,
         width: psd.canvas.width, height: psd.canvas.height,
       }
+      // Use Studio's existing non-destructive Smart Layer model for an
+      // imported Photoshop Smart Object's *cached raster preview*. The real
+      // embedded/linked Photoshop payload remains in its opaque PSD blocks.
+      // Never convert high-bit or combined-mask previews here: that could
+      // quantize precision or change an unrendered vector mask.
+      if (kind === 'smart' && decoded.sourceBitDepth === 8 &&
+          !psd.hdrPixels && !psd.unsupportedRealMask &&
+          psd.canvas.width > 0 && psd.canvas.height > 0) {
+        layer.kind = 'smart'
+        layer.source = psd.canvas
+        layer.canvas = null
+        layer.transform = {
+          x: psd.left + psd.canvas.width / 2,
+          y: psd.top + psd.canvas.height / 2,
+          scale: 1, rotation: 0,
+        }
+        layer.offsetX = 0
+        layer.offsetY = 0
+      }
     }
     if (psd.blendingRanges?.length) layer.psdBlendingRanges = bytesToBase64(psd.blendingRanges)
     if (psd.blendIf) layer.blendIf = structuredClone(psd.blendIf)
