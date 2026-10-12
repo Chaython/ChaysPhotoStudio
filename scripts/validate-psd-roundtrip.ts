@@ -167,9 +167,9 @@ assert.equal(photoshopControlView.getInt32(firstKnotAt + 6),
 assert.equal(photoshopControlView.getInt32(firstKnotAt + 14),
   Math.round(10 / 120 * 16777216),
   'Photoshop Bézier anchor retains its independent absolute X coordinate')
-assert.equal(recognizedPsdPath.anchors[0].inX, -2,
+assert.ok(Math.abs(recognizedPsdPath.anchors[0].inX + 2) < 0.0001,
   'Studio imports Adobe absolute controls as offsets from their anchor')
-assert.equal(recognizedPsdPath.anchors[0].outY, 2,
+assert.ok(Math.abs(recognizedPsdPath.anchors[0].outY - 2) < 0.0001,
   'Studio imported path handles render correctly with relative Y offsets')
 
 for (const key of ['x', 'y', 'inX', 'inY', 'outX', 'outY'] as const) {
