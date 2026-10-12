@@ -10,18 +10,20 @@
 //  · Sponge: HSV saturation scaling with flow falloff
 //  · All: single engine.mutateLayerPixels per stroke, history on pointerup
 // ============================================================
-import type { Tool, PointerInfo } from '../types'
+import type { Tool, PointerInfo, PsDocument } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, canUseByteRetouch, regionProcess, drawBrushCursor, walkDabs } from './shared'
 import { smoothstep } from './dab-utils'
 import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb, cloneCanvas, getImageData, putImageData } from '../utils/canvas'
 import { getFlatComposite, newLayer, invalidateFlat } from '../engine/document'
 import { getTip, tipExtentMul, drawTipCursor } from './brush-tips'
+import { retouchDabIntersectsCanvas, sameRetouchTarget } from './retouch-stroke-guards'
 
 type RetouchId = 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
 type RetouchOp = (x: number, y: number, p: PointerInfo) => void
 
 interface RetouchContext {
+  docId: string
   targetId: string
   sourceLayerId: string
   source: HTMLCanvasElement | null
@@ -150,6 +152,13 @@ function makeRetouch(
   let airPointer: PointerInfo | null = null
   let airTimer: ReturnType<typeof setInterval> | null = null
   let mutated = false
+  let strokeDoc: PsDocument | null = null
+
+  const isCurrentTarget = () => sameRetouchTarget(
+    retouchContext,
+    engine.activeDoc?.id ?? null,
+    engine.activeLayer?.id ?? null,
+  )
 
   const stopAirbrush = () => {
     if (airTimer) clearInterval(airTimer)
@@ -158,12 +167,30 @@ function makeRetouch(
     airPointer = null
   }
 
+  const finishStroke = () => {
+    if (!active) { stopAirbrush(); return }
+    active = false
+    last = null
+    stopAirbrush()
+    onEnd?.()
+    // The active document can change while the pen is down. History always
+    // belongs to the original document, never the newly focused document.
+    if (mutated && strokeDoc && engine.docs.includes(strokeDoc)) {
+      engine.pushHistory(`${id[0].toUpperCase()}${id.slice(1)} Tool`, strokeDoc)
+      engine.emit()
+    }
+    mutated = false
+    strokeDoc = null
+    retouchContext = null
+  }
+
   const startAirbrush = () => {
     const opts = getOptions(id)
     if (!(id === 'dodge' || id === 'burn' || id === 'sponge') || opts.airbrush !== true) return
     stopAirbrush()
     airTimer = setInterval(() => {
       if (!active || !airPos || !airPointer) return
+      if (!isCurrentTarget()) { finishStroke(); return }
       op(airPos.x, airPos.y, airPointer)
       const doc = engine.activeDoc
       if (doc) invalidateFlat(doc)
@@ -175,12 +202,23 @@ function makeRetouch(
     requiresLayer: true,
     onPointerDown(p: PointerInfo) {
       if (p.button !== 0) return
+      if (active) finishStroke()
       const doc = engine.activeDoc
       const layer = engine.activeLayer
       if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
       if (!canUseByteRetouch(id[0].toUpperCase() + id.slice(1))) return
       const opts = getOptions(id)
-      if (supportsNewLayerOutput(id) && opts.output === 'new') {
+      const outputNew = supportsNewLayerOutput(id) && opts.output === 'new'
+      const tip = typeof opts.tip === 'string' && getTip(opts.tip) ? opts.tip : 'round-soft'
+      const extent = tipExtentMul(tip)
+      const radius = retouchTipSize(opts, p) * extent / 2 + 2
+      const ox = !outputNew && layer.kind === 'raster' ? (layer.offsetX ?? 0) : 0
+      const oy = !outputNew && layer.kind === 'raster' ? (layer.offsetY ?? 0) : 0
+      const bounds = !outputNew && layer.kind === 'raster' && layer.canvas
+        ? { x: ox, y: oy, width: layer.canvas.width, height: layer.canvas.height }
+        : { x: 0, y: 0, width: doc.width, height: doc.height }
+      if (!retouchDabIntersectsCanvas(p.docX, p.docY, radius, doc.width, doc.height, bounds)) return
+      if (outputNew) {
         const src0 = opts.sampleAllLayers === true ? getFlatComposite(doc) : engine.layerCanvasDocSpace(layer.id)
         if (!src0) return
         const out = newLayer('raster', `${id[0].toUpperCase()}${id.slice(1)} Retouch`, doc.width, doc.height)
@@ -188,6 +226,7 @@ function makeRetouch(
         doc.activeLayerId = out.id
         doc.selectedLayerIds = [out.id]
         retouchContext = {
+          docId: doc.id,
           targetId: out.id,
           sourceLayerId: layer.id,
           source: cloneCanvas(src0),
@@ -197,9 +236,10 @@ function makeRetouch(
       } else {
         const l = engine.mutateLayerPixels(layer.id)
         if (!l?.canvas) return
-        retouchContext = { targetId: l.id, sourceLayerId: l.id, source: null, outputNew: false }
+        retouchContext = { docId: doc.id, targetId: l.id, sourceLayerId: l.id, source: null, outputNew: false }
       }
       mutated = true
+      strokeDoc = doc
       active = true
       last = { x: p.docX, y: p.docY }
       airPos = { x: p.docX, y: p.docY }
@@ -212,6 +252,7 @@ function makeRetouch(
     },
     onPointerMove(p: PointerInfo) {
       if (!active || !last) return
+      if (!isCurrentTarget()) { finishStroke(); return }
       const opts = getOptions(id)
       airPos = { x: p.docX, y: p.docY }
       airPointer = p
@@ -224,32 +265,8 @@ function makeRetouch(
       if (doc) invalidateFlat(doc)
       engine.requestRender()
     },
-    onPointerUp() {
-      if (!active) return
-      active = false
-      last = null
-      stopAirbrush()
-      onEnd?.()
-      if (mutated) {
-        engine.pushHistory(`${id[0].toUpperCase()}${id.slice(1)} Tool`)
-        engine.emit()
-        mutated = false
-      }
-      retouchContext = null
-    },
-    onDeactivate() {
-      if (!active) { stopAirbrush(); retouchContext = null; return }
-      active = false
-      last = null
-      stopAirbrush()
-      onEnd?.()
-      if (mutated) {
-        engine.pushHistory(`${id[0].toUpperCase()}${id.slice(1)} Tool`)
-        engine.emit()
-        mutated = false
-      }
-      retouchContext = null
-    },
+    onPointerUp() { finishStroke() },
+    onDeactivate() { finishStroke() },
     renderOverlay() { /* brush ring lives on the cursor layer */ },
     renderCursor(ctx, view, w, h, mouse) {
       void w; void h
@@ -349,7 +366,8 @@ function sampledFilterPatchCanvas(w: number, h: number): HTMLCanvasElement {
 function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: PointerInfo): boolean {
   const state = retouchContext
   const doc = engine.activeDoc
-  if (!state?.outputNew || !state.source || !doc) return false
+  if (!state?.outputNew || !state.source || !doc
+    || !sameRetouchTarget(state, doc.id, engine.activeLayer?.id ?? null)) return false
   const target = engine.layerById(state.targetId)
   if (!target?.canvas) return false
   const opts = getOptions(kind)
@@ -517,6 +535,9 @@ function makeSmudgeTool(): Tool {
   const origMove = tool.onPointerMove!
   tool.onPointerMove = (p: PointerInfo) => {
     if (!stroking) return
+    if (!retouchContext || !sameRetouchTarget(
+      retouchContext, engine.activeDoc?.id ?? null, engine.activeLayer?.id ?? null,
+    )) return origMove(p)
     if (!prev) return origMove(p)
     const opts = getOptions('smudge')
     const step = clamp((Number(opts.size) || 50) * 0.05, 2, 8)
@@ -543,7 +564,7 @@ function makeSmudgeTool(): Tool {
 function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: number; y: number } | null, setPrev: (v: { x: number; y: number }) => void) {
   const layer = engine.activeLayer
   const doc = engine.activeDoc
-  if (!layer || !doc) return
+  if (!layer || !doc || !retouchContext || !sameRetouchTarget(retouchContext, doc.id, layer.id)) return
   const l = engine.layerById(layer.id)
   if (!l?.canvas) return
   const prev = getPrev()
