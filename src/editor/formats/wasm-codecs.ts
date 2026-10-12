@@ -6,6 +6,7 @@ import { DEFAULT_RAW_SETTINGS, normalizeRawSettings } from './raw-develop'
 import { applyLensProfile } from './lens-correction'
 import { applyRawTone } from './raw-tone'
 import { applyRawColorMix } from './raw-color-mix'
+import { applyRawCurves } from './raw-curves'
 
 function shape(width:number,height:number){
   if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width*height>64*1024*1024)
@@ -57,10 +58,10 @@ export async function decodeCameraRaw(buffer:ArrayBuffer,options?:RawDevelopSett
       rgba[dst+3]=bits===16?Math.round(alpha/257):alpha
       if(rgba16)rgba16[dst+3]=alpha
     }
-    return applyRawColorMix(applyRawTone(applyLensProfile({
+    return applyRawColorMix(applyRawCurves(applyRawTone(applyLensProfile({
       width,height,rgba:rgba as Uint8ClampedArray<ArrayBuffer>,rgba16,
       sourceBitDepth:bits,
-    },settings.lensProfile),settings.tone),settings.colorMix)
+    },settings.lensProfile),settings.tone),settings.curves),settings.colorMix)
   }finally{decoder.dispose()}
 }
 
