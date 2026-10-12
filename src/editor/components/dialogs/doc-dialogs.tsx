@@ -16,6 +16,7 @@ import type { DialogProps } from './generic-dialogs'
 import { TransformWarpEditor } from './transform-warp-editor'
 import { buildPhotoshopMetadataResources } from '../../formats/metadata-write'
 import { writePsdGuides } from '../../formats/psd-guides'
+import { writePsdPaths } from '../../formats/psd-paths'
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
@@ -497,7 +498,7 @@ export function ExportDialog({ onClose }: DialogProps) {
           globalLayerMaskData: doc.psdGlobalLayerMaskData ? base64Bytes(doc.psdGlobalLayerMaskData) : undefined,
           globalAdditionalInfo: doc.psdGlobalAdditionalInfo?.map(base64Bytes),
           format: format === 'psb' ? 'psb' : 'psd',
-          imageResources: [...writePsdGuides(preservedResources, doc.guides ?? []), ...metadataResources],
+          imageResources: [...writePsdPaths(writePsdGuides(preservedResources, doc.guides ?? []), doc.savedPaths ?? [], doc.psdEditablePathResourceIds ?? [], doc.width, doc.height), ...metadataResources],
         })
         downloadBlob(blob, `${outName}.${format}`)
         store.pushToast(`Exported ${outName}.${format} — ${inputs.length} layer${inputs.length === 1 ? '' : 's'}`, 'success')
