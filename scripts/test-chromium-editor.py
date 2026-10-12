@@ -310,9 +310,10 @@ def main():
             def real_psd_browser_import():
                 _, page, errors = app_page(browser)
                 upstream = "b58704c1c9c9b2459f961560b1e368dfb102b513"
-                for name, expected_sha in [
-                    ("pixel-layer.psd", "0d3ee59728ebd8237e4c2c8eee1997e42e3ee82d"),
-                    ("type-layer.psd", "1cdcf08f88b103a50b74de7f3b70a7ccf63122e5"),
+                for name, expected_sha, is_smart in [
+                    ("pixel-layer.psd", "0d3ee59728ebd8237e4c2c8eee1997e42e3ee82d", False),
+                    ("type-layer.psd", "1cdcf08f88b103a50b74de7f3b70a7ccf63122e5", False),
+                    ("smartobject-layer.psd", "924e5866581b25ffa1d2cbc8cbf34217929e4295", True),
                 ]:
                     url = (f"https://raw.githubusercontent.com/psd-tools/psd-tools/{upstream}"
                            f"/tests/psd_files/layers/{name}")
@@ -331,18 +332,24 @@ def main():
                     }""", arg=previous_doc_id, timeout=30000)
                     result = page.evaluate("""() => {
                       const doc = window.__zphotoEngine.activeDoc
-                      const layer = doc.layers[0], image = layer.canvas
-                      const ctx = image && image.getContext('2d')
-                      const pixels = ctx && ctx.getImageData(0, 0, image.width, image.height).data
+                      const layer = doc.layers[0]
+                      const image = layer.kind === 'smart' ? layer.source : layer.canvas
+                      const pixels = image?.getContext('2d')?.getImageData(0, 0, image.width, image.height).data
+                      const rendered = window.__zphotoEngine.layerCanvas(layer.id)
                       return {
                         width: doc.width, height: doc.height, layers: doc.layers.length,
-                        layerName: layer.name, raster: layer.kind === 'raster',
-                        pixelCount: pixels ? pixels.length : 0,
+                        layerName: layer.name, kind: layer.kind,
+                        smartOrigin: layer.psdNativeOrigin?.kind === 'smart',
+                        sourcePixels: pixels?.length ?? 0,
+                        rendered: !!rendered && rendered.width === doc.width && rendered.height === doc.height,
                       }
                     }""")
                     print(f"  Real {name} browser import: {result}", flush=True)
-                    check(result["raster"] and result["pixelCount"] > 0,
-                          f"Real {name} didn't become a decoded raster layer")
+                    check(result["kind"] == ("smart" if is_smart else "raster") and
+                          result["sourcePixels"] > 0 and result["rendered"],
+                          f"Real {name} did not produce the expected editable layer and canvas")
+                    if is_smart:
+                        check(result["smartOrigin"], "Photoshop Smart Object lost its original descriptor provenance")
                 check(not errors, f"real PSD browser imports threw JS errors: {errors[:3]}")
 
             def gimp_lazy_interpreters():
