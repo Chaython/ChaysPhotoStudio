@@ -427,7 +427,8 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     "path": "File → Open / Place / Layer → Redevelop RAW Smart Object…",
     "summary": "Open camera RAW, HDR, modern codecs and scientific files while retaining editable RAW originals when feasible.",
     "steps": [
-      "Use File → Open or File → Place to select RAW images. The Develop dialog includes exposure, white balance, demosaicing, highlight, denoising and custom lens correction fields.",
+      "Use File → Open or File → Place to select RAW images. Develop includes LibRaw sensor controls, reversible 16-bit Basic adjustments, a five-point composite RGB/per-channel tone curve, eight-band HSL Color Mixer, and on-demand optical corrections.",
+      "Select Load / Refresh RAW preview to decode a half-resolution sample on demand. Basic, curve and HSL edits update the side-by-side Before/After display and RGB/luminance histogram; exposure, white balance, demosaicing, noise reduction and lens changes require Refresh. The preview is not the final-resolution output.",
       "When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.",
       "Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Import individual Lensfun XML calibration files on demand using Import Lensfun XML… in the Develop dialog; Match EXIF Lens requires unambiguous camera lens metadata. A full Lensfun WASM database is not bundled.",
       "OpenEXR supports regular single and multipart scanline/single-level tiled images with NONE/RLE/ZIPS/ZIP compression. Float32 HDR samples are retained per part; deep and multiresolution EXR remain unsupported.",
@@ -435,6 +436,7 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "When TIFF, DCX, FITS, DICOM or multipart EXR contains multiple images, choose one frame/part or import all as selectable layers."
     ],
     "tips": [
+      "RAW color presets export/import Basic tone, RGB/per-channel point curves and HSL as local JSON. Camera, EXIF and lens calibration are excluded; older presets without curves import with a neutral identity curve. Display-referred color rendering is not equivalent to Adobe Lightroom's proprietary camera profiles.",
       "Files larger than 64 MiB can be developed as ordinary raster images but their original RAW bytes are not embedded. RAW decoders may use a clearly labeled 8-bit camera preview if sensor decoding fails.",
       "Imported Lensfun XML uses recorded calibration values with conservative EXIF matching; the full licensed database and WASM remapping engine are not bundled. Save the project to retain RAW originals and recipes.",
       "DICOM support is only for graphic editing, never diagnosis or medical measurements. Rare compressed transfer syntaxes and ambiguous multifragment frame tables are rejected.",
@@ -648,6 +650,65 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Native GIMP 3 is Electron-only, installed separately, and runs with OS permissions; scripts are not sandboxed.",
       "Pyodide is downloaded from a pinned remote CDN on first explicit request and may not work offline.",
       "Embedded interpreters do not implement native GIMP GI, PDB or direct image editing; PNG interchange is not HDR/RAW round-tripping."
+    ]
+  },
+  {
+    "id": "shared-layer-context-menus",
+    "title": "Shared canvas and Layers panel right-click menus",
+    "category": "Workspace",
+    "path": "Move tool → canvas right-click / Layers panel → layer right-click",
+    "summary": "Use one customizable set of layer commands across both editing surfaces.",
+    "steps": [
+      "Right-click a layer on the canvas with the Move tool, or right-click its row in the Layers panel.",
+      "Both menus honor the same action visibility and order; choose Edit context menu… from either location.",
+      "The shared Masks and clipping section includes Add Mask, Apply/Delete Mask, vector mask operations and clipping; Convert and merge also includes Trim to Content.",
+      "Right-clicking an unselected layer row makes it the active target before Cut or Copy; right-clicking an already-selected row retains the current multi-selection.",
+      "Customizations synchronize immediately between the two menus and are saved in the current browser/app profile."
+    ],
+    "tips": [
+      "Unavailable commands remain disabled or are omitted when the active layer type does not support them.",
+      "Old saved menu layouts are preserved; newly introduced commands and sections are appended automatically.",
+      "Other editing tools' canvas right-click gestures are unaffected."
+    ]
+  },
+  {
+    "id": "customize-context-menu",
+    "title": "Customize the canvas right-click menu",
+    "category": "Workspace",
+    "path": "Move tool (V) → right-click a layer → Edit context menu…",
+    "summary": "Choose which layer commands appear when right-clicking the canvas.",
+    "steps": [
+      "Activate Move (V), right-click a layer on the canvas, then choose Edit context menu… at the bottom.",
+      "Use checkboxes to show or hide an action, and arrow buttons to move it up or down within its section.",
+      "Choose Reset defaults to restore all actions and their original order, or Done to close the editor.",
+      "Use the Edit section for Undo, Redo, Cut Layer and Paste Layer, alongside transforms, layer styles, arrange and merge."
+    ],
+    "tips": [
+      "Preferences persist locally in the current browser or desktop-app profile.",
+      "The Edit context menu… entry cannot be hidden, so the layout can always be restored.",
+      "The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.",
+      "Commands that do not apply to the active layer may be disabled or omitted."
+    ]
+  },
+  {
+    "id": "ruler-color-sampler",
+    "title": "Ruler measurements and persistent color sampler points",
+    "category": "Tools",
+    "path": "Measure tool (K) / Color Sampler (I tool group) / Window → Info",
+    "summary": "Measure calibrated distances and keep color sample readouts on an editable document.",
+    "steps": [
+      "Drag with Measure to read pixel length, angle and horizontal/vertical deltas; hold Shift to constrain the measurement angle.",
+      "Enable Multi-segment to measure a connected path. Select inches, centimeters or millimeters and use the document PPI, or disable Use Document Resolution to supply manual pixels-per-unit calibration.",
+      "Choose Save Ruler to store the current segments in the document's Info panel; choose Clear or press Escape while measuring to remove the temporary ruler.",
+      "Enable Keep Measurement to leave the live ruler visible when switching tools; it is not shown on other open documents.",
+      "Place Color Sampler points on the canvas, drag a point to move it, or Alt/Option-click it to remove it.",
+      "Select a sampler and use arrow keys for one-pixel movement, or Shift plus an arrow for ten pixels; Delete removes the selection and Escape deselects it."
+    ],
+    "tips": [
+      "Saved measurements are part of the project; temporary ruler geometry is not.",
+      "Color Sampler markers remain visible while other tools are active.",
+      "A sample on a fully transparent pixel displays Transparent instead of an invented opaque color.",
+      "Some high-depth colors are represented as display-preview values; these readouts are not a substitute for scene-linear sampling."
     ]
   }
 ]

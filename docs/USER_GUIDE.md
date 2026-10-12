@@ -39,6 +39,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Content-Aware editing](#content-aware-editing)
 - [Tool groups and choosing the right tool](#tool-groups-and-choosing-the-right-tool)
 - [Paths, text and shapes](#paths-text-and-shapes)
+- [Ruler measurements and persistent color sampler points](#ruler-measurements-and-persistent-color-sampler-points)
 
 ### Color & files
 
@@ -56,6 +57,8 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 
 - [Undo, snapshots and recovery](#undo-snapshots-and-recovery)
 - [Keyboard shortcuts and mobile](#keyboard-shortcuts-and-mobile)
+- [Shared canvas and Layers panel right-click menus](#shared-canvas-and-layers-panel-right-click-menus)
+- [Customize the canvas right-click menu](#customize-the-canvas-right-click-menu)
 
 ### Advanced
 
@@ -459,15 +462,17 @@ Open camera RAW, HDR, modern codecs and scientific files while retaining editabl
 
 **Where:** File → Open / Place / Layer → Redevelop RAW Smart Object…
 
-1. Use File → Open or File → Place to select RAW images. The Develop dialog includes exposure, white balance, demosaicing, highlight, denoising and custom lens correction fields.
-2. When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.
-3. Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Import individual Lensfun XML calibration files on demand using Import Lensfun XML… in the Develop dialog; Match EXIF Lens requires unambiguous camera lens metadata. A full Lensfun WASM database is not bundled.
-4. OpenEXR supports regular single and multipart scanline/single-level tiled images with NONE/RLE/ZIPS/ZIP compression. Float32 HDR samples are retained per part; deep and multiresolution EXR remain unsupported.
-5. FITS and a limited subset of DICOM medical images import as display renderings. DICOM supports uncompressed, RLE Lossless, JPEG baseline, JPEG-LS and JPEG 2000 via available decoders; clinical values and measurements are not preserved.
-6. When TIFF, DCX, FITS, DICOM or multipart EXR contains multiple images, choose one frame/part or import all as selectable layers.
+1. Use File → Open or File → Place to select RAW images. Develop includes LibRaw sensor controls, reversible 16-bit Basic adjustments, a five-point composite RGB/per-channel tone curve, eight-band HSL Color Mixer, and on-demand optical corrections.
+2. Select Load / Refresh RAW preview to decode a half-resolution sample on demand. Basic, curve and HSL edits update the side-by-side Before/After display and RGB/luminance histogram; exposure, white balance, demosaicing, noise reduction and lens changes require Refresh. The preview is not the final-resolution output.
+3. When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.
+4. Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Import individual Lensfun XML calibration files on demand using Import Lensfun XML… in the Develop dialog; Match EXIF Lens requires unambiguous camera lens metadata. A full Lensfun WASM database is not bundled.
+5. OpenEXR supports regular single and multipart scanline/single-level tiled images with NONE/RLE/ZIPS/ZIP compression. Float32 HDR samples are retained per part; deep and multiresolution EXR remain unsupported.
+6. FITS and a limited subset of DICOM medical images import as display renderings. DICOM supports uncompressed, RLE Lossless, JPEG baseline, JPEG-LS and JPEG 2000 via available decoders; clinical values and measurements are not preserved.
+7. When TIFF, DCX, FITS, DICOM or multipart EXR contains multiple images, choose one frame/part or import all as selectable layers.
 
 **Notes and tips:**
 
+- RAW color presets export/import Basic tone, RGB/per-channel point curves and HSL as local JSON. Camera, EXIF and lens calibration are excluded; older presets without curves import with a neutral identity curve. Display-referred color rendering is not equivalent to Adobe Lightroom's proprietary camera profiles.
 - Files larger than 64 MiB can be developed as ordinary raster images but their original RAW bytes are not embedded. RAW decoders may use a clearly labeled 8-bit camera preview if sensor decoding fails.
 - Imported Lensfun XML uses recorded calibration values with conservative EXIF matching; the full licensed database and WASM remapping engine are not bundled. Save the project to retain RAW originals and recipes.
 - DICOM support is only for graphic editing, never diagnosis or medical measurements. Rare compressed transfer syntaxes and ambiguous multifragment frame tables are rejected.
@@ -670,14 +675,58 @@ Discover compatible GIMP assets and use supported external GIMP procedures witho
 - Pyodide is downloaded from a pinned remote CDN on first explicit request and may not work offline.
 - Embedded interpreters do not implement native GIMP GI, PDB or direct image editing; PNG interchange is not HDR/RAW round-tripping.
 
-## Ruler measurements and color sampler points
+## Shared canvas and Layers panel right-click menus
 
-**Where:** Measure tool (K), Color Sampler (I tool group), Window → Info.
+Use one customizable set of layer commands across both editing surfaces.
 
-1. Drag with **Measure** to read pixel length, angle, and horizontal/vertical distances. Hold **Shift** to constrain the angle, or enable **Multi-segment** to measure a connected path.
-2. Select physical units (in, cm, mm) and **Use Document Resolution** for PPI-based measurements. Turn that option off to enter a custom **px / unit** calibration (for example, 50 pixels per millimeter). Pixels never depend on PPI.
-3. Use **Save Ruler** to preserve a measurement in the Info panel, or **Clear** / **Escape** to remove the live ruler. When **Keep Measurement** is enabled, the ruler remains visible while using other tools, but does not appear on other documents.
-4. Use **Color Sampler** to place up to 10 persistent readout points. Drag a point to move it, Alt/Option-click to remove it, or select it and use arrow keys to nudge by 1 pixel (Shift+Arrow for 10). Delete removes the selected point; Escape deselects it.
-5. Sample-point markers remain visible while using other tools; the Info panel offers color values and saved measurements.
+**Where:** Move tool → canvas right-click / Layers panel → layer right-click
 
-**Notes and tips:** Point samples over fully transparent pixels display as transparent rather than black. Saved measurements are stored with the project, unlike the temporary live ruler.
+1. Right-click a layer on the canvas with the Move tool, or right-click its row in the Layers panel.
+2. Both menus honor the same action visibility and order; choose Edit context menu… from either location.
+3. The shared Masks and clipping section includes Add Mask, Apply/Delete Mask, vector mask operations and clipping; Convert and merge also includes Trim to Content.
+4. Right-clicking an unselected layer row makes it the active target before Cut or Copy; right-clicking an already-selected row retains the current multi-selection.
+5. Customizations synchronize immediately between the two menus and are saved in the current browser/app profile.
+
+**Notes and tips:**
+
+- Unavailable commands remain disabled or are omitted when the active layer type does not support them.
+- Old saved menu layouts are preserved; newly introduced commands and sections are appended automatically.
+- Other editing tools' canvas right-click gestures are unaffected.
+
+## Customize the canvas right-click menu
+
+Choose which layer commands appear when right-clicking the canvas.
+
+**Where:** Move tool (V) → right-click a layer → Edit context menu…
+
+1. Activate Move (V), right-click a layer on the canvas, then choose Edit context menu… at the bottom.
+2. Use checkboxes to show or hide an action, and arrow buttons to move it up or down within its section.
+3. Choose Reset defaults to restore all actions and their original order, or Done to close the editor.
+4. Use the Edit section for Undo, Redo, Cut Layer and Paste Layer, alongside transforms, layer styles, arrange and merge.
+
+**Notes and tips:**
+
+- Preferences persist locally in the current browser or desktop-app profile.
+- The Edit context menu… entry cannot be hidden, so the layout can always be restored.
+- The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.
+- Commands that do not apply to the active layer may be disabled or omitted.
+
+## Ruler measurements and persistent color sampler points
+
+Measure calibrated distances and keep color sample readouts on an editable document.
+
+**Where:** Measure tool (K) / Color Sampler (I tool group) / Window → Info
+
+1. Drag with Measure to read pixel length, angle and horizontal/vertical deltas; hold Shift to constrain the measurement angle.
+2. Enable Multi-segment to measure a connected path. Select inches, centimeters or millimeters and use the document PPI, or disable Use Document Resolution to supply manual pixels-per-unit calibration.
+3. Choose Save Ruler to store the current segments in the document's Info panel; choose Clear or press Escape while measuring to remove the temporary ruler.
+4. Enable Keep Measurement to leave the live ruler visible when switching tools; it is not shown on other open documents.
+5. Place Color Sampler points on the canvas, drag a point to move it, or Alt/Option-click it to remove it.
+6. Select a sampler and use arrow keys for one-pixel movement, or Shift plus an arrow for ten pixels; Delete removes the selection and Escape deselects it.
+
+**Notes and tips:**
+
+- Saved measurements are part of the project; temporary ruler geometry is not.
+- Color Sampler markers remain visible while other tools are active.
+- A sample on a fully transparent pixel displays Transparent instead of an invented opaque color.
+- Some high-depth colors are represented as display-preview values; these readouts are not a substitute for scene-linear sampling.

@@ -54,6 +54,9 @@ jobs:
       - name: Validate ruler calibration and persistent-tool overlays
         run: bun scripts/validate-measure.ts
 
+      - name: Validate editable canvas context menu
+        run: bun scripts/validate-layer-context-menu.ts
+
       - name: Validate content-sized docks
         run: bun run dock-sizing:validate
 
