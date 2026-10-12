@@ -227,6 +227,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       document.body.append(anchor);anchor.click();anchor.remove()
       setTimeout(()=>URL.revokeObjectURL(url),1000)
     })
+    let refreshEditedPreview=()=>{}
     const loadPreset=document.createElement('button')
     loadPreset.type='button';loadPreset.textContent='Import color preset…'
     loadPreset.style.cssText=cancel.style.cssText
@@ -247,7 +248,8 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
             toneInputs[key].value=String(loadedTone[key])
           for(const band of RAW_MIX_BANDS)for(const property of mixProperties)
             mixInputs[band][property].value=String(loadedMix[band][property])
-          presetStatus.textContent='Color preset imported. Choose Open RAW to apply it.'
+          presetStatus.textContent='Color preset imported; changes apply to this RAW on Open.'
+          refreshEditedPreview()
         }catch(error){
           presetStatus.textContent='Preset import failed: '+(error instanceof Error?error.message:String(error))
         }
@@ -404,7 +406,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     matchButton.addEventListener('click',schedulePreview)
     // Imported presets update input values programmatically and do not
     // dispatch input events. Refresh the live preview explicitly.
-    loadPreset.addEventListener('change',schedulePreview)
+    refreshEditedPreview=schedulePreview
     presetTools.append(savePreset,loadPreset,presetStatus)
     actions.append(cancel,apply)
     dialog.append(heading,caption,previewSection,form,basic.details,mix.details,optics.details,presetTools,actions)
