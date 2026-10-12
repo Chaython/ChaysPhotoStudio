@@ -81,10 +81,16 @@ function parsePath(resource: Uint8Array, width: number, height: number): ParsedP
   for (let i = 0; i < count; i++, at += RECORD_SIZE) {
     const type = dv.getUint16(at)
     if (type !== (closed ? 1 : 4) && type !== (closed ? 2 : 5)) return null
+    const y = readCoord(at + 10, height)
+    const x = readCoord(at + 14, width)
+    // Photoshop writes ABSOLUTE Bézier control points. Studio's PathAnchor
+    // stores RELATIVE handle offsets and its renderer adds x/y at draw time.
     const anchor: PathAnchor = {
-      inY: readCoord(at + 2, height), inX: readCoord(at + 6, width),
-      y: readCoord(at + 10, height), x: readCoord(at + 14, width),
-      outY: readCoord(at + 18, height), outX: readCoord(at + 22, width),
+      x, y,
+      inX: readCoord(at + 6, width) - x,
+      inY: readCoord(at + 2, height) - y,
+      outX: readCoord(at + 22, width) - x,
+      outY: readCoord(at + 18, height) - y,
       pair: type === (closed ? 1 : 4),
     }
     if (Object.values(anchor).some(v => typeof v === 'number' && !Number.isFinite(v))) return null
@@ -133,8 +139,10 @@ function samePath(original: ParsedPathResource, path: PsdPath | SavedPath, width
     try {
       return a.pair === b.pair &&
         fixed(a.x, width) === fixed(b.x, width) && fixed(a.y, height) === fixed(b.y, height) &&
-        fixed(a.inX, width) === fixed(b.inX, width) && fixed(a.inY, height) === fixed(b.inY, height) &&
-        fixed(a.outX, width) === fixed(b.outX, width) && fixed(a.outY, height) === fixed(b.outY, height)
+        fixed(a.x + a.inX, width) === fixed(b.x + b.inX, width) &&
+        fixed(a.y + a.inY, height) === fixed(b.y + b.inY, height) &&
+        fixed(a.x + a.outX, width) === fixed(b.x + b.outX, width) &&
+        fixed(a.y + a.outY, height) === fixed(b.y + b.outY, height)
     } catch {
       return false
     }
@@ -168,7 +176,8 @@ function encodePath(path: PsdPath | SavedPath, id: number, width: number, height
   for (const a of path.anchors) {
     dv.setUint16(at, path.closed ? (a.pair ? 1 : 2) : (a.pair ? 4 : 5))
     const coords: Array<[number, number]> = [
-      [a.inY, a.inX], [a.y, a.x], [a.outY, a.outX],
+      [a.y + a.inY, a.x + a.inX], [a.y, a.x],
+      [a.y + a.outY, a.x + a.outX],
     ]
     for (let i = 0; i < 3; i++) {
       dv.setInt32(at + 2 + i * 8, fixed(coords[i][0], height))
