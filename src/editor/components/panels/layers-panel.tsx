@@ -71,15 +71,7 @@ export function LayersPanel() {
 
   // Right-click targets the row under the pointer, not a previously
   // active layer. Preserve multi-selection if the target is already selected.
-  const activateContextLayer = (id: string) => {
-    const currentDoc = engine.activeDoc
-    if (!currentDoc || !currentDoc.layers.some(layer => layer.id === id)) return
-    const selected = currentDoc.selectedLayerIds ?? []
-    if (currentDoc.activeLayerId === id && selected.includes(id)) return
-    if (!selected.includes(id)) currentDoc.selectedLayerIds = [id]
-    currentDoc.activeLayerId = id
-    engine.emit()
-  }
+  const activateContextLayer = (id: string) => engine.focusLayerFromContextMenu(id)
 
   const reorder = (id: string, displayIdx: number) => {
     // display index 0 = top → array index = len-1-displayIdx
