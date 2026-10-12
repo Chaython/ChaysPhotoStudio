@@ -114,6 +114,30 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       details.append(summary,grid)
       return {details,grid}
     }
+    // Link familiar Lightroom-style range sliders to exact numeric entry.
+    // Dispatch the same input event so the preview and all consumers remain
+    // synchronized without maintaining a second copy of each setting.
+    const sliders=new Map<HTMLInputElement,HTMLInputElement>()
+    function sliderFor(input:HTMLInputElement){
+      const wrapper=document.createElement('div')
+      wrapper.style.cssText='display:flex;align-items:center;gap:6px;min-width:0'
+      const slider=document.createElement('input')
+      slider.type='range'
+      slider.min=input.min||'-100';slider.max=input.max||'100'
+      slider.step=input.step||'1';slider.value=input.value
+      slider.style.cssText='flex:1;min-width:0;accent-color:var(--primary)'
+      input.style.cssText+=';width:68px;flex:none'
+      input.replaceWith(wrapper)
+      wrapper.append(slider,input)
+      slider.addEventListener('input',()=>{
+        input.value=slider.value
+        input.dispatchEvent(new Event('input',{bubbles:true}))
+      })
+      input.addEventListener('input',()=>{
+        if(input.value.trim()!=='')slider.value=input.value
+      })
+      sliders.set(input,slider)
+    }
     const basic=group('Basic tone and color (non-destructive)',true)
     const toneInputs={} as Record<keyof RawToneSettings,HTMLInputElement>
     for(const [key,label] of [
@@ -125,6 +149,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       const input=field(label+' (-100 to +100)','number',String(current.tone[key]),undefined,basic.grid) as HTMLInputElement
       input.min='-100';input.max='100';input.step='1'
       toneInputs[key]=input
+      sliderFor(input)
     }
     const mix=group('Color Mixer — 8-band HSL',false)
     const mixInputs={} as Record<keyof RawColorMix,Record<keyof RawMixChannel,HTMLInputElement>>
@@ -136,6 +161,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
           'number',String(current.colorMix[band][property]),undefined,mix.grid) as HTMLInputElement
         input.min='-100';input.max='100';input.step='1'
         inputs[property]=input
+        sliderFor(input)
       }
       mixInputs[band]=inputs
     }
@@ -248,6 +274,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
             toneInputs[key].value=String(loadedTone[key])
           for(const band of RAW_MIX_BANDS)for(const property of mixProperties)
             mixInputs[band][property].value=String(loadedMix[band][property])
+          for(const [input,slider] of sliders)slider.value=input.value
           presetStatus.textContent='Color preset imported; changes apply to this RAW on Open.'
           refreshEditedPreview()
         }catch(error){
