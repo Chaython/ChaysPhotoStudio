@@ -631,6 +631,8 @@ export class Engine {
       sourceBitDepth: src.sourceBitDepth,
       workingColorSpace: src.workingColorSpace,
       psdImageResources: src.psdImageResources ? [...src.psdImageResources] : undefined,
+      psdEditablePathResourceIds: src.psdEditablePathResourceIds ? [...src.psdEditablePathResourceIds] : undefined,
+      psdGlobalOpaqueTail: src.psdGlobalOpaqueTail,
       psdGlobalLayerMaskData: src.psdGlobalLayerMaskData,
       psdGlobalAdditionalInfo: src.psdGlobalAdditionalInfo ? [...src.psdGlobalAdditionalInfo] : undefined,
       psdColorModeData: src.psdColorModeData,
