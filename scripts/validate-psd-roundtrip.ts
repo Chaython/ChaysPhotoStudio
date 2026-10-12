@@ -1691,7 +1691,14 @@ if (process.env.PSD_REAL_CORPUS === '1') {
       assert.equal(decoded.canvas.width, decoded.width)
       assert.equal(decoded.canvas.height, decoded.height)
       assert.equal(decoded.depth === 8 || decoded.depth === 16 || decoded.depth === 32, true)
-      assert.ok(decoded.layers.length > 0, 'Layered source must not silently import as a flattened/empty project')
+      if (fixture.name.startsWith('unicode_pathname.')) {
+        assert.ok(decoded.imageResources.some(block =>
+          block.length >= 6 && ((block[4] << 8) | block[5]) >= 2000 &&
+          ((block[4] << 8) | block[5]) <= 2997),
+        'Valid path-only Photoshop files must retain their image-resource path data')
+      } else {
+        assert.ok(decoded.layers.length > 0, 'Layered source must not silently import as a flattened/empty project')
+      }
       assert.equal(decoded.layers.every(layer => layer.canvas.width >= 0 && layer.canvas.height >= 0), true)
       for (const layer of decoded.layers) {
         if (!layer.unsupportedRealMask) continue
@@ -1702,6 +1709,20 @@ if (process.env.PSD_REAL_CORPUS === '1') {
       if (fixture.name === 'layers/smartobject-layer.psd') {
         assert.ok(decoded.layers.some(layer => psdNativeObjectKind(layer.additionalInfo) === 'smart'),
           'Real Photoshop Smart Object test file must expose at least one live placed-layer descriptor')
+      }
+      if (fixture.name === 'unicode_pathname.psb') {
+        assert.ok(decoded.globalOpaqueTail.length >= 8,
+          'PSB untagged global version-16 descriptor must survive import')
+        const saved = buildPsd(decoded.width, decoded.height, [{
+          name: 'Original composite preview', canvas: decoded.canvas, left: 0, top: 0,
+          opacity: 100, blendMode: 'normal', visible: true,
+        }], decoded.canvas, {
+          format: 'psb', imageResources: decoded.imageResources,
+          globalOpaqueTail: decoded.globalOpaqueTail,
+        })
+        const restored = await decodePsd(new Uint8Array(await saved.arrayBuffer()))
+        assert.deepEqual(Array.from(restored.globalOpaqueTail), Array.from(decoded.globalOpaqueTail),
+          'PSB untagged global descriptor must survive export byte-identically')
       }
       if (fixture.name === '16bit5x5.psb') {
         assert.equal(decoded.depth, 16, 'Real Photoshop 16-bit PSB must retain its source depth')
