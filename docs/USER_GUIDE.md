@@ -459,7 +459,7 @@ Open camera RAW, HDR, modern codecs and scientific files while retaining editabl
 
 **Where:** File → Open / Place / Layer → Redevelop RAW Smart Object…
 
-1. Use File → Open or File → Place to select RAW images. The Develop dialog includes exposure, white balance, demosaicing, highlight, denoising and custom lens correction fields.
+1. Use File → Open or File → Place to select RAW images. The Develop dialog includes sensor exposure, white balance, demosaicing, LibRaw highlight recovery, denoising, lens correction, plus reversible 16-bit post-develop Contrast, Highlights, Shadows, Whites, Blacks, Vibrance, Saturation, Warmth and Tint controls. These additional sliders are display-referred approximations rather than Adobe Lightroom's proprietary RAW processing algorithms.
 2. When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.
 3. Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Import individual Lensfun XML calibration files on demand using Import Lensfun XML… in the Develop dialog; Match EXIF Lens requires unambiguous camera lens metadata. A full Lensfun WASM database is not bundled.
 4. OpenEXR supports regular single and multipart scanline/single-level tiled images with NONE/RLE/ZIPS/ZIP compression. Float32 HDR samples are retained per part; deep and multiresolution EXR remain unsupported.
@@ -468,6 +468,7 @@ Open camera RAW, HDR, modern codecs and scientific files while retaining editabl
 
 **Notes and tips:**
 
+- The Lightroom-style basic controls are global RAW-develop adjustments; local AI masks, calibrated camera white-balance Kelvin/tint, color grading and full Lightroom Develop parity are not implemented by these controls. Neutral slider values leave decoded samples unchanged. Save a project to retain the recipe with the embedded original RAW.
 - Files larger than 64 MiB can be developed as ordinary raster images but their original RAW bytes are not embedded. RAW decoders may use a clearly labeled 8-bit camera preview if sensor decoding fails.
 - Imported Lensfun XML uses recorded calibration values with conservative EXIF matching; the full licensed database and WASM remapping engine are not bundled. Save the project to retain RAW originals and recipes.
 - DICOM support is only for graphic editing, never diagnosis or medical measurements. Rare compressed transfer syntaxes and ambiguous multifragment frame tables are rejected.
