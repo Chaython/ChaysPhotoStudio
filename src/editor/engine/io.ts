@@ -151,6 +151,7 @@ export async function openFiles(files: File[], asLayer = false) {
           hdrPixels: decoded.sourceFloatPixels,
           resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata,
           psdImageResources: decoded.psdImageResources?.map(bytesToBase64),          psdGlobalLayerMaskData: decoded.psdGlobalLayerMaskData?.length ? bytesToBase64(decoded.psdGlobalLayerMaskData) : undefined,          psdGlobalAdditionalInfo: decoded.psdGlobalAdditionalInfo?.map(bytesToBase64),
+          psdGlobalOpaqueTail: decoded.psdGlobalOpaqueTail?.length ? bytesToBase64(decoded.psdGlobalOpaqueTail) : undefined,
           psdSourceColorMode: decoded.psdSourceColorMode,
           psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
           psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
@@ -312,6 +313,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     workingBitDepth: decoded.sourceBitDepth === 32 && decoded.psdLayers?.some(l => l.hdrPixels) ? 32 : canvasProfile(decoded.canvas).bitDepth,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
     psdImageResources: decoded.psdImageResources?.map(bytesToBase64),    psdGlobalLayerMaskData: decoded.psdGlobalLayerMaskData?.length ? bytesToBase64(decoded.psdGlobalLayerMaskData) : undefined,    psdGlobalAdditionalInfo: decoded.psdGlobalAdditionalInfo?.map(bytesToBase64),
+          psdGlobalOpaqueTail: decoded.psdGlobalOpaqueTail?.length ? bytesToBase64(decoded.psdGlobalOpaqueTail) : undefined,
     psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
     psdSourceColorMode: decoded.psdSourceColorMode,
     psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
@@ -546,6 +548,7 @@ export interface SerializedProject {
     psdEditablePathResourceIds?: number[]
     psdGlobalLayerMaskData?: string
     psdGlobalAdditionalInfo?: string[]
+    psdGlobalOpaqueTail?: string
     psdColorModeData?: string
     psdSourceColorMode?: number
     psdExtraMergedChannels?: string[]
@@ -673,6 +676,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       psdEditablePathResourceIds: doc.psdEditablePathResourceIds ? [...doc.psdEditablePathResourceIds] : undefined,
       psdGlobalLayerMaskData: doc.psdGlobalLayerMaskData,
       psdGlobalAdditionalInfo: doc.psdGlobalAdditionalInfo ? [...doc.psdGlobalAdditionalInfo] : undefined,
+      psdGlobalOpaqueTail: doc.psdGlobalOpaqueTail,
       psdColorModeData: doc.psdColorModeData,
       psdSourceColorMode: doc.psdSourceColorMode,
       psdExtraMergedChannels: doc.psdExtraMergedChannels ? [...doc.psdExtraMergedChannels] : undefined,
@@ -894,6 +898,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
     psdGlobalLayerMaskData: typeof project.doc.psdGlobalLayerMaskData === 'string' ? project.doc.psdGlobalLayerMaskData : undefined,
     psdGlobalAdditionalInfo: Array.isArray(project.doc.psdGlobalAdditionalInfo)
       ? project.doc.psdGlobalAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
+    psdGlobalOpaqueTail: typeof project.doc.psdGlobalOpaqueTail === 'string' ? project.doc.psdGlobalOpaqueTail : undefined,
     psdImageResources: Array.isArray(project.doc.psdImageResources)
       ? project.doc.psdImageResources.filter((v: unknown) => typeof v === 'string')
       : undefined,
