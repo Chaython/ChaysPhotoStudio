@@ -689,6 +689,27 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.",
       "Commands that do not apply to the active layer may be disabled or omitted."
     ]
+  },
+  {
+    "id": "ruler-color-sampler",
+    "title": "Ruler measurements and persistent color sampler points",
+    "category": "Tools",
+    "path": "Measure tool (K) / Color Sampler (I tool group) / Window → Info",
+    "summary": "Measure calibrated distances and keep color sample readouts on an editable document.",
+    "steps": [
+      "Drag with Measure to read pixel length, angle and horizontal/vertical deltas; hold Shift to constrain the measurement angle.",
+      "Enable Multi-segment to measure a connected path. Select inches, centimeters or millimeters and use the document PPI, or disable Use Document Resolution to supply manual pixels-per-unit calibration.",
+      "Choose Save Ruler to store the current segments in the document's Info panel; choose Clear or press Escape while measuring to remove the temporary ruler.",
+      "Enable Keep Measurement to leave the live ruler visible when switching tools; it is not shown on other open documents.",
+      "Place Color Sampler points on the canvas, drag a point to move it, or Alt/Option-click it to remove it.",
+      "Select a sampler and use arrow keys for one-pixel movement, or Shift plus an arrow for ten pixels; Delete removes the selection and Escape deselects it."
+    ],
+    "tips": [
+      "Saved measurements are part of the project; temporary ruler geometry is not.",
+      "Color Sampler markers remain visible while other tools are active.",
+      "A sample on a fully transparent pixel displays Transparent instead of an invented opaque color.",
+      "Some high-depth colors are represented as display-preview values; these readouts are not a substitute for scene-linear sampling."
+    ]
   }
 ]
 

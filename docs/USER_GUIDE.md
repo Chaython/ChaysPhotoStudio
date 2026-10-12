@@ -39,6 +39,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Content-Aware editing](#content-aware-editing)
 - [Tool groups and choosing the right tool](#tool-groups-and-choosing-the-right-tool)
 - [Paths, text and shapes](#paths-text-and-shapes)
+- [Ruler measurements and persistent color sampler points](#ruler-measurements-and-persistent-color-sampler-points)
 
 ### Color & files
 
@@ -709,3 +710,23 @@ Choose which layer commands appear when right-clicking the canvas.
 - The Edit context menu… entry cannot be hidden, so the layout can always be restored.
 - The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.
 - Commands that do not apply to the active layer may be disabled or omitted.
+
+## Ruler measurements and persistent color sampler points
+
+Measure calibrated distances and keep color sample readouts on an editable document.
+
+**Where:** Measure tool (K) / Color Sampler (I tool group) / Window → Info
+
+1. Drag with Measure to read pixel length, angle and horizontal/vertical deltas; hold Shift to constrain the measurement angle.
+2. Enable Multi-segment to measure a connected path. Select inches, centimeters or millimeters and use the document PPI, or disable Use Document Resolution to supply manual pixels-per-unit calibration.
+3. Choose Save Ruler to store the current segments in the document's Info panel; choose Clear or press Escape while measuring to remove the temporary ruler.
+4. Enable Keep Measurement to leave the live ruler visible when switching tools; it is not shown on other open documents.
+5. Place Color Sampler points on the canvas, drag a point to move it, or Alt/Option-click it to remove it.
+6. Select a sampler and use arrow keys for one-pixel movement, or Shift plus an arrow for ten pixels; Delete removes the selection and Escape deselects it.
+
+**Notes and tips:**
+
+- Saved measurements are part of the project; temporary ruler geometry is not.
+- Color Sampler markers remain visible while other tools are active.
+- A sample on a fully transparent pixel displays Transparent instead of an invented opaque color.
+- Some high-depth colors are represented as display-preview values; these readouts are not a substitute for scene-linear sampling.

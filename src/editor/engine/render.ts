@@ -12,6 +12,7 @@ import { compositeDocument } from './document'
 import { proofDisplayCanvas } from './color-proof'
 import { drawAnts } from './selection'
 import { getTool } from '../tools/registry'
+import { renderPersistentMeasurementOverlay } from '../tools/measure'
 import { engine } from './engine'
 import { RULER_W, drawRulers, drawGuides, drawGrid, drawPixelGrid, hitGuide } from './guides'
 import { useEditorStore } from '../store'
@@ -396,6 +397,12 @@ export class Viewport {
     }
     // persistent named paths remain visible independently of the active tool.
     for (const path of doc.savedPaths ?? []) drawSavedPathOverlay(ctx, path, v)
+    // Document annotations remain visible while painting or transforming.
+    // The active tool will render its own overlay, so never draw it twice.
+    if (activeToolId !== 'measure') renderPersistentMeasurementOverlay(ctx, v, w, h)
+    if (activeToolId !== 'color-sampler' && doc.colorSamplers?.length) {
+      getTool('color-sampler')?.renderOverlay?.(ctx, v, w, h, null)
+    }
     // tool overlay (brush rings live on the cursor layer, not here)
     const tool = getTool(activeToolId)
     if (tool?.renderOverlay) tool.renderOverlay(ctx, v, w, h, this.lastMouse)
