@@ -723,6 +723,7 @@ Measure calibrated distances and keep color sample readouts on an editable docum
 4. Enable Keep Measurement to leave the live ruler visible when switching tools; it is not shown on other open documents.
 5. Place Color Sampler points on the canvas, drag a point to move it, or Alt/Option-click it to remove it.
 6. Select a sampler and use arrow keys for one-pixel movement, or Shift plus an arrow for ten pixels; Delete removes the selection and Escape deselects it.
+7. In the Info panel, enter exact X/Y values for a point, click Copy to copy its HEX value, or export all point colors, coordinates, sample sizes and source choices with CSV.
 
 **Notes and tips:**
 
@@ -730,3 +731,5 @@ Measure calibrated distances and keep color sample readouts on an editable docum
 - Color Sampler markers remain visible while other tools are active.
 - A sample on a fully transparent pixel displays Transparent instead of an invented opaque color.
 - Some high-depth colors are represented as display-preview values; these readouts are not a substitute for scene-linear sampling.
+- The Info panel lets you enter exact X/Y sampler coordinates, copy non-transparent HEX values and export sampler readings to CSV.
+- Fully transparent or empty-layer samples are reported as Transparent, without fake black RGB/CMYK/Lab values.
