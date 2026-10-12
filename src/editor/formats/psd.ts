@@ -589,6 +589,8 @@ export interface PsdDecoded {
   globalLayerMaskData: Uint8Array
   /** Non-layer-data global additional-info blocks (including linked object records). */
   globalAdditionalInfo: Uint8Array[]
+  /** Untagged length-prefixed Photoshop global descriptor bytes retained exactly. */
+  globalOpaqueTail: Uint8Array
   /** Original Photoshop color-mode section payload (especially 32-bit hdrt). */
   colorModeData: Uint8Array
   /** Opaque extra RGB merged spot/alpha planes beyond RGBA. */
@@ -997,6 +999,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
   const lmEnd = pos + lmLen
   let globalLayerMaskData = new Uint8Array(0)
   const globalAdditionalInfo: Uint8Array[] = []
+  let globalOpaqueTail = new Uint8Array(0)
 
   const compatibilityWarnings = new Set<string>()
   const faithfullyMappedBlendKeys = new Set(['norm', 'dark', 'mul', 'mult', 'lite', 'scrn', 'screen',
@@ -1316,9 +1319,25 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
       gp = end
     }
     if (gp < lmEnd && bytes.subarray(gp, lmEnd).some(value => value !== 0)) {
-      const preview = Array.from(bytes.subarray(gp, Math.min(lmEnd, gp + 24)))
-        .map(value => value.toString(16).padStart(2, '0')).join(' ')
-      throw new Error(`Malformed Photoshop global additional-layer metadata (offset ${gp}, ${lmEnd - gp} bytes, hex ${preview})`)
+      // Some genuine Photoshop PSBs contain an untagged, length-prefixed
+      // version-16 descriptor after their global layer tags (for example,
+      // the psd-tools unicode_pathname.psb fixture). Do not call this a
+      // corrupt 8BIM block or discard the opaque bytes. Recognize this
+      // narrowly; other arbitrary nonzero trailing data remains an error.
+      const remaining = lmEnd - gp
+      const payloadLength = remaining >= 8 ? view.getUint32(gp) : 0
+      const payloadEnd = gp + 4 + payloadLength
+      const trailingPad = lmEnd - payloadEnd
+      if (psb && payloadLength >= 4 && trailingPad >= 0 && trailingPad <= 3 &&
+          view.getUint32(gp + 4) === 16 &&
+          bytes.subarray(payloadEnd, lmEnd).every(value => value === 0)) {
+        globalOpaqueTail = bytes.slice(gp, lmEnd)
+        compatibilityWarnings.add('An untagged Photoshop global descriptor is preserved verbatim but cannot be edited in Studio')
+      } else {
+        const preview = Array.from(bytes.subarray(gp, Math.min(lmEnd, gp + 24)))
+          .map(value => value.toString(16).padStart(2, '0')).join(' ')
+        throw new Error(`Malformed Photoshop global additional-layer metadata (offset ${gp}, ${remaining} bytes, hex ${preview})`)
+      }
     }
     pos = lmEnd
   }
@@ -1556,7 +1575,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     hasAlpha = getImageData(composite).data.some((v, i) => i % 4 === 3 && v < 255)
   }
 
-  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, guides: readPsdGuides(imageResources), paths: readPsdPaths(imageResources, width, height), globalLayerMaskData, globalAdditionalInfo, colorModeData, extraMergedChannels, warnings: [...compatibilityWarnings] }
+  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, guides: readPsdGuides(imageResources), paths: readPsdPaths(imageResources, width, height), globalLayerMaskData, globalAdditionalInfo, globalOpaqueTail, colorModeData, extraMergedChannels, warnings: [...compatibilityWarnings] }
 }
 
 // ============================================================
@@ -1902,7 +1921,7 @@ export function buildPsd(
   width: number, height: number,
   layers: PsdLayerInput[],
   composite: HTMLCanvasElement,
-  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; sourceColorMode?: number; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array; extraMergedChannels?: Uint8Array[]; globalLayerMaskData?: Uint8Array; globalAdditionalInfo?: Uint8Array[] } = {},
+  options: { resolutionPpi?: number; depth?: 8 | 16 | 32; imageResources?: Uint8Array[]; sourceColorMode?: number; format?: 'psd' | 'psb'; compositeHdrPixels?: Float32Array; colorModeData?: Uint8Array; extraMergedChannels?: Uint8Array[]; globalLayerMaskData?: Uint8Array; globalAdditionalInfo?: Uint8Array[]; globalOpaqueTail?: Uint8Array } = {},
 ): Blob {
   const depth: 8 | 16 | 32 = options.depth === 32 ? 32 : options.depth === 16 ? 16 : 8
   const psb = options.format === 'psb'
@@ -2128,8 +2147,13 @@ export function buildPsd(
     if (!(block instanceof Uint8Array) || block.length < 12) throw new Error('Invalid Photoshop global metadata block')
     return !sourceLayerBlocks.has(fxBlockKey(block))
   }).map(block => normalizePsdTaggedBlock(block, psb))
+  const globalOpaqueTail = options.globalOpaqueTail ?? new Uint8Array(0)
+  if (!(globalOpaqueTail instanceof Uint8Array)) throw new Error('Invalid Photoshop global descriptor tail')
+  if (globalOpaqueTail.length && (!psb || globalOpaqueTail.length < 8)) {
+    throw new Error('Untagged Photoshop global descriptor bytes can only be preserved in PSB format')
+  }
   const lmContent = concatUint8([layerInfo, u32(globalMask.length), globalMask,
-    ...globalTags, ...(highDepthTag ? [highDepthTag] : [])])
+    ...globalTags, ...(highDepthTag ? [highDepthTag] : []), globalOpaqueTail])
   const lmPad = (4 - (lmContent.length & 3)) & 3
   const lmSection = concatUint8([sectionLength(pad4(lmContent.length)), lmContent, new Uint8Array(lmPad)])
 
