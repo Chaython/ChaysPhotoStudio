@@ -64,6 +64,8 @@ export interface DecodedImage {
   documentLayers?: ParsedDocumentLayer[]
   warnings?: string[]
   psdImageResources?: Uint8Array[]
+  /** Native editable guides imported from Photoshop resource 1032. */
+  psdGuides?: Array<{ orientation: 'h' | 'v'; pos: number }>
   psdGlobalLayerMaskData?: Uint8Array
   psdGlobalAdditionalInfo?: Uint8Array[]
   /** Photoshop-origin 32-bit HDR color-mode payload (hdrt) for exact passthrough. */
@@ -392,6 +394,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
         sourceColorSpace: psd.depth === 32 ? 'linear-srgb' : undefined,
         resolutionPpi: psd.resolutionPpi,
         psdImageResources: psd.imageResources.map(b => b.slice()),
+        psdGuides: psd.guides.map(g => ({ ...g })),
         psdGlobalLayerMaskData: psd.globalLayerMaskData.slice(),
         psdGlobalAdditionalInfo: psd.globalAdditionalInfo.map(b => b.slice()),
         psdColorModeData: psd.depth === 32 ? psd.colorModeData.slice() : undefined,
