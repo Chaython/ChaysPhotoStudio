@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdGroupPaths, psdWillReplaceSourceFx, normalizePsdTaggedBlock, parsePsdBlendIfRanges, encodePsdBlendIfRanges, psdHasAdditionalBlendIfRanges } from '../src/editor/formats/psd'
+import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdImportedSmartIsUnchanged, psdGroupPaths, psdWillReplaceSourceFx, normalizePsdTaggedBlock, parsePsdBlendIfRanges, encodePsdBlendIfRanges, psdHasAdditionalBlendIfRanges } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
 // without requiring a graphics stack or a browser installation.
@@ -750,6 +750,69 @@ const rasterOnlyBlocks = stripPsdNativeObjectBlocks(nativeDescriptors)
 assert.deepEqual(rasterOnlyBlocks, [nativeDescriptors[3]],
   'Raster edits remove native Photoshop objects, but retain unrelated effects')
 assert.equal(psdNativeObjectKind(rasterOnlyBlocks), null)
+const cachedPhotoshopPreview = canvas(135, 75, 190)
+const smartPreviewOrigin = {
+  kind: 'smart' as const,
+  pixelFingerprint: psdPixelFingerprint(cachedPhotoshopPreview),
+  maskFingerprint: null,
+  maskEnabled: false,
+  left: 5, top: 9,
+  width: cachedPhotoshopPreview.width, height: cachedPhotoshopPreview.height,
+}
+const unchangedPhotoshopSmart = {
+  kind: 'smart' as const,
+  source: cachedPhotoshopPreview,
+  transform: { x: 6, y: 10, scale: 1, rotation: 0 },
+  smartFilters: [] as Array<{ enabled: boolean }>,
+  mask: null,
+  maskEnabled: false,
+  psdNativeOrigin: smartPreviewOrigin,
+}
+assert.equal(psdImportedSmartIsUnchanged(unchangedPhotoshopSmart as any), true,
+  'Unmodified Photoshop cached Smart Object preview and placement retain its live descriptor')
+assert.equal(psdImportedSmartIsUnchanged({
+  ...unchangedPhotoshopSmart, transform: { ...unchangedPhotoshopSmart.transform, x: 7 },
+} as any), false, 'Moving an imported Smart Object must invalidate stale Photoshop transform metadata')
+assert.equal(psdImportedSmartIsUnchanged({
+  ...unchangedPhotoshopSmart, smartFilters: [{ enabled: true }],
+} as any), false, 'An enabled Studio Smart Filter must invalidate Photoshop native preview descriptor')
+assert.equal(psdImportedSmartIsUnchanged({
+  ...unchangedPhotoshopSmart, transform: { ...unchangedPhotoshopSmart.transform, scale: 0.5 },
+} as any), false, 'Scaling imported Photoshop cached previews must not retain stale live descriptors')
+const alteredPreview = canvas(135, 75, 191)
+assert.equal(psdImportedSmartIsUnchanged({
+  ...unchangedPhotoshopSmart, source: alteredPreview,
+} as any), false, 'Edited cached Smart Object source pixels must invalidate native Photoshop descriptor')
+for (const format of ['psd', 'psb'] as const) {
+  const layerRaster = canvas(43, 67, 91)
+  const source = buildPsd(2, 2, [{
+    name: 'Photoshop placed Smart Object', canvas: layerRaster, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: [nativeDescriptor('SoLd')],
+  }], layerRaster, { format })
+  const decoded = await decodePsd(new Uint8Array(await source.arrayBuffer()))
+  assert.equal(psdNativeObjectKind(decoded.layers[0].additionalInfo), 'smart',
+    'PSD and PSB must identify Photoshop SoLd Smart Object descriptors')
+  const unchanged = buildPsd(2, 2, [{
+    name: decoded.layers[0].name, canvas: decoded.layers[0].canvas,
+    left: decoded.layers[0].left, top: decoded.layers[0].top,
+    opacity: decoded.layers[0].opacity, blendMode: decoded.layers[0].blendMode,
+    visible: decoded.layers[0].visible,
+    additionalInfo: decoded.layers[0].additionalInfo,
+  }], decoded.canvas, { format })
+  const same = await decodePsd(new Uint8Array(await unchanged.arrayBuffer()))
+  assert.equal(psdNativeObjectKind(same.layers[0].additionalInfo), 'smart',
+    'Unedited Smart Object must retain the original Photoshop native descriptor')
+  const rasterized = buildPsd(2, 2, [{
+    name: decoded.layers[0].name, canvas: decoded.layers[0].canvas,
+    left: 0, top: 0, opacity: 100, blendMode: 'normal', visible: true,
+    additionalInfo: stripPsdNativeObjectBlocks(decoded.layers[0].additionalInfo),
+  }], decoded.canvas, { format })
+  const changed = await decodePsd(new Uint8Array(await rasterized.arrayBuffer()))
+  assert.equal(psdNativeObjectKind(changed.layers[0].additionalInfo), null,
+    'Rasterized Smart Object must not contain a stale Photoshop SoLd descriptor')
+}
+
 const sourceForNative = canvas(140, 60, 80)
 const initialFingerprint = psdPixelFingerprint(sourceForNative)
 assert.equal(initialFingerprint, psdPixelFingerprint(sourceForNative), 'fingerprint remains stable')
