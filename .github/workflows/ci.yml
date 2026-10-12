@@ -51,6 +51,9 @@ jobs:
       - name: Validate all editor tools
         run: bun run tools:validate
 
+      - name: Validate editable canvas context menu
+        run: bun scripts/validate-layer-context-menu.ts
+
       - name: Validate content-sized docks
         run: bun run dock-sizing:validate
 
