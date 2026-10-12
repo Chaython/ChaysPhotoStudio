@@ -100,6 +100,15 @@ assert.throws(() => writePsdGuides([corruptedGuide], shiftedGuides),
   /malformed or duplicate Photoshop guide resources/, 'Editing an unparseable original resource must fail safely')
 assert.throws(() => writePsdGuides([customGrid, customGrid], shiftedGuides),
   /malformed or duplicate Photoshop guide resources/, 'Duplicate guide resources must not be silently overwritten')
+const guidesWithUnknownTail = new Uint8Array(customGrid.length + 2)
+guidesWithUnknownTail.set(customGrid)
+guidesWithUnknownTail.set([0x7a, 0x4d], customGrid.length)
+new DataView(guidesWithUnknownTail.buffer).setUint32(8, customGrid.length - 12 + 2)
+assert.deepEqual(readPsdGuides([guidesWithUnknownTail]), originalGuides)
+assert.equal(writePsdGuides([guidesWithUnknownTail], originalGuides)[0], guidesWithUnknownTail,
+  'Unchanged guide resources with unknown trailing Adobe data remain byte-identical')
+assert.throws(() => writePsdGuides([guidesWithUnknownTail], shiftedGuides),
+  /unknown trailing metadata/, 'Editing must not discard unrecognized Photoshop guide metadata')
 for (const format of ['psd', 'psb'] as const) {
   const rgb = canvas(50, 110, 170)
   const binary = buildPsd(2, 2, [{
