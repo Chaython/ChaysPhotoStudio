@@ -1,6 +1,6 @@
 'use client'
 import { Fragment } from 'react'
-// Canvas right-click context menu (Move tool active): layer functions at the
+// Shared canvas (Move tool) and Layers-panel right-click menu: layer functions at the
 // pointer — "Expand to Fill Frame" / smart-fill empty space, transform,
 // duplicate/delete, arrange, flip, rasterize, merge, rename, properties.
 // Rendered inside the Radix <ContextMenu> tree in canvas-workspace.tsx.
@@ -9,7 +9,7 @@ import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { Frame, Copy, Trash2, FlipHorizontal, FlipVertical, Combine, SquareDashed, Sparkles, ClipboardPaste, Scaling, ArrowUpDown, Pencil, SlidersHorizontal, ArrowUp, ArrowUpToLine, ArrowDown, ArrowDownToLine, Image as ImageIcon, Type, Shapes, Layers } from 'lucide-react'
 import type { Rect } from '../../types'
-import { Settings2, Undo2, Redo2, Scissors } from 'lucide-react'
+import { Settings2, Undo2, Redo2, Scissors, Square, Stamp, PenTool, CornerDownRight, ScanLine } from 'lucide-react'
 import { LAYER_CONTEXT_MENU_SECTIONS, normalizeLayerContextPreferences, type LayerContextActionId, type LayerContextMenuPreferences } from './layer-context-menu-config'
 
 const kindLabel: Record<string, string> = {
@@ -24,11 +24,12 @@ const kindIcon: Record<string, typeof ImageIcon> = {
  *  active layer). Re-resolves the layer from the engine at render time so
  *  item state (kind/locked/index) is always current. */
 export function CanvasLayerMenuContent({
-  layerId, preferences, onCustomize,
+  layerId, preferences, onCustomize, onRename,
 }: {
   layerId: string
   preferences: LayerContextMenuPreferences
   onCustomize: () => void
+  onRename?: () => void
 }) {
   const openDialog = useEditorStore(s => s.openDialog)
   const setRightPanelTab = useEditorStore(s => s.setRightPanelTab)
@@ -45,6 +46,9 @@ export function CanvasLayerMenuContent({
   const rect: Rect | null = engine.layerContentRect(layer.id)
   const pixelLayer = layer.kind !== 'adjustment'
   const canEdit = pixelLayer && !layer.locked
+  const canMask = !layer.locked && !layer.mask
+  const hasMask = !!layer.mask
+  const hasVectorMask = !!layer.vectorMask
   const notBottom = idx > 0
   const notTop = idx < doc.layers.length - 1
   const act = (fn: () => void) => () => fn()
@@ -177,11 +181,51 @@ export function CanvasLayerMenuContent({
       </ContextMenuItem>
     ),
     'rename': (
-      <ContextMenuItem onClick={rename}><Pencil /> Rename…</ContextMenuItem>
+      <ContextMenuItem onClick={onRename ?? rename}><Pencil /> Rename…</ContextMenuItem>
     ),
     'properties': (
       <ContextMenuItem onClick={act(() => setRightPanelTab('properties'))}><SlidersHorizontal /> Layer Properties…</ContextMenuItem>
     ),
+    'mask-selection': (
+      <ContextMenuItem disabled={!canMask} onClick={() => engine.addLayerMask(layer.id, true)}>
+        <SquareDashed /> Add Mask from Selection
+      </ContextMenuItem>
+    ),
+    'mask-reveal': (
+      <ContextMenuItem disabled={!canMask} onClick={() => engine.addLayerMask(layer.id, false)}>
+        <Square /> Add Mask (Reveal All)
+      </ContextMenuItem>
+    ),
+    'mask-apply': (hasMask ? (
+      <ContextMenuItem disabled={layer.locked || layer.kind !== 'raster' || !layer.maskEnabled} onClick={() => engine.deleteLayerMask(layer.id, true)}>
+        <Stamp /> Apply Mask
+      </ContextMenuItem>
+    ) : null),
+    'mask-delete': (hasMask ? (
+      <ContextMenuItem disabled={layer.locked} onClick={() => engine.deleteLayerMask(layer.id, false)}>
+        <Trash2 /> Delete Mask
+      </ContextMenuItem>
+    ) : null),
+    'vector-mask-toggle': (hasVectorMask ? (
+      <ContextMenuItem disabled={layer.locked} onClick={() => engine.toggleVectorMask(layer.id)}>
+        <PenTool /> {layer.vectorMask?.enabled ? 'Disable' : 'Enable'} Vector Mask
+      </ContextMenuItem>
+    ) : null),
+    'vector-mask-delete': (hasVectorMask ? (
+      <ContextMenuItem disabled={layer.locked} onClick={() => engine.deleteVectorMask(layer.id)}>
+        <Trash2 /> Delete Vector Mask
+      </ContextMenuItem>
+    ) : null),
+    'clip-toggle': (
+      <ContextMenuItem disabled={!notBottom || layer.locked} onClick={() => engine.toggleClipping(layer.id)}>
+        <CornerDownRight /> {layer.clipped ? 'Release Clipping' : 'Clip to Layer Below'}
+      </ContextMenuItem>
+    ),
+    'trim': (layer.kind === 'raster' ? (
+      <ContextMenuItem disabled={layer.locked} onClick={() => engine.trimLayerToContent(layer.id)}>
+        <ScanLine /> Trim to Content
+      </ContextMenuItem>
+    ) : null),
     'rasterize': (layer.kind !== 'raster' && !layer.locked ? (
       <ContextMenuItem onClick={act(() => engine.rasterizeLayer(layer.id))}>
           <SquareDashed />
@@ -190,7 +234,7 @@ export function CanvasLayerMenuContent({
     ) : null),
   }
   return (
-    <ContextMenuContent className="min-w-56 text-xs max-h-[75vh] overflow-y-auto" aria-label={`Layer actions: ${layer.name}`}>
+    <ContextMenuContent className="z-50 min-w-56 text-xs max-h-[75vh] overflow-y-auto" aria-label={`Layer actions: ${layer.name}`}>
       <ContextMenuLabel className="text-xs font-medium truncate max-w-64 block">
         {layer.name}
         {layer.locked && <span className="text-muted-foreground font-normal"> · locked</span>}

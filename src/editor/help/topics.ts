@@ -653,6 +653,25 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     ]
   },
   {
+    "id": "shared-layer-context-menus",
+    "title": "Shared canvas and Layers panel right-click menus",
+    "category": "Workspace",
+    "path": "Move tool → canvas right-click / Layers panel → layer right-click",
+    "summary": "Use one customizable set of layer commands across both editing surfaces.",
+    "steps": [
+      "Right-click a layer on the canvas with the Move tool, or right-click its row in the Layers panel.",
+      "Both menus honor the same action visibility and order; choose Edit context menu… from either location.",
+      "The shared Masks and clipping section includes Add Mask, Apply/Delete Mask, vector mask operations and clipping; Convert and merge also includes Trim to Content.",
+      "Right-clicking an unselected layer row makes it the active target before Cut or Copy; right-clicking an already-selected row retains the current multi-selection.",
+      "Customizations synchronize immediately between the two menus and are saved in the current browser/app profile."
+    ],
+    "tips": [
+      "Unavailable commands remain disabled or are omitted when the active layer type does not support them.",
+      "Old saved menu layouts are preserved; newly introduced commands and sections are appended automatically.",
+      "Other editing tools' canvas right-click gestures are unaffected."
+    ]
+  },
+  {
     "id": "customize-context-menu",
     "title": "Customize the canvas right-click menu",
     "category": "Workspace",

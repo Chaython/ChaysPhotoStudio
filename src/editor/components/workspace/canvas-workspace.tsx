@@ -8,7 +8,7 @@ import { pickLayerAt } from '../../tools/shared'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { CanvasLayerMenuContent } from './canvas-context-menu'
 import { LayerContextMenuEditor } from './layer-context-menu-editor'
-import { loadLayerContextPreferences, saveLayerContextPreferences, type LayerContextMenuPreferences } from './layer-context-menu-config'
+import { useLayerContextMenuPreferences } from './use-layer-context-menu-preferences'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { ZoomIn, ZoomOut, Maximize2, Frame } from 'lucide-react'
@@ -26,13 +26,8 @@ export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
   const activeDocId = useEditorStore(s => s.activeDocId)
   const activeTool = useEditorStore(s => s.activeTool)
   const renderTick = useEditorStore(s => s.renderTick)
-  // Lazy initializer reads saved preferences without a synchronous setState effect.
-  const [contextPreferences, setContextPreferences] = useState<LayerContextMenuPreferences>(loadLayerContextPreferences)
+  const [contextPreferences, updateContextPreferences] = useLayerContextMenuPreferences()
   const [editingContextMenu, setEditingContextMenu] = useState(false)
-  const updateContextPreferences = useCallback((next: LayerContextMenuPreferences) => {
-    setContextPreferences(next)
-    saveLayerContextPreferences(next)
-  }, [])
 
   useEffect(() => {
     const host = hostRef.current
@@ -142,12 +137,7 @@ export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
     const hit = docX >= 0 && docY >= 0 && docX < doc.width && docY < doc.height ? pickLayerAt(docX, docY) : null
     const subject = hit ?? doc.activeLayerId
     if (!subject) { setCtxLayerId(null); return }
-    const selected = doc.selectedLayerIds ?? []
-    if (!selected.includes(subject)) doc.selectedLayerIds = [subject]
-    if (doc.activeLayerId !== subject || !selected.includes(subject)) {
-      doc.activeLayerId = subject
-      engine.emit()
-    }
+    engine.focusLayerFromContextMenu(subject)
     setCtxLayerId(subject)
   }, [])
   const ctxMenuEnabled = activeTool === 'move' && !!activeDocId

@@ -1,5 +1,5 @@
 /**
- * The Move tool's layer context menu is user-configurable. Keep the catalog
+ * Canvas and Layers-panel context menus share one customizable catalog. Keep the catalog
  * independent of React so preferences can be validated without the DOM.
  */
 export const LAYER_CONTEXT_MENU_SECTIONS = [
@@ -22,6 +22,15 @@ export const LAYER_CONTEXT_MENU_SECTIONS = [
     { id: 'copy-pixels', label: 'Copy Layer Pixels' },
     { id: 'delete', label: 'Delete Layer' },
   ] },
+  { id: 'masks', label: 'Masks and clipping', entries: [
+    { id: 'mask-selection', label: 'Add Mask from Selection' },
+    { id: 'mask-reveal', label: 'Add Mask (Reveal All)' },
+    { id: 'mask-apply', label: 'Apply Mask' },
+    { id: 'mask-delete', label: 'Delete Mask' },
+    { id: 'vector-mask-toggle', label: 'Enable/Disable Vector Mask' },
+    { id: 'vector-mask-delete', label: 'Delete Vector Mask' },
+    { id: 'clip-toggle', label: 'Toggle Clipping' },
+  ] },
   { id: 'arrange', label: 'Arrange and flip', entries: [
     { id: 'arrange', label: 'Arrange submenu' },
     { id: 'flip-h', label: 'Flip Layer Horizontal' },
@@ -29,6 +38,7 @@ export const LAYER_CONTEXT_MENU_SECTIONS = [
   ] },
   { id: 'convert', label: 'Convert and merge', entries: [
     { id: 'rasterize', label: 'Rasterize Layer' },
+    { id: 'trim', label: 'Trim to Content' },
     { id: 'merge-down', label: 'Merge Down' },
     { id: 'rename', label: 'Rename Layer' },
   ] },

@@ -28,8 +28,8 @@ export function LayerContextMenuEditor({
         <DialogHeader>
           <DialogTitle>Edit right-click menu</DialogTitle>
           <DialogDescription>
-            Choose which actions appear when right-clicking a layer with the Move tool.
-            Move actions within their sections; changes are saved on this device.
+            Choose which actions appear when right-clicking a layer on the canvas (Move tool)
+            or in the Layers panel. Both menus share these settings on this device.
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 overflow-y-auto space-y-3 pr-1" aria-label="Layer context menu layout">
