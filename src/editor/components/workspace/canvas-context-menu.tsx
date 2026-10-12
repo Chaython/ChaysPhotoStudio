@@ -208,7 +208,7 @@ export function CanvasLayerMenuContent({
     ) : null),
     'vector-mask-toggle': (hasVectorMask ? (
       <ContextMenuItem disabled={layer.locked} onClick={() => engine.toggleVectorMask(layer.id)}>
-        <PenTool /> {layer.vectorMaskEnabled ? 'Disable' : 'Enable'} Vector Mask
+        <PenTool /> {layer.vectorMask?.enabled ? 'Disable' : 'Enable'} Vector Mask
       </ContextMenuItem>
     ) : null),
     'vector-mask-delete': (hasVectorMask ? (
