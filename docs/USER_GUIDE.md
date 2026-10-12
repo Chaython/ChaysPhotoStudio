@@ -56,6 +56,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 
 - [Undo, snapshots and recovery](#undo-snapshots-and-recovery)
 - [Keyboard shortcuts and mobile](#keyboard-shortcuts-and-mobile)
+- [Customize the canvas right-click menu](#customize-the-canvas-right-click-menu)
 
 ### Advanced
 
@@ -669,3 +670,21 @@ Discover compatible GIMP assets and use supported external GIMP procedures witho
 - Native GIMP 3 is Electron-only, installed separately, and runs with OS permissions; scripts are not sandboxed.
 - Pyodide is downloaded from a pinned remote CDN on first explicit request and may not work offline.
 - Embedded interpreters do not implement native GIMP GI, PDB or direct image editing; PNG interchange is not HDR/RAW round-tripping.
+
+## Customize the canvas right-click menu
+
+Choose which layer commands appear when right-clicking the canvas.
+
+**Where:** Move tool (V) → right-click a layer → Edit context menu…
+
+1. Activate Move (V), right-click a layer on the canvas, then choose Edit context menu… at the bottom.
+2. Use checkboxes to show or hide an action, and arrow buttons to move it up or down within its section.
+3. Choose Reset defaults to restore all actions and their original order, or Done to close the editor.
+4. Use the Edit section for Undo, Redo, Cut Layer and Paste Layer, alongside transforms, layer styles, arrange and merge.
+
+**Notes and tips:**
+
+- Preferences persist locally in the current browser or desktop-app profile.
+- The Edit context menu… entry cannot be hidden, so the layout can always be restored.
+- The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.
+- Commands that do not apply to the active layer may be disabled or omitted.
