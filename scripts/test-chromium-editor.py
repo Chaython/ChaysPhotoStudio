@@ -321,6 +321,21 @@ def main():
                         content = response.read()
                     git_sha = hashlib.sha1(b"blob " + str(len(content)).encode() + bytes([0]) + content).hexdigest()
                     check(git_sha == expected_sha, f"Independent {name} binary changed")
+                    # Exercise the complete real PSD binary->native-guides UI
+                    # path by inserting a standards-compliant Adobe resource
+                    # 1032 into a verified independent PSD. The image/layers
+                    # remain those of the real upstream Photoshop fixture.
+                    if name == "pixel-layer.psd":
+                        color_length = struct.unpack_from(">I", content, 26)[0]
+                        resource_len_at = 30 + color_length
+                        old_len = struct.unpack_from(">I", content, resource_len_at)[0]
+                        guide_data = struct.pack(">IIII", 1, 576, 576, 2)
+                        guide_data += struct.pack(">IBIB", 400, 0, 200, 1)
+                        guide_resource = b"8BIM" + struct.pack(">H", 1032) + b"\\0\\0"
+                        guide_resource += struct.pack(">I", len(guide_data)) + guide_data
+                        content = (content[:resource_len_at] +
+                                   struct.pack(">I", old_len + len(guide_resource)) +
+                                   guide_resource + content[resource_len_at + 4:])
                     previous_doc_id = page.evaluate(
                         "() => window.__zphotoEngine.activeDoc?.id ?? null")
                     page.locator('input[type="file"]').first.set_input_files(
@@ -341,6 +356,7 @@ def main():
                         layerName: layer.name, kind: layer.kind,
                         smartOrigin: layer.psdNativeOrigin?.kind === 'smart',
                         sourcePixels: pixels?.length ?? 0,
+                        guides: doc.guides?.map(g => ({ orientation: g.orientation, pos: g.pos })) ?? [],
                         rendered: !!rendered && rendered.width > 0 && rendered.height > 0,
                         smartDocSized: !!rendered && rendered.width === doc.width && rendered.height === doc.height,
                       }
@@ -349,6 +365,11 @@ def main():
                     check(result["kind"] == ("smart" if is_smart else "raster") and
                           result["sourcePixels"] > 0 and result["rendered"],
                           f"Real {name} did not produce the expected editable layer and canvas")
+                    if name == "pixel-layer.psd":
+                        check(result["guides"] == [
+                            {"orientation": "v", "pos": 12.5},
+                            {"orientation": "h", "pos": 6.25},
+                        ], f"Photoshop native guides were not restored into the editor: {result['guides']}")
                     if is_smart:
                         check(result["smartOrigin"] and result["smartDocSized"],
                               "Photoshop Smart Object lost its descriptor provenance or document-space rendering")
