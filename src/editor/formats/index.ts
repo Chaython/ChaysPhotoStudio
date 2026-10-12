@@ -69,6 +69,8 @@ export interface DecodedImage {
   psdPaths?: Array<import('../types').SavedPath & { psdPathResourceId: number }>
   psdGlobalLayerMaskData?: Uint8Array
   psdGlobalAdditionalInfo?: Uint8Array[]
+  /** Opaque Photoshop PSB global version-16 descriptor tail. */
+  psdGlobalOpaqueTail?: Uint8Array
   /** Photoshop-origin 32-bit HDR color-mode payload (hdrt) for exact passthrough. */
   psdColorModeData?: Uint8Array
   psdSourceColorMode?: number
@@ -399,6 +401,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
         psdPaths: psd.paths.map(p => ({ ...p, id: `psd-path-${p.psdPathResourceId}`, anchors: p.anchors.map(a => ({ ...a })) })),
         psdGlobalLayerMaskData: psd.globalLayerMaskData.slice(),
         psdGlobalAdditionalInfo: psd.globalAdditionalInfo.map(b => b.slice()),
+        psdGlobalOpaqueTail: psd.globalOpaqueTail.slice(),
         psdColorModeData: psd.depth === 32 ? psd.colorModeData.slice() : undefined,
         psdSourceColorMode: psd.colorMode,
         psdExtraMergedChannels: psd.extraMergedChannels.map(c => c.slice()),
