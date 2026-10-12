@@ -3,6 +3,7 @@ import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
+import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
 function check(v:unknown,description:string) { if(!v)throw new Error(description) }
 const enc=new TextEncoder()
@@ -214,6 +215,25 @@ const corrected=applyLensProfile({
 check(corrected.sourceBitDepth===16 && corrected.rgba16?.length===sample16.length,'Lens 16-bit preservation')
 check(sample16.every((value,i)=>value===original16[i]),'Lens source samples must not mutate')
 check(corrected.rgba16?.[12*4]===sample16[12*4],'Lens optical center stays fixed')
+
+
+const rawToneSample = {width:3,height:1,sourceBitDepth:16,rgba:new Uint8ClampedArray([
+  48,48,48,255, 128,110,96,255, 210,210,210,255
+]) as Uint8ClampedArray<ArrayBuffer>,rgba16:Uint16Array.from([
+  12336,12336,12336,65535, 32896,28270,24672,65535, 53970,53970,53970,65535
+])}
+const originalToneBytes = rawToneSample.rgba16.slice()
+check(applyRawTone(rawToneSample,{}).rgba16===rawToneSample.rgba16,'Neutral RAW develop must be an identity operation')
+const shadowTone=applyRawTone(rawToneSample,{shadows:60})
+check(shadowTone.rgba16![0]>rawToneSample.rgba16[0],'Shadow control must lift dark pixels')
+const contrastTone=applyRawTone(rawToneSample,{contrast:60})
+check(contrastTone.rgba16![0]<rawToneSample.rgba16[0],'Contrast should darken shadow pixels')
+const colorTone=applyRawTone(rawToneSample,{temperature:80,vibrance:40})
+check(colorTone.rgba16![4]>colorTone.rgba16![6],'Warmth should increase red relative to blue')
+check(rawToneSample.rgba16.every((v,i)=>v===originalToneBytes[i]),'RAW source samples must remain unchanged')
+check(colorTone.rgba16![3]===65535 && colorTone.rgba16![7]===65535,'RAW alpha must not receive tonal changes')
+check(normalizeRawTone({contrast:Number.POSITIVE_INFINITY, saturation:400}).contrast===0,'Invalid RAW tone input must normalize')
+check(normalizeRawTone({saturation:400}).saturation===100,'RAW tone must enforce control range')
 
 const correctedLensfun=applyLensProfile({
   width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
