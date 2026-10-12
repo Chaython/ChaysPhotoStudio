@@ -1209,7 +1209,15 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
           throw new Error(`Invalid Photoshop layer dimensions: ${rec.name}`)
         }
         let emptyGroupHeadersAreSafe = true
+        const seenChannelIds = new Set<number>()
         for (const ch of rec.channels) {
+          // A duplicate channel ID would overwrite the first decoded plane
+          // in the Map, silently changing colors or transparency. Refuse
+          // ambiguous layer-channel tables before decoding any pixel data.
+          if (seenChannelIds.has(ch.id)) {
+            throw new Error(`Duplicate Photoshop layer channel ID ${ch.id} in ${rec.name}`)
+          }
+          seenChannelIds.add(ch.id)
           const chStart = pos
           if (ch.len > liEnd - chStart || ch.len < 2) throw new Error('Truncated Photoshop layer channel payload')
           // Empty section-divider channels contain ONLY a compression header.
