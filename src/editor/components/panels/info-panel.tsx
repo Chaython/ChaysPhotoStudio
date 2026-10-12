@@ -1,14 +1,25 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Crosshair, Download, Info, Ruler, Save, Trash2 } from 'lucide-react'
+import { Copy, Crosshair, Download, Info, Ruler, Save, Trash2 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
 import { readColor } from '../../tools/color-readout'
 import { saveCurrentMeasurement } from '../../tools/measure'
+import { formatSamplerCsv } from '../../tools/sampler-report'
 
 function measurementValue(totalPx: number, unit: string, pixelsPerUnit: number) {
   return unit === 'px' ? `${totalPx.toFixed(1)} px` : `${(totalPx / Math.max(.001, pixelsPerUnit)).toFixed(3)} ${unit}`
+}
+
+function downloadCsv(name: string, csv: string) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 function exportMeasurementsCsv() {
@@ -28,13 +39,7 @@ function exportMeasurementsCsv() {
     ]),
   ]
   const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${doc.name.replace(/\.[^.]+$/, '') || 'measurements'}-measurements.csv`
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 0)
+  downloadCsv(`${doc.name.replace(/\.[^.]+$/, '') || 'measurements'}-measurements.csv`, csv)
 }
 
 export function InfoPanel() {
@@ -52,9 +57,28 @@ export function InfoPanel() {
   const radius = Math.max(0, Math.floor((sampleSize - 1) / 2))
 
   const rows = useMemo(() => samplers.map((p, index) => {
-    const hex = engine.sampleColor(p.x, p.y, scope, radius) ?? '#000000'
-    return { p, index, value: readColor(hex) }
+    const hex = engine.sampleColor(p.x, p.y, scope, radius)
+    return { p, index, value: hex === null ? null : readColor(hex) }
   }), [tick, scope, radius, samplers.length, doc?.id])
+
+  const exportSamplersCsv = () => {
+    const active = engine.activeDoc
+    if (!active?.colorSamplers?.length) return
+    const csv = formatSamplerCsv(active.colorSamplers.map(p => ({
+      x: p.x, y: p.y, hex: engine.sampleColor(p.x, p.y, scope, radius),
+    })), scope, sampleSize)
+    downloadCsv(`${active.name.replace(/\.[^.]+$/, '') || 'image'}-color-samplers.csv`, csv)
+  }
+
+  const copyHex = async (hex: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(hex)
+      useEditorStore.getState().pushToast('Sample HEX copied', 'success')
+    } catch {
+      useEditorStore.getState().pushToast('Cannot copy color: clipboard permission denied or unavailable', 'error')
+    }
+  }
 
   return (
     <div className="h-full min-h-0 flex flex-col text-xs" aria-label="Info panel">
@@ -62,6 +86,14 @@ export function InfoPanel() {
         <Info size={13} />
         <span className="font-medium">Info / Color Samplers</span>
         <span className="flex-1" />
+        <button
+          className="h-7 px-2 rounded border border-border hover:bg-accent disabled:opacity-40 flex items-center gap-1"
+          disabled={!samplers.length}
+          onClick={exportSamplersCsv}
+          title="Export sampler coordinates and color readouts to CSV"
+        >
+          <Download size={12} /> CSV
+        </button>
         <button
           className="h-7 px-2 rounded border border-border hover:bg-accent flex items-center gap-1"
           onClick={() => setTool('color-sampler')}
@@ -97,24 +129,37 @@ export function InfoPanel() {
 
       <div className="flex-1 min-h-0 overflow-auto">
         {rows.map(({ p, index, value }) => {
-          const [r, g, b] = value.rgb
-          const [h, s, l] = value.hsl
-          const [ll, aa, bb] = value.lab
-          const [c, m, y, k] = value.cmyk
+          const rgb = value?.rgb
+          const hsl = value?.hsl
+          const lab = value?.lab
+          const cmyk = value?.cmyk
           return (
             <div key={p.id} className="p-2 border-b border-border/50">
               <div className="flex items-center gap-2 mb-1.5">
                 <div
                   className="w-7 h-7 rounded border border-border shrink-0"
-                  style={{ backgroundColor: value.hex }}
-                  title={value.hex}
+                  style={{
+                    backgroundColor: value?.hex ?? 'transparent',
+                    backgroundImage: value ? undefined : 'repeating-conic-gradient(#777 0% 25%, #eee 0% 50%)',
+                    backgroundSize: value ? undefined : '10px 10px',
+                  }}
+                  title={value?.hex ?? 'Transparent: no sampled color'}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium">#{index + 1} <span className="font-mono">{value.hex}</span></div>
+                  <div className="font-medium">#{index + 1} <span className="font-mono">{value?.hex ?? 'Transparent'}</span></div>
                   <div className="text-[10px] text-muted-foreground tabular-nums">
                     X {p.x.toFixed(1)} · Y {p.y.toFixed(1)}
                   </div>
                 </div>
+                <button
+                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-40"
+                  onClick={() => { if (value) void copyHex(value.hex) }}
+                  disabled={!value}
+                  title={value ? 'Copy HEX color' : 'No color to copy'}
+                  aria-label={`Copy sampler ${index + 1} HEX`}
+                >
+                  <Copy size={12} />
+                </button>
                 <button
                   className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                   onClick={() => engine.removeColorSampler(p.id)}
@@ -123,12 +168,52 @@ export function InfoPanel() {
                   <Trash2 size={12} />
                 </button>
               </div>
-              <div className="grid grid-cols-[38px_1fr] gap-x-2 gap-y-0.5 font-mono text-[10px] tabular-nums">
-                <span className="text-muted-foreground">RGB</span><span>{r}, {g}, {b}</span>
-                <span className="text-muted-foreground">HSL</span><span>{Math.round(h)}°, {Math.round(s)}%, {Math.round(l)}%</span>
-                <span className="text-muted-foreground">Lab</span><span>{ll.toFixed(1)}, {aa.toFixed(1)}, {bb.toFixed(1)}</span>
-                <span className="text-muted-foreground">CMYK</span><span>{Math.round(c)}%, {Math.round(m)}%, {Math.round(y)}%, {Math.round(k)}%</span>
+              <div className="flex items-center gap-2 mt-1.5 mb-2">
+                {(['x', 'y'] as const).map(axis => (
+                  <label key={axis} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                    {axis.toUpperCase()}
+                    <input
+                      key={`${p.id}-${axis}-${p[axis]}`}
+                      type="number"
+                      min={0}
+                      max={axis === 'x' ? Math.max(0, (doc?.width ?? 1) - 1) : Math.max(0, (doc?.height ?? 1) - 1)}
+                      step={0.1}
+                      defaultValue={p[axis].toFixed(1)}
+                      className="h-6 w-[74px] rounded border border-border bg-background px-1 text-foreground tabular-nums"
+                      aria-label={`Sampler ${index + 1} ${axis.toUpperCase()} coordinate`}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') e.currentTarget.blur()
+                        if (e.key === 'Escape') {
+                          e.currentTarget.value = p[axis].toFixed(1)
+                          e.currentTarget.blur()
+                        }
+                      }}
+                      onBlur={e => {
+                        const raw = e.currentTarget.value.trim()
+                        const input = Number(raw)
+                        if (!raw || !Number.isFinite(input)) {
+                          e.currentTarget.value = p[axis].toFixed(1)
+                          return
+                        }
+                        const limit = Math.max(0, ((axis === 'x' ? doc?.width : doc?.height) ?? 1) - 1)
+                        const next = Math.max(0, Math.min(limit, Math.round(input * 10) / 10))
+                        engine.moveColorSampler(p.id, axis === 'x' ? next : p.x, axis === 'y' ? next : p.y)
+                        e.currentTarget.value = next.toFixed(1)
+                      }}
+                    />
+                  </label>
+                ))}
               </div>
+              {value && rgb && hsl && lab && cmyk ? (
+                <div className="grid grid-cols-[38px_1fr] gap-x-2 gap-y-0.5 font-mono text-[10px] tabular-nums">
+                  <span className="text-muted-foreground">RGB</span><span>{rgb.join(', ')}</span>
+                  <span className="text-muted-foreground">HSL</span><span>{Math.round(hsl[0])}°, {Math.round(hsl[1])}%, {Math.round(hsl[2])}%</span>
+                  <span className="text-muted-foreground">Lab</span><span>{lab.map(n => n.toFixed(1)).join(', ')}</span>
+                  <span className="text-muted-foreground">CMYK</span><span>{cmyk.map(n => Math.round(n) + '%').join(', ')}</span>
+                </div>
+              ) : (
+                <p className="text-[10px] text-muted-foreground">No sampled color (transparent or empty layer).</p>
+              )}
             </div>
           )
         })}
