@@ -34,24 +34,26 @@ export const hasRawCurves=(value:RawPointCurves):boolean=>
 /** Monotone cubic Hermite interpolation on uniformly spaced X knots.
  * Slopes vanish at local turning points to avoid cubic overshoot. Deliberately
  * supports creative non-monotonic curves, but bounds all output to [0,1]. */
-export function evaluateRawCurve(points:RawCurvePoints,x:number):number {
-  const t=clamp(Number.isFinite(x)?x:0,0,1)*4
-  const index=Math.min(3,Math.floor(t))
-  const u=t-index
+function curveSampler(points:RawCurvePoints):(x:number)=>number {
   const y=points.map(v=>v/100)
-  const slope=[0,0,0,0] as number[]
-  for(let i=0;i<4;i++)slope[i]=y[i+1]-y[i]
-  const derivative=[0,0,0,0,0]
-  derivative[0]=slope[0];derivative[4]=slope[3]
+  const slope=[y[1]-y[0],y[2]-y[1],y[3]-y[2],y[4]-y[3]]
+  const derivative=[slope[0],0,0,0,slope[3]]
   for(let i=1;i<4;i++){
     const a=slope[i-1],b=slope[i]
     derivative[i]=a*b<=0?0:2*a*b/(a+b)
   }
-  const h00=(1+2*u)*(1-u)*(1-u)
-  const h10=u*(1-u)*(1-u)
-  const h01=u*u*(3-2*u)
-  const h11=u*u*(u-1)
-  return clamp(h00*y[index]+h10*derivative[index]+h01*y[index+1]+h11*derivative[index+1],0,1)
+  return (x:number)=>{
+    const t=clamp(Number.isFinite(x)?x:0,0,1)*4
+    const index=Math.min(3,Math.floor(t)),u=t-index
+    const h00=(1+2*u)*(1-u)*(1-u)
+    const h10=u*(1-u)*(1-u)
+    const h01=u*u*(3-2*u)
+    const h11=u*u*(u-1)
+    return clamp(h00*y[index]+h10*derivative[index]+h01*y[index+1]+h11*derivative[index+1],0,1)
+  }
+}
+export function evaluateRawCurve(points:RawCurvePoints,x:number):number {
+  return curveSampler(points)(x)
 }
 
 /** Composite curve first, then per-channel RGB curves. Supports high-depth
@@ -64,11 +66,13 @@ export function applyRawCurves(image:RawImage,raw:Partial<RawPointCurves>|null|u
   if(!Number.isSafeInteger(pixels)||pixels<1||src.length!==pixels*4)return image
   const high=!!image.rgba16,range=high?65535:255
   const tables:Uint16Array[]=[]
+  const composite=curveSampler(curves.rgb)
   for(let channel=1;channel<4;channel++){
     const result=new Uint16Array(range+1)
+    const perChannel=curveSampler(curves[RAW_CURVE_CHANNELS[channel]])
     for(let i=0;i<=range;i++){
-      const first=evaluateRawCurve(curves.rgb,i/range)
-      const second=evaluateRawCurve(curves[RAW_CURVE_CHANNELS[channel]],first)
+      const first=composite(i/range)
+      const second=perChannel(first)
       result[i]=Math.round(second*range)
     }
     tables.push(result)
