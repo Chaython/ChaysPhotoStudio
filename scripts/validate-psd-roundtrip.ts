@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readPsdGuides, writePsdGuides } from '../src/editor/formats/psd-guides'
 import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdImportedSmartIsUnchanged, psdGroupPaths, psdWillReplaceSourceFx, normalizePsdTaggedBlock, parsePsdBlendIfRanges, encodePsdBlendIfRanges, psdHasAdditionalBlendIfRanges } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
@@ -60,6 +61,64 @@ function canvas(r: number, g: number, b: number, a = 255): HTMLCanvasElement {
   return c as unknown as HTMLCanvasElement
 }
 
+
+// Adobe resource 1032 stores movable horizontal/vertical guides in units of
+// 1/32 pixel. Preserve untouched resource bytes, including grid spacing.
+const originalGuides = [
+  { orientation: 'v' as const, pos: 13.25 },
+  { orientation: 'h' as const, pos: 21.5 },
+]
+const photoshopGuideBlock = writePsdGuides([], originalGuides)[0]
+assert.equal((photoshopGuideBlock[4] << 8) | photoshopGuideBlock[5], 1032)
+assert.deepEqual(readPsdGuides([photoshopGuideBlock]), originalGuides)
+assert.equal(writePsdGuides([photoshopGuideBlock], originalGuides)[0],
+  photoshopGuideBlock, 'Untouched guides must preserve the exact Photoshop resource object')
+const customGrid = photoshopGuideBlock.slice()
+new DataView(customGrid.buffer).setUint32(12 + 4, 9876)
+new DataView(customGrid.buffer).setUint32(12 + 8, 4321)
+assert.equal(writePsdGuides([customGrid], originalGuides)[0], customGrid,
+  'Unchanged custom Photoshop grid cycles must be byte-preserved')
+const shiftedGuides = [
+  { orientation: 'v' as const, pos: 29.75 },
+  { orientation: 'h' as const, pos: 21.5 },
+  { orientation: 'v' as const, pos: 5.125 },
+]
+const changedGuideResource = writePsdGuides([customGrid], shiftedGuides)[0]
+assert.deepEqual(readPsdGuides([changedGuideResource]), shiftedGuides,
+  'Edited Studio guides must round-trip through Photoshop fixed-point coordinates')
+const changedGrid = new DataView(changedGuideResource.buffer)
+assert.equal(changedGrid.getUint32(16), 9876)
+assert.equal(changedGrid.getUint32(20), 4321)
+assert.throws(() => writePsdGuides([], [{ orientation: 'h', pos: -1 }]),
+  /nonnegative document coordinates/, 'Invalid negative guide positions must not be silently exported')
+const corruptedGuide = customGrid.slice(0, -3)
+assert.deepEqual(readPsdGuides([corruptedGuide]), [],
+  'Malformed guide resource is not misinterpreted')
+assert.equal(writePsdGuides([corruptedGuide], [])[0], corruptedGuide,
+  'Malformed source resources must survive unchanged when no native guides are edited')
+assert.throws(() => writePsdGuides([corruptedGuide], shiftedGuides),
+  /malformed or duplicate Photoshop guide resources/, 'Editing an unparseable original resource must fail safely')
+assert.throws(() => writePsdGuides([customGrid, customGrid], shiftedGuides),
+  /malformed or duplicate Photoshop guide resources/, 'Duplicate guide resources must not be silently overwritten')
+for (const format of ['psd', 'psb'] as const) {
+  const rgb = canvas(50, 110, 170)
+  const binary = buildPsd(2, 2, [{
+    name: 'Guide markers', canvas: rgb, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], rgb, { format, imageResources: [customGrid] })
+  const decoded = await decodePsd(new Uint8Array(await binary.arrayBuffer()))
+  assert.deepEqual(decoded.guides, originalGuides, 'PSD and PSB must both decode native ruler guides')
+  const resource = decoded.imageResources.find(block => ((block[4] << 8) | block[5]) === 1032)
+  assert.deepEqual(Array.from(resource!), Array.from(customGrid),
+    'Untouched PSD/PSB must retain the byte-identical Photoshop guide resource')
+  const movedResource = writePsdGuides(decoded.imageResources, shiftedGuides)
+  const updated = buildPsd(2, 2, [{
+    name: 'Guide markers', canvas: decoded.layers[0].canvas, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], decoded.canvas, { format, imageResources: movedResource })
+  const reread = await decodePsd(new Uint8Array(await updated.arrayBuffer()))
+  assert.deepEqual(reread.guides, shiftedGuides, 'Edited ruler guides survive PSD/PSB export and reimport')
+}
 
 const photoshopGrayRange = Uint8Array.from([
   12, 36, 202, 228, // This Layer, split black and white
