@@ -527,13 +527,14 @@ def main():
                 y_input.press("Enter")
                 check(page.evaluate("() => window.__zphotoEngine.activeDoc.colorSamplers[0].y") == 5,
                       "numeric Y coordinate was not saved")
+                # Use a real editor document operation: direct edits to the backing
+                # HTMLCanvasElement bypass render cache invalidation and cannot
+                # represent an ordinary painting operation.
                 page.evaluate("""() => {
                   const e = window.__zphotoEngine
-                  const ctx = e.activeDoc.layers[0].canvas.getContext('2d')
-                  ctx.fillStyle = '#12ab34'
-                  ctx.fillRect(5, 5, 1, 1)
-                  e.flatComposite()
-                  e.emit()
+                  e.newDocument({name: 'Colored sampler smoke',
+                                 width: 16, height: 16, fill: '#12ab34'})
+                  e.addColorSampler(5.3, 5)
                 }""")
                 panel.get_by_text("#12AB34").wait_for(state="visible", timeout=10000)
                 with page.expect_download() as download_event:
