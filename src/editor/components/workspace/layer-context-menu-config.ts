@@ -38,7 +38,10 @@ export const LAYER_CONTEXT_MENU_SECTIONS = [
 ] as const
 
 export type LayerContextSectionId = typeof LAYER_CONTEXT_MENU_SECTIONS[number]['id']
-export type LayerContextActionId = typeof LAYER_CONTEXT_MENU_SECTIONS[number]['entries'][number]['id']
+type ActionFromSection<T> = T extends { entries: readonly (infer E)[] }
+  ? E extends { id: infer ID extends string } ? ID : never
+  : never
+export type LayerContextActionId = ActionFromSection<(typeof LAYER_CONTEXT_MENU_SECTIONS)[number]>
 export interface LayerContextMenuPreferences {
   hidden: LayerContextActionId[]
   order: Record<LayerContextSectionId, LayerContextActionId[]>
@@ -66,7 +69,7 @@ export function normalizeLayerContextPreferences(value: unknown): LayerContextMe
   const savedOrder = prefs.order && typeof prefs.order === 'object' && !Array.isArray(prefs.order)
     ? prefs.order as Record<string, unknown> : {}
   for (const section of LAYER_CONTEXT_MENU_SECTIONS) {
-    const validIds = defaults.order[section.id]
+    const validIds: LayerContextActionId[] = defaults.order[section.id]
     const raw = savedOrder[section.id]
     const kept = Array.isArray(raw)
       ? [...new Set(raw.filter((id): id is LayerContextActionId => typeof id === 'string' && validIds.includes(id)))]
