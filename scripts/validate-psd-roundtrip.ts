@@ -89,6 +89,13 @@ assert.deepEqual(readPsdGuides([changedGuideResource]), shiftedGuides,
 const changedGrid = new DataView(changedGuideResource.buffer)
 assert.equal(changedGrid.getUint32(16), 9876)
 assert.equal(changedGrid.getUint32(20), 4321)
+const clearedGuideResource = writePsdGuides([customGrid], [])[0]
+assert.deepEqual(readPsdGuides([clearedGuideResource]), [],
+  'Deleting all native Studio guides must clear the Photoshop guide list')
+assert.equal(new DataView(clearedGuideResource.buffer).getUint32(16), 9876,
+  'Deleting all guides must retain the original horizontal grid cycle')
+assert.equal(new DataView(clearedGuideResource.buffer).getUint32(20), 4321,
+  'Deleting all guides must retain the original vertical grid cycle')
 assert.throws(() => writePsdGuides([], [{ orientation: 'h', pos: -1 }]),
   /nonnegative document coordinates/, 'Invalid negative guide positions must not be silently exported')
 const corruptedGuide = customGrid.slice(0, -3)
