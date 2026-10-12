@@ -2,7 +2,7 @@
 import { useSyncExternalStore } from 'react'
 import {
   defaultLayerContextPreferences, loadLayerContextPreferences,
-  saveLayerContextPreferences, LAYER_CONTEXT_MENU_STORAGE_KEY,
+  normalizeLayerContextPreferences, saveLayerContextPreferences, LAYER_CONTEXT_MENU_STORAGE_KEY,
   type LayerContextMenuPreferences,
 } from './layer-context-menu-config'
 
@@ -34,8 +34,9 @@ export function useLayerContextMenuPreferences(): readonly [
 ] {
   const preferences = useSyncExternalStore(subscribe, getSnapshot, () => serverSnapshot)
   const update = (prefs: LayerContextMenuPreferences) => {
-    saveLayerContextPreferences(prefs)
-    snapshot = loadLayerContextPreferences()
+    // Keep this session's choice even when localStorage is blocked or full.
+    snapshot = normalizeLayerContextPreferences(prefs)
+    saveLayerContextPreferences(snapshot)
     broadcast()
   }
   return [preferences, update] as const
