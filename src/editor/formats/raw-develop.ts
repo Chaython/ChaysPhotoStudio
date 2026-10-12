@@ -1,3 +1,4 @@
+import { DEFAULT_RAW_TONE, normalizeRawTone, type RawToneSettings } from './raw-tone'
 import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
 import type { ImageMetadata } from '../types'
 import { cameraExif, importLensfunXml, loadedLensfunCount, matchLensfun } from './lensfun-xml'
@@ -12,11 +13,12 @@ export interface RawDevelopSettings {
   halfSize: boolean
   smartObject: boolean
   lensProfile: LensProfile
+  tone: RawToneSettings
 }
 export const DEFAULT_RAW_SETTINGS: RawDevelopSettings = {
   exposureEv: 0, whiteBalance: 'camera', interpolation: 3,
   highlight: 0, denoise: 0, halfSize: false,
-  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE},
+  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE},
 }
 const storageKey = 'chaysstudio.raw-develop.v1'
 export function rawSettingsFromSaved(): RawDevelopSettings {
@@ -37,6 +39,7 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
     halfSize:raw.halfSize===true,
     smartObject:raw.smartObject!==false,
     lensProfile:normalizeLensProfile(raw.lensProfile),
+    tone:normalizeRawTone(raw.tone),
   }
 }
 
@@ -91,6 +94,22 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     denoise.min='0';denoise.max='500';denoise.step='1'
     const half=field('Resolution','select',current.halfSize?'half':'full',['full|Full resolution','half|Half resolution (faster)'])
     const smart=field('Keep original RAW','select',current.smartObject?'yes':'no',['yes|Smart Object (editable)','no|Flatten on import'])
+    const toneTitle=document.createElement('h4')
+    toneTitle.textContent='Photographic tone & color (reversible)'
+    toneTitle.style.cssText='font-size:13px;font-weight:600;margin:14px 0 8px'
+    // These controls apply to 16-bit developed samples, never the original RAW.
+    // Camera/demosaicing settings above run first and are independently editable.
+    const toneInputs={} as Record<keyof RawToneSettings,HTMLInputElement>
+    for(const [key,label] of [
+      ['contrast','Contrast'],['highlights','Highlights'],['shadows','Shadows'],
+      ['whites','Whites'],['blacks','Blacks'],['vibrance','Vibrance'],
+      ['saturation','Saturation'],['temperature','Warmth (post-develop)'],
+      ['tint','Tint (green / magenta)'],
+    ] as [keyof RawToneSettings,string][]){
+      const input=field(label+' (-100 to +100)','number',String(current.tone[key])) as HTMLInputElement
+      input.min='-100';input.max='100';input.step='1'
+      toneInputs[key]=input
+    }
     const lensName=field('Lens profile label','number',current.lensProfile.name) as HTMLInputElement
     lensName.type='text'
     lensName.placeholder='Camera / lens / focal length'
@@ -158,7 +177,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     apply.style.cssText='padding:7px 14px;border-radius:6px;background:var(--primary);color:var(--primary-foreground)'
     cancel.addEventListener('click',()=>dialog.close('cancel'))
     apply.addEventListener('click',()=>dialog.close('apply'))
-    actions.append(cancel,apply);dialog.append(heading,caption,form,profileControls,lensStatus,actions)
+    actions.append(cancel,apply);dialog.append(heading,caption,toneTitle,form,profileControls,lensStatus,actions)
     dialog.addEventListener('close',()=>{
       const result=dialog.returnValue==='apply'?normalizeRawSettings({
         exposureEv:exposure.valueAsNumber,
@@ -168,6 +187,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         denoise:denoise.valueAsNumber,
         halfSize:half.value==='half',
         smartObject:smart.value==='yes',
+        tone:normalizeRawTone(Object.fromEntries(Object.entries(toneInputs).map(([key,input])=>[key,input.valueAsNumber]))),
         lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
       }):null
       if(result)try{localStorage.setItem(storageKey,JSON.stringify(result))}catch{}
