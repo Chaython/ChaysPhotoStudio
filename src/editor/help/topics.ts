@@ -649,6 +649,25 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Pyodide is downloaded from a pinned remote CDN on first explicit request and may not work offline.",
       "Embedded interpreters do not implement native GIMP GI, PDB or direct image editing; PNG interchange is not HDR/RAW round-tripping."
     ]
+  },
+  {
+    "id": "customize-context-menu",
+    "title": "Customize the canvas right-click menu",
+    "category": "Workspace",
+    "path": "Move tool (V) → right-click a layer → Edit context menu…",
+    "summary": "Choose which layer commands appear when right-clicking the canvas.",
+    "steps": [
+      "Activate Move (V), right-click a layer on the canvas, then choose Edit context menu… at the bottom.",
+      "Use checkboxes to show or hide an action, and arrow buttons to move it up or down within its section.",
+      "Choose Reset defaults to restore all actions and their original order, or Done to close the editor.",
+      "Use the Edit section for Undo, Redo, Cut Layer and Paste Layer, alongside transforms, layer styles, arrange and merge."
+    ],
+    "tips": [
+      "Preferences persist locally in the current browser or desktop-app profile.",
+      "The Edit context menu… entry cannot be hidden, so the layout can always be restored.",
+      "The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.",
+      "Commands that do not apply to the active layer may be disabled or omitted."
+    ]
   }
 ]
 
