@@ -106,6 +106,9 @@ export function writePsdGuides(
   if (indices.length && (!parsed || indices.length !== 1)) {
     throw new Error('Cannot edit malformed or duplicate Photoshop guide resources without losing original metadata')
   }
+  if (parsed && parsed.payloadEnd - parsed.payloadStart !== 16 + parsed.guides.length * 5) {
+    throw new Error('Cannot edit Photoshop guides with unknown trailing metadata; original resource is preserved')
+  }
   const positions = guides.map(encodeGuidePosition)
   if (guides.length > 100000) throw new Error('Too many Photoshop guides')
   const payloadSize = 16 + guides.length * 5
