@@ -308,6 +308,26 @@ def main():
                 menu = page.get_by_role("menu", name=re.compile("Layer actions"))
                 check(menu.get_by_role("menuitem", name=re.compile("Free Transform")).count() == 0,
                       "hidden transform command still appeared")
+                # The panel must share visibility/order and the editor, not a legacy hardcoded menu.
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(300)
+                layer_row = page.get_by_role("list", name="Layers").get_by_role("listitem").first
+                layer_row.click(button="right")
+                panel_menu = page.get_by_role("menu", name=re.compile("Layer actions"))
+                check(panel_menu.get_by_role("menuitem", name=re.compile("Free Transform")).count() == 0,
+                      "Layers panel ignored hidden canvas action")
+                check(panel_menu.get_by_role("menuitem", name=re.compile("Add Mask from Selection")).count() == 1,
+                      "Layers panel lost its mask actions")
+                panel_menu.get_by_role("menuitem", name=re.compile("Edit context menu", re.I)).click()
+                dialog = page.get_by_role("dialog", name="Edit right-click menu")
+                dialog.wait_for(state="visible")
+                dialog.get_by_role("checkbox", name="Show Free Transform").check()
+                dialog.get_by_role("button", name="Done").click()
+                dialog.wait_for(state="hidden")
+                page.wait_for_timeout(400)
+                host.click(button="right")
+                check(page.get_by_role("menuitem", name=re.compile("Free Transform")).count() == 1,
+                      "Canvas menu did not update after panel editor change")
                 page.get_by_role("menuitem", name=re.compile("Edit context menu", re.I)).click()
                 dialog = page.get_by_role("dialog", name="Edit right-click menu")
                 dialog.get_by_role("button", name="Reset defaults").click()

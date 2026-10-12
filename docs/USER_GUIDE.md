@@ -56,6 +56,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 
 - [Undo, snapshots and recovery](#undo-snapshots-and-recovery)
 - [Keyboard shortcuts and mobile](#keyboard-shortcuts-and-mobile)
+- [Shared canvas and Layers panel right-click menus](#shared-canvas-and-layers-panel-right-click-menus)
 - [Customize the canvas right-click menu](#customize-the-canvas-right-click-menu)
 
 ### Advanced
@@ -670,6 +671,24 @@ Discover compatible GIMP assets and use supported external GIMP procedures witho
 - Native GIMP 3 is Electron-only, installed separately, and runs with OS permissions; scripts are not sandboxed.
 - Pyodide is downloaded from a pinned remote CDN on first explicit request and may not work offline.
 - Embedded interpreters do not implement native GIMP GI, PDB or direct image editing; PNG interchange is not HDR/RAW round-tripping.
+
+## Shared canvas and Layers panel right-click menus
+
+Use one customizable set of layer commands across both editing surfaces.
+
+**Where:** Move tool → canvas right-click / Layers panel → layer right-click
+
+1. Right-click a layer on the canvas with the Move tool, or right-click its row in the Layers panel.
+2. Both menus honor the same action visibility and order; choose Edit context menu… from either location.
+3. The shared Masks and clipping section includes Add Mask, Apply/Delete Mask, vector mask operations and clipping; Convert and merge also includes Trim to Content.
+4. Right-clicking an unselected layer row makes it the active target before Cut or Copy; right-clicking an already-selected row retains the current multi-selection.
+5. Customizations synchronize immediately between the two menus and are saved in the current browser/app profile.
+
+**Notes and tips:**
+
+- Unavailable commands remain disabled or are omitted when the active layer type does not support them.
+- Old saved menu layouts are preserved; newly introduced commands and sections are appended automatically.
+- Other editing tools' canvas right-click gestures are unaffected.
 
 ## Customize the canvas right-click menu
 
