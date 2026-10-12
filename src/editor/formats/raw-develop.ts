@@ -181,6 +181,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     const camera=cameraExif(metadata)
     lensStatus.textContent='Lensfun XML: '+loadedLensfunCount()+' lenses loaded. EXIF lens: '+(camera.lens||'not detected')
     let chosenLensfun=current.lensProfile.lensfun
+    let notifySensorChange=()=>{}
     const applyMatched=()=>{
       const match=matchLensfun(metadata)
       if(!match){
@@ -192,6 +193,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       lensName.value='Lensfun: '+match.lens+' @ '+match.focal+'mm'
       // No additive manual compensation when enabling a calibrated profile.
       k1.value='0';k2.value='0';tca.value='0';vignette.value='0'
+      notifySensorChange()
       lensStatus.textContent='Matched Lensfun calibration: '+match.lens+' @ '+match.focal+
         'mm (loaded XML; distortion '+(match.distortion?'yes':'no')+', TCA '+
         (match.tca?'yes':'no')+', vignetting '+(match.vignetting?'yes':'no')+')'
@@ -400,6 +402,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       previewLoading=true
       const generation=++previewGeneration
       previewButton.disabled=true
+      apply.disabled=true
       previewStatus.textContent='Developing half-resolution preview from original RAW…'
       const settings=readSettings()
       const fingerprint=sensorKey(settings)
@@ -420,7 +423,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       }finally{
         if(generation===previewGeneration){
           previewLoading=false
-          if(dialog.open)previewButton.disabled=false
+          if(dialog.open){previewButton.disabled=false;apply.disabled=false}
         }
       }
     })
@@ -429,8 +432,11 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       for(const property of mixProperties)mixInputs[band][property].addEventListener('input',schedulePreview)
     const sensorInputs=[exposure,whiteBalance,interpolation,highlight,denoise,
       k1,k2,tca,vignette,lensName]
-    for(const input of sensorInputs)input.addEventListener('input',schedulePreview)
-    matchButton.addEventListener('click',schedulePreview)
+    for(const input of sensorInputs){
+      input.addEventListener('input',schedulePreview)
+      input.addEventListener('change',schedulePreview)
+    }
+    notifySensorChange=schedulePreview
     // Imported presets update input values programmatically and do not
     // dispatch input events. Refresh the live preview explicitly.
     refreshEditedPreview=schedulePreview
