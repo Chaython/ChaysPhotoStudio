@@ -156,6 +156,8 @@ export async function openFiles(files: File[], asLayer = false) {
           psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
         })
         flattenedPsd.guides = (decoded.psdGuides ?? []).map(g => ({ ...g, id: uid() }))
+        flattenedPsd.savedPaths = (decoded.psdPaths ?? []).map(p => ({ ...p, id: uid(), anchors: p.anchors.map(a => ({ ...a })) }))
+        flattenedPsd.psdEditablePathResourceIds = (decoded.psdPaths ?? []).map(p => p.psdPathResourceId)
         for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(`${file.name}: ${warning}`, 'info')
         continue
       }
@@ -313,6 +315,8 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
     psdSourceColorMode: decoded.psdSourceColorMode,
     psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
+    psdEditablePathResourceIds: (decoded.psdPaths ?? []).map(p => p.psdPathResourceId),
+    savedPaths: (decoded.psdPaths ?? []).map(p => ({ ...p, id: uid(), anchors: p.anchors.map(a => ({ ...a })) })),
     metadata: metadata ? structuredClone(metadata) : undefined,
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
@@ -539,6 +543,7 @@ export interface SerializedProject {
     proof?: import('../types').ProofSettings
     resolutionPpi?: number
     psdImageResources?: string[]
+    psdEditablePathResourceIds?: number[]
     psdGlobalLayerMaskData?: string
     psdGlobalAdditionalInfo?: string[]
     psdColorModeData?: string
@@ -665,6 +670,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       proof: doc.proof ? structuredClone(doc.proof) : undefined,
       resolutionPpi: doc.resolutionPpi ?? 72,
       psdImageResources: doc.psdImageResources ? [...doc.psdImageResources] : undefined,
+      psdEditablePathResourceIds: doc.psdEditablePathResourceIds ? [...doc.psdEditablePathResourceIds] : undefined,
       psdGlobalLayerMaskData: doc.psdGlobalLayerMaskData,
       psdGlobalAdditionalInfo: doc.psdGlobalAdditionalInfo ? [...doc.psdGlobalAdditionalInfo] : undefined,
       psdColorModeData: doc.psdColorModeData,
@@ -890,6 +896,10 @@ export async function openSerializedProject(project: SerializedProject, label = 
       ? project.doc.psdGlobalAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
     psdImageResources: Array.isArray(project.doc.psdImageResources)
       ? project.doc.psdImageResources.filter((v: unknown) => typeof v === 'string')
+      : undefined,
+    psdEditablePathResourceIds: Array.isArray(project.doc.psdEditablePathResourceIds)
+      ? project.doc.psdEditablePathResourceIds.filter((id: unknown) =>
+          Number.isInteger(id) && Number(id) >= 2000 && Number(id) <= 2997)
       : undefined,
     psdSectionMarkers: Array.isArray(project.doc.psdSectionMarkers)
       ? project.doc.psdSectionMarkers.filter(m => m && Number.isSafeInteger(m.beforeLayerIndex) && m.beforeLayerIndex >= 0 &&
