@@ -269,6 +269,7 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
 }) {
   const thumbRef = useRef<HTMLCanvasElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
+  const [contextOpen, setContextOpen] = useState(false)
   const doc = engine.activeDoc
   const layer = doc?.layers.find(l => l.id === meta.id)
 
@@ -306,7 +307,7 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
   const KindIcon = (Icons as any)[kind.icon] ?? Icons.Image
 
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={setContextOpen}>
       <ContextMenuTrigger asChild>
         <div
           role="listitem"
@@ -417,8 +418,8 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
           </div>
         </div>
       </ContextMenuTrigger>
-      <CanvasLayerMenuContent layerId={meta.id} preferences={preferences}
-        onCustomize={onCustomize} onRename={onStartRename} />
+      {contextOpen && <CanvasLayerMenuContent layerId={meta.id} preferences={preferences}
+        onCustomize={onCustomize} onRename={onStartRename} />}
     </ContextMenu>
   )
 }
