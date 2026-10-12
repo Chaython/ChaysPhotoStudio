@@ -427,15 +427,16 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     "path": "File → Open / Place / Layer → Redevelop RAW Smart Object…",
     "summary": "Open camera RAW, HDR, modern codecs and scientific files while retaining editable RAW originals when feasible.",
     "steps": [
-      "Use File → Open or File → Place to select RAW images. Develop groups LibRaw exposure, white balance, demosaicing, highlight recovery and denoising; reversible 16-bit Basic tone controls (contrast, highlights, shadows, whites, blacks, vibrance, saturation, warmth and tint); eight-band HSL Color Mixer; and on-demand lens calibration.",
-      "Expand Develop Preview and select Load / Refresh RAW preview to decode a half-resolution sample on demand. Basic/HSL edits then update a bounded side-by-side Before/After display and RGB/luminance histogram with clipped shadow/highlight percentages; sensor, lens and white balance changes require Refresh. Preview is not the final-resolution export.\",\n      \"When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.",
+      "Use File → Open or File → Place to select RAW images. Develop includes LibRaw sensor controls, reversible 16-bit Basic adjustments, a five-point composite RGB/per-channel tone curve, eight-band HSL Color Mixer, and on-demand optical corrections.",
+      "Select Load / Refresh RAW preview to decode a half-resolution sample on demand. Basic, curve and HSL edits update the side-by-side Before/After display and RGB/luminance histogram; exposure, white balance, demosaicing, noise reduction and lens changes require Refresh. The preview is not the final-resolution output.",
+      "When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.",
       "Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Import individual Lensfun XML calibration files on demand using Import Lensfun XML… in the Develop dialog; Match EXIF Lens requires unambiguous camera lens metadata. A full Lensfun WASM database is not bundled.",
       "OpenEXR supports regular single and multipart scanline/single-level tiled images with NONE/RLE/ZIPS/ZIP compression. Float32 HDR samples are retained per part; deep and multiresolution EXR remain unsupported.",
       "FITS and a limited subset of DICOM medical images import as display renderings. DICOM supports uncompressed, RLE Lossless, JPEG baseline, JPEG-LS and JPEG 2000 via available decoders; clinical values and measurements are not preserved.",
       "When TIFF, DCX, FITS, DICOM or multipart EXR contains multiple images, choose one frame/part or import all as selectable layers."
     ],
     "tips": [
-      "RAW color presets import/export only Basic tone and eight-band HSL Color Mixer values as local JSON; camera/demosaicing choices, EXIF and lens calibration are deliberately excluded. These display-referred controls do not reproduce Adobe Lightroom camera profiles, mask editing or color science.",
+      "RAW color presets export/import Basic tone, RGB/per-channel point curves and HSL as local JSON. Camera, EXIF and lens calibration are excluded; older presets without curves import with a neutral identity curve. Display-referred color rendering is not equivalent to Adobe Lightroom's proprietary camera profiles.",
       "Files larger than 64 MiB can be developed as ordinary raster images but their original RAW bytes are not embedded. RAW decoders may use a clearly labeled 8-bit camera preview if sensor decoding fails.",
       "Imported Lensfun XML uses recorded calibration values with conservative EXIF matching; the full licensed database and WASM remapping engine are not bundled. Save the project to retain RAW originals and recipes.",
       "DICOM support is only for graphic editing, never diagnosis or medical measurements. Rare compressed transfer syntaxes and ambiguous multifragment frame tables are rejected.",
@@ -649,6 +650,25 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Native GIMP 3 is Electron-only, installed separately, and runs with OS permissions; scripts are not sandboxed.",
       "Pyodide is downloaded from a pinned remote CDN on first explicit request and may not work offline.",
       "Embedded interpreters do not implement native GIMP GI, PDB or direct image editing; PNG interchange is not HDR/RAW round-tripping."
+    ]
+  },
+  {
+    "id": "customize-context-menu",
+    "title": "Customize the canvas right-click menu",
+    "category": "Workspace",
+    "path": "Move tool (V) → right-click a layer → Edit context menu…",
+    "summary": "Choose which layer commands appear when right-clicking the canvas.",
+    "steps": [
+      "Activate Move (V), right-click a layer on the canvas, then choose Edit context menu… at the bottom.",
+      "Use checkboxes to show or hide an action, and arrow buttons to move it up or down within its section.",
+      "Choose Reset defaults to restore all actions and their original order, or Done to close the editor.",
+      "Use the Edit section for Undo, Redo, Cut Layer and Paste Layer, alongside transforms, layer styles, arrange and merge."
+    ],
+    "tips": [
+      "Preferences persist locally in the current browser or desktop-app profile.",
+      "The Edit context menu… entry cannot be hidden, so the layout can always be restored.",
+      "The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.",
+      "Commands that do not apply to the active layer may be disabled or omitted."
     ]
   }
 ]
