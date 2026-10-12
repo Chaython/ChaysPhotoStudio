@@ -1792,6 +1792,32 @@ export function psdNativeObjectKind(blocks: readonly Uint8Array[]): 'text' | 'sm
   return null
 }
 
+/**
+ * Whether a Photoshop-origin Smart Object can be emitted using its original
+ * cached raster bounds and opaque live-object descriptor. A Studio transform
+ * or enabled Smart Filter changes the rendered pixels and must instead be
+ * exported as a rasterized compatibility copy.
+ *
+ * Source is the Photoshop raster preview, NOT the embedded linked document.
+ */
+export function psdImportedSmartIsUnchanged(layer: Pick<import('../types').Layer,
+  'kind' | 'source' | 'transform' | 'smartFilters' | 'mask' | 'maskEnabled' | 'psdNativeOrigin'>): boolean {
+  const origin = layer.psdNativeOrigin
+  const source = layer.source
+  const t = layer.transform
+  if (!origin || origin.kind !== 'smart' || layer.kind !== 'smart' ||
+      !source || !t || !Number.isFinite(t.x) || !Number.isFinite(t.y) ||
+      t.scale !== 1 || t.rotation !== 0 || !!t.quad || !!t.warp ||
+      layer.smartFilters.some(f => f.enabled) ||
+      source.width !== origin.width || source.height !== origin.height ||
+      t.x !== origin.left + source.width / 2 ||
+      t.y !== origin.top + source.height / 2) return false
+  const maskFingerprint = layer.mask ? psdPixelFingerprint(layer.mask) : null
+  return maskFingerprint === origin.maskFingerprint &&
+    (!!layer.mask && layer.maskEnabled) === origin.maskEnabled &&
+    psdPixelFingerprint(source) === origin.pixelFingerprint
+}
+
 export function stripPsdNativeObjectBlocks(blocks: readonly Uint8Array[]): Uint8Array[] {
   return blocks.filter(block => !PSD_NATIVE_OBJECT_KEYS.has(fxBlockKey(block)))
 }
