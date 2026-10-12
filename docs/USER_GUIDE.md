@@ -669,3 +669,15 @@ Discover compatible GIMP assets and use supported external GIMP procedures witho
 - Native GIMP 3 is Electron-only, installed separately, and runs with OS permissions; scripts are not sandboxed.
 - Pyodide is downloaded from a pinned remote CDN on first explicit request and may not work offline.
 - Embedded interpreters do not implement native GIMP GI, PDB or direct image editing; PNG interchange is not HDR/RAW round-tripping.
+
+## Customize the canvas right-click menu
+
+**Where:** Select **Move (V)**, right-click a layer on the canvas, then choose **Edit context menu…** at the bottom.
+
+1. Check or uncheck an action to show or hide it in the right-click menu.
+2. Use the up/down controls to change the order within a section. Section headings group related actions.
+3. Choose **Reset defaults** to restore the original set and ordering, or **Done** to close the editor.
+4. The **Edit** section includes Undo, Redo, Cut Layer and Paste Layer, with unavailable commands disabled.
+5. Changes persist in this browser/app profile using local storage. The **Edit context menu…** command cannot be hidden, so customization always remains accessible.
+
+**Notes:** Layer-specific actions honor locks and layer type; a command that does not apply (such as Rasterize on an existing raster layer) is omitted. The context menu is currently provided by the Move tool. Other tools retain their existing right-click behavior.
