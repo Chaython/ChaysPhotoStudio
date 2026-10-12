@@ -302,6 +302,8 @@ def main():
                 check(state["order"]["edit"] == ['undo', 'redo', 'paste', 'cut'],
                       f"reorder did not persist: {state['order']['edit']}")
                 dialog.get_by_role("button", name="Done").click()
+                dialog.wait_for(state="hidden")
+                page.wait_for_timeout(400)  # let Radix menu/dialog focus restore
                 host.click(button="right")
                 menu = page.get_by_role("menu", name=re.compile("Layer actions"))
                 check(menu.get_by_role("menuitem", name=re.compile("Free Transform")).count() == 0,
