@@ -4,6 +4,31 @@ import {
   beginDeferredRegionStroke, canUseByteRetouch, deferredRegionProcess,
 } from '../src/editor/tools/shared'
 import type { PsDocument } from '../src/editor/types'
+import { retouchDabIntersectsCanvas, sameRetouchTarget } from '../src/editor/tools/retouch-stroke-guards'
+import { readFileSync } from 'node:fs'
+
+const target = { docId: 'doc-a', targetId: 'layer-a' }
+assert.equal(sameRetouchTarget(target, 'doc-a', 'layer-a'), true)
+assert.equal(sameRetouchTarget(target, 'doc-b', 'layer-a'), false, 'never paint into a different document')
+assert.equal(sameRetouchTarget(target, 'doc-a', 'layer-b'), false, 'never paint into another layer')
+assert.equal(sameRetouchTarget(null, 'doc-a', 'layer-a'), false)
+const raster = { x: 20, y: 15, width: 40, height: 30 }
+assert.equal(retouchDabIntersectsCanvas(21, 20, 3, 100, 100, raster), true)
+assert.equal(retouchDabIntersectsCanvas(17, 20, 4, 100, 100, raster), true, 'brush can partly overlap a layer')
+assert.equal(retouchDabIntersectsCanvas(8, 20, 4, 100, 100, raster), false, 'off-layer dab cannot rasterize or clone')
+assert.equal(retouchDabIntersectsCanvas(-20, 20, 2, 100, 100, raster), false)
+assert.equal(retouchDabIntersectsCanvas(101, 20, 3, 100, 100, raster), false)
+assert.equal(retouchDabIntersectsCanvas(0.5, 1, 4, 100, 100, { x: 0, y: 0, width: 100, height: 100 }), true)
+assert.equal(retouchDabIntersectsCanvas(NaN, 20, 3, 100, 100, raster), false)
+assert.equal(retouchDabIntersectsCanvas(25, 20, Infinity, 100, 100, raster), false)
+assert.equal(retouchDabIntersectsCanvas(25, 20, 3, 0, 100, raster), false)
+assert.equal(retouchDabIntersectsCanvas(85, 20, 3, 100, 100, { x: 80, y: 0, width: 50, height: 100 }), true)
+assert.equal(retouchDabIntersectsCanvas(120, 20, 3, 100, 100, { x: 110, y: 0, width: 50, height: 100 }), false)
+
+const retouchSource = readFileSync(new URL('../src/editor/tools/retouch.ts', import.meta.url), 'utf8')
+assert.match(retouchSource, /engine\.pushHistory\([^\n]+, strokeDoc\)/, 'history must target the original document')
+assert.match(retouchSource, /if \(!isCurrentTarget\(\)\) \{ finishStroke\(\); return \}/, 'switching targets ends a retouch stroke')
+assert.match(retouchSource, /retouchDabIntersectsCanvas\(p\.docX, p\.docY/, 'reject untouched off-canvas dabs before COW')
 
 // Small Canvas2D double: enough to validate a real deferred 8-bit stroke,
 // the no-op path, out-of-bounds rejection, and high-depth guards.
