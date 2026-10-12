@@ -341,7 +341,8 @@ def main():
                         layerName: layer.name, kind: layer.kind,
                         smartOrigin: layer.psdNativeOrigin?.kind === 'smart',
                         sourcePixels: pixels?.length ?? 0,
-                        rendered: !!rendered && rendered.width === doc.width && rendered.height === doc.height,
+                        rendered: !!rendered && rendered.width > 0 && rendered.height > 0,
+                        smartDocSized: !!rendered && rendered.width === doc.width && rendered.height === doc.height,
                       }
                     }""")
                     print(f"  Real {name} browser import: {result}", flush=True)
@@ -349,7 +350,8 @@ def main():
                           result["sourcePixels"] > 0 and result["rendered"],
                           f"Real {name} did not produce the expected editable layer and canvas")
                     if is_smart:
-                        check(result["smartOrigin"], "Photoshop Smart Object lost its original descriptor provenance")
+                        check(result["smartOrigin"] and result["smartDocSized"],
+                              "Photoshop Smart Object lost its descriptor provenance or document-space rendering")
                 check(not errors, f"real PSD browser imports threw JS errors: {errors[:3]}")
 
             def gimp_lazy_interpreters():
