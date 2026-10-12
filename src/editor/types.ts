@@ -678,6 +678,8 @@ export interface PsDocument {
   psdGlobalLayerMaskData?: string
   /** Document-wide Photoshop linked-object and other tagged layer-info blocks. */
   psdGlobalAdditionalInfo?: string[]
+  /** Untagged Photoshop PSB global version-16 descriptor, retained as base64. */
+  psdGlobalOpaqueTail?: string
   /** Original Photoshop 32-bit HDR tone-preview settings, base64. */
   psdColorModeData?: string
   /** Original Photoshop color mode for compatible ICC/resource preservation. */
