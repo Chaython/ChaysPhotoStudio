@@ -10,7 +10,7 @@ import { engine, type TransformMode, type TransformReference } from '../../engin
 import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob, canvasPixelCapabilities } from '../../utils/canvas'
 import { compositeDocument, getFlatComposite } from '../../engine/document'
-import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster, psdBlendKeyToMode, psdPixelFingerprint, stripPsdNativeObjectBlocks, psdWillReplaceSourceFx } from '../../formats'
+import { FORMAT_INFO, ICO_SIZE_POOL, encodeCanvas, buildPsd, buildOpenRaster, psdBlendKeyToMode, psdPixelFingerprint, stripPsdNativeObjectBlocks, psdWillReplaceSourceFx, psdImportedSmartIsUnchanged } from '../../formats'
 import type { PsdLayerInput } from '../../formats'
 import type { DialogProps } from './generic-dialogs'
 import { TransformWarpEditor } from './transform-warp-editor'
@@ -371,6 +371,7 @@ export function ExportDialog({ onClose }: DialogProps) {
           const origin = l.psdNativeOrigin
           if (!origin) continue
           const maskHash = l.mask ? psdPixelFingerprint(l.mask) : null
+          if (l.kind === 'smart' && psdImportedSmartIsUnchanged(l)) continue
           if (!l.canvas || l.kind !== 'raster' || !!l.transform || l.smartFilters.some(filter => filter.enabled) ||
               l.canvas.width !== origin.width || l.canvas.height !== origin.height ||
               (l.offsetX ?? 0) !== origin.left || (l.offsetY ?? 0) !== origin.top ||
@@ -382,7 +383,9 @@ export function ExportDialog({ onClose }: DialogProps) {
         const replacedSourceFx = doc.layers.filter(l => l.fx && l.psdAdditionalInfo?.length &&
           psdWillReplaceSourceFx(l.psdAdditionalInfo.map(base64Bytes), l.fx))
         if (replacedSourceFx.length && !window.confirm(`${replacedSourceFx.length} Photoshop layer style(s) have changed and will be rebuilt from Studio's supported effect parameters. Photoshop-specific effect settings that Studio cannot edit may be lost. Continue exporting?`)) return
-        const unsupported = doc.layers.filter(l => ['adjustment', 'text', 'shape', 'smart'].includes(l.kind))
+        const unsupported = doc.layers.filter(l =>
+          ['adjustment', 'text', 'shape'].includes(l.kind) ||
+          (l.kind === 'smart' && !psdImportedSmartIsUnchanged(l)))
         if (unsupported.length && !window.confirm(`${unsupported.length} editable layer(s) (adjustment/text/shape/Smart Object) cannot round-trip natively in Photoshop. Adjustment layers will be omitted and other layers rasterized. Continue exporting a compatibility copy?`)) return
         // Group delimiters are byte-preserved only if the original drawable layer
         // sequence is intact. Reordering or inserting layers can invalidate the
@@ -392,7 +395,8 @@ export function ExportDialog({ onClose }: DialogProps) {
         const preserveGroups = sectionMarkers.length > 0 &&
           unsupported.length === 0 &&
           originalOrder.length === doc.layers.length &&
-          doc.layers.every((l, i) => l.id === originalOrder[i] && l.kind === 'raster') &&
+          doc.layers.every((l, i) => l.id === originalOrder[i] &&
+            (l.kind === 'raster' || psdImportedSmartIsUnchanged(l))) &&
           sectionMarkers.every(m => Number.isSafeInteger(m.beforeLayerIndex) &&
             m.beforeLayerIndex >= 0 && m.beforeLayerIndex <= doc.layers.length)
         if (sectionMarkers.length && !preserveGroups &&
@@ -430,14 +434,19 @@ export function ExportDialog({ onClose }: DialogProps) {
           addMarkers(layerIndex)
           const l = doc.layers[layerIndex]
           if (l.kind === 'adjustment') continue // no pixels of their own
-          const c = engine.layerCanvas(l.id)
+          const nativeSmart = psdImportedSmartIsUnchanged(l)
+          // An untouched imported Smart Object re-exports its cached local
+          // raster and native Photoshop descriptor. Transforms/Smart Filters
+          // are rasterized to document space after warning and stripping
+          // the now-stale Photoshop live descriptor.
+          const c = nativeSmart ? l.source : engine.layerCanvas(l.id)
           if (!c || c.width === 0 || c.height === 0) continue
-          const docSpace = l.kind !== 'raster' // smart/text/shape render doc-space
+          const docSpace = l.kind !== 'raster' && !nativeSmart
           inputs.push({
             name: l.name,
             canvas: c,
-            left: docSpace ? 0 : l.offsetX ?? 0,
-            top: docSpace ? 0 : l.offsetY ?? 0,
+            left: nativeSmart ? l.psdNativeOrigin!.left : docSpace ? 0 : l.offsetX ?? 0,
+            top: nativeSmart ? l.psdNativeOrigin!.top : docSpace ? 0 : l.offsetY ?? 0,
             opacity: l.opacity,
             blendMode: l.blendMode,
             rawBlendKey: l.psdBlendKey && l.blendMode === psdBlendKeyToMode(l.psdBlendKey) ? l.psdBlendKey : undefined,
@@ -445,7 +454,9 @@ export function ExportDialog({ onClose }: DialogProps) {
             clipped: l.clipped,
             locked: l.locked,
             sourceTransparencyProtected: l.psdTransparencyProtected,
-            mask: l.mask,
+            // The rendered document-space compatibility surface has already
+            // applied its mask. Do not apply the mask twice on PSD export.
+            mask: docSpace ? null : l.mask,
             maskEnabled: l.maskEnabled,
             preservedMaskChannels: preservedRealMasks.get(l.id),
             hdrPixels: doc.workingBitDepth === 32 ? l.hdrPixels ?? undefined : undefined,
