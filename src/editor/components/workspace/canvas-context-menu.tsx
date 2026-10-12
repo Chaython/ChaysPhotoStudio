@@ -1,4 +1,5 @@
 'use client'
+import { Fragment } from 'react'
 // Canvas right-click context menu (Move tool active): layer functions at the
 // pointer — "Expand to Fill Frame" / smart-fill empty space, transform,
 // duplicate/delete, arrange, flip, rasterize, merge, rename, properties.
@@ -203,10 +204,10 @@ export function CanvasLayerMenuContent({
         const visible = safePreferences.order[section.id].filter(id => !safePreferences.hidden.includes(id) && actions[id] != null)
         if (!visible.length) return null
         return (
-          <React.Fragment key={section.id}>
+          <Fragment key={section.id}>
             <ContextMenuSeparator />
-            {visible.map(id => <React.Fragment key={id}>{actions[id]}</React.Fragment>)}
-          </React.Fragment>
+            {visible.map(id => <Fragment key={id}>{actions[id]}</Fragment>)}
+          </Fragment>
         )
       })}
       <ContextMenuSeparator />
