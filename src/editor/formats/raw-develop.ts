@@ -1,6 +1,7 @@
 import { DEFAULT_RAW_TONE, normalizeRawTone, applyRawTone, type RawToneSettings } from './raw-tone'
 import { RAW_MIX_BANDS, DEFAULT_RAW_COLOR_MIX, normalizeRawColorMix, applyRawColorMix, type RawColorMix, type RawMixChannel } from './raw-color-mix'
 import { downsampleRawPreview, rawPreviewHistogram } from './raw-preview'
+import { RAW_CURVE_CHANNELS, DEFAULT_RAW_CURVES, normalizeRawCurves, applyRawCurves, evaluateRawCurve, type RawPointCurves, type RawCurveChannel } from './raw-curves'
 import type { RawImage } from './decoders'
 import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
 import type { ImageMetadata } from '../types'
@@ -17,12 +18,13 @@ export interface RawDevelopSettings {
   smartObject: boolean
   lensProfile: LensProfile
   tone: RawToneSettings
+  curves: RawPointCurves
   colorMix: RawColorMix
 }
 export const DEFAULT_RAW_SETTINGS: RawDevelopSettings = {
   exposureEv: 0, whiteBalance: 'camera', interpolation: 3,
   highlight: 0, denoise: 0, halfSize: false,
-  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE}, colorMix: structuredClone(DEFAULT_RAW_COLOR_MIX),
+  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE}, curves: structuredClone(DEFAULT_RAW_CURVES), colorMix: structuredClone(DEFAULT_RAW_COLOR_MIX),
 }
 const storageKey = 'chaysstudio.raw-develop.v1'
 export function rawSettingsFromSaved(): RawDevelopSettings {
@@ -44,6 +46,7 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
     smartObject:raw.smartObject!==false,
     lensProfile:normalizeLensProfile(raw.lensProfile),
     tone:normalizeRawTone(raw.tone),
+    curves:normalizeRawCurves(raw.curves),
     colorMix:normalizeRawColorMix(raw.colorMix),
   }
 }
@@ -151,6 +154,99 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       toneInputs[key]=input
       sliderFor(input)
     }
+    const curve=group('Point Tone Curves — RGB / individual channels',false)
+    const curveChannel=field('Curve channel','select','rgb',
+      ['rgb|Composite RGB','red|Red','green|Green','blue|Blue'],curve.grid)
+    const curveCanvas=document.createElement('canvas')
+    curveCanvas.width=256;curveCanvas.height=256
+    curveCanvas.style.cssText='width:min(100%,256px);height:auto;aspect-ratio:1/1;background:#161616;border:1px solid var(--border);touch-action:none;cursor:crosshair;grid-column:1/-1'
+    curveCanvas.setAttribute('aria-label','Editable point tone curve; drag handles vertically or use the numerical controls')
+    curve.grid.append(curveCanvas)
+    const curveInputs={} as Record<RawCurveChannel,HTMLInputElement[]>
+    const curveRows={} as Record<RawCurveChannel,HTMLDivElement[]>
+    const curveLabels=['Black','Dark','Midtone','Light','White']
+    const curveColors:Record<RawCurveChannel,string>={rgb:'#e5e7eb',red:'#f87171',green:'#4ade80',blue:'#60a5fa'}
+    const redrawCurve=()=>{
+      const selected=curveChannel.value as RawCurveChannel
+      for(const channel of RAW_CURVE_CHANNELS)
+        curveRows[channel].forEach(row=>{row.style.display=channel===selected?'grid':'none'})
+      const ctx=curveCanvas.getContext('2d')
+      if(!ctx)return
+      const width=curveCanvas.width
+      ctx.clearRect(0,0,width,width)
+      ctx.strokeStyle='#4b5563';ctx.lineWidth=1
+      for(let i=0;i<=4;i++){
+        const p=i*width/4
+        ctx.beginPath();ctx.moveTo(p,0);ctx.lineTo(p,width)
+        ctx.moveTo(0,p);ctx.lineTo(width,p);ctx.stroke()
+      }
+      ctx.setLineDash([4,4]);ctx.strokeStyle='#6b7280'
+      ctx.beginPath();ctx.moveTo(0,width);ctx.lineTo(width,0);ctx.stroke()
+      ctx.setLineDash([])
+      const points=curveInputs[selected].map(input=>input.valueAsNumber) as RawPointCurves['rgb']
+      ctx.strokeStyle=curveColors[selected];ctx.lineWidth=2
+      ctx.beginPath()
+      for(let x=0;x<=width;x++){
+        const y=(1-evaluateRawCurve(points,x/width))*width
+        if(x===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)
+      }
+      ctx.stroke()
+      ctx.fillStyle=curveColors[selected]
+      for(let i=0;i<5;i++){
+        ctx.beginPath();ctx.arc(i*width/4,(1-points[i]/100)*width,5,0,Math.PI*2);ctx.fill()
+      }
+    }
+    for(const channel of RAW_CURVE_CHANNELS){
+      curveRows[channel]=[]
+      curveInputs[channel]=[]
+      for(let i=0;i<5;i++){
+        const row=document.createElement('div')
+        row.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center'
+        curve.grid.append(row)
+        const input=field(curveLabels[i]+' output (0–100)','number',
+          String(current.curves[channel][i]),undefined,row) as HTMLInputElement
+        input.min='0';input.max='100';input.step='1'
+        sliderFor(input)
+        input.addEventListener('input',redrawCurve)
+        curveInputs[channel].push(input)
+        curveRows[channel].push(row)
+      }
+    }
+    curveChannel.addEventListener('change',redrawCurve)
+    const resetCurve=document.createElement('button')
+    resetCurve.type='button';resetCurve.textContent='Reset selected curve'
+    resetCurve.style.cssText='grid-column:1/-1;padding:7px 10px;border:1px solid var(--border);border-radius:6px'
+    resetCurve.addEventListener('click',()=>{
+      const channel=curveChannel.value as RawCurveChannel
+      DEFAULT_RAW_CURVES[channel].forEach((value,i)=>{
+        const input=curveInputs[channel][i]
+        input.value=String(value)
+        input.dispatchEvent(new Event('input',{bubbles:true}))
+      })
+      redrawCurve()
+    })
+    curve.grid.append(resetCurve)
+    let activeCurveHandle=-1
+    const curvePointer=(event:PointerEvent)=>{
+      if(activeCurveHandle<0)return
+      const box=curveCanvas.getBoundingClientRect()
+      const normalizedY=Math.max(0,Math.min(1,(event.clientY-box.top)/Math.max(box.height,1)))
+      const input=curveInputs[curveChannel.value as RawCurveChannel][activeCurveHandle]
+      input.value=String(Math.round((1-normalizedY)*100))
+      input.dispatchEvent(new Event('input',{bubbles:true}))
+    }
+    curveCanvas.addEventListener('pointerdown',event=>{
+      const rect=curveCanvas.getBoundingClientRect()
+      const x=Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(rect.width,1)))
+      activeCurveHandle=Math.round(x*4)
+      curveCanvas.setPointerCapture(event.pointerId)
+      curvePointer(event)
+    })
+    curveCanvas.addEventListener('pointermove',curvePointer)
+    const stopCurveDrag=()=>{activeCurveHandle=-1}
+    curveCanvas.addEventListener('pointerup',stopCurveDrag)
+    curveCanvas.addEventListener('pointercancel',stopCurveDrag)
+    redrawCurve()
     const mix=group('Color Mixer — 8-band HSL',false)
     const mixInputs={} as Record<keyof RawColorMix,Record<keyof RawMixChannel,HTMLInputElement>>
     const mixProperties=['hue','saturation','luminance'] as const
@@ -239,7 +335,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     presetTools.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px'
     const presetStatus=document.createElement('span')
     presetStatus.style.cssText='font-size:12px;opacity:.8'
-    presetStatus.textContent='Presets save tone + HSL only, not camera data or lens calibration.'
+    presetStatus.textContent='Presets save tone, curves and HSL only, not camera data or lens calibration.'
     const savePreset=document.createElement('button')
     savePreset.type='button';savePreset.textContent='Export color preset'
     savePreset.style.cssText=cancel.style.cssText
@@ -248,6 +344,9 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         tone:normalizeRawTone(Object.fromEntries(Object.entries(toneInputs).map(([key,input])=>[key,input.valueAsNumber]))),
         colorMix:normalizeRawColorMix(Object.fromEntries(RAW_MIX_BANDS.map(band=>[
           band,Object.fromEntries(mixProperties.map(property=>[property,mixInputs[band][property].valueAsNumber])),
+        ]))),
+        curves:normalizeRawCurves(Object.fromEntries(RAW_CURVE_CHANNELS.map(channel=>[
+          channel,curveInputs[channel].map(input=>input.valueAsNumber),
         ])))}
       const url=URL.createObjectURL(new Blob([JSON.stringify(recipe,null,2)],{type:'application/json'}))
       const anchor=document.createElement('a')
@@ -272,11 +371,15 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
             throw Error('Not a supported Chay Studio RAW color preset')
           const loadedTone=normalizeRawTone(parsed.tone)
           const loadedMix=normalizeRawColorMix(parsed.colorMix)
+          const loadedCurves=normalizeRawCurves(parsed.curves)
           for(const key of Object.keys(toneInputs) as (keyof RawToneSettings)[])
             toneInputs[key].value=String(loadedTone[key])
           for(const band of RAW_MIX_BANDS)for(const property of mixProperties)
             mixInputs[band][property].value=String(loadedMix[band][property])
+          for(const channel of RAW_CURVE_CHANNELS)
+            loadedCurves[channel].forEach((value,i)=>{curveInputs[channel][i].value=String(value)})
           for(const [input,slider] of sliders)slider.value=input.value
+          redrawCurve()
           presetStatus.textContent='Color preset imported; changes apply to this RAW on Open.'
           refreshEditedPreview()
         }catch(error){
@@ -296,6 +399,9 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       tone:normalizeRawTone(Object.fromEntries(Object.entries(toneInputs).map(([key,input])=>[key,input.valueAsNumber]))),
       colorMix:normalizeRawColorMix(Object.fromEntries(RAW_MIX_BANDS.map(band=>[
         band,Object.fromEntries(mixProperties.map(property=>[property,mixInputs[band][property].valueAsNumber])),
+      ]))),
+      curves:normalizeRawCurves(Object.fromEntries(RAW_CURVE_CHANNELS.map(channel=>[
+        channel,curveInputs[channel].map(input=>input.valueAsNumber),
       ]))),
       lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,
         tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
@@ -367,7 +473,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         previewStatus.textContent='Sensor or optics settings changed. Refresh RAW preview to see their effect.'
         return
       }
-      const adjusted=applyRawColorMix(applyRawTone(previewBase,settings.tone),settings.colorMix)
+      const adjusted=applyRawColorMix(applyRawCurves(applyRawTone(previewBase,settings.tone),settings.curves),settings.colorMix)
       paint(beforeCanvas,previewBase);paint(afterCanvas,adjusted)
       const hist=rawPreviewHistogram(adjusted)
       const ctx=histogramCanvas.getContext('2d')
@@ -411,7 +517,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         const {decodeCameraRaw}=await import('./wasm-codecs')
         const decoded=await decodeCameraRaw(await sourceFile.arrayBuffer(),{
           ...settings,halfSize:true,tone:{...DEFAULT_RAW_TONE},
-          colorMix:normalizeRawColorMix(DEFAULT_RAW_COLOR_MIX),
+          colorMix:normalizeRawColorMix(DEFAULT_RAW_COLOR_MIX),curves:normalizeRawCurves(DEFAULT_RAW_CURVES),
         })
         if(generation!==previewGeneration||!dialog.open)return
         previewBase=downsampleRawPreview(decoded,480)
@@ -428,6 +534,8 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       }
     })
     for(const input of Object.values(toneInputs))input.addEventListener('input',schedulePreview)
+    for(const channel of RAW_CURVE_CHANNELS)
+      curveInputs[channel].forEach(input=>input.addEventListener('input',schedulePreview))
     for(const band of RAW_MIX_BANDS)
       for(const property of mixProperties)mixInputs[band][property].addEventListener('input',schedulePreview)
     const sensorInputs=[exposure,whiteBalance,interpolation,highlight,denoise,
@@ -442,7 +550,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     refreshEditedPreview=schedulePreview
     presetTools.append(savePreset,loadPreset,presetStatus)
     actions.append(cancel,apply)
-    dialog.append(heading,caption,previewSection,form,basic.details,mix.details,optics.details,presetTools,actions)
+    dialog.append(heading,caption,previewSection,form,basic.details,curve.details,mix.details,optics.details,presetTools,actions)
     dialog.addEventListener('close',()=>{
       previewGeneration++
       previewBase=null
