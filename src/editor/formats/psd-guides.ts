@@ -102,6 +102,9 @@ export function writePsdGuides(
   const original = indices.length === 1 ? input[indices[0]] : undefined
   const parsed = original ? parseGuideResource(original) : null
   if (!indices.length && !guides.length) return input
+  // An undecodable resource contributes no editable guides; an untouched
+  // document should still save its original opaque bytes without an error.
+  if (indices.length === 1 && !parsed && !guides.length) return input
   if (indices.length === 1 && parsed && matchesExisting(parsed, original!, guides)) return input
   if (indices.length && (!parsed || indices.length !== 1)) {
     throw new Error('Cannot edit malformed or duplicate Photoshop guide resources without losing original metadata')
