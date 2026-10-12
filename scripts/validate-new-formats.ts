@@ -4,6 +4,7 @@ import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
+import { applyRawColorMix, normalizeRawColorMix, DEFAULT_RAW_COLOR_MIX } from '../src/editor/formats/raw-color-mix'
 import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
 function check(v:unknown,description:string) { if(!v)throw new Error(description) }
 const enc=new TextEncoder()
@@ -248,6 +249,27 @@ const correctedLensfun=applyLensProfile({
 check(correctedLensfun.rgba16?.length===sample16.length && correctedLensfun.sourceBitDepth===16,
   'Lensfun-calibrated RAW remap retains 16-bit geometry')
 check(sample16.every((v,i)=>v===original16[i]),'Lensfun correction does not mutate RAW samples')
+
+// Color Mixer: true 16-bit output, neutral identity, hue bands, safe alpha.
+const mixSample={width:3,height:1,sourceBitDepth:16,
+  rgba:new Uint8ClampedArray([255,0,0,255,0,0,255,255,128,128,128,255]) as Uint8ClampedArray<ArrayBuffer>,
+  rgba16:Uint16Array.from([65535,0,0,65535,0,0,65535,65535,32768,32768,32768,65535])}
+const mixOriginal=mixSample.rgba16.slice()
+check(applyRawColorMix(mixSample,{}).rgba16===mixSample.rgba16,'Neutral HSL Color Mix is no-op')
+const desaturated=applyRawColorMix(mixSample,{red:{hue:0,saturation:-100,luminance:0}})
+check(desaturated.rgba16 && Math.abs(desaturated.rgba16[0]-desaturated.rgba16[1])<2 &&
+  Math.abs(desaturated.rgba16[1]-desaturated.rgba16[2])<2,'Red saturation -100 removes chroma')
+check(desaturated.rgba16![4]===0 && desaturated.rgba16![6]===65535,'Red mix does not change unrelated blue')
+const mixedHue=applyRawColorMix(mixSample,{blue:{hue:-100,saturation:0,luminance:30}})
+check(mixedHue.rgba16![4]!==mixOriginal[4]||mixedHue.rgba16![5]!==mixOriginal[5],
+  'Blue hue/luminance controls edit matching blue')
+check(mixedHue.rgba16![8]===32768 && mixedHue.rgba16![9]===32768,'Color Mixer does not tint neutrals')
+check(mixSample.rgba16.every((v,i)=>v===mixOriginal[i]),'Color Mixer keeps original 16-bit samples')
+check(mixedHue.rgba16![7]===65535,'Color Mixer alpha preservation')
+check(normalizeRawColorMix({red:{hue:500,saturation:Number.NaN,luminance:-300}}).red.hue===100 &&
+  normalizeRawColorMix({red:{hue:500,saturation:Number.NaN,luminance:-300}}).red.luminance===-100,
+  'Color Mixer must bound persisted/user values')
+check(DEFAULT_RAW_COLOR_MIX.red.saturation===0,'Default RAW mixer neutral')
 
 // Two separate TIFF IFDs, each containing an 8-bit grayscale page.
 const tiff=new Uint8Array(258);const tv=new DataView(tiff.buffer)
