@@ -35,7 +35,8 @@ export function LayerContextMenuEditor({
         <div className="min-h-0 overflow-y-auto space-y-3 pr-1" aria-label="Layer context menu layout">
           {LAYER_CONTEXT_MENU_SECTIONS.map(section => {
             const entries = preferences.order[section.id]
-            const byId = new Map<string, string>(section.entries.map(item => [item.id, item.label]))
+            const byId = new Map<string, string>()
+            for (const item of section.entries) byId.set(item.id, item.label)
             return (
               <section key={section.id} aria-label={section.label} className="rounded-md border border-border/70 p-2 space-y-1">
                 <h3 className="text-xs font-semibold text-foreground px-1 py-1">{section.label}</h3>
