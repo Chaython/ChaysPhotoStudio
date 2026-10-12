@@ -145,7 +145,7 @@ export async function openFiles(files: File[], asLayer = false) {
           if ((decoded.warnings?.length ?? 0) > 3) store.pushToast(`${decoded.warnings!.length - 3} additional PSD compatibility warnings`, 'info')
           continue
         }
-        engine.addCanvasDocument(decoded.canvas, file.name, {
+        const flattenedPsd = engine.addCanvasDocument(decoded.canvas, file.name, {
           sourceBitDepth: decoded.sourceBitDepth ?? 8,
           workingBitDepth: decoded.sourceFloatPixels ? 32 : canvasProfile(decoded.canvas).bitDepth,
           hdrPixels: decoded.sourceFloatPixels,
@@ -155,6 +155,7 @@ export async function openFiles(files: File[], asLayer = false) {
           psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
           psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
         })
+        flattenedPsd.guides = (decoded.psdGuides ?? []).map(g => ({ ...g, id: uid() }))
         for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(`${file.name}: ${warning}`, 'info')
         continue
       }
@@ -316,7 +317,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
     selection: null, channelView: 'rgb', savedChannels: [],
-    guides: [],
+    guides: (decoded.psdGuides ?? []).map(g => ({ ...g, id: uid() })),
     view: { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
     historyBrushSourceIndex: 0,
