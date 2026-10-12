@@ -1,4 +1,5 @@
 import { DEFAULT_RAW_TONE, normalizeRawTone, type RawToneSettings } from './raw-tone'
+import { RAW_MIX_BANDS, DEFAULT_RAW_COLOR_MIX, normalizeRawColorMix, type RawColorMix, type RawMixChannel } from './raw-color-mix'
 import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
 import type { ImageMetadata } from '../types'
 import { cameraExif, importLensfunXml, loadedLensfunCount, matchLensfun } from './lensfun-xml'
@@ -14,11 +15,12 @@ export interface RawDevelopSettings {
   smartObject: boolean
   lensProfile: LensProfile
   tone: RawToneSettings
+  colorMix: RawColorMix
 }
 export const DEFAULT_RAW_SETTINGS: RawDevelopSettings = {
   exposureEv: 0, whiteBalance: 'camera', interpolation: 3,
   highlight: 0, denoise: 0, halfSize: false,
-  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE},
+  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE}, colorMix: structuredClone(DEFAULT_RAW_COLOR_MIX),
 }
 const storageKey = 'chaysstudio.raw-develop.v1'
 export function rawSettingsFromSaved(): RawDevelopSettings {
@@ -40,6 +42,7 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
     smartObject:raw.smartObject!==false,
     lensProfile:normalizeLensProfile(raw.lensProfile),
     tone:normalizeRawTone(raw.tone),
+    colorMix:normalizeRawColorMix(raw.colorMix),
   }
 }
 
@@ -68,7 +71,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     caption.style.cssText='font-size:12px;opacity:.8;overflow-wrap:anywhere;margin-bottom:12px'
     const form=document.createElement('div')
     form.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center'
-    function field(labelText:string, type:'number'|'select', value:string, options?:string[]){
+    function field(labelText:string, type:'number'|'select', value:string, options?:string[], target:HTMLElement=form){
       const label=document.createElement('label')
       label.textContent=labelText
       label.style.cssText='font-size:12px'
@@ -81,7 +84,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         option.value=id;option.textContent=name;input.append(option)
       }
       input.value=value
-      form.append(label,input)
+      target.append(label,input)
       return input
     }
     const exposure=field('Exposure (EV, -5 to +5)','number',String(current.exposureEv)) as HTMLInputElement
@@ -94,11 +97,21 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     denoise.min='0';denoise.max='500';denoise.step='1'
     const half=field('Resolution','select',current.halfSize?'half':'full',['full|Full resolution','half|Half resolution (faster)'])
     const smart=field('Keep original RAW','select',current.smartObject?'yes':'no',['yes|Smart Object (editable)','no|Flatten on import'])
-    const toneTitle=document.createElement('h4')
-    toneTitle.textContent='Photographic tone & color (reversible)'
-    toneTitle.style.cssText='font-size:13px;font-weight:600;margin:14px 0 8px'
-    // These controls apply to 16-bit developed samples, never the original RAW.
-    // Camera/demosaicing settings above run first and are independently editable.
+    // Group controls by workflow so expanding Color Mixer does not turn
+    // the Develop dialog into a permanently oversized 30-field form.
+    function group(title:string,expanded=false){
+      const details=document.createElement('details')
+      details.open=expanded
+      details.style.cssText='border-top:1px solid var(--border);padding-top:10px;margin-top:12px'
+      const summary=document.createElement('summary')
+      summary.textContent=title
+      summary.style.cssText='cursor:pointer;font-size:13px;font-weight:600'
+      const grid=document.createElement('div')
+      grid.style.cssText=form.style.cssText+';margin-top:10px'
+      details.append(summary,grid)
+      return {details,grid}
+    }
+    const basic=group('Basic tone and color (non-destructive)',true)
     const toneInputs={} as Record<keyof RawToneSettings,HTMLInputElement>
     for(const [key,label] of [
       ['contrast','Contrast'],['highlights','Highlights'],['shadows','Shadows'],
@@ -106,20 +119,34 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       ['saturation','Saturation'],['temperature','Warmth (post-develop)'],
       ['tint','Tint (green / magenta)'],
     ] as [keyof RawToneSettings,string][]){
-      const input=field(label+' (-100 to +100)','number',String(current.tone[key])) as HTMLInputElement
+      const input=field(label+' (-100 to +100)','number',String(current.tone[key]),undefined,basic.grid) as HTMLInputElement
       input.min='-100';input.max='100';input.step='1'
       toneInputs[key]=input
     }
-    const lensName=field('Lens profile label','number',current.lensProfile.name) as HTMLInputElement
+    const mix=group('Color Mixer — 8-band HSL',false)
+    const mixInputs={} as Record<keyof RawColorMix,Record<keyof RawMixChannel,HTMLInputElement>>
+    const mixProperties=['hue','saturation','luminance'] as const
+    for(const band of RAW_MIX_BANDS){
+      const inputs={} as Record<keyof RawMixChannel,HTMLInputElement>
+      for(const property of mixProperties){
+        const input=field(band[0].toUpperCase()+band.slice(1)+' '+property+' (-100 to +100)',
+          'number',String(current.colorMix[band][property]),undefined,mix.grid) as HTMLInputElement
+        input.min='-100';input.max='100';input.step='1'
+        inputs[property]=input
+      }
+      mixInputs[band]=inputs
+    }
+    const optics=group('Optics and Lensfun calibration',false)
+    const lensName=field('Lens profile label','number',current.lensProfile.name,undefined,optics.grid) as HTMLInputElement
     lensName.type='text'
     lensName.placeholder='Camera / lens / focal length'
-    const k1=field('Distortion k1 (-0.5…0.5)','number',String(current.lensProfile.k1)) as HTMLInputElement
+    const k1=field('Distortion k1 (-0.5…0.5)','number',String(current.lensProfile.k1),undefined,optics.grid) as HTMLInputElement
     k1.step='0.001';k1.min='-0.5';k1.max='0.5'
-    const k2=field('Distortion k2 (-0.25…0.25)','number',String(current.lensProfile.k2)) as HTMLInputElement
+    const k2=field('Distortion k2 (-0.25…0.25)','number',String(current.lensProfile.k2),undefined,optics.grid) as HTMLInputElement
     k2.step='0.001';k2.min='-0.25';k2.max='0.25'
-    const tca=field('Color fringing (-0.05…0.05)','number',String(current.lensProfile.tca)) as HTMLInputElement
+    const tca=field('Color fringing (-0.05…0.05)','number',String(current.lensProfile.tca),undefined,optics.grid) as HTMLInputElement
     tca.step='0.0001';tca.min='-0.05';tca.max='0.05'
-    const vignette=field('Vignette correction (-0.6…0.6)','number',String(current.lensProfile.vignette)) as HTMLInputElement
+    const vignette=field('Vignette correction (-0.6…0.6)','number',String(current.lensProfile.vignette),undefined,optics.grid) as HTMLInputElement
     vignette.step='0.01';vignette.min='-0.6';vignette.max='0.6'
     const lensStatus=document.createElement('p')
     lensStatus.style.cssText='font-size:12px;overflow-wrap:anywhere;opacity:.85;margin-top:10px'
@@ -167,6 +194,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       picker.click()
     })
     profileControls.append(load,matchButton)
+    optics.details.append(profileControls,lensStatus)
     if(loadedLensfunCount()&&!chosenLensfun)applyMatched()
     const actions=document.createElement('div')
     actions.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:16px'
@@ -177,7 +205,56 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     apply.style.cssText='padding:7px 14px;border-radius:6px;background:var(--primary);color:var(--primary-foreground)'
     cancel.addEventListener('click',()=>dialog.close('cancel'))
     apply.addEventListener('click',()=>dialog.close('apply'))
-    actions.append(cancel,apply);dialog.append(heading,caption,toneTitle,form,profileControls,lensStatus,actions)
+    const presetTools=document.createElement('div')
+    presetTools.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px'
+    const presetStatus=document.createElement('span')
+    presetStatus.style.cssText='font-size:12px;opacity:.8'
+    presetStatus.textContent='Presets save tone + HSL only, not camera data or lens calibration.'
+    const savePreset=document.createElement('button')
+    savePreset.type='button';savePreset.textContent='Export color preset'
+    savePreset.style.cssText=cancel.style.cssText
+    savePreset.addEventListener('click',()=>{
+      const recipe={format:'chaysstudio-raw-color-preset',version:1,
+        tone:normalizeRawTone(Object.fromEntries(Object.entries(toneInputs).map(([key,input])=>[key,input.valueAsNumber]))),
+        colorMix:normalizeRawColorMix(Object.fromEntries(RAW_MIX_BANDS.map(band=>[
+          band,Object.fromEntries(mixProperties.map(property=>[property,mixInputs[band][property].valueAsNumber])),
+        ])))}
+      const url=URL.createObjectURL(new Blob([JSON.stringify(recipe,null,2)],{type:'application/json'}))
+      const anchor=document.createElement('a')
+      anchor.href=url;anchor.download='chaysstudio-raw-color-preset.json'
+      document.body.append(anchor);anchor.click();anchor.remove()
+      setTimeout(()=>URL.revokeObjectURL(url),1000)
+    })
+    const loadPreset=document.createElement('button')
+    loadPreset.type='button';loadPreset.textContent='Import color preset…'
+    loadPreset.style.cssText=cancel.style.cssText
+    loadPreset.addEventListener('click',()=>{
+      const input=document.createElement('input')
+      input.type='file';input.accept='.json,application/json'
+      input.addEventListener('change',async()=>{
+        const file=input.files?.[0]
+        if(!file)return
+        try{
+          if(file.size>64*1024)throw Error('Preset exceeds 64 KiB')
+          const parsed=JSON.parse(await file.text())
+          if(!parsed || parsed.format!=='chaysstudio-raw-color-preset' || parsed.version!==1)
+            throw Error('Not a supported Chay Studio RAW color preset')
+          const loadedTone=normalizeRawTone(parsed.tone)
+          const loadedMix=normalizeRawColorMix(parsed.colorMix)
+          for(const key of Object.keys(toneInputs) as (keyof RawToneSettings)[])
+            toneInputs[key].value=String(loadedTone[key])
+          for(const band of RAW_MIX_BANDS)for(const property of mixProperties)
+            mixInputs[band][property].value=String(loadedMix[band][property])
+          presetStatus.textContent='Color preset imported. Choose Open RAW to apply it.'
+        }catch(error){
+          presetStatus.textContent='Preset import failed: '+(error instanceof Error?error.message:String(error))
+        }
+      },{once:true})
+      input.click()
+    })
+    presetTools.append(savePreset,loadPreset,presetStatus)
+    actions.append(cancel,apply)
+    dialog.append(heading,caption,form,basic.details,mix.details,optics.details,presetTools,actions)
     dialog.addEventListener('close',()=>{
       const result=dialog.returnValue==='apply'?normalizeRawSettings({
         exposureEv:exposure.valueAsNumber,
@@ -188,6 +265,9 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         halfSize:half.value==='half',
         smartObject:smart.value==='yes',
         tone:normalizeRawTone(Object.fromEntries(Object.entries(toneInputs).map(([key,input])=>[key,input.valueAsNumber]))),
+        colorMix:normalizeRawColorMix(Object.fromEntries(RAW_MIX_BANDS.map(band=>[
+          band,Object.fromEntries(mixProperties.map(property=>[property,mixInputs[band][property].valueAsNumber])),
+        ]))),
         lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
       }):null
       if(result)try{localStorage.setItem(storageKey,JSON.stringify(result))}catch{}
