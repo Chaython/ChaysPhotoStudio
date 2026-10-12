@@ -487,6 +487,8 @@ export function ExportDialog({ onClose }: DialogProps) {
             return id !== 0x0404 && id !== 0x0424
           })
         const metadataResources = includeMetadata ? buildPhotoshopMetadataResources(doc.metadata) : []
+        if (doc.psdGlobalOpaqueTail && format !== 'psb' &&
+            !window.confirm('This Photoshop document contains unrecognized PSB-only global descriptors that cannot be represented in PSD. Exporting PSD will omit those original bytes. Save a .zproj.json or PSB to preserve them. Continue?')) return
         const blob = buildPsd(doc.width, doc.height, inputs, getFlatComposite(doc), {
           resolutionPpi: doc.resolutionPpi ?? 72,
           depth: doc.workingBitDepth === 32 ? 32 : doc.workingBitDepth === 16 ? 16 : 8,
@@ -497,6 +499,7 @@ export function ExportDialog({ onClose }: DialogProps) {
           extraMergedChannels: canPreserveExtras ? storedExtras : undefined,
           globalLayerMaskData: doc.psdGlobalLayerMaskData ? base64Bytes(doc.psdGlobalLayerMaskData) : undefined,
           globalAdditionalInfo: doc.psdGlobalAdditionalInfo?.map(base64Bytes),
+          globalOpaqueTail: format === 'psb' && doc.psdGlobalOpaqueTail ? base64Bytes(doc.psdGlobalOpaqueTail) : undefined,
           format: format === 'psb' ? 'psb' : 'psd',
           imageResources: [...writePsdPaths(writePsdGuides(preservedResources, doc.guides ?? []), doc.savedPaths ?? [], doc.psdEditablePathResourceIds ?? [], doc.width, doc.height), ...metadataResources],
         })
