@@ -1143,6 +1143,15 @@ for (const format of ['psd', 'psb'] as const) {
   const { record, lmAt, liAt, lenSize, psb } = firstPhotoshopLayerRecord(bytes)
   const original = new DataView(bytes.buffer)
   const count = original.getUint16(record + 16)
+  // Duplicate channel IDs must be rejected rather than letting a later
+  // plane silently overwrite the first RGB/alpha entry in the decoder Map.
+  const duplicateColor = bytes.slice()
+  const duplicateView = new DataView(duplicateColor.buffer)
+  assert.ok(count >= 2, 'PSD layer must contain at least two color channels')
+  duplicateView.setInt16(record + 20 + 2 + lenSize, 0)
+  await assert.rejects(() => decodePsd(duplicateColor),
+    /Duplicate Photoshop layer channel ID 0/,
+    'Ambiguous duplicate red channels must not corrupt the imported image')
   const firstChannelLengthAt = record + 20
   const extraLengthAt = record + 18 + count * (2 + lenSize) + 12
   const broken = (mutate: (view: DataView) => void): Uint8Array => {
