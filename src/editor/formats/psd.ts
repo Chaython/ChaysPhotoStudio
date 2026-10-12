@@ -13,6 +13,7 @@
 
 import { createCanvas, ctx2d, getImageData, getFloat16ImageData, putFloat16Pixels, hdrFloat32ToPreviewCanvas, canvasProfile } from '../utils/canvas'
 import type { BlendIfSettings, BlendIfSlider, BlendMode, LayerFX } from '../types'
+import { readPsdGuides, type PsdGuide } from './psd-guides'
 
 // ---------- blend mode mapping ----------
 const PSD_TO_APP: Record<string, BlendMode> = {
@@ -579,6 +580,8 @@ export interface PsdDecoded {
   resolutionPpi: number
   /** Opaque non-resolution image-resource blocks retained byte-for-byte. */
   imageResources: Uint8Array[]
+  /** Photoshop's horizontal and vertical document guides (resource 1032). */
+  guides: PsdGuide[]
   /** Original document-level global layer-mask payload. */
   globalLayerMaskData: Uint8Array
   /** Non-layer-data global additional-info blocks (including linked object records). */
@@ -1550,7 +1553,7 @@ export async function decodePsd(bytes: Uint8Array): Promise<PsdDecoded> {
     hasAlpha = getImageData(composite).data.some((v, i) => i % 4 === 3 && v < 255)
   }
 
-  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, globalLayerMaskData, globalAdditionalInfo, colorModeData, extraMergedChannels, warnings: [...compatibilityWarnings] }
+  return { canvas: composite, width, height, colorMode, depth: depth as 8 | 16 | 32, hdrPixels: hdrComposite, hasAlpha, layers, sectionMarkers, resolutionPpi, imageResources, guides: readPsdGuides(imageResources), globalLayerMaskData, globalAdditionalInfo, colorModeData, extraMergedChannels, warnings: [...compatibilityWarnings] }
 }
 
 // ============================================================
