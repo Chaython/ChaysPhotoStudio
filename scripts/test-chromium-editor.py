@@ -331,7 +331,7 @@ def main():
                         old_len = struct.unpack_from(">I", content, resource_len_at)[0]
                         guide_data = struct.pack(">IIII", 1, 576, 576, 2)
                         guide_data += struct.pack(">IBIB", 400, 0, 200, 1)
-                        guide_resource = b"8BIM" + struct.pack(">H", 1032) + b"\\0\\0"
+                        guide_resource = b"8BIM" + struct.pack(">H", 1032) + bytes(2)
                         guide_resource += struct.pack(">I", len(guide_data)) + guide_data
                         content = (content[:resource_len_at] +
                                    struct.pack(">I", old_len + len(guide_resource)) +
