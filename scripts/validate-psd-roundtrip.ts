@@ -144,9 +144,9 @@ for (const format of ['psd', 'psb'] as const) {
 const photoshopSavedPath = {
   id: 'studio-path', name: 'Clipping outline', closed: true, visible: true,
   anchors: [
-    { x: 10, y: 20, inX: 8, inY: 18, outX: 12, outY: 22, pair: true },
-    { x: 90, y: 65, inX: 88, inY: 60, outX: 92, outY: 69, pair: false },
-    { x: 70, y: 140, inX: 65, inY: 130, outX: 71, outY: 145, pair: false },
+    { x: 10, y: 20, inX: -2, inY: -2, outX: 2, outY: 2, pair: true },
+    { x: 90, y: 65, inX: -2, inY: -5, outX: 2, outY: 4, pair: false },
+    { x: 70, y: 140, inX: -5, inY: -10, outX: 1, outY: 5, pair: false },
   ],
 }
 const photoshopPathResources = writePsdPaths([], [photoshopSavedPath], [], 120, 200)
@@ -157,6 +157,21 @@ assert.ok(recognizedPsdPath)
 assert.equal(recognizedPsdPath.name, photoshopSavedPath.name)
 assert.equal(recognizedPsdPath.closed, true)
 assert.deepEqual(recognizedPsdPath.anchors.map(a => a.pair), [true, false, false])
+const rawPhotoshopKnot = photoshopPathResources[0]
+const resourceNameBytes = (rawPhotoshopKnot[6] + 2) & ~1
+const firstKnotAt = 6 + resourceNameBytes + 4 + 2 * 26
+const photoshopControlView = new DataView(rawPhotoshopKnot.buffer)
+assert.equal(photoshopControlView.getInt32(firstKnotAt + 6),
+  Math.round(8 / 120 * 16777216),
+  'Photoshop incoming Bézier handle is an absolute coordinate, not a Studio offset')
+assert.equal(photoshopControlView.getInt32(firstKnotAt + 14),
+  Math.round(10 / 120 * 16777216),
+  'Photoshop Bézier anchor retains its independent absolute X coordinate')
+assert.equal(recognizedPsdPath.anchors[0].inX, -2,
+  'Studio imports Adobe absolute controls as offsets from their anchor')
+assert.equal(recognizedPsdPath.anchors[0].outY, 2,
+  'Studio imported path handles render correctly with relative Y offsets')
+
 for (const key of ['x', 'y', 'inX', 'inY', 'outX', 'outY'] as const) {
   for (let i = 0; i < 3; i++) assert.ok(
     Math.abs(recognizedPsdPath.anchors[i][key] - photoshopSavedPath.anchors[i][key]) < 0.0001,
