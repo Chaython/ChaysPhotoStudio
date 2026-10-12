@@ -66,6 +66,7 @@ export interface DecodedImage {
   psdImageResources?: Uint8Array[]
   /** Native editable guides imported from Photoshop resource 1032. */
   psdGuides?: Array<{ orientation: 'h' | 'v'; pos: number }>
+  psdPaths?: Array<import('../types').SavedPath & { psdPathResourceId: number }>
   psdGlobalLayerMaskData?: Uint8Array
   psdGlobalAdditionalInfo?: Uint8Array[]
   /** Photoshop-origin 32-bit HDR color-mode payload (hdrt) for exact passthrough. */
@@ -395,6 +396,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
         resolutionPpi: psd.resolutionPpi,
         psdImageResources: psd.imageResources.map(b => b.slice()),
         psdGuides: psd.guides.map(g => ({ ...g })),
+        psdPaths: psd.paths.map(p => ({ ...p, id: `psd-path-${p.psdPathResourceId}`, anchors: p.anchors.map(a => ({ ...a })) })),
         psdGlobalLayerMaskData: psd.globalLayerMaskData.slice(),
         psdGlobalAdditionalInfo: psd.globalAdditionalInfo.map(b => b.slice()),
         psdColorModeData: psd.depth === 32 ? psd.colorModeData.slice() : undefined,
