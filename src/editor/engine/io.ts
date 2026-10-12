@@ -4,7 +4,7 @@ import { useEditorStore } from '../store'
 import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
 import { newLayer } from './document'
 import type { HistoryState, ImageMetadata, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
-import { decodeFile, detectFormat } from '../formats'
+import { decodeFile, detectFormat, psdNativeObjectKind, psdPixelFingerprint } from '../formats'
 import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
 import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension, publishedFormatKind } from '../formats'
 import { metadataResolutionPpi, readImageMetadata } from '../formats/metadata'
@@ -139,8 +139,27 @@ export async function openFiles(files: File[], asLayer = false) {
 
       if (!asLayer && format === 'psd') {
         const decoded = await decodeFile(file)
-        if (decoded.psdLayers?.length) { addPsdDocument(file.name, decoded, metadata); continue }
-        engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth ?? 8, workingBitDepth: canvasProfile(decoded.canvas).bitDepth, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata })
+        if (decoded.psdLayers?.length) {
+          addPsdDocument(file.name, decoded, metadata)
+          for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(`${file.name}: ${warning}`, 'info')
+          if ((decoded.warnings?.length ?? 0) > 3) store.pushToast(`${decoded.warnings!.length - 3} additional PSD compatibility warnings`, 'info')
+          continue
+        }
+        const flattenedPsd = engine.addCanvasDocument(decoded.canvas, file.name, {
+          sourceBitDepth: decoded.sourceBitDepth ?? 8,
+          workingBitDepth: decoded.sourceFloatPixels ? 32 : canvasProfile(decoded.canvas).bitDepth,
+          hdrPixels: decoded.sourceFloatPixels,
+          resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), metadata,
+          psdImageResources: decoded.psdImageResources?.map(bytesToBase64),          psdGlobalLayerMaskData: decoded.psdGlobalLayerMaskData?.length ? bytesToBase64(decoded.psdGlobalLayerMaskData) : undefined,          psdGlobalAdditionalInfo: decoded.psdGlobalAdditionalInfo?.map(bytesToBase64),
+          psdGlobalOpaqueTail: decoded.psdGlobalOpaqueTail?.length ? bytesToBase64(decoded.psdGlobalOpaqueTail) : undefined,
+          psdSourceColorMode: decoded.psdSourceColorMode,
+          psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
+          psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
+        })
+        flattenedPsd.guides = (decoded.psdGuides ?? []).map(g => ({ ...g, id: uid() }))
+        flattenedPsd.savedPaths = (decoded.psdPaths ?? []).map(p => ({ ...p, id: uid(), anchors: p.anchors.map(a => ({ ...a })) }))
+        flattenedPsd.psdEditablePathResourceIds = (decoded.psdPaths ?? []).map(p => p.psdPathResourceId)
+        for (const warning of (decoded.warnings ?? []).slice(0, 3)) store.pushToast(`${file.name}: ${warning}`, 'info')
         continue
       }
       if (!asLayer && hasDedicatedDocumentParser(file.name)) {
@@ -291,14 +310,20 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
   const doc: PsDocument = {
     id: uid(), name, width, height,
     resolutionPpi: Math.max(1, Math.min(12000, Number(decoded.resolutionPpi) || 72)),
-    workingBitDepth: canvasProfile(decoded.canvas).bitDepth,
+    workingBitDepth: decoded.sourceBitDepth === 32 && decoded.psdLayers?.some(l => l.hdrPixels) ? 32 : canvasProfile(decoded.canvas).bitDepth,
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
-    psdImageResources: decoded.psdImageResources?.map(bytesToBase64),
+    psdImageResources: decoded.psdImageResources?.map(bytesToBase64),    psdGlobalLayerMaskData: decoded.psdGlobalLayerMaskData?.length ? bytesToBase64(decoded.psdGlobalLayerMaskData) : undefined,    psdGlobalAdditionalInfo: decoded.psdGlobalAdditionalInfo?.map(bytesToBase64),
+          psdGlobalOpaqueTail: decoded.psdGlobalOpaqueTail?.length ? bytesToBase64(decoded.psdGlobalOpaqueTail) : undefined,
+    psdColorModeData: decoded.psdColorModeData?.length ? bytesToBase64(decoded.psdColorModeData) : undefined,
+    psdSourceColorMode: decoded.psdSourceColorMode,
+    psdExtraMergedChannels: decoded.psdExtraMergedChannels?.map(bytesToBase64),
+    psdEditablePathResourceIds: (decoded.psdPaths ?? []).map(p => p.psdPathResourceId),
+    savedPaths: (decoded.psdPaths ?? []).map(p => ({ ...p, id: uid(), anchors: p.anchors.map(a => ({ ...a })) })),
     metadata: metadata ? structuredClone(metadata) : undefined,
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
     selection: null, channelView: 'rgb', savedChannels: [],
-    guides: [],
+    guides: (decoded.psdGuides ?? []).map(g => ({ ...g, id: uid() })),
     view: { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
     historyBrushSourceIndex: 0,
@@ -308,22 +333,88 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
   for (const psd of decoded.psdLayers ?? []) {
     const layer = newLayer('raster', psd.name || 'Layer', width, height)
     layer.canvas = psd.canvas
+    if (psd.hdrPixels) {
+      layer.hdrPixels = new Float32Array(psd.hdrPixels)
+      layer.hdrColorSpace = 'linear-srgb'
+    }
     layer.offsetX = psd.left
     layer.offsetY = psd.top
     layer.opacity = Math.round(psd.opacity)
     layer.blendMode = (psd.blendMode || 'normal') as Layer['blendMode']
+    if (psd.rawBlendKey?.length === 4) layer.psdBlendKey = psd.rawBlendKey
+    if (psd.groupPath?.length) layer.psdGroupPath = [...psd.groupPath]
     layer.visible = psd.visible
+    layer.locked = psd.locked === true
+    if (psd.transparencyProtected) layer.psdTransparencyProtected = true
     layer.clipped = !!psd.clipped
-    if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = true }
+    if (psd.mask) { layer.mask = psd.mask; layer.maskEnabled = psd.maskEnabled !== false }
+    if (psd.unsupportedRealMask) layer.psdUnsupportedRealMask = true
+    if (psd.preservedMaskChannels) {
+      const data = psd.preservedMaskChannels
+      layer.psdPreservedMaskChannels = {
+        metadata: bytesToBase64(data.metadata),
+        real: bytesToBase64(data.real),
+        user: data.user ? bytesToBase64(data.user) : undefined,
+        sourceFormat: data.sourceFormat, depth: data.depth,
+        docWidth: data.docWidth, docHeight: data.docHeight,
+        left: data.left, top: data.top,
+        width: data.width, height: data.height,
+        maskFingerprint: psd.mask ? psdPixelFingerprint(psd.mask) : null,
+        maskEnabled: psd.mask ? psd.maskEnabled !== false : false,
+      }
+    }
     if (psd.fx) layer.fx = structuredClone(psd.fx)
-    if (psd.additionalInfo?.length) layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
+    if (psd.additionalInfo?.length) {
+      layer.psdAdditionalInfo = psd.additionalInfo.map(bytesToBase64)
+      const kind = psdNativeObjectKind(psd.additionalInfo)
+      if (kind) layer.psdNativeOrigin = {
+        kind,
+        pixelFingerprint: psdPixelFingerprint(psd.canvas, psd.hdrPixels),
+        maskFingerprint: psd.mask ? psdPixelFingerprint(psd.mask) : null,
+        maskEnabled: psd.mask ? psd.maskEnabled !== false : false,
+        left: psd.left, top: psd.top,
+        width: psd.canvas.width, height: psd.canvas.height,
+      }
+      // Use Studio's existing non-destructive Smart Layer model for an
+      // imported Photoshop Smart Object's *cached raster preview*. The real
+      // embedded/linked Photoshop payload remains in its opaque PSD blocks.
+      // Never convert high-bit or combined-mask previews here: that could
+      // quantize precision or change an unrendered vector mask.
+      if (kind === 'smart' && decoded.sourceBitDepth === 8 &&
+          !psd.hdrPixels && !psd.unsupportedRealMask &&
+          psd.canvas.width > 0 && psd.canvas.height > 0) {
+        layer.kind = 'smart'
+        layer.source = psd.canvas
+        layer.canvas = null
+        layer.transform = {
+          x: psd.left + psd.canvas.width / 2,
+          y: psd.top + psd.canvas.height / 2,
+          scale: 1, rotation: 0,
+        }
+        layer.offsetX = 0
+        layer.offsetY = 0
+      }
+    }
+    if (psd.blendingRanges?.length) layer.psdBlendingRanges = bytesToBase64(psd.blendingRanges)
+    if (psd.blendIf) layer.blendIf = structuredClone(psd.blendIf)
     doc.layers.push(layer as Layer)
   }
   if (!doc.layers.length) return engine.addCanvasDocument(decoded.canvas, name, {
     sourceBitDepth: decoded.sourceBitDepth ?? 8,
+    workingBitDepth: decoded.sourceFloatPixels ? 32 : canvasProfile(decoded.canvas).bitDepth,
+    hdrPixels: decoded.sourceFloatPixels,
     resolutionPpi: decoded.resolutionPpi,
     metadata,
   })
+  if (decoded.psdSectionMarkers?.length) {
+    doc.psdSectionMarkers = decoded.psdSectionMarkers.map(m => ({
+      kind: m.kind, beforeLayerIndex: m.beforeLayerIndex, name: m.name, opacity: m.opacity,
+      visible: m.visible, blendKey: m.blendKey,
+      additionalInfo: m.additionalInfo.map(bytesToBase64),
+      blendingRanges: bytesToBase64(m.blendingRanges),
+    }))
+    doc.psdSectionLayerOrder = doc.layers.map(l => l.id)
+  }
   doc.activeLayerId = doc.layers[doc.layers.length - 1].id
   engine.docs.push(doc)
   engine.setActiveDocument(doc.id)
@@ -454,6 +545,15 @@ export interface SerializedProject {
     proof?: import('../types').ProofSettings
     resolutionPpi?: number
     psdImageResources?: string[]
+    psdEditablePathResourceIds?: number[]
+    psdGlobalLayerMaskData?: string
+    psdGlobalAdditionalInfo?: string[]
+    psdGlobalOpaqueTail?: string
+    psdColorModeData?: string
+    psdSourceColorMode?: number
+    psdExtraMergedChannels?: string[]
+    psdSectionMarkers?: PsDocument['psdSectionMarkers']
+    psdSectionLayerOrder?: string[]
     metadata?: ImageMetadata
     colorSamplers?: { id: string; x: number; y: number }[]
     measurements?: import('../types').SavedMeasurement[]
@@ -521,6 +621,14 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
       vectorMask: cloneVectorMask(l.vectorMask),
       psdAdditionalInfo: Array.isArray(l.psdAdditionalInfo) ? [...l.psdAdditionalInfo] : undefined,
+      psdBlendingRanges: l.psdBlendingRanges,
+      psdBlendKey: l.psdBlendKey,
+      psdTransparencyProtected: l.psdTransparencyProtected,
+      psdUnsupportedRealMask: l.psdUnsupportedRealMask,
+      psdPreservedMaskChannels: l.psdPreservedMaskChannels
+        ? structuredClone(l.psdPreservedMaskChannels) : undefined,
+      psdNativeOrigin: l.psdNativeOrigin ? structuredClone(l.psdNativeOrigin) : undefined,
+      psdGroupPath: l.psdGroupPath ? [...l.psdGroupPath] : undefined,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0, origin: l.origin ?? null,
       rawSmart: l.kind === 'smart' && l.rawSmart ? structuredClone(l.rawSmart) : undefined,
     },
@@ -565,6 +673,15 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       proof: doc.proof ? structuredClone(doc.proof) : undefined,
       resolutionPpi: doc.resolutionPpi ?? 72,
       psdImageResources: doc.psdImageResources ? [...doc.psdImageResources] : undefined,
+      psdEditablePathResourceIds: doc.psdEditablePathResourceIds ? [...doc.psdEditablePathResourceIds] : undefined,
+      psdGlobalLayerMaskData: doc.psdGlobalLayerMaskData,
+      psdGlobalAdditionalInfo: doc.psdGlobalAdditionalInfo ? [...doc.psdGlobalAdditionalInfo] : undefined,
+      psdGlobalOpaqueTail: doc.psdGlobalOpaqueTail,
+      psdColorModeData: doc.psdColorModeData,
+      psdSourceColorMode: doc.psdSourceColorMode,
+      psdExtraMergedChannels: doc.psdExtraMergedChannels ? [...doc.psdExtraMergedChannels] : undefined,
+      psdSectionMarkers: doc.psdSectionMarkers ? structuredClone(doc.psdSectionMarkers) : undefined,
+      psdSectionLayerOrder: doc.psdSectionLayerOrder ? [...doc.psdSectionLayerOrder] : undefined,
       metadata: doc.metadata ? structuredClone(doc.metadata) : undefined,
       colorSamplers: doc.colorSamplers?.map(s => ({ ...s })) ?? [],
       measurements: (doc.measurements ?? []).map(m => ({
@@ -667,6 +784,34 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     fx: sl.props.fx ?? null,
     vectorMask: normalizeVectorMask(sl.props.vectorMask),
     psdAdditionalInfo: Array.isArray(sl.props.psdAdditionalInfo) ? sl.props.psdAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
+    psdBlendingRanges: typeof sl.props.psdBlendingRanges === 'string' ? sl.props.psdBlendingRanges : undefined,
+    psdBlendKey: typeof sl.props.psdBlendKey === 'string' && sl.props.psdBlendKey.length === 4 ? sl.props.psdBlendKey : undefined,
+    psdTransparencyProtected: sl.props.psdTransparencyProtected === true,
+    psdUnsupportedRealMask: sl.props.psdUnsupportedRealMask === true,
+    psdPreservedMaskChannels: (() => {
+      const m = sl.props.psdPreservedMaskChannels
+      if (!m || typeof m.metadata !== 'string' || typeof m.real !== 'string' ||
+          (m.user !== undefined && typeof m.user !== 'string') ||
+          !['psd', 'psb'].includes(m.sourceFormat) || ![8, 16, 32].includes(m.depth) ||
+          ![m.docWidth, m.docHeight, m.left, m.top, m.width, m.height].every(Number.isSafeInteger) ||
+          !Number.isSafeInteger(m.docWidth) || m.docWidth <= 0 || m.docHeight <= 0 ||
+          m.width < 0 || m.height < 0 ||
+          typeof m.maskEnabled !== 'boolean' ||
+          (m.maskFingerprint !== null && typeof m.maskFingerprint !== 'string') ||
+          m.metadata.length > 1024 * 1024 ||
+          m.real.length > 512 * 1024 * 1024 ||
+          (m.user?.length ?? 0) > 512 * 1024 * 1024) return undefined
+      return structuredClone(m) as Layer['psdPreservedMaskChannels']
+    })(),
+    psdGroupPath: Array.isArray(sl.props.psdGroupPath) && sl.props.psdGroupPath.every((name: unknown) => typeof name === 'string')
+      ? sl.props.psdGroupPath.slice(0, 64) : undefined,
+    psdNativeOrigin: ['text', 'smart', 'vector'].includes(sl.props.psdNativeOrigin?.kind) &&
+      typeof sl.props.psdNativeOrigin?.pixelFingerprint === 'string' &&
+      (sl.props.psdNativeOrigin.maskFingerprint === null || typeof sl.props.psdNativeOrigin.maskFingerprint === 'string') &&
+      typeof sl.props.psdNativeOrigin.maskEnabled === 'boolean' &&
+      Number.isFinite(sl.props.psdNativeOrigin?.left) && Number.isFinite(sl.props.psdNativeOrigin?.top) &&
+      Number.isFinite(sl.props.psdNativeOrigin?.width) && Number.isFinite(sl.props.psdNativeOrigin?.height)
+      ? structuredClone(sl.props.psdNativeOrigin) : undefined,
     offsetX: sl.props.offsetX ?? 0, offsetY: sl.props.offsetY ?? 0,
     origin: sl.props.origin ?? null,
     rawSmart: sl.props.kind === 'smart' && typeof sl.props.rawSmart?.dataBase64 === 'string' &&
@@ -745,8 +890,28 @@ export async function openSerializedProject(project: SerializedProject, label = 
     sourceBitDepth: Number.isFinite(project.doc.sourceBitDepth)
       ? Number(project.doc.sourceBitDepth)
       : (project.doc.workingBitDepth === 32 ? 32 : project.doc.workingBitDepth === 16 ? 16 : 8),
+    psdColorModeData: typeof project.doc.psdColorModeData === 'string' ? project.doc.psdColorModeData : undefined,
+    psdSourceColorMode: Number.isSafeInteger(project.doc.psdSourceColorMode) ? project.doc.psdSourceColorMode : undefined,
+    psdExtraMergedChannels: Array.isArray(project.doc.psdExtraMergedChannels)
+      ? project.doc.psdExtraMergedChannels.filter((v: unknown) => typeof v === 'string')
+      : undefined,
+    psdGlobalLayerMaskData: typeof project.doc.psdGlobalLayerMaskData === 'string' ? project.doc.psdGlobalLayerMaskData : undefined,
+    psdGlobalAdditionalInfo: Array.isArray(project.doc.psdGlobalAdditionalInfo)
+      ? project.doc.psdGlobalAdditionalInfo.filter((v: unknown) => typeof v === 'string') : undefined,
+    psdGlobalOpaqueTail: typeof project.doc.psdGlobalOpaqueTail === 'string' ? project.doc.psdGlobalOpaqueTail : undefined,
     psdImageResources: Array.isArray(project.doc.psdImageResources)
       ? project.doc.psdImageResources.filter((v: unknown) => typeof v === 'string')
+      : undefined,
+    psdEditablePathResourceIds: Array.isArray(project.doc.psdEditablePathResourceIds)
+      ? project.doc.psdEditablePathResourceIds.filter((id: unknown) =>
+          Number.isInteger(id) && Number(id) >= 2000 && Number(id) <= 2997)
+      : undefined,
+    psdSectionMarkers: Array.isArray(project.doc.psdSectionMarkers)
+      ? project.doc.psdSectionMarkers.filter(m => m && Number.isSafeInteger(m.beforeLayerIndex) && m.beforeLayerIndex >= 0 &&
+          typeof m.name === 'string' && Array.isArray(m.additionalInfo) && m.additionalInfo.every(x => typeof x === 'string')).map(m => structuredClone(m))
+      : undefined,
+    psdSectionLayerOrder: Array.isArray(project.doc.psdSectionLayerOrder)
+      ? project.doc.psdSectionLayerOrder.filter((id: unknown) => typeof id === 'string')
       : undefined,
     metadata: project.doc.metadata && typeof project.doc.metadata === 'object'
       ? structuredClone(project.doc.metadata)

@@ -387,6 +387,45 @@ export interface Layer {
    * that Chay's Photo Studio writes itself (e.g. the Unicode layer name) are
    * regenerated on export rather than stored here. */
   psdAdditionalInfo?: string[]
+  /** Opaque Photoshop Blend If ranges, base64; preserved when editing raster pixels. */
+  psdBlendingRanges?: string
+  /** Original 4-byte Photoshop blend mode, including unsupported native modes. */
+  psdBlendKey?: string
+  /** Photoshop layer-record bit0, independent of lspf protection flags. */
+  psdTransparencyProtected?: boolean
+  /** Imported Photoshop channel -3 exists; preserve only when unchanged. */
+  psdUnsupportedRealMask?: boolean
+  /** Opaque original compressed user/real Photoshop mask channels and metadata.
+   * Base64 survives native project/history serialization. */
+  psdPreservedMaskChannels?: {
+    metadata: string
+    real: string
+    user?: string
+    sourceFormat: 'psd' | 'psb'
+    depth: 8 | 16 | 32
+    docWidth: number
+    docHeight: number
+    left: number
+    top: number
+    width: number
+    height: number
+    maskFingerprint: string | null
+    maskEnabled: boolean
+  }
+  /** Source Photoshop-native layer descriptor, safe to preserve only while
+   * raster pixels AND geometry remain unchanged from the original import. */
+  /** Imported Photoshop nested folder names for read-only Layers panel context. */
+  psdGroupPath?: string[]
+  psdNativeOrigin?: {
+    kind: 'text' | 'smart' | 'vector'
+    pixelFingerprint: string
+    maskFingerprint: string | null
+    maskEnabled: boolean
+    left: number
+    top: number
+    width: number
+    height: number
+  }
   /** provenance marker — 'detect' = lifted from an AI-detected object box
    *  (Detect Objects dialog → "Layer"); lets the Layers panel badge it */
   origin?: 'detect'
@@ -413,6 +452,8 @@ export interface SavedPath {
   anchors: PathAnchor[]
   closed: boolean
   visible: boolean
+  /** Original Photoshop saved-path image-resource ID (2000–2997). */
+  psdPathResourceId?: number
 }
 
 // ---------- Selection ----------
@@ -630,6 +671,35 @@ export interface PsDocument {
   sourceBitDepth?: number
   /** Opaque Photoshop image-resource blocks retained from imported PSD/PSB. */
   psdImageResources?: string[]
+  /** IDs of editable Photoshop path resources imported with this document.
+   * Used to recognize deleted paths without dropping opaque compound paths. */
+  psdEditablePathResourceIds?: number[]
+  /** Photoshop global layer-mask payload retained for lossless native project round-trip. */
+  psdGlobalLayerMaskData?: string
+  /** Document-wide Photoshop linked-object and other tagged layer-info blocks. */
+  psdGlobalAdditionalInfo?: string[]
+  /** Untagged Photoshop PSB global version-16 descriptor, retained as base64. */
+  psdGlobalOpaqueTail?: string
+  /** Original Photoshop 32-bit HDR tone-preview settings, base64. */
+  psdColorModeData?: string
+  /** Original Photoshop color mode for compatible ICC/resource preservation. */
+  psdSourceColorMode?: number
+  /** Original Photoshop RGB spot/alpha planes in base64, for same-depth same-size export. */
+  psdExtraMergedChannels?: string[]
+  /** Opaque Photoshop folder delimiters / zero-channel adjustment records.
+   * Re-exported only while original source layer ordering remains unchanged. */
+  psdSectionMarkers?: Array<{
+    kind?: 'group' | 'adjustment'
+    beforeLayerIndex: number
+    name: string
+    opacity: number
+    visible: boolean
+    blendKey: string
+    additionalInfo: string[]
+    blendingRanges?: string
+  }>
+  /** Original drawable-layer IDs in Photoshop storage order. */
+  psdSectionLayerOrder?: string[]
   /** Source-file EXIF/XMP/IPTC/ICC/container metadata captured before decoding. */
   metadata?: ImageMetadata
   /** Working canvas color space. The current default is sRGB; Display-P3 is

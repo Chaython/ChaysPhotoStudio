@@ -522,7 +522,7 @@ export class Engine {
   addCanvasDocument(
     canvas: HTMLCanvasElement,
     name: string,
-    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16 | 32; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number; hdrPixels?: Float32Array; metadata?: ImageMetadata } = {},
+    meta: { sourceBitDepth?: number; workingBitDepth?: 8 | 16 | 32; workingColorSpace?: 'srgb' | 'display-p3'; resolutionPpi?: number; hdrPixels?: Float32Array; metadata?: ImageMetadata; psdImageResources?: string[]; psdGlobalLayerMaskData?: string; psdGlobalAdditionalInfo?: string[]; psdGlobalOpaqueTail?: string; psdSourceColorMode?: number; psdColorModeData?: string; psdExtraMergedChannels?: string[] } = {},
   ): PsDocument {
     const incoming = canvasProfile(canvas)
     const requestedDepth = meta.workingBitDepth ?? incoming.bitDepth
@@ -538,6 +538,13 @@ export class Engine {
       resolutionPpi: clamp(Number(meta.resolutionPpi) || 72, 1, 12000),
       workingBitDepth,
       sourceBitDepth: meta.sourceBitDepth ?? workingBitDepth,
+      psdImageResources: meta.psdImageResources ? [...meta.psdImageResources] : undefined,
+      psdGlobalLayerMaskData: meta.psdGlobalLayerMaskData,
+      psdGlobalAdditionalInfo: meta.psdGlobalAdditionalInfo ? [...meta.psdGlobalAdditionalInfo] : undefined,
+      psdGlobalOpaqueTail: meta.psdGlobalOpaqueTail,
+      psdSourceColorMode: meta.psdSourceColorMode,
+      psdColorModeData: meta.psdColorModeData,
+      psdExtraMergedChannels: meta.psdExtraMergedChannels ? [...meta.psdExtraMergedChannels] : undefined,
       workingColorSpace: profile.colorSpace,
       metadata: meta.metadata ? structuredClone(meta.metadata) : undefined,
       layers: [], activeLayerId: null,
@@ -640,6 +647,15 @@ export class Engine {
       sourceBitDepth: src.sourceBitDepth,
       workingColorSpace: src.workingColorSpace,
       psdImageResources: src.psdImageResources ? [...src.psdImageResources] : undefined,
+      psdEditablePathResourceIds: src.psdEditablePathResourceIds ? [...src.psdEditablePathResourceIds] : undefined,
+      psdGlobalOpaqueTail: src.psdGlobalOpaqueTail,
+      psdGlobalLayerMaskData: src.psdGlobalLayerMaskData,
+      psdGlobalAdditionalInfo: src.psdGlobalAdditionalInfo ? [...src.psdGlobalAdditionalInfo] : undefined,
+      psdColorModeData: src.psdColorModeData,
+      psdSourceColorMode: src.psdSourceColorMode,
+      psdExtraMergedChannels: src.psdExtraMergedChannels ? [...src.psdExtraMergedChannels] : undefined,
+      psdSectionMarkers: src.psdSectionMarkers ? structuredClone(src.psdSectionMarkers) : undefined,
+      psdSectionLayerOrder: src.psdSectionLayerOrder?.map(id => layerIds.get(id) ?? id),
       metadata: src.metadata ? structuredClone(src.metadata) : undefined,
       proof: src.proof ? structuredClone(src.proof) : undefined,
       layers,
@@ -734,6 +750,14 @@ export class Engine {
       blendIf: layer.blendIf ? structuredClone(layer.blendIf) : null,
       fx: layer.fx ? structuredClone(layer.fx) : null,
       psdAdditionalInfo: layer.psdAdditionalInfo ? [...layer.psdAdditionalInfo] : layer.psdAdditionalInfo,
+      psdBlendingRanges: layer.psdBlendingRanges,
+      psdBlendKey: layer.psdBlendKey,
+      psdTransparencyProtected: layer.psdTransparencyProtected,
+      psdUnsupportedRealMask: layer.psdUnsupportedRealMask,
+      psdPreservedMaskChannels: layer.psdPreservedMaskChannels
+        ? structuredClone(layer.psdPreservedMaskChannels) : undefined,
+      psdNativeOrigin: layer.psdNativeOrigin ? structuredClone(layer.psdNativeOrigin) : undefined,
+      psdGroupPath: layer.psdGroupPath ? [...layer.psdGroupPath] : undefined,
     }
   }
 
@@ -1430,6 +1454,14 @@ export class Engine {
       blendIf: src.blendIf ? structuredClone(src.blendIf) : null,
       fx: src.fx ? structuredClone(src.fx) : null,
       psdAdditionalInfo: src.psdAdditionalInfo ? [...src.psdAdditionalInfo] : src.psdAdditionalInfo,
+      psdBlendingRanges: src.psdBlendingRanges,
+      psdBlendKey: src.psdBlendKey,
+      psdTransparencyProtected: src.psdTransparencyProtected,
+      psdUnsupportedRealMask: src.psdUnsupportedRealMask,
+      psdPreservedMaskChannels: src.psdPreservedMaskChannels
+        ? structuredClone(src.psdPreservedMaskChannels) : undefined,
+      psdNativeOrigin: src.psdNativeOrigin ? structuredClone(src.psdNativeOrigin) : undefined,
+      psdGroupPath: src.psdGroupPath ? [...src.psdGroupPath] : undefined,
       _v: src._v + 1,
       _mv: src._mv + 1,
     }
@@ -1774,6 +1806,13 @@ export class Engine {
       mask: l.maskEnabled && l.mask ? getMaskAlpha(l.mask) : undefined,
     }))
     return compositeHdrRasters(doc.width, doc.height, inputs)
+  }
+
+  /** Safe, scene-linear export surface. Refuse complex 32-bit documents that
+   * would require rasterizing Photoshop features through an SDR canvas. */
+  hdrCompositeForPsd(): Float32Array | null {
+    const doc = this.activeDoc
+    return doc && doc.workingBitDepth === 32 ? this.simpleHdrComposite(doc, doc.layers) : null
   }
 
   /** Photoshop Merge Down: source-over composition must BAKE both opacities

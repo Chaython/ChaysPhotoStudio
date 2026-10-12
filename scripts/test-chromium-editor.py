@@ -13,6 +13,8 @@ import shutil
 import struct
 import sys
 import traceback
+import hashlib
+import urllib.request
 import zlib
 from pathlib import Path
 
@@ -371,6 +373,94 @@ def main():
                 check(value["afterRedo"] == value["added"], "redo did not restore added layer")
                 check(not errors, f"image import/history threw uncaught errors: {errors[:3]}")
 
+            def real_psd_browser_import():
+                _, page, errors = app_page(browser)
+                upstream = "b58704c1c9c9b2459f961560b1e368dfb102b513"
+                for name, expected_sha, is_smart in [
+                    ("pixel-layer.psd", "0d3ee59728ebd8237e4c2c8eee1997e42e3ee82d", False),
+                    ("type-layer.psd", "1cdcf08f88b103a50b74de7f3b70a7ccf63122e5", False),
+                    ("smartobject-layer.psd", "924e5866581b25ffa1d2cbc8cbf34217929e4295", True),
+                ]:
+                    url = (f"https://raw.githubusercontent.com/psd-tools/psd-tools/{upstream}"
+                           f"/tests/psd_files/layers/{name}")
+                    with urllib.request.urlopen(url, timeout=25) as response:
+                        content = response.read()
+                    git_sha = hashlib.sha1(b"blob " + str(len(content)).encode() + bytes([0]) + content).hexdigest()
+                    check(git_sha == expected_sha, f"Independent {name} binary changed")
+                    # Exercise the complete real PSD binary->native-guides UI
+                    # path by inserting a standards-compliant Adobe resource
+                    # 1032 into a verified independent PSD. The image/layers
+                    # remain those of the real upstream Photoshop fixture.
+                    if name == "pixel-layer.psd":
+                        color_length = struct.unpack_from(">I", content, 26)[0]
+                        resource_len_at = 30 + color_length
+                        old_len = struct.unpack_from(">I", content, resource_len_at)[0]
+                        guide_data = struct.pack(">IIII", 1, 576, 576, 2)
+                        guide_data += struct.pack(">IBIB", 400, 0, 200, 1)
+                        guide_resource = b"8BIM" + struct.pack(">H", 1032) + bytes(2)
+                        guide_resource += struct.pack(">I", len(guide_data)) + guide_data
+                        path_data = struct.pack(">H", 6) + bytes(24)
+                        path_data += struct.pack(">HH", 3, 2) + bytes(22)
+                        for x, y in [(8, 12), (24, 18)]:
+                            fixed_x = x * (1 << 19)  # fixed 8.24 normalized by width=32
+                            fixed_y = y * (1 << 19)
+                            path_data += struct.pack(">Hiiiiii", 5,
+                                fixed_y, fixed_x, fixed_y, fixed_x, fixed_y, fixed_x)
+                        path_name = b"Vector trail"
+                        path_resource = (b"8BIM" + struct.pack(">H", 2000) +
+                            bytes([len(path_name)]) + path_name + bytes(1) +
+                            struct.pack(">I", len(path_data)) + path_data)
+                        added_resources = guide_resource + path_resource
+                        content = (content[:resource_len_at] +
+                                   struct.pack(">I", old_len + len(added_resources)) +
+                                   added_resources + content[resource_len_at + 4:])
+                    previous_doc_id = page.evaluate(
+                        "() => window.__zphotoEngine.activeDoc?.id ?? null")
+                    page.locator('input[type="file"]').first.set_input_files(
+                        {"name": name, "mimeType": "image/vnd.adobe.photoshop", "buffer": content})
+                    page.wait_for_function("""previousId => {
+                      const doc = window.__zphotoEngine.activeDoc
+                      return doc && doc.id !== previousId &&
+                        doc.width === 32 && doc.height === 32 && doc.layers.length === 1
+                    }""", arg=previous_doc_id, timeout=30000)
+                    result = page.evaluate("""() => {
+                      const doc = window.__zphotoEngine.activeDoc
+                      const layer = doc.layers[0]
+                      const image = layer.kind === 'smart' ? layer.source : layer.canvas
+                      const pixels = image?.getContext('2d')?.getImageData(0, 0, image.width, image.height).data
+                      const rendered = window.__zphotoEngine.layerCanvas(layer.id)
+                      return {
+                        width: doc.width, height: doc.height, layers: doc.layers.length,
+                        layerName: layer.name, kind: layer.kind,
+                        smartOrigin: layer.psdNativeOrigin?.kind === 'smart',
+                        sourcePixels: pixels?.length ?? 0,
+                        guides: doc.guides?.map(g => ({ orientation: g.orientation, pos: g.pos })) ?? [],
+                        paths: doc.savedPaths?.map(p => ({
+                          name: p.name, closed: p.closed, psdPathResourceId: p.psdPathResourceId,
+                          knots: p.anchors.map(a => [a.x, a.y]),
+                        })) ?? [],
+                        rendered: !!rendered && rendered.width > 0 && rendered.height > 0,
+                        smartDocSized: !!rendered && rendered.width === doc.width && rendered.height === doc.height,
+                      }
+                    }""")
+                    print(f"  Real {name} browser import: {result}", flush=True)
+                    check(result["kind"] == ("smart" if is_smart else "raster") and
+                          result["sourcePixels"] > 0 and result["rendered"],
+                          f"Real {name} did not produce the expected editable layer and canvas")
+                    if name == "pixel-layer.psd":
+                        check(result["guides"] == [
+                            {"orientation": "v", "pos": 12.5},
+                            {"orientation": "h", "pos": 6.25},
+                        ], f"Photoshop native guides were not restored into the editor: {result['guides']}")
+                        check(result["paths"] == [{
+                            "name": "Vector trail", "closed": False, "psdPathResourceId": 2000,
+                            "knots": [[8, 12], [24, 18]],
+                        }], f"Photoshop editable saved paths were not restored: {result['paths']}")
+                    if is_smart:
+                        check(result["smartOrigin"] and result["smartDocSized"],
+                              "Photoshop Smart Object lost its descriptor provenance or document-space rendering")
+                check(not errors, f"real PSD browser imports threw JS errors: {errors[:3]}")
+
             def gimp_lazy_interpreters():
                 _, page, errors = app_page(browser, track_workers=True)
                 requests = []
@@ -429,6 +519,7 @@ def main():
                 ("workspace_all_tools_dialog", workspace_and_dialog),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
+                ("real_psd_chromium_import", real_psd_browser_import),
                 ("gimp_lazy_interpreters", gimp_lazy_interpreters),
                 ("mobile_editor_startup", mobile_start),
             ]:

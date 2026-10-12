@@ -26,7 +26,7 @@ import { decodeFits } from './scientific-fits'
 import { decodeDicom } from './scientific-dicom'
 import type { RawDevelopSettings } from './raw-develop'
 import type { ParsedDocumentLayer } from './document-parser-types'
-import type { ImageMetadata, LayerFX } from '../types'
+import type { BlendIfSettings, ImageMetadata, LayerFX } from '../types'
 import { buildWritableXmp, embedRasterMetadata } from './metadata-write'
 
 export type { ImportFormatId, RawImage } from './decoders'
@@ -36,7 +36,7 @@ export type { ParsedDocument, ParsedDocumentLayer } from './document-parser-type
 export { detectFormat, rawToCanvas, scanAlpha } from './decoders'
 export { buildOpenRaster } from './openraster'
 export { ICO_SIZE_POOL } from './encoders'
-export { decodePsd, buildPsd, psdBlendKeyToMode, blendModeToPsdKey } from './psd'
+export { decodePsd, buildPsd, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, stripPsdNativeObjectBlocks, psdNativeObjectKind, psdWillReplaceSourceFx, psdImportedSmartIsUnchanged } from './psd'
 export { PHOTOPEA_IMPORT_ACCEPT, PHOTOPEA_COMPLEX_EXTENSIONS, PHOTOPEA_RASTER_EXTENSIONS, PHOTOPEA_RAW_EXTENSIONS, PHOTOPEA_ANIMATED_EXTENSIONS, EXTRA_IMPORT_EXTENSIONS, fileExtension, publishedFormatKind, isPhotopeaPublishedExtension } from './photopea-formats'
 export { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 
@@ -64,6 +64,20 @@ export interface DecodedImage {
   documentLayers?: ParsedDocumentLayer[]
   warnings?: string[]
   psdImageResources?: Uint8Array[]
+  /** Native editable guides imported from Photoshop resource 1032. */
+  psdGuides?: Array<{ orientation: 'h' | 'v'; pos: number }>
+  psdPaths?: Array<import('../types').SavedPath & { psdPathResourceId: number }>
+  psdGlobalLayerMaskData?: Uint8Array
+  psdGlobalAdditionalInfo?: Uint8Array[]
+  /** Opaque Photoshop PSB global version-16 descriptor tail. */
+  psdGlobalOpaqueTail?: Uint8Array
+  /** Photoshop-origin 32-bit HDR color-mode payload (hdrt) for exact passthrough. */
+  psdColorModeData?: Uint8Array
+  psdSourceColorMode?: number
+  /** Extra Photoshop RGB composite spot/alpha planes as exact big-endian samples. */
+  psdExtraMergedChannels?: Uint8Array[]
+  /** Non-rendering Photoshop folder boundary records retained in source order. */
+  psdSectionMarkers?: import('./psd').PsdSectionMarker[]
   psdLayers?: {
     name: string
     canvas: HTMLCanvasElement      // pixels of the layer rect (canvas space)
@@ -73,12 +87,29 @@ export interface DecodedImage {
     opacity: number
     /** engine blend mode id ('normal', 'multiply', …) */
     blendMode: string
+    /** Photoshop 4-byte source blend key retained across a no-change export. */
+    rawBlendKey?: string
+    locked?: boolean
+    transparencyProtected?: boolean
+    /** Photoshop folder ancestry; informational, not native editable groups. */
+    groupPath?: string[]
     visible: boolean
     clipped?: boolean
     /** full-document-size mask canvas, mask value in the alpha channel */
     mask?: HTMLCanvasElement | null
+    /** Photoshop bit1-disabled layer masks remain present but inactive. */
+    maskEnabled?: boolean
+    /** Photoshop combined raster/vector mask is not natively editable. */
+    unsupportedRealMask?: boolean
+    preservedMaskChannels?: import('./psd').PsdPreservedMaskChannels
+    /** Scene-linear 32-bit Photoshop raster backing pixels. */
+    hdrPixels?: Float32Array
     /** editable layer style decoded from PSD effect metadata when supported */
     fx?: LayerFX | null
+    /** Editable Photoshop Blend If range currently previewed by Studio. */
+    blendIf?: BlendIfSettings | null
+    /** Raw Photoshop blending ranges (Blend If) retained for round-trip. */
+    blendingRanges?: Uint8Array
     /** opaque Photoshop additional-layer-information blocks */
     additionalInfo?: Uint8Array[]
   }[]
@@ -360,9 +391,25 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
         height: psd.height,
         hasAlpha: psd.hasAlpha,
         format: 'psd',
+        warnings: psd.warnings,
         sourceBitDepth: psd.depth,
+        sourceFloatPixels: psd.hdrPixels,
+        sourceColorSpace: psd.depth === 32 ? 'linear-srgb' : undefined,
         resolutionPpi: psd.resolutionPpi,
         psdImageResources: psd.imageResources.map(b => b.slice()),
+        psdGuides: psd.guides.map(g => ({ ...g })),
+        psdPaths: psd.paths.map(p => ({ ...p, id: `psd-path-${p.psdPathResourceId}`, anchors: p.anchors.map(a => ({ ...a })) })),
+        psdGlobalLayerMaskData: psd.globalLayerMaskData.slice(),
+        psdGlobalAdditionalInfo: psd.globalAdditionalInfo.map(b => b.slice()),
+        psdGlobalOpaqueTail: psd.globalOpaqueTail.slice(),
+        psdColorModeData: psd.depth === 32 ? psd.colorModeData.slice() : undefined,
+        psdSourceColorMode: psd.colorMode,
+        psdExtraMergedChannels: psd.extraMergedChannels.map(c => c.slice()),
+        psdSectionMarkers: psd.sectionMarkers.map(m => ({
+          ...m,
+          additionalInfo: m.additionalInfo.map(b => b.slice()),
+          blendingRanges: m.blendingRanges.slice(),
+        })),
         psdLayers: psd.layers.map(l => ({
           name: l.name,
           canvas: l.canvas,
@@ -371,9 +418,25 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
           // PsdLayer.opacity is 0..100 — identical to the engine's Layer scale
           opacity: l.opacity,
           blendMode: psdBlendKeyToMode(l.blendKey),
+          rawBlendKey: l.blendKey,
+          locked: l.locked,
+          transparencyProtected: l.transparencyProtected,
+          groupPath: l.groupPath ? [...l.groupPath] : [],
           visible: l.visible,
           clipped: l.clipped,
           mask: l.mask,
+          maskEnabled: l.maskEnabled,
+          unsupportedRealMask: l.unsupportedRealMask,
+          preservedMaskChannels: l.preservedMaskChannels ? {
+            ...l.preservedMaskChannels,
+            metadata: l.preservedMaskChannels.metadata.slice(),
+            real: l.preservedMaskChannels.real.slice(),
+            user: l.preservedMaskChannels.user?.slice(),
+          } : undefined,
+          hdrPixels: l.hdrPixels,
+          blendingRanges: l.blendingRanges.slice(),
+          blendIf: l.blendIf ? structuredClone(l.blendIf) : null,
+          fx: l.fx ? structuredClone(l.fx) : null,
           additionalInfo: l.additionalInfo.map(b => b.slice()),
         })),
       }
