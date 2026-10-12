@@ -427,7 +427,8 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     "path": "File → Open / Place / Layer → Redevelop RAW Smart Object…",
     "summary": "Open camera RAW, HDR, modern codecs and scientific files while retaining editable RAW originals when feasible.",
     "steps": [
-      "Use File → Open or File → Place to select RAW images. The Develop dialog includes exposure, white balance, demosaicing, highlight, denoising and custom lens correction fields.",
+      "Use File → Open or File → Place to select RAW images. Develop includes LibRaw sensor controls, reversible 16-bit Basic adjustments, a five-point composite RGB/per-channel tone curve, eight-band HSL Color Mixer, and on-demand optical corrections.",
+      "Select Load / Refresh RAW preview to decode a half-resolution sample on demand. Basic, curve and HSL edits update the side-by-side Before/After display and RGB/luminance histogram; exposure, white balance, demosaicing, noise reduction and lens changes require Refresh. The preview is not the final-resolution output.",
       "When Keep original RAW is enabled, files up to 64 MiB are embedded in editable Smart Objects. Select the Smart Object and choose Layer → Redevelop RAW Smart Object… to regenerate from original bytes without changing transforms or Smart Filters.",
       "Custom lens profiles use user-calibrated distortion, lateral color-fringing and vignette coefficients. Import individual Lensfun XML calibration files on demand using Import Lensfun XML… in the Develop dialog; Match EXIF Lens requires unambiguous camera lens metadata. A full Lensfun WASM database is not bundled.",
       "OpenEXR supports regular single and multipart scanline/single-level tiled images with NONE/RLE/ZIPS/ZIP compression. Float32 HDR samples are retained per part; deep and multiresolution EXR remain unsupported.",
@@ -435,6 +436,7 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "When TIFF, DCX, FITS, DICOM or multipart EXR contains multiple images, choose one frame/part or import all as selectable layers."
     ],
     "tips": [
+      "RAW color presets export/import Basic tone, RGB/per-channel point curves and HSL as local JSON. Camera, EXIF and lens calibration are excluded; older presets without curves import with a neutral identity curve. Display-referred color rendering is not equivalent to Adobe Lightroom's proprietary camera profiles.",
       "Files larger than 64 MiB can be developed as ordinary raster images but their original RAW bytes are not embedded. RAW decoders may use a clearly labeled 8-bit camera preview if sensor decoding fails.",
       "Imported Lensfun XML uses recorded calibration values with conservative EXIF matching; the full licensed database and WASM remapping engine are not bundled. Save the project to retain RAW originals and recipes.",
       "DICOM support is only for graphic editing, never diagnosis or medical measurements. Rare compressed transfer syntaxes and ambiguous multifragment frame tables are rejected.",

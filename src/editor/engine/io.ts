@@ -106,7 +106,7 @@ export async function openFiles(files: File[], asLayer = false) {
       const isRaw=publishedFormatKind(file.name)==='raw'
       const metadata = (!asLayer||isRaw) ? await readImageMetadata(file).catch(() => undefined) : undefined
       const rawSettings = isRaw
-        ? await chooseRawDevelopSettings(file.name,undefined,metadata) : undefined
+        ? await chooseRawDevelopSettings(file.name,undefined,metadata,file) : undefined
       if (rawSettings === null) continue
       // RAW originals are stored losslessly inside Smart Objects; imported
       // previews are independently editable, and settings can be changed later.
@@ -338,7 +338,7 @@ export async function placeImageAsSmartLayer(file: File) {
   try {
     const isRaw = publishedFormatKind(file.name) === 'raw'
     const rawMetadata=isRaw?await readImageMetadata(file).catch(()=>undefined):undefined
-    const settings = isRaw ? await chooseRawDevelopSettings(file.name,undefined,rawMetadata) : undefined
+    const settings = isRaw ? await chooseRawDevelopSettings(file.name,undefined,rawMetadata,file) : undefined
     if (settings === null) return
     const decoded = await decodeToCanvas(file, settings)
     const layer = engine.placeSmartLayer(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
@@ -373,7 +373,7 @@ export async function redevelopActiveRawSmartLayer(): Promise<void> {
   try {
     const file=new File([base64ToBytes(source.dataBase64) as BlobPart],source.fileName,{type:source.mimeType})
     const rawMetadata=await readImageMetadata(file).catch(()=>undefined)
-    const settings=await chooseRawDevelopSettings(source.fileName,source.settings,rawMetadata)
+    const settings=await chooseRawDevelopSettings(source.fileName,source.settings,rawMetadata,file)
     if(!settings)return
     const developed=await decodeToCanvas(file,settings)
     engine.setLayerProps(layer.id,{
