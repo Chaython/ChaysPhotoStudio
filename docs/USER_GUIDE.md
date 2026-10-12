@@ -56,6 +56,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 
 - [Undo, snapshots and recovery](#undo-snapshots-and-recovery)
 - [Keyboard shortcuts and mobile](#keyboard-shortcuts-and-mobile)
+- [Customize the canvas right-click menu](#customize-the-canvas-right-click-menu)
 
 ### Advanced
 
@@ -672,12 +673,18 @@ Discover compatible GIMP assets and use supported external GIMP procedures witho
 
 ## Customize the canvas right-click menu
 
-**Where:** Select **Move (V)**, right-click a layer on the canvas, then choose **Edit context menu…** at the bottom.
+Choose which layer commands appear when right-clicking the canvas.
 
-1. Check or uncheck an action to show or hide it in the right-click menu.
-2. Use the up/down controls to change the order within a section. Section headings group related actions.
-3. Choose **Reset defaults** to restore the original set and ordering, or **Done** to close the editor.
-4. The **Edit** section includes Undo, Redo, Cut Layer and Paste Layer, with unavailable commands disabled.
-5. Changes persist in this browser/app profile using local storage. The **Edit context menu…** command cannot be hidden, so customization always remains accessible.
+**Where:** Move tool (V) → right-click a layer → Edit context menu…
 
-**Notes:** Layer-specific actions honor locks and layer type; a command that does not apply (such as Rasterize on an existing raster layer) is omitted. The context menu is currently provided by the Move tool. Other tools retain their existing right-click behavior.
+1. Activate Move (V), right-click a layer on the canvas, then choose Edit context menu… at the bottom.
+2. Use checkboxes to show or hide an action, and arrow buttons to move it up or down within its section.
+3. Choose Reset defaults to restore all actions and their original order, or Done to close the editor.
+4. Use the Edit section for Undo, Redo, Cut Layer and Paste Layer, alongside transforms, layer styles, arrange and merge.
+
+**Notes and tips:**
+
+- Preferences persist locally in the current browser or desktop-app profile.
+- The Edit context menu… entry cannot be hidden, so the layout can always be restored.
+- The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.
+- Commands that do not apply to the active layer may be disabled or omitted.
