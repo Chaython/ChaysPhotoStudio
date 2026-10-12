@@ -71,11 +71,12 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     caption.style.cssText='font-size:12px;opacity:.8;overflow-wrap:anywhere;margin-bottom:12px'
     const form=document.createElement('div')
     form.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center'
-    function field(labelText:string, type:'number'|'select', value:string, options?:string[], target:HTMLElement=form){
+    function field(labelText:string, type:'number'|'select'|'text', value:string, options?:string[], target:HTMLElement=form){
       const label=document.createElement('label')
       label.textContent=labelText
       label.style.cssText='font-size:12px'
-      const input=type==='number'?document.createElement('input'):document.createElement('select')
+      const input=type==='select'?document.createElement('select'):document.createElement('input')
+      if(type!=='select')input.type=type
       input.setAttribute('aria-label',labelText)
       input.style.cssText='padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--foreground);width:100%'
       if(type==='select'&&options)for(const str of options){
@@ -137,8 +138,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       mixInputs[band]=inputs
     }
     const optics=group('Optics and Lensfun calibration',false)
-    const lensName=field('Lens profile label','number',current.lensProfile.name,undefined,optics.grid) as HTMLInputElement
-    lensName.type='text'
+    const lensName=field('Lens profile label','text',current.lensProfile.name,undefined,optics.grid) as HTMLInputElement
     lensName.placeholder='Camera / lens / focal length'
     const k1=field('Distortion k1 (-0.5…0.5)','number',String(current.lensProfile.k1),undefined,optics.grid) as HTMLInputElement
     k1.step='0.001';k1.min='-0.5';k1.max='0.5'
