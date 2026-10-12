@@ -4,6 +4,7 @@ import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
+import { applyRawCurves, evaluateRawCurve, normalizeRawCurves, DEFAULT_RAW_CURVES } from '../src/editor/formats/raw-curves'
 import { applyRawColorMix, normalizeRawColorMix, DEFAULT_RAW_COLOR_MIX } from '../src/editor/formats/raw-color-mix'
 import { downsampleRawPreview, rawPreviewHistogram } from '../src/editor/formats/raw-preview'
 import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
@@ -236,6 +237,44 @@ check(rawToneSample.rgba16.every((v,i)=>v===originalToneBytes[i]),'RAW source sa
 check(colorTone.rgba16![3]===65535 && colorTone.rgba16![7]===65535,'RAW alpha must not receive tonal changes')
 check(normalizeRawTone({contrast:Number.POSITIVE_INFINITY, saturation:400}).contrast===0,'Invalid RAW tone input must normalize')
 check(normalizeRawTone({saturation:400}).saturation===100,'RAW tone must enforce control range')
+
+// RAW tone curves: independent composite and RGB 16-bit LUTs, older recipes,
+// safe endpoints, alpha, neutral identity, and conservative input normalization.
+const neutralCurve=applyRawCurves(rawToneSample,DEFAULT_RAW_CURVES)
+check(neutralCurve===rawToneSample && neutralCurve.rgba16===rawToneSample.rgba16,
+  'Neutral RAW point curves must be a zero-allocation identity')
+check(evaluateRawCurve([0,25,50,75,100],0.125)===0.125,
+  'Identity point curve must preserve values between knots')
+check(Math.abs(evaluateRawCurve([0,20,50,85,100],0.5)-0.5)<1e-8,
+  'Midpoint curve hits its authored knot')
+check(evaluateRawCurve([0,20,50,85,100],0.75)===0.85,
+  'Point curve reaches the authored highlight knot')
+const brightCurve=normalizeRawCurves({rgb:[0,35,60,86,100]})
+const developedCurve=applyRawCurves(rawToneSample,brightCurve)
+check(developedCurve.rgba16![0]>rawToneSample.rgba16[0] &&
+  developedCurve.rgba16![8]>rawToneSample.rgba16[8],
+  'RGB point curve lifts highlights and shadow values in 16-bit buffer')
+check(developedCurve.rgba16![3]===65535 &&
+  rawToneSample.rgba16.every((v,i)=>v===originalToneBytes[i]),
+  'RAW curves keep alpha and original sensor samples untouched')
+const redOnly=applyRawCurves(rawToneSample,{red:[0,30,60,80,100]})
+check(redOnly.rgba16![4]>rawToneSample.rgba16[4] &&
+  Math.abs(redOnly.rgba16![5]-rawToneSample.rgba16[5])<=1 &&
+  Math.abs(redOnly.rgba16![6]-rawToneSample.rgba16[6])<=1,
+  'Per-channel red curve changes red without altering green/blue')
+check(normalizeRawCurves(undefined).blue[2]===50 &&
+  normalizeRawCurves({rgb:[-100,25,Infinity,99,250]}).rgb.join(',')==='0,25,50,99,100',
+  'Missing and corrupt curve recipes default safely')
+const invertedCurve=normalizeRawCurves({rgb:[100,75,50,25,0]})
+check(evaluateRawCurve(invertedCurve.rgb,0)===1 &&
+  evaluateRawCurve(invertedCurve.rgb,1)===0,
+  'Creative inverted curves stay inside bounds with valid endpoints')
+const eightBitCurve=applyRawCurves({
+  width:1,height:1,rgba:new Uint8ClampedArray([128,64,32,192]) as Uint8ClampedArray<ArrayBuffer>,
+  sourceBitDepth:8,
+},{rgb:[0,40,60,80,100]})
+check(eightBitCurve.rgba[0]>128 && eightBitCurve.rgba[3]===192 && !eightBitCurve.rgba16,
+  'Display-only 8-bit fallback does not invent source precision')
 
 const correctedLensfun=applyLensProfile({
   width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
