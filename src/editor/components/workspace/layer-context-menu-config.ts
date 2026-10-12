@@ -72,7 +72,7 @@ export function normalizeLayerContextPreferences(value: unknown): LayerContextMe
     const validIds: LayerContextActionId[] = defaults.order[section.id]
     const raw = savedOrder[section.id]
     const kept = Array.isArray(raw)
-      ? [...new Set(raw.filter((id): id is LayerContextActionId => typeof id === 'string' && validIds.includes(id)))]
+      ? [...new Set(raw.filter((id): id is LayerContextActionId => typeof id === 'string' && validIds.some(validId => validId === id)))]
       : []
     defaults.order[section.id] = [...kept, ...validIds.filter(id => !kept.includes(id))]
   }
