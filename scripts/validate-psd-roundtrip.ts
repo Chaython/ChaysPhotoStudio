@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readPsdGuides, writePsdGuides } from '../src/editor/formats/psd-guides'
+import { readPsdPaths, writePsdPaths } from '../src/editor/formats/psd-paths'
 import { buildPsd, decodePsd, decodePackBitsRow, restorePsdPrediction, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, psdNativeObjectKind, stripPsdNativeObjectBlocks, psdImportedSmartIsUnchanged, psdGroupPaths, psdWillReplaceSourceFx, normalizePsdTaggedBlock, parsePsdBlendIfRanges, encodePsdBlendIfRanges, psdHasAdditionalBlendIfRanges } from '../src/editor/formats/psd'
 
 // Minimal 8-bit Canvas2D fixture; tests the real binary writer and reader
@@ -134,6 +135,91 @@ for (const format of ['psd', 'psb'] as const) {
   }], decoded.canvas, { format, imageResources: movedResource })
   const reread = await decodePsd(new Uint8Array(await updated.arrayBuffer()))
   assert.deepEqual(reread.guides, shiftedGuides, 'Edited ruler guides survive PSD/PSB export and reimport')
+}
+
+
+// Photoshop saved paths use 26-byte Bézier knot records and document-relative
+// signed 8.24 coordinates. Paths must remain editable without destroying
+// compound/unknown opaque Photoshop image resources.
+const photoshopSavedPath = {
+  id: 'studio-path', name: 'Clipping outline', closed: true, visible: true,
+  anchors: [
+    { x: 10, y: 20, inX: 8, inY: 18, outX: 12, outY: 22, pair: true },
+    { x: 90, y: 65, inX: 88, inY: 60, outX: 92, outY: 69, pair: false },
+    { x: 70, y: 140, inX: 65, inY: 130, outX: 71, outY: 145, pair: false },
+  ],
+}
+const photoshopPathResources = writePsdPaths([], [photoshopSavedPath], [], 120, 200)
+assert.equal(photoshopPathResources.length, 1)
+assert.equal((photoshopPathResources[0][4] << 8) | photoshopPathResources[0][5], 2000)
+const recognizedPsdPath = readPsdPaths(photoshopPathResources, 120, 200)[0]
+assert.ok(recognizedPsdPath)
+assert.equal(recognizedPsdPath.name, photoshopSavedPath.name)
+assert.equal(recognizedPsdPath.closed, true)
+assert.deepEqual(recognizedPsdPath.anchors.map(a => a.pair), [true, false, false])
+for (const key of ['x', 'y', 'inX', 'inY', 'outX', 'outY'] as const) {
+  for (let i = 0; i < 3; i++) assert.ok(
+    Math.abs(recognizedPsdPath.anchors[i][key] - photoshopSavedPath.anchors[i][key]) < 0.0001,
+    'Photoshop path fixed-point coordinates must reconstruct real document-space Bézier points',
+  )
+}
+assert.equal(writePsdPaths(photoshopPathResources,
+  [{ ...photoshopSavedPath, psdPathResourceId: 2000 }], [2000], 120, 200)[0],
+  photoshopPathResources[0], 'Unedited Photoshop path must preserve original byte buffer')
+const movedPath = {
+  ...photoshopSavedPath, psdPathResourceId: 2000,
+  anchors: photoshopSavedPath.anchors.map(a => ({ ...a })),
+}
+movedPath.anchors[1].x = 95
+const movedPsdResources = writePsdPaths(photoshopPathResources, [movedPath], [2000], 120, 200)
+assert.ok(movedPsdResources[0] !== photoshopPathResources[0])
+assert.ok(Math.abs(readPsdPaths(movedPsdResources, 120, 200)[0].anchors[1].x - 95) < 0.0001)
+assert.deepEqual(writePsdPaths(photoshopPathResources, [], [2000], 120, 200), [],
+  'Removing an imported editable Studio path deletes only its original Photoshop resource')
+const unsupportedPath = photoshopPathResources[0].slice()
+const pascalNameLength = (unsupportedPath[6] + 2) & ~1
+const dataOffset = 6 + pascalNameLength + 4
+new DataView(unsupportedPath.buffer).setUint16(dataOffset + 26, 7) // clipboard path record
+assert.deepEqual(readPsdPaths([unsupportedPath], 120, 200), [],
+  'Unknown Photoshop path records must never become partially editable native paths')
+const preservedUnknown = writePsdPaths([unsupportedPath], [], [], 120, 200)
+assert.equal(preservedUnknown[0], unsupportedPath,
+  'Unsupported path resource must remain byte-identical during a no-op export')
+assert.equal(writePsdPaths([unsupportedPath], [photoshopSavedPath], [], 120, 200).length, 2,
+  'Adding a Studio path must choose a free ID instead of replacing an unknown Photoshop path')
+assert.throws(() => writePsdPaths([unsupportedPath],
+  [{ ...photoshopSavedPath, psdPathResourceId: 2000 }], [], 120, 200),
+  /unsupported or duplicate Photoshop path/, 'Editing unknown Photoshop path data must be rejected')
+assert.throws(() => writePsdPaths([], [{ ...photoshopSavedPath, name: '路径' }], [], 120, 200),
+  /printable ASCII/, 'Native exports must not misencode Unicode path names as Photoshop Pascal ASCII')
+assert.throws(() => writePsdPaths([], [{
+  ...photoshopSavedPath, anchors: [{ ...photoshopSavedPath.anchors[0], x: Infinity }, photoshopSavedPath.anchors[1]],
+}], [], 120, 200), /coordinate/, 'Nonfinite Bézier points must fail without corrupting the PSD')
+for (const format of ['psd', 'psb'] as const) {
+  const flat = canvas(25, 90, 165)
+  const saved = buildPsd(2, 2, [{
+    name: 'Has saved path', canvas: flat, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], flat, { format, imageResources: writePsdPaths([], [{
+    ...photoshopSavedPath,
+    anchors: photoshopSavedPath.anchors.map(a => ({
+      ...a, x: a.x / 60, y: a.y / 100,
+      inX: a.inX / 60, inY: a.inY / 100,
+      outX: a.outX / 60, outY: a.outY / 100,
+    })),
+  }], [], 2, 2) })
+  const decoded = await decodePsd(new Uint8Array(await saved.arrayBuffer()))
+  assert.equal(decoded.paths.length, 1, 'Real PSD/PSB decoder must expose Photoshop saved paths')
+  assert.equal(decoded.paths[0].name, 'Clipping outline')
+  const roundTripped = buildPsd(2, 2, [{
+    name: 'Has saved path', canvas: decoded.layers[0].canvas, left: 0, top: 0,
+    opacity: 100, blendMode: 'normal', visible: true,
+  }], decoded.canvas, { format, imageResources: writePsdPaths(decoded.imageResources, [{
+    ...decoded.paths[0], id: 'editable-path', name: 'Edited outline',
+  }], [decoded.paths[0].psdPathResourceId], 2, 2) })
+  const reread = await decodePsd(new Uint8Array(await roundTripped.arrayBuffer()))
+  assert.equal(reread.paths[0].name, 'Edited outline',
+    'Edited Adobe path names must survive both PSD and PSB export/reimport')
 }
 
 const photoshopGrayRange = Uint8Array.from([
