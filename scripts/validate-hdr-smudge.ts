@@ -86,11 +86,53 @@ assert.equal(smear(staged, {
 assert.ok(staged[at(3)] < 1.5, 'The same dab cannot read a previously overwritten source pixel')
 assert.ok(staged[at(3)] > sourceAt2, 'The adjacent destination receives the original source color')
 
+
+const plainFingerprint = image()
+const fingerFingerprint = image()
+assert.equal(smear(plainFingerprint), true)
+assert.equal(smear(fingerFingerprint, {
+  fingerPainting: { color: [1, 0, 0], opacity: .24 },
+}), true)
+assert.ok(fingerFingerprint[at(2)] < plainFingerprint[at(2)],
+  'Finger Painting mixes the linear-sRGB foreground into HDR source without clipping')
+assert.ok(fingerFingerprint[at(2)] > 1,
+  'Finger Painting preserves HDR values above display white')
+assert.ok(fingerFingerprint[at(2) + 1] < plainFingerprint[at(2) + 1],
+  'Foreground mixing happens to all linear color channels')
+assert.equal(fingerFingerprint[at(2) + 3], plainFingerprint[at(2) + 3],
+  'Finger Painting does not modify pickup alpha')
+
+const noPickup = image()
+noPickup[at(1) + 3] = 0
+const noPickupBefore = noPickup.slice()
+assert.equal(smear(noPickup, {
+  fingerPainting: { color: [1, 0, 0], opacity: .3 },
+}), false, 'Source-atop Finger Painting cannot paint from empty pickup')
+assert.deepEqual(Array.from(noPickup), Array.from(noPickupBefore))
+
+const fpMasked = image()
+assert.equal(smear(fpMasked, {
+  fingerPainting: { color: [1, 0, 0], opacity: .2 },
+  selection: { x: 0, y: 0, width: w, height: h, data: new Uint8ClampedArray(w * h * 4) },
+  hasSelection: true,
+}), false, 'Finger Painting obeys zero-alpha selections')
+const fpInvalid = image()
+assert.equal(smear(fpInvalid, {
+  fingerPainting: { color: [NaN, 0, 0], opacity: .2 },
+}), false, 'Invalid Float32 foreground cannot corrupt HDR pixels')
+assert.equal(smear(fpInvalid, {
+  fingerPainting: { color: [1, 0, 0], opacity: Infinity },
+}), false)
+assert.deepEqual(Array.from(fpInvalid), clean)
+
 const code = readFileSync(new URL('../src/editor/tools/retouch.ts', import.meta.url), 'utf8')
 assert.match(code, /applyFloat32SmudgeDab\(/)
 assert.match(code, /id === 'smudge'\) && opts\.output === 'new'/)
-assert.match(code, /opts\.sampleAllLayers === true \|\| opts\.fingerPainting === true/)
+assert.match(code, /id === 'smudge' && opts\.sampleAllLayers === true/)
+assert.match(code, /opts\.fingerPainting === true \? hexToRgb\(getFgColor\(\)\)/)
+assert.match(code, /srgbToLinear\(foreground\[0\]\)/)
+assert.match(code, /selection, hasSelection: !!doc\.selection, fingerPainting/)
 assert.match(code, /if \(engine\.activeDoc\?\.workingBitDepth === 32\) return origMove\(p\)/)
 assert.match(code, /if \(changed\) noteHdrRetouchChange\(/)
 assert.match(code, /mutated = !hdrRetouch/, 'No-op HDR strokes must not create history')
-console.log('Float32 Smudge: HDR color, transparent edges, selection, offset, staging and mode guards passed')
+console.log('Float32 Smudge: HDR color, Finger Painting, transparency, selection, offsets and mode guards passed')

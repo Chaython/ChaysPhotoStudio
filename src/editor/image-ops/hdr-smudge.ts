@@ -20,6 +20,9 @@ export interface Float32SmudgeDab {
   alpha(dx: number, dy: number): number
   selection?: HdrSelectionRegion
   hasSelection?: boolean
+  /** Linear-sRGB foreground mixed into the picked-up color, without changing
+   * the pickup alpha. This mirrors 8-bit source-atop Finger Painting. */
+  fingerPainting?: { color: readonly [number, number, number]; opacity: number }
 }
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v))
@@ -30,6 +33,11 @@ export function applyFloat32SmudgeDab(d: Float32SmudgeDab): boolean {
     || !Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1
     || pixels.length !== width * height * 4 || radius <= 0 || d.strength <= 0
     || (x === previousX && y === previousY)) return false
+  if (d.fingerPainting && (
+    !Number.isFinite(d.fingerPainting.opacity)
+    || !d.fingerPainting.color.every(Number.isFinite)
+    || d.fingerPainting.color.some(n => n < 0)
+  )) return false
   if (d.hasSelection && !selection) return false
   if (selection && (!Number.isInteger(selection.width) || !Number.isInteger(selection.height)
     || selection.width < 1 || selection.height < 1
@@ -88,8 +96,17 @@ export function applyFloat32SmudgeDab(d: Float32SmudgeDab): boolean {
     const da = pixels[si + 3]
     const dr = pixels[si], dg = pixels[si + 1], db = pixels[si + 2]
     if (![da, dr, dg, db].every(Number.isFinite) || da < 0) continue
-    const [pr, pg, pb, sa] = pickup(px + previousX - x, py + previousY - y)
+    let [pr, pg, pb, sa] = pickup(px + previousX - x, py + previousY - y)
     if (sa <= 0) continue
+    if (d.fingerPainting) {
+      // Mix in scene-linear RGB only where pickup alpha already exists.
+      // 8-bit source-atop Finger Painting does not paint from an empty pickup.
+      const f = clamp01(d.fingerPainting.opacity)
+      const [fr, fg, fb] = d.fingerPainting.color
+      pr = pr * (1 - f) + fr * sa * f
+      pg = pg * (1 - f) + fg * sa * f
+      pb = pb * (1 - f) + fb * sa * f
+    }
     const srcOpacity = sa * opacity
     const remain = 1 - srcOpacity
     const dstA = clamp01(da)
