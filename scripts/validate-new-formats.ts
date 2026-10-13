@@ -10,6 +10,7 @@ import type { CatalogPhoto } from '../src/editor/library/photo-catalog'
 import { encodeTiff16 } from '../src/editor/formats/encoders'
 import { rawBatchOutputNames, runRawBatchExport, MAX_BATCH_RAW_FILES } from '../src/editor/formats/raw-batch-export'
 import { DEFAULT_RAW_SETTINGS, normalizeRawSettings, makeBatchSafeRawSettings } from '../src/editor/formats/raw-develop'
+import { normalizeWbMultipliers, normalizeCameraMatrix, rawCameraColorOptions } from '../src/editor/formats/raw-camera-color'
 import { applyRawCurves, evaluateRawCurve, normalizeRawCurves, DEFAULT_RAW_CURVES } from '../src/editor/formats/raw-curves'
 import { applyRawLocalMasks, rawMaskCoverage, normalizeRawLocalMasks, makeRawLocalMask } from '../src/editor/formats/raw-local-masks'
 import { rawBrushCoverage, normalizeRawBrushStrokes, MAX_RAW_BRUSH_STROKES, MAX_RAW_BRUSH_POINTS } from '../src/editor/formats/raw-local-masks'
@@ -451,6 +452,51 @@ check(decodedNative.width===2&&decodedNative.height===1 &&
   decodedNative.rgba16?.[0]===1001 && decodedNative.rgba16?.[1]===29001 &&
   decodedNative.rgba16?.[6]===43343 && decodedNative.rgba16?.[7]===50000,
   'Native 16-bit TIFF encoder preserves exact LibRaw samples without 8-bit roundtrip')
+
+// LibRaw camera matrices: embedded DNG/file transforms must work even when
+// the user selects Auto or Daylight, which previously disabled matrix use for
+// many non-DNG sources under useCameraMatrix:1.
+const profileAuto=rawCameraColorOptions({
+  whiteBalance:'auto',cameraMatrix:'embedded',whiteBalanceMultipliers:[1,1,1,1],
+})
+check(profileAuto.useAutoWb && !profileAuto.useCameraWb &&
+  profileAuto.useCameraMatrix===3 && !('userMul' in profileAuto),
+  'Embedded camera matrix is preferred independently of auto white balance')
+const profileBuiltIn=rawCameraColorOptions({
+  whiteBalance:'daylight',cameraMatrix:'built-in',whiteBalanceMultipliers:[1,1,1,1],
+})
+check(!profileBuiltIn.useAutoWb&&!profileBuiltIn.useCameraWb&&
+  profileBuiltIn.useCameraMatrix===0,
+  'User can disable embedded color matrix in favor of LibRaw built-in calibration')
+const customSensor=rawCameraColorOptions({
+  whiteBalance:'custom',cameraMatrix:'embedded',whiteBalanceMultipliers:[2.25,1,1.72,0.99],
+})
+check(!customSensor.useCameraWb&&!customSensor.useAutoWb &&
+  'userMul' in customSensor && customSensor.userMul?.[0]===2.25 &&
+  customSensor.userMul?.[3]===0.99,
+  'Custom sensor white balance passes 4 raw multipliers to LibRaw before conversion')
+check(normalizeWbMultipliers([0,Infinity,20,3]).join(',')==='0.1,1,16,3' &&
+  normalizeWbMultipliers([2,1]).join(',')==='1,1,1,1' &&
+  normalizeCameraMatrix('invalid')==='embedded',
+  'Malformed custom sensor WB and camera profile settings are bounded and neutral')
+const oldRawColor=normalizeRawSettings({...DEFAULT_RAW_SETTINGS,
+  cameraMatrix:undefined,whiteBalanceMultipliers:undefined})
+check(oldRawColor.cameraMatrix==='embedded' &&
+  oldRawColor.whiteBalanceMultipliers.join(',')==='1,1,1,1',
+  'Existing RAW Smart Objects without color fields normalize with safe defaults')
+const customSaved=normalizeRawSettings({...DEFAULT_RAW_SETTINGS,
+  whiteBalance:'custom',cameraMatrix:'built-in',whiteBalanceMultipliers:[2.1,1,1.8,1]})
+const cameraSafe=makeBatchSafeRawSettings(customSaved)
+check(customSaved.whiteBalance==='custom'&&
+  cameraSafe.whiteBalance==='camera'&&
+  cameraSafe.cameraMatrix==='built-in'&&
+  cameraSafe.whiteBalanceMultipliers.join(',')==='1,1,1,1',
+  'Batch RAW recipes keep color policy but do not leak camera-specific WB coefficients')
+const sensorRoundTrip=normalizeRawSettings(JSON.parse(JSON.stringify(customSaved)))
+check(sensorRoundTrip.whiteBalance==='custom' &&
+  sensorRoundTrip.whiteBalanceMultipliers[0]===2.1 &&
+  sensorRoundTrip.cameraMatrix==='built-in',
+  'RAW Smart Objects preserve deliberate custom white balance for same-image redevelopment')
 
 // RAW tone curves: independent composite and RGB 16-bit LUTs, older recipes,
 // safe endpoints, alpha, neutral identity, and conservative input normalization.
