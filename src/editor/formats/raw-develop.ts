@@ -3,6 +3,7 @@ import { RAW_MIX_BANDS, DEFAULT_RAW_COLOR_MIX, normalizeRawColorMix, applyRawCol
 import { downsampleRawPreview, rawPreviewHistogram } from './raw-preview'
 import { RAW_CURVE_CHANNELS, DEFAULT_RAW_CURVES, normalizeRawCurves, applyRawCurves, evaluateRawCurve, type RawPointCurves, type RawCurveChannel } from './raw-curves'
 import type { RawImage } from './decoders'
+import { applyRawLocalMasks, normalizeRawLocalMasks, makeRawLocalMask, MAX_RAW_LOCAL_MASKS, type RawLocalMask } from './raw-local-masks'
 import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
 import type { ImageMetadata } from '../types'
 import { cameraExif, importLensfunXml, loadedLensfunCount, matchLensfun } from './lensfun-xml'
@@ -20,11 +21,12 @@ export interface RawDevelopSettings {
   tone: RawToneSettings
   curves: RawPointCurves
   colorMix: RawColorMix
+  localMasks: RawLocalMask[]
 }
 export const DEFAULT_RAW_SETTINGS: RawDevelopSettings = {
   exposureEv: 0, whiteBalance: 'camera', interpolation: 3,
   highlight: 0, denoise: 0, halfSize: false,
-  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE}, curves: structuredClone(DEFAULT_RAW_CURVES), colorMix: structuredClone(DEFAULT_RAW_COLOR_MIX),
+  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE}, curves: structuredClone(DEFAULT_RAW_CURVES), colorMix: structuredClone(DEFAULT_RAW_COLOR_MIX), localMasks:[],
 }
 const storageKey = 'chaysstudio.raw-develop.v1'
 export function rawSettingsFromSaved(): RawDevelopSettings {
@@ -48,11 +50,16 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
     tone:normalizeRawTone(raw.tone),
     curves:normalizeRawCurves(raw.curves),
     colorMix:normalizeRawColorMix(raw.colorMix),
+    localMasks:normalizeRawLocalMasks(raw.localMasks),
   }
 }
 
 export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings, metadata?:ImageMetadata, sourceFile?:File):Promise<RawDevelopSettings|null> {
   const current=initial?normalizeRawSettings(initial):rawSettingsFromSaved()
+  // Local mask geometry belongs to a particular image. Opening a different
+  // RAW must not silently apply a previous photo's coordinates/adjustments.
+  // Redeveloping an existing RAW Smart Object keeps its embedded mask recipe.
+  if(!initial)current.localMasks=[]
   // Never carry a calibrated lens from a previously opened camera into a new
   // unrelated RAW. Re-match using this file's EXIF or leave only manual values.
   if(!initial && current.lensProfile.lensfun){
@@ -261,6 +268,136 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       }
       mixInputs[band]=inputs
     }
+    const local=group('Local adjustments — radial and linear masks',false)
+    const localMasks:RawLocalMask[]=normalizeRawLocalMasks(current.localMasks)
+    let localCounter=0
+    let notifyLocalPreview=()=>{}
+    const selectedMask=field('Selected mask','select','',[],local.grid) as HTMLSelectElement
+    const localActions=document.createElement('div')
+    localActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;grid-column:1/-1'
+    const localMessage=document.createElement('p')
+    localMessage.style.cssText='grid-column:1/-1;font-size:12px;opacity:.8'
+    localMessage.textContent='Radial masks use an ellipse; linear masks fade between two points. Positions are percentages of the developed frame. Up to 8 masks.'
+    const addRadial=document.createElement('button'),addLinear=document.createElement('button'),removeMask=document.createElement('button')
+    for(const button of [addRadial,addLinear,removeMask]){
+      button.type='button'
+      button.style.cssText='padding:6px 9px;border:1px solid var(--border);border-radius:6px'
+    }
+    addRadial.textContent='Add radial';addLinear.textContent='Add linear';removeMask.textContent='Remove selected'
+    localActions.append(addRadial,addLinear,removeMask)
+    local.grid.append(localActions,localMessage)
+    const maskName=field('Mask name','text','',undefined,local.grid) as HTMLInputElement
+    const maskKind=field('Shape','select','radial',
+      ['radial|Radial ellipse','linear|Linear gradient'],local.grid) as HTMLSelectElement
+    const maskEnabled=field('Enabled','select','yes',['yes|Yes','no|No'],local.grid) as HTMLSelectElement
+    const maskInvert=field('Invert area','select','no',['no|No','yes|Yes'],local.grid) as HTMLSelectElement
+    function localNumber(label:string,min:number,max:number,step:number):HTMLInputElement {
+      const input=field(label,'number','0',undefined,local.grid) as HTMLInputElement
+      input.min=String(min);input.max=String(max);input.step=String(step)
+      sliderFor(input)
+      return input
+    }
+    const localX=localNumber('Start / center X (%)',0,100,1)
+    const localY=localNumber('Start / center Y (%)',0,100,1)
+    const localX2=localNumber('Gradient end X (%)',0,100,1)
+    const localY2=localNumber('Gradient end Y (%)',0,100,1)
+    const localRadiusX=localNumber('Ellipse radius X (%)',1,100,1)
+    const localRadiusY=localNumber('Ellipse radius Y (%)',1,100,1)
+    const localFeather=localNumber('Ellipse feather (%)',0,100,1)
+    const localStrength=localNumber('Mask opacity (%)',0,100,1)
+    const localEv=localNumber('Exposure (EV)',-3,3,0.1)
+    const localSat=localNumber('Saturation (-100 to 100)',-100,100,1)
+    const localWarmth=localNumber('Warmth (-100 to 100)',-100,100,1)
+    const localNumbers=[localX,localY,localX2,localY2,localRadiusX,localRadiusY,
+      localFeather,localStrength,localEv,localSat,localWarmth]
+    const atSelected=()=>localMasks.find(mask=>mask.id===selectedMask.value)
+    function updateMaskSelection(){
+      selectedMask.replaceChildren()
+      for(const mask of localMasks){
+        const opt=document.createElement('option')
+        opt.value=mask.id;opt.textContent=mask.name+(mask.enabled?'':' (off)')
+        selectedMask.append(opt)
+      }
+      const mask=atSelected()??localMasks[0]
+      if(mask)selectedMask.value=mask.id
+      const available=!!mask
+      removeMask.disabled=!available
+      for(const control of [maskName,maskKind,maskEnabled,maskInvert,...localNumbers])control.disabled=!available
+      if(!mask)return
+      maskName.value=mask.name
+      maskKind.value=mask.kind
+      maskEnabled.value=mask.enabled?'yes':'no'
+      maskInvert.value=mask.invert?'yes':'no'
+      const numbers=[mask.x*100,mask.y*100,mask.x2*100,mask.y2*100,mask.radiusX*100,
+        mask.radiusY*100,mask.feather*100,mask.strength,mask.exposureEv,mask.saturation,mask.warmth]
+      localNumbers.forEach((input,i)=>{
+        input.value=String(Math.round(numbers[i]*100)/100)
+        const slider=sliders.get(input)
+        if(slider)slider.value=input.value
+      })
+    }
+    function updateMask(){
+      const mask=atSelected()
+      if(!mask)return
+      const values={
+        ...mask,name:maskName.value,kind:maskKind.value as RawLocalMask['kind'],
+        enabled:maskEnabled.value==='yes',invert:maskInvert.value==='yes',
+        x:localX.valueAsNumber/100,y:localY.valueAsNumber/100,
+        x2:localX2.valueAsNumber/100,y2:localY2.valueAsNumber/100,
+        radiusX:localRadiusX.valueAsNumber/100,radiusY:localRadiusY.valueAsNumber/100,
+        feather:localFeather.valueAsNumber/100,strength:localStrength.valueAsNumber,
+        exposureEv:localEv.valueAsNumber,saturation:localSat.valueAsNumber,
+        warmth:localWarmth.valueAsNumber,
+      }
+      const clean=normalizeRawLocalMasks([values])[0]
+      if(!clean)return
+      Object.assign(mask,clean)
+      // Do not rebuild a text field on every keystroke.
+      for(const option of Array.from(selectedMask.options))
+        if(option.value===mask.id)option.textContent=mask.name+(mask.enabled?'':' (off)')
+      notifyLocalPreview()
+    }
+    for(const input of [maskName,maskKind,maskEnabled,maskInvert,...localNumbers])
+      input.addEventListener('input',updateMask)
+    selectedMask.addEventListener('change',()=>{
+      const selected=localMasks.find(x=>x.id===selectedMask.value)
+      if(!selected)return
+      // Rebuilding the options would discard the user's selection.
+      maskName.value=selected.name
+      maskKind.value=selected.kind;maskEnabled.value=selected.enabled?'yes':'no'
+      maskInvert.value=selected.invert?'yes':'no'
+      const values=[selected.x*100,selected.y*100,selected.x2*100,selected.y2*100,
+        selected.radiusX*100,selected.radiusY*100,selected.feather*100,
+        selected.strength,selected.exposureEv,selected.saturation,selected.warmth]
+      localNumbers.forEach((input,i)=>{
+        input.value=String(Math.round(values[i]*100)/100)
+        const slider=sliders.get(input);if(slider)slider.value=input.value
+      })
+      notifyLocalPreview()
+    })
+    const addMask=(kind:'radial'|'linear')=>{
+      if(localMasks.length>=MAX_RAW_LOCAL_MASKS){
+        localMessage.textContent='Maximum of '+MAX_RAW_LOCAL_MASKS+' local masks reached.'
+        return
+      }
+      const id='local-'+Date.now().toString(36)+'-'+(++localCounter)
+      localMasks.push(makeRawLocalMask(kind,id))
+      updateMaskSelection()
+      selectedMask.value=id
+      // Force the new row values to match newly selected mask.
+      selectedMask.dispatchEvent(new Event('change'))
+      notifyLocalPreview()
+    }
+    addRadial.addEventListener('click',()=>addMask('radial'))
+    addLinear.addEventListener('click',()=>addMask('linear'))
+    removeMask.addEventListener('click',()=>{
+      const index=localMasks.findIndex(mask=>mask.id===selectedMask.value)
+      if(index<0)return
+      localMasks.splice(index,1)
+      updateMaskSelection()
+      notifyLocalPreview()
+    })
+    updateMaskSelection()
     const optics=group('Optics and Lensfun calibration',false)
     const lensName=field('Lens profile label','text',current.lensProfile.name,undefined,optics.grid) as HTMLInputElement
     lensName.placeholder='Camera / lens / focal length'
@@ -405,6 +542,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       ]))),
       lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,
         tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
+      localMasks:normalizeRawLocalMasks(localMasks),
     })
     // The LibRaw sensor stage is expensive. Decode it only on explicit request
     // at half resolution, then update Basic/HSL adjustments on a bounded
@@ -473,8 +611,42 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         previewStatus.textContent='Sensor or optics settings changed. Refresh RAW preview to see their effect.'
         return
       }
-      const adjusted=applyRawColorMix(applyRawCurves(applyRawTone(previewBase,settings.tone),settings.curves),settings.colorMix)
+      const adjusted=applyRawLocalMasks(applyRawColorMix(applyRawCurves(applyRawTone(previewBase,settings.tone),settings.curves),settings.colorMix),settings.localMasks)
       paint(beforeCanvas,previewBase);paint(afterCanvas,adjusted)
+      // Shape overlay exists only on the UI preview canvas. The histogram,
+      // original RAW, Smart Object source and exported pixels never include it.
+      const selected=local.details.open?localMasks.find(mask=>mask.id===selectedMask.value):undefined
+      const overlay=afterCanvas.getContext('2d')
+      if(selected && overlay){
+        const w=afterCanvas.width,h=afterCanvas.height
+        overlay.save()
+        overlay.strokeStyle='#facc15';overlay.fillStyle='#facc15'
+        overlay.lineWidth=Math.max(1,w/350)
+        overlay.setLineDash([Math.max(3,w/90),Math.max(2,w/150)])
+        if(selected.kind==='radial'){
+          overlay.beginPath()
+          overlay.ellipse(selected.x*w,selected.y*h,selected.radiusX*w,selected.radiusY*h,0,0,Math.PI*2)
+          overlay.stroke()
+          if(selected.feather>0){
+            overlay.strokeStyle='#fff';overlay.beginPath()
+            overlay.ellipse(selected.x*w,selected.y*h,
+              selected.radiusX*w*(1-selected.feather),selected.radiusY*h*(1-selected.feather),
+              0,0,Math.PI*2)
+            overlay.stroke()
+          }
+        }else{
+          overlay.beginPath()
+          overlay.moveTo(selected.x*w,selected.y*h)
+          overlay.lineTo(selected.x2*w,selected.y2*h)
+          overlay.stroke()
+          overlay.setLineDash([])
+          for(const [x,y] of [[selected.x,selected.y],[selected.x2,selected.y2]]){
+            overlay.beginPath();overlay.arc(x*w,y*h,Math.max(3,w/120),0,Math.PI*2)
+            overlay.fill()
+          }
+        }
+        overlay.restore()
+      }
       const hist=rawPreviewHistogram(adjusted)
       const ctx=histogramCanvas.getContext('2d')
       if(ctx){
@@ -517,7 +689,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         const {decodeCameraRaw}=await import('./wasm-codecs')
         const decoded=await decodeCameraRaw(await sourceFile.arrayBuffer(),{
           ...settings,halfSize:true,tone:{...DEFAULT_RAW_TONE},
-          colorMix:normalizeRawColorMix(DEFAULT_RAW_COLOR_MIX),curves:normalizeRawCurves(DEFAULT_RAW_CURVES),
+          colorMix:normalizeRawColorMix(DEFAULT_RAW_COLOR_MIX),curves:normalizeRawCurves(DEFAULT_RAW_CURVES),localMasks:[],
         })
         if(generation!==previewGeneration||!dialog.open)return
         previewBase=downsampleRawPreview(decoded,480)
@@ -548,9 +720,11 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     // Imported presets update input values programmatically and do not
     // dispatch input events. Refresh the live preview explicitly.
     refreshEditedPreview=schedulePreview
+    notifyLocalPreview=schedulePreview
+    local.details.addEventListener('toggle',schedulePreview)
     presetTools.append(savePreset,loadPreset,presetStatus)
     actions.append(cancel,apply)
-    dialog.append(heading,caption,previewSection,form,basic.details,curve.details,mix.details,optics.details,presetTools,actions)
+    dialog.append(heading,caption,previewSection,form,basic.details,curve.details,mix.details,local.details,optics.details,presetTools,actions)
     dialog.addEventListener('close',()=>{
       previewGeneration++
       previewBase=null
