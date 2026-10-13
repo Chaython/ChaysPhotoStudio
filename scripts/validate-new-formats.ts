@@ -5,6 +5,8 @@ import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { applyRawDetail, normalizeRawDetail, DEFAULT_RAW_DETAIL } from '../src/editor/formats/raw-detail'
+import { encodeTiff16 } from '../src/editor/formats/encoders'
+import { rawBatchOutputNames, runRawBatchExport, MAX_BATCH_RAW_FILES } from '../src/editor/formats/raw-batch-export'
 import { DEFAULT_RAW_SETTINGS, normalizeRawSettings, makeBatchSafeRawSettings } from '../src/editor/formats/raw-develop'
 import { applyRawCurves, evaluateRawCurve, normalizeRawCurves, DEFAULT_RAW_CURVES } from '../src/editor/formats/raw-curves'
 import { applyRawLocalMasks, rawMaskCoverage, normalizeRawLocalMasks, makeRawLocalMask } from '../src/editor/formats/raw-local-masks'
@@ -361,6 +363,54 @@ const batchThird=makeBatchSafeRawSettings(transferred)
 check(batchThird.localMasks.length===0 &&
   batchThird.lensProfile.name==='' && batchThird.curves.red[1]===60,
   'Subsequent batch photos receive distinct settings, without local-mask leakage')
+
+// RAW batch export planning never overwrites a same-batch name, never
+// requires a document in the editor, and remains platform-safe.
+const names=rawBatchOutputNames([
+  {name:'DSC_0001.NEF'},{name:'dsc_0001.CR2'},{name:'CON.dng'},
+  {name:'site: bad/shot.arw'},{name:'.dng'},{name:'DSC_0001.NEF'},
+], 'tiff16')
+check(names.length===6&&new Set(names.map(x=>x.toLowerCase())).size===6,
+  'RAW batch output names are unique even for case-insensitive file systems')
+check(names.every(x=>x.endsWith('.tif')&&!/[<>:"/\\|?*]/.test(x)),
+  'RAW batch output names are TIFF extensions and safe for filesystem output')
+check(names[0]==='DSC_0001-developed.tif'&&names[1]==='dsc_0001-developed-2.tif',
+  'Case-insensitive duplicate RAW names are numbered')
+check(names[2].startsWith('RAW-003'),'Windows device filenames cannot escape sanitization')
+check(rawBatchOutputNames([{name:'my.NEF'}],'jpeg')[0]==='my-developed.jpg',
+  'JPEG batch extension and RAW suffix are correct')
+const batchInputs=[{name:'a.nef'},{name:'broken.cr2'},{name:'b.dng'}]
+const seenBatch:string[]=[]
+const progressBatch:number[]=[]
+const finishedBatch=await runRawBatchExport(batchInputs,'jpeg',async(file,name)=>{
+  seenBatch.push(name)
+  if(file.name.startsWith('broken'))throw Error('bad camera RAW')
+},{onProgress:s=>progressBatch.push(s.index)})
+check(finishedBatch.exported===2&&finishedBatch.failed===1 &&
+  !finishedBatch.cancelled && finishedBatch.errors[0]?.fileName==='broken.cr2' &&
+  seenBatch.length===3 && progressBatch.join(',')==='0,1,2',
+  'RAW batch continues after individual decoding failures and reports exact files')
+let cancelledFlag=false
+const cancelledBatch=await runRawBatchExport(batchInputs,'tiff8',async()=>{
+  cancelledFlag=true
+},{isCancelled:()=>cancelledFlag})
+check(cancelledBatch.cancelled&&cancelledBatch.exported===1&&cancelledBatch.failed===0,
+  'RAW batch cancellation stops before beginning next file')
+let excessiveBatchRejected=false
+try{
+  await runRawBatchExport(Array.from({length:MAX_BATCH_RAW_FILES+1},
+    (_,i)=>({name:'raw'+i+'.dng'})),'jpeg',async()=>{})
+}catch{excessiveBatchRejected=true}
+check(excessiveBatchRejected,'RAW batch file count must be bounded')
+// Direct native Uint16 TIFF output must preserve the original 16-bit sample
+// bytes, including values not representable by 8-bit conversion.
+const nativeTiffPixels=new Uint16Array([1001,29001,60002,65535,271,32003,43343,50000])
+const nativeTiff=encodeTiff16(nativeTiffPixels,2,1,false)
+const decodedNative=decodeTiff(nativeTiff)
+check(decodedNative.width===2&&decodedNative.height===1 &&
+  decodedNative.rgba16?.[0]===1001 && decodedNative.rgba16?.[1]===29001 &&
+  decodedNative.rgba16?.[6]===43343 && decodedNative.rgba16?.[7]===50000,
+  'Native 16-bit TIFF encoder preserves exact LibRaw samples without 8-bit roundtrip')
 
 // RAW tone curves: independent composite and RGB 16-bit LUTs, older recipes,
 // safe endpoints, alpha, neutral identity, and conservative input normalization.
