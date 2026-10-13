@@ -31,6 +31,7 @@ interface RetouchContext {
   outputNew: boolean
   /** True when Float32 scene-linear pixels need their display mirror refreshed. */
   hdrChanged?: boolean
+  hdrEverChanged?: boolean
 }
 let retouchContext: RetouchContext | null = null
 
@@ -192,7 +193,7 @@ function makeRetouch(
     flushHdrPreview()
     // The active document can change while the pen is down. History always
     // belongs to the original document, never the newly focused document.
-    if (mutated && strokeDoc && engine.docs.includes(strokeDoc)) {
+    if ((mutated || retouchContext?.hdrEverChanged) && strokeDoc && engine.docs.includes(strokeDoc)) {
       engine.pushHistory(`${id[0].toUpperCase()}${id.slice(1)} Tool`, strokeDoc)
       engine.emit()
     }
@@ -263,7 +264,7 @@ function makeRetouch(
         if (!l?.canvas) return
         retouchContext = { docId: doc.id, targetId: l.id, sourceLayerId: l.id, source: null, outputNew: false }
       }
-      mutated = true
+      mutated = !hdrTone
       strokeDoc = doc
       active = true
       last = { x: p.docX, y: p.docY }
@@ -691,7 +692,10 @@ function float32ToneDab(
     selection,
     hasSelection: !!doc.selection,
   })
-  if (changed) state.hdrChanged = true
+  if (changed) {
+    state.hdrChanged = true
+    state.hdrEverChanged = true
+  }
 }
 
 // ---------- dodge / burn ----------
