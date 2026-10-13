@@ -454,6 +454,25 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     ]
   },
   {
+    "id": "photo-library-catalog",
+    "title": "Photo Library: indexing, ratings and keywords",
+    "category": "Color & files",
+    "path": "File → Photo Library / Catalog…",
+    "summary": "Organize local camera RAWs and photographs using a private browser catalog with thumbnails, searchable keywords, ratings and picks/rejects.",
+    "steps": [
+      "Choose File → Photo Library / Catalog… and select photos to index. Thumbnails and a small amount of camera metadata are stored locally in the current browser; the original photos remain on your disk.",
+      "Search filenames, camera models, capture dates and keywords. Narrow by RAW versus regular images, star rating, and Pick/Reject/Unflagged status; sort by import date, capture date, filename, or rating.",
+      "Select a thumbnail to assign 0–5 stars, set a Pick/Reject flag, and save comma-separated keywords. Changes persist when you reopen the catalog.",
+      "To edit a newly indexed photograph, select Open original. After restarting the app, choose Relink original and select the same source photo before opening it again. Remove from catalog deletes only the local thumbnail/metadata record."
+    ],
+    "tips": [
+      "The catalog is local IndexedDB storage. Originals and file paths are not saved or uploaded. Browser data clearing or private browsing can erase the catalog; it is not a backup or an external Lightroom-style synced library.",
+      "RAW thumbnails use available embedded previews where possible. Files without decodable thumbnails still index as metadata-only entries; full RAW development remains in File → Open.",
+      "Photo relinking compares a fast SHA-256 fingerprint of file size plus first/last 64 KiB, not the entire original file. It is intended for accidental mismatch prevention, not cryptographic whole-file integrity.",
+      "Each import selection is capped at 250 photos with a 256 MiB maximum per source. Imports are sequential and can be cancelled between files."
+    ]
+  },
+  {
     "id": "troubleshooting",
     "title": "Troubleshooting and known limits",
     "category": "Support",

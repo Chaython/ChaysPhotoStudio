@@ -49,6 +49,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Match Color between documents](#match-color-between-documents)
 - [Saving, exporting and metadata](#saving-exporting-and-metadata)
 - [RAW, HDR, scientific and multi-page image files](#raw-hdr-scientific-and-multi-page-image-files)
+- [Photo Library: indexing, ratings and keywords](#photo-library-indexing-ratings-and-keywords)
 - [Proofing, print resolution and guides](#proofing-print-resolution-and-guides)
 - [Import formats and video frame extraction](#import-formats-and-video-frame-extraction)
 - [Layered exports, Save As and metadata](#layered-exports-save-as-and-metadata)
@@ -488,6 +489,24 @@ Open camera RAW, HDR, modern codecs and scientific files while retaining editabl
 - Imported Lensfun XML uses recorded calibration values with conservative EXIF matching; the full licensed database and WASM remapping engine are not bundled. Save the project to retain RAW originals and recipes.
 - DICOM support is only for graphic editing, never diagnosis or medical measurements. Rare compressed transfer syntaxes and ambiguous multifragment frame tables are rejected.
 - BPG has no vetted decoder. Deep EXR, multiresolution tile levels and PIZ/PXR24/B44 compression remain unsupported. A six-camera real RAW sensor matrix passed but newer vendor compression variants still need testing.
+
+## Photo Library: indexing, ratings and keywords
+
+Organize local camera RAWs and photographs using a private browser catalog with thumbnails, searchable keywords, ratings and picks/rejects.
+
+**Where:** File → Photo Library / Catalog…
+
+1. Choose File → Photo Library / Catalog… and select photos to index. Thumbnails and a small amount of camera metadata are stored locally in the current browser; the original photos remain on your disk.
+2. Search filenames, camera models, capture dates and keywords. Narrow by RAW versus regular images, star rating, and Pick/Reject/Unflagged status; sort by import date, capture date, filename, or rating.
+3. Select a thumbnail to assign 0–5 stars, set a Pick/Reject flag, and save comma-separated keywords. Changes persist when you reopen the catalog.
+4. To edit a newly indexed photograph, select Open original. After restarting the app, choose Relink original and select the same source photo before opening it again. Remove from catalog deletes only the local thumbnail/metadata record.
+
+**Notes and tips:**
+
+- The catalog is local IndexedDB storage. Originals and file paths are not saved or uploaded. Browser data clearing or private browsing can erase the catalog; it is not a backup or an external Lightroom-style synced library.
+- RAW thumbnails use available embedded previews where possible. Files without decodable thumbnails still index as metadata-only entries; full RAW development remains in File → Open.
+- Photo relinking compares a fast SHA-256 fingerprint of file size plus first/last 64 KiB, not the entire original file. It is intended for accidental mismatch prevention, not cryptographic whole-file integrity.
+- Each import selection is capped at 250 photos with a 256 MiB maximum per source. Imports are sequential and can be cancelled between files.
 
 ## Troubleshooting and known limits
 

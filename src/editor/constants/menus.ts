@@ -284,6 +284,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'file-ai-tools', label: 'AI Tools & ComfyUI…', run: () => openDlg('ai-tools') },
     S(),
     { id: 'file-open-recent', label: 'Recent & Recovery…', run: () => openDlg('recovery') },
+    { id: 'file-photo-library', label: 'Photo Library / Catalog…', run: () => openDlg('photo-library') },
     { id: 'file-info', label: 'File Info / Metadata…', enabled: () => !!engine.activeDoc, run: () => store().revealPanel('metadata') },
     S(),
     { id: 'file-save-project', label: 'Save Project', shortcut: sc('save'), run: () => { void saveProject() } },
