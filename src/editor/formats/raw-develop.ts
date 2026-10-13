@@ -609,6 +609,40 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       }
       const adjusted=applyRawLocalMasks(applyRawColorMix(applyRawCurves(applyRawTone(previewBase,settings.tone),settings.curves),settings.colorMix),settings.localMasks)
       paint(beforeCanvas,previewBase);paint(afterCanvas,adjusted)
+      // Shape overlay exists only on the UI preview canvas. The histogram,
+      // original RAW, Smart Object source and exported pixels never include it.
+      const selected=local.details.open?localMasks.find(mask=>mask.id===selectedMask.value):undefined
+      const overlay=afterCanvas.getContext('2d')
+      if(selected && overlay){
+        const w=afterCanvas.width,h=afterCanvas.height
+        overlay.save()
+        overlay.strokeStyle='#facc15';overlay.fillStyle='#facc15'
+        overlay.lineWidth=Math.max(1,w/350)
+        overlay.setLineDash([Math.max(3,w/90),Math.max(2,w/150)])
+        if(selected.kind==='radial'){
+          overlay.beginPath()
+          overlay.ellipse(selected.x*w,selected.y*h,selected.radiusX*w,selected.radiusY*h,0,0,Math.PI*2)
+          overlay.stroke()
+          if(selected.feather>0){
+            overlay.strokeStyle='#fff';overlay.beginPath()
+            overlay.ellipse(selected.x*w,selected.y*h,
+              selected.radiusX*w*(1-selected.feather),selected.radiusY*h*(1-selected.feather),
+              0,0,Math.PI*2)
+            overlay.stroke()
+          }
+        }else{
+          overlay.beginPath()
+          overlay.moveTo(selected.x*w,selected.y*h)
+          overlay.lineTo(selected.x2*w,selected.y2*h)
+          overlay.stroke()
+          overlay.setLineDash([])
+          for(const [x,y] of [[selected.x,selected.y],[selected.x2,selected.y2]]){
+            overlay.beginPath();overlay.arc(x*w,y*h,Math.max(3,w/120),0,Math.PI*2)
+            overlay.fill()
+          }
+        }
+        overlay.restore()
+      }
       const hist=rawPreviewHistogram(adjusted)
       const ctx=histogramCanvas.getContext('2d')
       if(ctx){
@@ -683,6 +717,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     // dispatch input events. Refresh the live preview explicitly.
     refreshEditedPreview=schedulePreview
     notifyLocalPreview=schedulePreview
+    local.details.addEventListener('toggle',schedulePreview)
     presetTools.append(savePreset,loadPreset,presetStatus)
     actions.append(cancel,apply)
     dialog.append(heading,caption,previewSection,form,basic.details,curve.details,mix.details,local.details,optics.details,presetTools,actions)
