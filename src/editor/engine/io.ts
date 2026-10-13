@@ -9,7 +9,7 @@ import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../forma
 import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension, publishedFormatKind } from '../formats'
 import { metadataResolutionPpi, readImageMetadata } from '../formats/metadata'
 import { chooseImagePages } from '../formats/page-select'
-import { chooseRawDevelopSettings, type RawDevelopSettings } from '../formats/raw-develop'
+import { chooseRawDevelopSettings, makeBatchSafeRawSettings, type RawDevelopSettings } from '../formats/raw-develop'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 
 // Source-embedded RAW Smart Objects deliberately cap project size. Large camera
@@ -95,7 +95,11 @@ async function decodeToCanvas(file: File, rawSettings?: RawDevelopSettings): Pro
 
 export async function openFiles(files: File[], asLayer = false) {
   const store = useEditorStore.getState()
-  for (const file of files) {
+  // One opt-in recipe per multi-file Open/Place command, not application-wide.
+  // Sequential processing keeps source files and Smart Objects independent.
+  let batchTemplate:RawDevelopSettings|null=null
+  let batchApplied=0
+  for (const [fileIndex,file] of files.entries()) {
     if (file.name.endsWith('.zproj.json')) { await openProjectFile(file); continue }
     const format = await sniffFormat(file)
     if (!format && !file.type.startsWith('image/') && !isPhotopeaPublishedExtension(file.name)) {
@@ -105,8 +109,19 @@ export async function openFiles(files: File[], asLayer = false) {
     try {
       const isRaw=publishedFormatKind(file.name)==='raw'
       const metadata = (!asLayer||isRaw) ? await readImageMetadata(file).catch(() => undefined) : undefined
-      const rawSettings = isRaw
-        ? await chooseRawDevelopSettings(file.name,undefined,metadata,file) : undefined
+      let selectedBatch:RawDevelopSettings|null=null
+      const usingBatch=isRaw && batchTemplate!==null
+      const remainingRaw=isRaw&&!batchTemplate
+        ? files.slice(fileIndex+1).filter(candidate=>publishedFormatKind(candidate.name)==='raw').length : 0
+      const rawSettings=isRaw
+        ? batchTemplate
+          ? makeBatchSafeRawSettings(batchTemplate)
+          : await chooseRawDevelopSettings(file.name,undefined,metadata,file,
+            remainingRaw>0?{
+              remaining:remainingRaw,
+              onApplyToRemaining:settings=>{selectedBatch=makeBatchSafeRawSettings(settings)},
+            }:undefined)
+        : undefined
       if (rawSettings === null) continue
       // RAW originals are stored losslessly inside Smart Objects; imported
       // previews are independently editable, and settings can be changed later.
@@ -134,6 +149,11 @@ export async function openFiles(files: File[], asLayer = false) {
           }
         }
         for(const warning of decoded.warnings??[])store.pushToast(`${file.name}: ${warning}`,'info')
+        if(selectedBatch){
+          batchTemplate=selectedBatch
+          store.pushToast('Batch RAW development enabled for remaining selected RAW photos','info')
+        }
+        if(usingBatch)batchApplied++
         continue
       }
 
@@ -215,11 +235,22 @@ export async function openFiles(files: File[], asLayer = false) {
       } else {
         engine.addCanvasDocument(decoded.canvas, file.name, { sourceBitDepth: decoded.sourceBitDepth, workingBitDepth: decoded.workingBitDepth, resolutionPpi: decoded.resolutionPpi ?? metadataResolutionPpi(metadata), hdrPixels: decoded.hdrPixels, metadata })
       }
+      if(isRaw){
+        if(selectedBatch){
+          batchTemplate=selectedBatch
+          store.pushToast('Batch RAW development enabled for remaining selected RAW photos','info')
+        }
+        if(usingBatch)batchApplied++
+      }
     } catch (err) {
       const why = err instanceof Error && err.message ? ` — ${err.message}` : ''
       store.pushToast(`Failed to open ${file.name}${why}`, 'error')
     }
   }
+  if(batchApplied>0)store.pushToast(
+    'Applied shared RAW development to '+batchApplied+' additional photo'+(batchApplied===1?'':'s'),
+    'success',
+  )
 }
 
 const DEFAULT_TEXT: TextSpec = {
