@@ -107,7 +107,6 @@ export function RawBatchExportDialog({onClose}:DialogProps){
             background:'#ffffff',
           })
         }
-        if(cancel.current)return
         if(directory)await saveInto(directory,name,blob)
         else{
           downloadBlob(blob,name)
