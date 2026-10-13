@@ -9,6 +9,7 @@ import { applyRawColorMix } from './raw-color-mix'
 import { applyRawCurves } from './raw-curves'
 import { applyRawLocalMasks } from './raw-local-masks'
 import { applyRawDetail } from './raw-detail'
+import { rawCameraColorOptions } from './raw-camera-color'
 
 function shape(width:number,height:number){
   if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width*height>64*1024*1024)
@@ -29,8 +30,7 @@ export async function decodeCameraRaw(buffer:ArrayBuffer,options?:RawDevelopSett
   try{
     await decoder.open(new Uint8Array(buffer),{
       outputBps:16,outputColor:1,
-      useCameraWb:settings.whiteBalance==='camera',
-      useAutoWb:settings.whiteBalance==='auto',
+      ...rawCameraColorOptions(settings),
       noAutoBright:true,
       userQual:settings.interpolation,
       highlight:settings.highlight,
