@@ -3,7 +3,7 @@ import { RAW_MIX_BANDS, DEFAULT_RAW_COLOR_MIX, normalizeRawColorMix, applyRawCol
 import { downsampleRawPreview, rawPreviewHistogram } from './raw-preview'
 import { RAW_CURVE_CHANNELS, DEFAULT_RAW_CURVES, normalizeRawCurves, applyRawCurves, evaluateRawCurve, type RawPointCurves, type RawCurveChannel } from './raw-curves'
 import type { RawImage } from './decoders'
-import { applyRawLocalMasks, normalizeRawLocalMasks, makeRawLocalMask, MAX_RAW_LOCAL_MASKS, type RawLocalMask } from './raw-local-masks'
+import { applyRawLocalMasks, normalizeRawLocalMasks, makeRawLocalMask, MAX_RAW_LOCAL_MASKS, MAX_RAW_BRUSH_STROKES, MAX_RAW_BRUSH_POINTS, type RawLocalMask } from './raw-local-masks'
 import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
 import type { ImageMetadata } from '../types'
 import { cameraExif, importLensfunXml, loadedLensfunCount, matchLensfun } from './lensfun-xml'
@@ -268,7 +268,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       }
       mixInputs[band]=inputs
     }
-    const local=group('Local adjustments — radial and linear masks',false)
+    const local=group('Local adjustments — radial, linear and painted brush masks',false)
     const localMasks:RawLocalMask[]=normalizeRawLocalMasks(current.localMasks)
     let localCounter=0
     let notifyLocalPreview=()=>{}
@@ -277,18 +277,18 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     localActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;grid-column:1/-1'
     const localMessage=document.createElement('p')
     localMessage.style.cssText='grid-column:1/-1;font-size:12px;opacity:.8'
-    localMessage.textContent='Radial masks use an ellipse; linear masks fade between two points. Positions are percentages of the developed frame. Up to 8 masks.'
-    const addRadial=document.createElement('button'),addLinear=document.createElement('button'),removeMask=document.createElement('button')
-    for(const button of [addRadial,addLinear,removeMask]){
+    localMessage.textContent='Paint or erase brush strokes on the After preview. Load the RAW preview first. Brush size is a percentage of the shorter image edge; strokes are editable non-destructively.'
+    const addRadial=document.createElement('button'),addLinear=document.createElement('button'),addBrush=document.createElement('button'),removeMask=document.createElement('button')
+    for(const button of [addRadial,addLinear,addBrush,removeMask]){
       button.type='button'
       button.style.cssText='padding:6px 9px;border:1px solid var(--border);border-radius:6px'
     }
-    addRadial.textContent='Add radial';addLinear.textContent='Add linear';removeMask.textContent='Remove selected'
-    localActions.append(addRadial,addLinear,removeMask)
+    addRadial.textContent='Add radial';addLinear.textContent='Add linear';addBrush.textContent='Add brush';removeMask.textContent='Remove selected'
+    localActions.append(addRadial,addLinear,addBrush,removeMask)
     local.grid.append(localActions,localMessage)
     const maskName=field('Mask name','text','',undefined,local.grid) as HTMLInputElement
     const maskKind=field('Shape','select','radial',
-      ['radial|Radial ellipse','linear|Linear gradient'],local.grid) as HTMLSelectElement
+      ['radial|Radial ellipse','linear|Linear gradient','brush|Painted brush'],local.grid) as HTMLSelectElement
     const maskEnabled=field('Enabled','select','yes',['yes|Yes','no|No'],local.grid) as HTMLSelectElement
     const maskInvert=field('Invert area','select','no',['no|No','yes|Yes'],local.grid) as HTMLSelectElement
     function localNumber(label:string,min:number,max:number,step:number):HTMLInputElement {
@@ -308,6 +308,41 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     const localEv=localNumber('Exposure (EV)',-3,3,0.1)
     const localSat=localNumber('Saturation (-100 to 100)',-100,100,1)
     const localWarmth=localNumber('Warmth (-100 to 100)',-100,100,1)
+    const brushMode=field('Brush action','select','add',
+      ['add|Paint','erase|Erase'],local.grid) as HTMLSelectElement
+    const brushSize=field('Brush diameter (% of short edge)','number','8',undefined,local.grid) as HTMLInputElement
+    brushSize.min='1';brushSize.max='40';brushSize.step='1';sliderFor(brushSize)
+    const brushFeather=field('Brush feather (%)','number','40',undefined,local.grid) as HTMLInputElement
+    brushFeather.min='0';brushFeather.max='100';brushFeather.step='1';sliderFor(brushFeather)
+    const undoBrush=document.createElement('button'),clearBrush=document.createElement('button')
+    for(const control of [undoBrush,clearBrush]){
+      control.type='button';control.style.cssText='padding:6px 9px;border:1px solid var(--border);border-radius:6px'
+    }
+    undoBrush.textContent='Undo last stroke'
+    clearBrush.textContent='Clear brush strokes'
+    const brushActions=document.createElement('div')
+    brushActions.style.cssText='grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px'
+    brushActions.append(undoBrush,clearBrush)
+    local.grid.append(brushActions)
+    const syncBrushControls=()=>{
+      const selected=localMasks.find(mask=>mask.id===selectedMask.value)
+      const enabled=selected?.kind==='brush'
+      for(const control of [brushMode,brushSize,brushFeather,undoBrush,clearBrush])control.disabled=!enabled
+      if(enabled){
+        undoBrush.disabled=!selected?.strokes?.length
+        clearBrush.disabled=!selected?.strokes?.length
+      }
+    }
+    const editBrushStrokes=(clear:boolean)=>{
+      const mask=localMasks.find(mask=>mask.id===selectedMask.value)
+      if(mask?.kind!=='brush')return
+      if(clear)mask.strokes=[]
+      else mask.strokes?.pop()
+      syncBrushControls()
+      notifyLocalPreview()
+    }
+    undoBrush.addEventListener('click',()=>editBrushStrokes(false))
+    clearBrush.addEventListener('click',()=>editBrushStrokes(true))
     const localNumbers=[localX,localY,localX2,localY2,localRadiusX,localRadiusY,
       localFeather,localStrength,localEv,localSat,localWarmth]
     const atSelected=()=>localMasks.find(mask=>mask.id===selectedMask.value)
@@ -323,6 +358,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       const available=!!mask
       removeMask.disabled=!available
       for(const control of [maskName,maskKind,maskEnabled,maskInvert,...localNumbers])control.disabled=!available
+      syncBrushControls()
       if(!mask)return
       maskName.value=mask.name
       maskKind.value=mask.kind
@@ -352,6 +388,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       const clean=normalizeRawLocalMasks([values])[0]
       if(!clean)return
       Object.assign(mask,clean)
+      syncBrushControls()
       // Do not rebuild a text field on every keystroke.
       for(const option of Array.from(selectedMask.options))
         if(option.value===mask.id)option.textContent=mask.name+(mask.enabled?'':' (off)')
@@ -373,9 +410,10 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         input.value=String(Math.round(values[i]*100)/100)
         const slider=sliders.get(input);if(slider)slider.value=input.value
       })
+      syncBrushControls()
       notifyLocalPreview()
     })
-    const addMask=(kind:'radial'|'linear')=>{
+    const addMask=(kind:'radial'|'linear'|'brush')=>{
       if(localMasks.length>=MAX_RAW_LOCAL_MASKS){
         localMessage.textContent='Maximum of '+MAX_RAW_LOCAL_MASKS+' local masks reached.'
         return
@@ -390,6 +428,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     }
     addRadial.addEventListener('click',()=>addMask('radial'))
     addLinear.addEventListener('click',()=>addMask('linear'))
+    addBrush.addEventListener('click',()=>addMask('brush'))
     removeMask.addEventListener('click',()=>{
       const index=localMasks.findIndex(mask=>mask.id===selectedMask.value)
       if(index<0)return
@@ -583,6 +622,69 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     }
     const beforeCanvas=makePane('Before: camera and optics')
     const afterCanvas=makePane('After: Basic tone and HSL')
+    // Paint on the After preview only, never directly on the 16-bit image.
+    // CSS object-fit:contain may letterbox very tall/wide images; account
+    // for the actual picture bounds before mapping pointer coordinates.
+    let activeBrushPointer:number|null=null
+    const afterPoint=(event:PointerEvent)=>{
+      const rect=afterCanvas.getBoundingClientRect()
+      if(!previewBase||rect.width<=0||rect.height<=0)return null
+      const aspect=previewBase.width/previewBase.height
+      const viewWidth=Math.min(rect.width,rect.height*aspect)
+      const viewHeight=Math.min(rect.height,rect.width/aspect)
+      const left=rect.left+(rect.width-viewWidth)/2
+      const top=rect.top+(rect.height-viewHeight)/2
+      const x=(event.clientX-left)/viewWidth,y=(event.clientY-top)/viewHeight
+      if(x<0||x>1||y<0||y>1)return null
+      return {x,y}
+    }
+    const paintBrushPoint=(event:PointerEvent)=>{
+      if(activeBrushPointer!==event.pointerId)return
+      const mask=localMasks.find(mask=>mask.id===selectedMask.value)
+      if(mask?.kind!=='brush')return
+      const stroke=mask.strokes?.[mask.strokes.length-1]
+      if(!stroke||stroke.points.length>=MAX_RAW_BRUSH_POINTS)return
+      const point=afterPoint(event)
+      if(!point)return
+      const last=stroke.points[stroke.points.length-1]
+      const pixelDistance=last?Math.hypot((point.x-last.x)*afterCanvas.width,
+        (point.y-last.y)*afterCanvas.height):Infinity
+      if(pixelDistance<1.5)return
+      stroke.points.push(point)
+      notifyLocalPreview()
+    }
+    afterCanvas.addEventListener('pointerdown',event=>{
+      const mask=localMasks.find(mask=>mask.id===selectedMask.value)
+      if(!previewBase||!local.details.open||mask?.kind!=='brush'||
+        (event.pointerType==='mouse'&&event.button!==0)||activeBrushPointer!==null)return
+      if((mask.strokes?.length??0)>=MAX_RAW_BRUSH_STROKES){
+        localMessage.textContent='Brush stroke limit reached; undo or clear strokes to continue.'
+        return
+      }
+      const point=afterPoint(event)
+      if(!point)return
+      mask.strokes??=[]
+      mask.strokes.push({mode:brushMode.value==='erase'?'erase':'add',
+        size:Math.max(1,Math.min(40,brushSize.valueAsNumber||8)),
+        feather:Math.max(0,Math.min(1,(brushFeather.valueAsNumber||0)/100)),
+        points:[point]})
+      activeBrushPointer=event.pointerId
+      afterCanvas.setPointerCapture(event.pointerId)
+      afterCanvas.style.touchAction='none'
+      syncBrushControls()
+      notifyLocalPreview()
+      event.preventDefault()
+    })
+    afterCanvas.addEventListener('pointermove',paintBrushPoint)
+    const finishBrush=(event:PointerEvent)=>{
+      if(activeBrushPointer!==event.pointerId)return
+      if(event.type==='pointerup')paintBrushPoint(event)
+      activeBrushPointer=null
+      afterCanvas.style.touchAction=''
+      notifyLocalPreview()
+    }
+    afterCanvas.addEventListener('pointerup',finishBrush)
+    afterCanvas.addEventListener('pointercancel',finishBrush)
     const histogramCanvas=document.createElement('canvas')
     histogramCanvas.width=256;histogramCanvas.height=100
     histogramCanvas.style.cssText='width:100%;height:100px;margin-top:8px;border-radius:6px;background:#171717'
@@ -634,7 +736,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
               0,0,Math.PI*2)
             overlay.stroke()
           }
-        }else{
+        }else if(selected.kind==='linear'){
           overlay.beginPath()
           overlay.moveTo(selected.x*w,selected.y*h)
           overlay.lineTo(selected.x2*w,selected.y2*h)
@@ -643,6 +745,23 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
           for(const [x,y] of [[selected.x,selected.y],[selected.x2,selected.y2]]){
             overlay.beginPath();overlay.arc(x*w,y*h,Math.max(3,w/120),0,Math.PI*2)
             overlay.fill()
+          }
+        }else if(selected.kind==='brush'){
+          overlay.setLineDash([])
+          for(const stroke of selected.strokes??[]){
+            overlay.beginPath()
+            overlay.strokeStyle=stroke.mode==='erase'?'#fda4af':'#facc15'
+            overlay.lineWidth=Math.max(2,stroke.size/100*Math.min(w,h))
+            overlay.lineCap='round';overlay.lineJoin='round'
+            stroke.points.forEach((p,i)=>{
+              if(i===0)overlay.moveTo(p.x*w,p.y*h)
+              else overlay.lineTo(p.x*w,p.y*h)
+            })
+            if(stroke.points.length===1){
+              const p=stroke.points[0]
+              overlay.arc(p.x*w,p.y*h,0.1,0,Math.PI*2)
+            }
+            overlay.globalAlpha=0.5;overlay.stroke()
           }
         }
         overlay.restore()
