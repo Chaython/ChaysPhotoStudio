@@ -5,6 +5,8 @@ import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { applyRawDetail, normalizeRawDetail, DEFAULT_RAW_DETAIL } from '../src/editor/formats/raw-detail'
+import { catalogKeywords, catalogRating, catalogFilterPhotos, catalogFingerprint } from '../src/editor/library/photo-catalog'
+import type { CatalogPhoto } from '../src/editor/library/photo-catalog'
 import { encodeTiff16 } from '../src/editor/formats/encoders'
 import { rawBatchOutputNames, runRawBatchExport, MAX_BATCH_RAW_FILES } from '../src/editor/formats/raw-batch-export'
 import { DEFAULT_RAW_SETTINGS, normalizeRawSettings, makeBatchSafeRawSettings } from '../src/editor/formats/raw-develop'
@@ -16,6 +18,44 @@ import { downsampleRawPreview, rawPreviewHistogram } from '../src/editor/formats
 import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
 function check(v:unknown,description:string) { if(!v)throw new Error(description) }
 const enc=new TextEncoder()
+// Persistent photo-library indexing is side-effect free: tags are bounded,
+// search matches camera/date/names/tags, and relinking uses source content.
+check(catalogKeywords('  Sunset, trip, SUNSET, indoor  ').join('|')==='Sunset|trip|indoor',
+  'Photo catalog keyword trimming, case-insensitive dedupe and ordering')
+check(catalogKeywords(Array.from({length:50},(_,i)=>'tag'+i)).length===30,
+  'Photo catalog limits keyword count')
+check(catalogRating(-10)===0 && catalogRating(3.6)===4 &&
+  catalogRating(100)===5 && catalogRating(NaN)===0,
+  'Photo catalog ratings normalize into 0..5')
+const makePhoto=(id:string,name:string,extras:Partial<CatalogPhoto>={}):CatalogPhoto=>({
+  id,name,bytes:123,modified:10,addedAt:20,kind:'raw',rating:0,flag:'none',
+  keywords:[],camera:'',takenAt:'',width:0,height:0,thumbnail:null,...extras,
+})
+const libraryPhotos=[
+  makePhoto('a','IMG_100.NEF',{rating:5,flag:'pick',keywords:['mountains'],
+    camera:'Nikon Z6',takenAt:'2025:01:02 08:00:00'}),
+  makePhoto('b','Beach.ARW',{rating:3,flag:'none',keywords:['vacation','ocean'],
+    camera:'Sony A7',takenAt:'2025:02:03 11:00:00'}),
+  makePhoto('c','Flower.JPG',{kind:'image',rating:1,flag:'reject',
+    keywords:['garden'],camera:'Canon R6'}),
+]
+check(catalogFilterPhotos(libraryPhotos,{search:'NIKON mountains',
+  ratingAtLeast:4,kind:'raw',flag:'pick'}).map(x=>x.id).join(',')==='a',
+  'Catalog combines normalized search, rating, RAW, and flag filters')
+check(catalogFilterPhotos(libraryPhotos,{search:'sony ocean'}).length===1 &&
+  catalogFilterPhotos(libraryPhotos,{kind:'image'}).length===1,
+  'Catalog matches keywords/camera and filters regular photos')
+check(catalogFilterPhotos(libraryPhotos,{sort:'rating'})[0].id==='a' &&
+  catalogFilterPhotos(libraryPhotos,{sort:'date'})[0].id==='b',
+  'Catalog stable rating and capture-date sorting')
+const fingerprint1=await catalogFingerprint(new Blob([enc.encode('RAW source data sample')]))
+const fingerprint2=await catalogFingerprint(new Blob([enc.encode('RAW source data sample')]))
+const fingerprint3=await catalogFingerprint(new Blob([enc.encode('Different camera RAW sample')]))
+check(fingerprint1===fingerprint2 && fingerprint1!==fingerprint3 &&
+  /^[0-9a-f]{64}$/.test(fingerprint1),
+  'Catalog content fingerprint allows same-file relinking and rejects different samples')
+
+
 check(detectFormat(Uint8Array.from([0x42,0x50,0x47,0xfb,0]))==='bpg','BPG magic detection never routes to a generic image fallback')
 function fitCard(key:string,val?:string):Uint8Array {
   return enc.encode((key.padEnd(8,' ')+(val===undefined?'':'= '+val.padStart(20,' '))).padEnd(80,' '))
