@@ -174,7 +174,8 @@ export function rawBrushCoverage(mask:RawLocalMask,x:number,y:number,width:numbe
 
 export function applyRawLocalMasks(image:RawImage,raw:unknown):RawImage {
   const masks=normalizeRawLocalMasks(raw).filter(mask=>mask.enabled && mask.strength>0 &&
-    (mask.exposureEv!==0 || mask.saturation!==0 || mask.warmth!==0))
+    (mask.exposureEv!==0 || mask.saturation!==0 || mask.warmth!==0) &&
+    (mask.kind!=='brush' || mask.strokes?.some(stroke=>stroke.mode==='add')))
   if(!masks.length||image.rgbaFloat||image.sourceColorSpace==='linear-srgb')return image
   const {width,height}=image,pixels=width*height
   const src=image.rgba16??image.rgba
