@@ -56,6 +56,10 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
 
 export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings, metadata?:ImageMetadata, sourceFile?:File):Promise<RawDevelopSettings|null> {
   const current=initial?normalizeRawSettings(initial):rawSettingsFromSaved()
+  // Local mask geometry belongs to a particular image. Opening a different
+  // RAW must not silently apply a previous photo's coordinates/adjustments.
+  // Redeveloping an existing RAW Smart Object keeps its embedded mask recipe.
+  if(!initial)current.localMasks=[]
   // Never carry a calibrated lens from a previously opened camera into a new
   // unrelated RAW. Re-match using this file's EXIF or leave only manual values.
   if(!initial && current.lensProfile.lensfun){
