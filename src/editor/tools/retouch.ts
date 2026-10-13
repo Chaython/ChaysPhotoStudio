@@ -14,10 +14,11 @@ import type { Tool, PointerInfo, PsDocument } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, canUseByteRetouch, regionProcess, drawBrushCursor, walkDabs } from './shared'
 import { smoothstep } from './dab-utils'
-import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb, cloneCanvas, getImageData, putImageData } from '../utils/canvas'
+import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb, cloneCanvas, getImageData, putImageData, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
 import { getFlatComposite, newLayer, invalidateFlat } from '../engine/document'
 import { getTip, tipExtentMul, drawTipCursor } from './brush-tips'
 import { retouchDabIntersectsCanvas, sameRetouchTarget } from './retouch-stroke-guards'
+import { applyFloat32RetouchDab, type HdrRetouchMode, type HdrSelectionRegion } from '../image-ops/hdr-retouch'
 
 type RetouchId = 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
 type RetouchOp = (x: number, y: number, p: PointerInfo) => void
@@ -28,6 +29,8 @@ interface RetouchContext {
   sourceLayerId: string
   source: HTMLCanvasElement | null
   outputNew: boolean
+  /** True when Float32 scene-linear pixels need their display mirror refreshed. */
+  hdrChanged?: boolean
 }
 let retouchContext: RetouchContext | null = null
 
@@ -160,6 +163,19 @@ function makeRetouch(
     engine.activeLayer?.id ?? null,
   )
 
+  const flushHdrPreview = () => {
+    const state = retouchContext
+    if (!state?.hdrChanged) return
+    const doc = engine.docs.find(d => d.id === state.docId)
+    const layer = doc?.layers.find(l => l.id === state.targetId)
+    state.hdrChanged = false
+    if (!doc || !layer?.canvas || !layer.hdrPixels) return
+    layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
+    layer._hdrPreviewBefore = null
+    layer._v++
+    invalidateFlat(doc)
+  }
+
   const stopAirbrush = () => {
     if (airTimer) clearInterval(airTimer)
     airTimer = null
@@ -173,6 +189,7 @@ function makeRetouch(
     last = null
     stopAirbrush()
     onEnd?.()
+    flushHdrPreview()
     // The active document can change while the pen is down. History always
     // belongs to the original document, never the newly focused document.
     if (mutated && strokeDoc && engine.docs.includes(strokeDoc)) {
@@ -192,6 +209,7 @@ function makeRetouch(
       if (!active || !airPos || !airPointer) return
       if (!isCurrentTarget()) { finishStroke(); return }
       op(airPos.x, airPos.y, airPointer)
+      flushHdrPreview()
       const doc = engine.activeDoc
       if (doc) invalidateFlat(doc)
       engine.requestRender()
@@ -206,7 +224,14 @@ function makeRetouch(
       const doc = engine.activeDoc
       const layer = engine.activeLayer
       if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
-      if (!canUseByteRetouch(id[0].toUpperCase() + id.slice(1))) return
+      const hdrTone = doc.workingBitDepth === 32 && (id === 'dodge' || id === 'burn' || id === 'sponge')
+      if (hdrTone) {
+        if (layer.kind !== 'raster' || !layer.canvas || !layer.hdrPixels ||
+            layer.hdrPixels.length !== layer.canvas.width * layer.canvas.height * 4) {
+          engine.ui?.toast('32-bit retouch requires a raster layer with intact Float32 pixels', 'info')
+          return
+        }
+      } else if (!canUseByteRetouch(id[0].toUpperCase() + id.slice(1))) return
       const opts = getOptions(id)
       const outputNew = supportsNewLayerOutput(id) && opts.output === 'new'
       const tip = typeof opts.tip === 'string' && getTip(opts.tip) ? opts.tip : 'round-soft'
@@ -246,6 +271,7 @@ function makeRetouch(
       airPointer = p
       onStart?.()
       op(p.docX, p.docY, p)
+      flushHdrPreview()
       startAirbrush()
       invalidateFlat(doc)
       engine.requestRender()
@@ -260,6 +286,7 @@ function makeRetouch(
       const dabs = walkDabs(last.x, last.y, p.docX, p.docY, spacing)
       if (!dabs.length) return
       for (const d of dabs) op(d.x, d.y, p)
+      flushHdrPreview()
       if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
       const doc = engine.activeDoc
       if (doc) invalidateFlat(doc)
@@ -621,6 +648,52 @@ function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: num
   ctx.restore()
 }
 
+/**
+ * Apply a tone/saturation dab directly to the authoritative 32-bit Float32
+ * scene-linear raster. The only Canvas2D read is selection ALPHA; never
+ * round-trip HDR colors through an 8-bit ImageData buffer.
+ */
+function float32ToneDab(
+  mode: HdrRetouchMode, x: number, y: number, p: PointerInfo,
+  opts: Record<string, any>, strength: number,
+): void {
+  const doc = engine.activeDoc
+  const layer = engine.activeLayer
+  const state = retouchContext
+  if (!doc || doc.workingBitDepth !== 32 || !layer?.canvas || !layer.hdrPixels ||
+      !state || !sameRetouchTarget(state, doc.id, layer.id)) return
+  const shape = retouchBrushShape(opts, p)
+  const radius = shape.radius * shape.extent
+  let selection: HdrSelectionRegion | undefined
+  if (doc.selection) {
+    const x0 = Math.max(0, Math.floor(x - radius))
+    const y0 = Math.max(0, Math.floor(y - radius))
+    const x1 = Math.min(doc.width, Math.ceil(x + radius))
+    const y1 = Math.min(doc.height, Math.ceil(y + radius))
+    if (x1 <= x0 || y1 <= y0) return
+    selection = {
+      x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+      data: ctx2d(doc.selection.mask).getImageData(x0, y0, x1 - x0, y1 - y0).data,
+    }
+  }
+  const changed = applyFloat32RetouchDab({
+    pixels: layer.hdrPixels,
+    width: layer.canvas.width,
+    height: layer.canvas.height,
+    offsetX: layer.offsetX ?? 0,
+    offsetY: layer.offsetY ?? 0,
+    x, y, radius, mode, strength,
+    range: opts.range ?? 'midtones',
+    protectTones: opts.protectTones !== false,
+    saturate: p.alt ? opts.mode === 'desaturate' : opts.mode !== 'desaturate',
+    vibrance: opts.vibrance === true,
+    alpha: shape.alpha,
+    selection,
+    hasSelection: !!doc.selection,
+  })
+  if (changed) state.hdrChanged = true
+}
+
 // ---------- dodge / burn ----------
 function toneWeight(v: number, range: string): number {
   if (range === 'shadows') return 1 - smoothstep(0, 85, v)
@@ -641,6 +714,10 @@ function toneOp(kind: 'dodge' | 'burn', x: number, y: number, p: PointerInfo) {
   // without forcing a tool switch or changing the configured range/exposure.
   const burn = p.alt ? kind === 'dodge' : kind === 'burn'
   const protectTones = opts.protectTones !== false
+  if (engine.activeDoc?.workingBitDepth === 32) {
+    float32ToneDab(burn ? 'burn' : 'dodge', x, y, p, opts, exposure)
+    return
+  }
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {
     const d = region.data
     for (let i = 0; i < rw * rh; i++) {
@@ -678,6 +755,10 @@ function spongeOp(x: number, y: number, p: PointerInfo) {
   const saturate = p.alt ? opts.mode === 'desaturate' : opts.mode !== 'desaturate'
   const vibrance = opts.vibrance === true
   const k = 1.6
+  if (engine.activeDoc?.workingBitDepth === 32) {
+    float32ToneDab('sponge', x, y, p, opts, flow)
+    return
+  }
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {
     const d = region.data
     for (let i = 0; i < rw * rh; i++) {

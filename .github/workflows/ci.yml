@@ -75,6 +75,9 @@ jobs:
       - name: Validate retouch stroke safety
         run: bun run retouch-safety:validate
 
+      - name: Validate Float32 HDR retouch precision
+        run: bun scripts/validate-hdr-retouch.ts
+
       - name: Validate Puppet Warp geometry
         run: bun run warp:validate
 
