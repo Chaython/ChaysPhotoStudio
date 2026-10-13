@@ -40,7 +40,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Tool groups and choosing the right tool](#tool-groups-and-choosing-the-right-tool)
 - [Paths, text and shapes](#paths-text-and-shapes)
 - [Ruler measurements and persistent color sampler points](#ruler-measurements-and-persistent-color-sampler-points)
-- [32-bit Float32 retouching](#32-bit-float32-retouching)
+- [High-precision 16-bit and 32-bit retouching](#high-precision-16-bit-and-32-bit-retouching)
 
 ### Color & files
 
@@ -737,23 +737,23 @@ Measure calibrated distances and keep color sample readouts on an editable docum
 - The Info panel lets you enter exact X/Y sampler coordinates, copy non-transparent HEX values and export sampler readings to CSV.
 - Fully transparent or empty-layer samples are reported as Transparent, without fake black RGB/CMYK/Lab values.
 
-## 32-bit Float32 retouching
+## High-precision 16-bit and 32-bit retouching
 
-32-bit Blur, Sharpen, Smudge, Dodge, Burn and Sponge work on scene-linear Float32 rasters, retaining HDR intensities without an 8-bit RGB path.
+Use native Float16 Dodge, Burn, and Sponge on supported 16-bit sRGB raster layers, or the expanded scene-linear Float32 retouch toolkit in 32-bit documents.
 
-**Where:** Blur / Sharpen / Smudge / Dodge / Burn / Sponge on 32-bit Float32 raster layers
+**Where:** Dodge / Burn / Sponge in 16-bit sRGB; Blur / Sharpen / Smudge / Dodge / Burn / Sponge in 32-bit Float32
 
-1. Open a 32-bit document and select a raster layer with valid Float32 pixels.
-2. Choose Blur or Sharpen with Output set to Current Layer to adjust scene-linear detail without reducing HDR precision.
-3. Choose Smudge with Output set to Current Layer and disable Sample All Layers. Drag to smear the previous brush position into the new location with Float32 interpolation.
-4. Smudge respects brush-tip alpha, pen pressure, layer offsets and selection coverage. Enable Finger Painting to blend the foreground sRGB color into the picked-up color after conversion to linear-sRGB Float32.
-5. Use Dodge, Burn, or Sponge with their existing tonal and saturation options.
-6. Undo or redo real changes through History. Only affected preview regions are refreshed.
+1. Open a 16-bit sRGB document on a browser exposing native Float16 Canvas2D readback. Dodge, Burn, and Sponge use a bounded native Float16 brush region rather than 8-bit ImageData.
+2. Each 16-bit tonal dab expands only its own area into scene-linear Float32, applies the retouch, and writes back changed Float16 RGB channels; untouched channels and alpha remain unchanged.
+3. 16-bit Dodge/Burn support tonal ranges, exposure, pressure and Alt/Option mode switching. Sponge supports Saturate/Desaturate and Vibrance. All honor brush opacity, layer offsets and selections.
+4. Open a 32-bit document and select a raster with authoritative Float32 pixels to use Blur, Sharpen, Smudge, Dodge, Burn or Sponge.
+5. 32-bit Smudge supports Current Layer pickup and Finger Painting; keep Sample All Layers disabled. Blur and Sharpen New Layer output is not HDR-safe.
+6. Undo or redo actual changes through History. Unsupported depth/modes refuse edits rather than silently lowering the precision.
 
 **Notes and tips:**
 
-- High-depth Smudge supports Current Layer pickup and Finger Painting. Sample All Layers and New Layer output remain blocked in 32-bit documents.
-- Blur and Sharpen New Layer output is also blocked in 32-bit mode; it would require a precision-safe compositing source.
-- 16-bit retouching still requires its own precision-safe implementation; unsupported tools remain guarded against 8-bit quantization.
-- Smudge uses bilinear premultiplied Float32 pickup and source-over deposition. Finger Painting follows source-atop semantics: empty pickup does not receive foreground paint.
-- Transparent pixels are alpha-aware; invisible RGB is not smeared onto visible pixels.
+- 16-bit tonal support requires genuine Float16 readback and an sRGB canvas; unsupported browsers or Display-P3 canvases are explicitly rejected.
+- 16-bit Blur, Sharpen, Smudge, and other byte-based tools remain guarded until dedicated Float16 algorithms are validated.
+- 32-bit Smudge Sample All Layers and 32-bit retouch New Layer output remain guarded against lossy compositing.
+- Canvas Float16 read/write is native half-float precision, not the 32-bit Float32 HDR backing store; the display result may be rounded to representable half-float values.
+- Selections, transparency and document/layer targeting remain in effect for supported high-bit-depth retouching.
