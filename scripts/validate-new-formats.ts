@@ -7,7 +7,8 @@ import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { applyRawDetail, normalizeRawDetail, DEFAULT_RAW_DETAIL } from '../src/editor/formats/raw-detail'
 import { catalogKeywords, catalogRating, catalogFilterPhotos, catalogFingerprint } from '../src/editor/library/photo-catalog'
 import type { CatalogPhoto } from '../src/editor/library/photo-catalog'
-import { encodeTiff16 } from '../src/editor/formats/encoders'
+import { encodeTiff, encodeTiff16 } from '../src/editor/formats/encoders'
+import { generateSrgbIccV2, embedSrgbIccJpeg } from '../src/editor/formats/srgb-icc'
 import { rawBatchOutputNames, runRawBatchExport, MAX_BATCH_RAW_FILES } from '../src/editor/formats/raw-batch-export'
 import { DEFAULT_RAW_SETTINGS, normalizeRawSettings, makeBatchSafeRawSettings } from '../src/editor/formats/raw-develop'
 import { normalizeWbMultipliers, normalizeCameraMatrix, rawCameraColorOptions } from '../src/editor/formats/raw-camera-color'
@@ -452,6 +453,85 @@ check(decodedNative.width===2&&decodedNative.height===1 &&
   decodedNative.rgba16?.[0]===1001 && decodedNative.rgba16?.[1]===29001 &&
   decodedNative.rgba16?.[6]===43343 && decodedNative.rgba16?.[7]===50000,
   'Native 16-bit TIFF encoder preserves exact LibRaw samples without 8-bit roundtrip')
+
+// Generated sRGB ICC v2: complete matrix/TRC display profile. This is
+// metadata for already-sRGB RAW pixels, not a color-space conversion.
+const srgbIcc=generateSrgbIccV2()
+const iccView=new DataView(srgbIcc.buffer)
+const iccAscii=(bytes:Uint8Array,start:number,length:number)=>
+  String.fromCharCode(...bytes.subarray(start,start+length))
+check(iccView.getUint32(0,false)===srgbIcc.length &&
+  iccAscii(srgbIcc,12,4)==='mntr' && iccAscii(srgbIcc,16,4)==='RGB ' &&
+  iccAscii(srgbIcc,20,4)==='XYZ ' && iccAscii(srgbIcc,36,4)==='acsp',
+  'Generated ICC has valid declared size, display profile, sRGB/XYZ signatures and acsp header')
+const tagCount=iccView.getUint32(128,false)
+const iccTags=new Map<string,{offset:number,length:number}>()
+for(let i=0;i<tagCount;i++){
+  const at=132+i*12, name=iccAscii(srgbIcc,at,4)
+  const offset=iccView.getUint32(at+4,false),length=iccView.getUint32(at+8,false)
+  check(offset%4===0 && offset>=132+tagCount*12 && offset+length<=srgbIcc.length,
+    'ICC tags are aligned and stay inside complete profile payload')
+  iccTags.set(name,{offset,length})
+}
+check(['desc','cprt','wtpt','rXYZ','gXYZ','bXYZ','rTRC','gTRC','bTRC']
+  .every(key=>iccTags.has(key)),'Generated sRGB ICC has required display matrix/TRC tags')
+const redCurve=iccTags.get('rTRC')!
+const redCurveCount=iccView.getUint32(redCurve.offset+8,false)
+check(iccAscii(srgbIcc,redCurve.offset,4)==='curv' &&
+  redCurveCount===1024 && iccView.getUint16(redCurve.offset+12,false)===0 &&
+  iccView.getUint16(redCurve.offset+12+(redCurveCount-1)*2,false)===65535,
+  'ICC red transfer curve is valid sampled sRGB with black/white endpoints')
+check(iccView.getUint16(redCurve.offset+12+512*2,false)<
+  iccView.getUint16(redCurve.offset+12+768*2,false),
+  'ICC sampled transfer curve is increasing')
+const scanIccTiff=(tiff:Uint8Array)=>{
+  const v=new DataView(tiff.buffer,tiff.byteOffset,tiff.byteLength)
+  const ifd=v.getUint32(4,true),count=v.getUint16(ifd,true)
+  for(let i=0;i<count;i++){
+    const pos=ifd+2+i*12
+    if(v.getUint16(pos,true)!==34675)continue
+    const type=v.getUint16(pos+2,true),n=v.getUint32(pos+4,true),off=v.getUint32(pos+8,true)
+    check(type===7&&off%2===0&&off+n<=tiff.length,
+      'TIFF ICC profile must use UNDEFINED tag 34675 and aligned bounded offset')
+    return tiff.subarray(off,off+n)
+  }
+  return null
+}
+const exactIcc=(actual:Uint8Array|null)=>{
+  check(!!actual&&actual.length===srgbIcc.length&&actual.every((v,i)=>v===srgbIcc[i]),
+    'Encoded TIFF embeds the complete original sRGB ICC profile without alteration')
+}
+const colorSample8=new Uint8ClampedArray([11,122,201,255,240,43,7,128])
+const taggedTiff8=encodeTiff(colorSample8,2,1,true,{iccProfile:srgbIcc})
+const taggedTiff16=encodeTiff16(nativeTiffPixels,2,1,true,{iccProfile:srgbIcc})
+exactIcc(scanIccTiff(taggedTiff8))
+exactIcc(scanIccTiff(taggedTiff16))
+const tiff8Decoded=await decodeTiff(taggedTiff8)
+const tiff16Decoded=await decodeTiff(taggedTiff16)
+check(tiff8Decoded.rgba[0]===11 && tiff8Decoded.rgba[4]===240 &&
+  tiff16Decoded.rgba16?.[0]===1001&&tiff16Decoded.rgba16?.[6]===43343,
+  'ICC TIFF8/TIFF16 exports preserve original pixels through decode round trip')
+const fakeJpeg=new Uint8Array([0xff,0xd8,0xff,0xe0,0x00,0x04,0x4a,0x46,
+  0xff,0xda,0x00,0x02,0xab,0xcd,0xff,0xd9])
+const taggedJpeg=embedSrgbIccJpeg(fakeJpeg,srgbIcc)
+const appLength=(taggedJpeg[4]<<8)|taggedJpeg[5]
+check(taggedJpeg[2]===0xff&&taggedJpeg[3]===0xe2 &&
+  iccAscii(taggedJpeg,6,12)==='ICC_PROFILE\\0'.replace('\\0','\\u0000') &&
+  taggedJpeg[18]===1&&taggedJpeg[19]===1,
+  'JPEG APP2 ICC segment carries identifier and single-part sequence numbering')
+check(appLength===srgbIcc.length+16 &&
+  taggedJpeg.subarray(20,20+srgbIcc.length).every((v,i)=>v===srgbIcc[i]) &&
+  taggedJpeg.subarray(taggedJpeg.length-fakeJpeg.length+2)
+    .every((v,i)=>v===fakeJpeg[i+2]),
+  'JPEG ICC APP2 insertion preserves entire encoded JPEG stream byte-for-byte')
+let duplicateRejected=false
+try{embedSrgbIccJpeg(taggedJpeg,srgbIcc)}catch{duplicateRejected=true}
+check(duplicateRejected,'JPEG export must refuse duplicate existing ICC profile tags')
+const largeProfile=new Uint8Array(66000)
+largeProfile.set(srgbIcc)
+const taggedLargeJpeg=embedSrgbIccJpeg(fakeJpeg,largeProfile)
+check(taggedLargeJpeg[18]===1&&taggedLargeJpeg[19]===2,
+  'JPEG ICC large-profile APP2 splitting respects marker size and ordering')
 
 // LibRaw camera matrices: embedded DNG/file transforms must work even when
 // the user selects Auto or Daylight, which previously disabled matrix use for
