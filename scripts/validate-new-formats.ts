@@ -392,6 +392,18 @@ const erased=normalizeRawLocalMasks([{
 }])[0]
 check(rawBrushCoverage(erased,0.5,0.5,50,50)===0,
   'Eraser removes preceding brush coverage')
+const brushPaintOnly={...painted,strokes:[painted.strokes![0]]}
+const singleEraser={...brushPaintOnly,strokes:[
+  painted.strokes![0],{mode:'erase' as const,size:20,feather:1,
+    points:[{x:0.5,y:0.5}]},
+]}
+const repeatedEraser={...brushPaintOnly,strokes:[
+  painted.strokes![0],{mode:'erase' as const,size:20,feather:1,
+    points:[{x:0.5,y:0.5},{x:0.5,y:0.5}]},
+]}
+check(Math.abs(rawBrushCoverage(singleEraser,0.58,0.5,50,50)-
+  rawBrushCoverage(repeatedEraser,0.58,0.5,50,50))<1e-6,
+  'Repeated brush segments within one stroke must not compound erasure')
 check(rawBrushCoverage(erased,0.59,0.5,50,50)<1,
   'Erase stroke affects neighboring pixels inside its diameter')
 check(applyRawLocalMasks(localInput,[{...painted,strokes:[],invert:true}])===localInput,
