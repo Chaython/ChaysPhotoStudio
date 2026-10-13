@@ -716,22 +716,23 @@ export const HELP_TOPICS: readonly HelpTopic[] =
   },
   {
     "id": "hdr-retouch-tools",
-    "title": "32-bit HDR tonal retouching",
+    "title": "32-bit HDR precision-safe retouching",
     "category": "Tools",
-    "path": "Dodge / Burn / Sponge tools in a 32-bit document",
-    "summary": "Edit Dodge, Burn and Sponge directly in the scene-linear Float32 raster without clipping highlight values or quantizing colors to 8-bit.",
+    "path": "Blur / Sharpen / Dodge / Burn / Sponge on 32-bit Float32 raster layers",
+    "summary": "32-bit Blur, Sharpen, Dodge, Burn and Sponge work on scene-linear Float32 pixels, retaining HDR intensities and alpha without an 8-bit image pipeline.",
     "steps": [
-      "Open a 32-bit document with a raster layer that contains Float32 HDR pixels.",
-      "Select Dodge, Burn, or Sponge and paint with the normal brush controls; pressure, brush tip alpha, layer offsets and selections are respected.",
-      "For Dodge and Burn, choose Shadows, Midtones, or Highlights where applicable; Alt/Option temporarily reverses the tonal direction.",
-      "For Sponge, use Saturate or Desaturate and optionally Vibrance. Changes appear through a refreshed display preview and remain in the Float32 pixel store.",
-      "Use History to undo or redo a stroke. The preview is not the authoritative HDR data."
+      "Open a 32-bit document with a raster layer backed by valid Float32 pixels.",
+      "Use Blur or Sharpen with Output set to Current Layer. Both operate on a local Float32 region; New Layer output is not yet supported at HDR precision.",
+      "Blur supports edge protection; Sharpen supports threshold, noise reduction and detail protection. Both honor brush opacity, pen pressure, offsets and selection masks.",
+      "Use Dodge, Burn or Sponge with their existing tonal and saturation controls. These also edit the Float32 raster directly.",
+      "Use History to undo or redo real changes. Display previews update the changed region without replacing authoritative HDR pixels."
     ],
     "tips": [
-      "32-bit HDR support in this release covers Dodge, Burn and Sponge only. Blur, Sharpen, Smudge and other byte-based retouch tools remain guarded.",
-      "16-bit retouching is not yet supported by this Float32 path and remains protected against 8-bit quantization.",
-      "The HDR operations are scene-linear adaptations; their visual tonal response may differ from Photoshop's display-referred implementation.",
-      "Avoid painting uninitialized or invalid Float32 rasters; unsupported layers are rejected without converting their color data."
+      "16-bit retouching still requires a separate precision-safe path and remains blocked against 8-bit quantization.",
+      "Smudge and remaining byte-based retouch tools in 32-bit documents are still guarded.",
+      "New Layer output for 32-bit Blur/Sharpen requires an HDR-safe source and will not silently convert the visible composite to 8-bit.",
+      "Float32 operations are scene-linear adaptations. Their response can differ from Photoshop's display-referred retouch tools.",
+      "Transparent pixels keep their alpha; partially transparent edges are filtered with premultiplied sampling so hidden colors do not bleed."
     ]
   }
 ]

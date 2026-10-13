@@ -78,6 +78,9 @@ jobs:
       - name: Validate Float32 HDR retouch precision
         run: bun scripts/validate-hdr-retouch.ts
 
+      - name: Validate Float32 HDR Blur and Sharpen
+        run: bun scripts/validate-hdr-detail-retouch.ts
+
       - name: Validate Puppet Warp geometry
         run: bun run warp:validate
 

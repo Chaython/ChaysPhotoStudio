@@ -10,7 +10,7 @@
 //  · Sponge: HSV saturation scaling with flow falloff
 //  · All: single engine.mutateLayerPixels per stroke, history on pointerup
 // ============================================================
-import type { Tool, PointerInfo, PsDocument } from '../types'
+import type { Tool, PointerInfo, PsDocument, Layer } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, canUseByteRetouch, regionProcess, drawBrushCursor, walkDabs } from './shared'
 import { smoothstep } from './dab-utils'
@@ -19,6 +19,7 @@ import { getFlatComposite, newLayer, invalidateFlat } from '../engine/document'
 import { getTip, tipExtentMul, drawTipCursor } from './brush-tips'
 import { retouchDabIntersectsCanvas, sameRetouchTarget } from './retouch-stroke-guards'
 import { applyFloat32RetouchDab, type HdrRetouchMode, type HdrSelectionRegion } from '../image-ops/hdr-retouch'
+import { applyFloat32DetailDab } from '../image-ops/hdr-detail-retouch'
 
 type RetouchId = 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
 type RetouchOp = (x: number, y: number, p: PointerInfo) => void
@@ -250,15 +251,20 @@ function makeRetouch(
       const doc = engine.activeDoc
       const layer = engine.activeLayer
       if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
-      const hdrTone = doc.workingBitDepth === 32 && (id === 'dodge' || id === 'burn' || id === 'sponge')
-      if (hdrTone) {
+      const opts = getOptions(id)
+      const hdrRetouch = doc.workingBitDepth === 32
+        && (id === 'dodge' || id === 'burn' || id === 'sponge' || id === 'blur' || id === 'sharpen')
+      if (hdrRetouch) {
+        if ((id === 'blur' || id === 'sharpen') && opts.output === 'new') {
+          engine.ui?.toast('32-bit Blur/Sharpen New Layer output needs an HDR-safe layer source; choose Current Layer', 'info')
+          return
+        }
         if (layer.kind !== 'raster' || !layer.canvas || !layer.hdrPixels ||
             layer.hdrPixels.length !== layer.canvas.width * layer.canvas.height * 4) {
           engine.ui?.toast('32-bit retouch requires a raster layer with intact Float32 pixels', 'info')
           return
         }
       } else if (!canUseByteRetouch(id[0].toUpperCase() + id.slice(1))) return
-      const opts = getOptions(id)
       const outputNew = supportsNewLayerOutput(id) && opts.output === 'new'
       const tip = typeof opts.tip === 'string' && getTip(opts.tip) ? opts.tip : 'round-soft'
       const extent = tipExtentMul(tip)
@@ -289,7 +295,7 @@ function makeRetouch(
         if (!l?.canvas) return
         retouchContext = { docId: doc.id, targetId: l.id, sourceLayerId: l.id, source: null, outputNew: false }
       }
-      mutated = !hdrTone
+      mutated = !hdrRetouch
       strokeDoc = doc
       active = true
       last = { x: p.docX, y: p.docY }
@@ -491,6 +497,70 @@ function sampledFilterDab(kind: 'blur' | 'sharpen', x: number, y: number, p: Poi
   return true
 }
 
+/**
+ * Preserve bounded preview updates and Undo semantics for both tone and
+ * detail Float32 retouch dabs. The layer's pixel store is authoritative.
+ */
+function noteHdrRetouchChange(
+  state: RetouchContext, layer: Layer, x: number, y: number, radius: number,
+): void {
+  if (!layer.canvas) return
+  state.hdrChanged = true
+  state.hdrEverChanged = true
+  const x0 = Math.max(0, Math.floor(x - radius - (layer.offsetX ?? 0)))
+  const y0 = Math.max(0, Math.floor(y - radius - (layer.offsetY ?? 0)))
+  const x1 = Math.min(layer.canvas.width, Math.ceil(x + radius - (layer.offsetX ?? 0)))
+  const y1 = Math.min(layer.canvas.height, Math.ceil(y + radius - (layer.offsetY ?? 0)))
+  const bounds = state.hdrDirtyBounds
+  state.hdrDirtyBounds = bounds
+    ? { x0: Math.min(bounds.x0, x0), y0: Math.min(bounds.y0, y0),
+        x1: Math.max(bounds.x1, x1), y1: Math.max(bounds.y1, y1) }
+    : { x0, y0, x1, y1 }
+}
+
+function float32DetailDab(
+  mode: 'blur' | 'sharpen', x: number, y: number, p: PointerInfo,
+  opts: Record<string, any>, shape: ReturnType<typeof retouchBrushShape>,
+  strength: number,
+): void {
+  const doc = engine.activeDoc
+  const layer = engine.activeLayer
+  const state = retouchContext
+  if (!doc || doc.workingBitDepth !== 32 || !layer?.canvas || !layer.hdrPixels
+    || !state || !sameRetouchTarget(state, doc.id, layer.id)) return
+  const radius = shape.radius * shape.extent
+  let selection: HdrSelectionRegion | undefined
+  if (doc.selection) {
+    const x0 = Math.max(0, Math.floor(x - radius))
+    const y0 = Math.max(0, Math.floor(y - radius))
+    const x1 = Math.min(doc.width, Math.ceil(x + radius))
+    const y1 = Math.min(doc.height, Math.ceil(y + radius))
+    if (x0 >= x1 || y0 >= y1) return
+    selection = {
+      x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+      data: ctx2d(doc.selection.mask).getImageData(x0, y0, x1 - x0, y1 - y0).data,
+    }
+  }
+  const changed = applyFloat32DetailDab({
+    pixels: layer.hdrPixels,
+    width: layer.canvas.width,
+    height: layer.canvas.height,
+    offsetX: layer.offsetX ?? 0,
+    offsetY: layer.offsetY ?? 0,
+    x, y, radius,
+    kernelRadius: mode === 'blur' ? clamp(Math.round(shape.radius / 4), 1, 60)
+      : clamp(Math.round(shape.radius / 10), 1, 4),
+    strength, mode, alpha: shape.alpha,
+    selection, hasSelection: !!doc.selection,
+    protectEdges: opts.protectEdges === true,
+    edgeThreshold: Number(opts.edgeThreshold ?? 35),
+    threshold: Number(opts.threshold ?? 0),
+    protectDetail: opts.protectDetail !== false,
+    reduceNoise: Number(opts.reduceNoise ?? 0),
+  })
+  if (changed) noteHdrRetouchChange(state, layer, x, y, radius)
+}
+
 // ---------- blur ----------
 function blurOp(x: number, y: number, p: PointerInfo) {
   if (sampledFilterDab('blur', x, y, p)) return
@@ -500,6 +570,10 @@ function blurOp(x: number, y: number, p: PointerInfo) {
   const shape = retouchBrushShape(opts, p)
   const r = shape.radius
   const strength = ((opts.strength ?? 60) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
+  if (engine.activeDoc?.workingBitDepth === 32) {
+    float32DetailDab('blur', x, y, p, opts, shape, strength)
+    return
+  }
   // kernel radius scaled to brush; big brushes sample coarser windows via the
   // sliding window (equivalent to stride sampling but exact)
   const rad = clamp(Math.round(r / 4), 1, 60)
@@ -532,6 +606,10 @@ function sharpenOp(x: number, y: number, p: PointerInfo) {
   const shape = retouchBrushShape(opts, p)
   const r = shape.radius
   const strength = ((opts.strength ?? 50) / 100) * (p.pointerType === 'pen' && opts.pressure !== false ? (.25 + .75 * clamp(p.pressure, 0, 1)) : 1)
+  if (engine.activeDoc?.workingBitDepth === 32) {
+    float32DetailDab('sharpen', x, y, p, opts, shape, strength)
+    return
+  }
   const threshold = Math.max(0, Number(opts.threshold) || 0)
   const protectDetail = opts.protectDetail !== false
   const reduceNoise = Math.max(0, Number(opts.reduceNoise) || 0)
@@ -717,19 +795,7 @@ function float32ToneDab(
     selection,
     hasSelection: !!doc.selection,
   })
-  if (changed) {
-    state.hdrChanged = true
-    state.hdrEverChanged = true
-    const x0 = Math.max(0, Math.floor(x - radius - (layer.offsetX ?? 0)))
-    const y0 = Math.max(0, Math.floor(y - radius - (layer.offsetY ?? 0)))
-    const x1 = Math.min(layer.canvas.width, Math.ceil(x + radius - (layer.offsetX ?? 0)))
-    const y1 = Math.min(layer.canvas.height, Math.ceil(y + radius - (layer.offsetY ?? 0)))
-    const bounds = state.hdrDirtyBounds
-    state.hdrDirtyBounds = bounds
-      ? { x0: Math.min(bounds.x0, x0), y0: Math.min(bounds.y0, y0),
-          x1: Math.max(bounds.x1, x1), y1: Math.max(bounds.y1, y1) }
-      : { x0, y0, x1, y1 }
-  }
+  if (changed) noteHdrRetouchChange(state, layer, x, y, radius)
 }
 
 // ---------- dodge / burn ----------
