@@ -40,7 +40,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Tool groups and choosing the right tool](#tool-groups-and-choosing-the-right-tool)
 - [Paths, text and shapes](#paths-text-and-shapes)
 - [Ruler measurements and persistent color sampler points](#ruler-measurements-and-persistent-color-sampler-points)
-- [32-bit HDR precision-safe retouching](#32-bit-hdr-precision-safe-retouching)
+- [32-bit Float32 retouching](#32-bit-float32-retouching)
 
 ### Color & files
 
@@ -735,22 +735,23 @@ Measure calibrated distances and keep color sample readouts on an editable docum
 - The Info panel lets you enter exact X/Y sampler coordinates, copy non-transparent HEX values and export sampler readings to CSV.
 - Fully transparent or empty-layer samples are reported as Transparent, without fake black RGB/CMYK/Lab values.
 
-## 32-bit HDR precision-safe retouching
+## 32-bit Float32 retouching
 
-32-bit Blur, Sharpen, Dodge, Burn and Sponge work on scene-linear Float32 pixels, retaining HDR intensities and alpha without an 8-bit image pipeline.
+32-bit Blur, Sharpen, Smudge, Dodge, Burn and Sponge work on scene-linear Float32 rasters, retaining HDR intensities without an 8-bit RGB path.
 
-**Where:** Blur / Sharpen / Dodge / Burn / Sponge on 32-bit Float32 raster layers
+**Where:** Blur / Sharpen / Smudge / Dodge / Burn / Sponge on 32-bit Float32 raster layers
 
-1. Open a 32-bit document with a raster layer backed by valid Float32 pixels.
-2. Use Blur or Sharpen with Output set to Current Layer. Both operate on a local Float32 region; New Layer output is not yet supported at HDR precision.
-3. Blur supports edge protection; Sharpen supports threshold, noise reduction and detail protection. Both honor brush opacity, pen pressure, offsets and selection masks.
-4. Use Dodge, Burn or Sponge with their existing tonal and saturation controls. These also edit the Float32 raster directly.
-5. Use History to undo or redo real changes. Display previews update the changed region without replacing authoritative HDR pixels.
+1. Open a 32-bit document and select a raster layer with valid Float32 pixels.
+2. Choose Blur or Sharpen with Output set to Current Layer to adjust scene-linear detail without reducing HDR precision.
+3. Choose Smudge with Output set to Current Layer and disable Sample All Layers and Finger Painting. Drag to smear the previous brush position into the new location with Float32 interpolation.
+4. Smudge respects brush-tip alpha, pen pressure, layer offsets and selection coverage. The native Float32 source is used, not the rendered 8-bit preview.
+5. Use Dodge, Burn, or Sponge with their existing tonal and saturation options.
+6. Undo or redo real changes through History. Only affected preview regions are refreshed.
 
 **Notes and tips:**
 
-- 16-bit retouching still requires a separate precision-safe path and remains blocked against 8-bit quantization.
-- Smudge and remaining byte-based retouch tools in 32-bit documents are still guarded.
-- New Layer output for 32-bit Blur/Sharpen requires an HDR-safe source and will not silently convert the visible composite to 8-bit.
-- Float32 operations are scene-linear adaptations. Their response can differ from Photoshop's display-referred retouch tools.
-- Transparent pixels keep their alpha; partially transparent edges are filtered with premultiplied sampling so hidden colors do not bleed.
+- High-depth Smudge supports only Current Layer pickup. Sample All Layers, Finger Painting, and New Layer output remain blocked in 32-bit documents.
+- Blur and Sharpen New Layer output is also blocked in 32-bit mode; it would require a precision-safe compositing source.
+- 16-bit retouching still requires its own precision-safe implementation; unsupported tools remain guarded against 8-bit quantization.
+- Smudge uses bilinear premultiplied Float32 pickup and source-over deposition. Its response can differ from Photoshop's engine.
+- Transparent pixels are alpha-aware; invisible RGB is not smeared onto visible pixels.
