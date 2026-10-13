@@ -81,6 +81,8 @@ export function lzwEncodeTiff(src: Uint8Array | Uint8ClampedArray): Uint8Array {
 export interface TiffMetadataOptions {
   resolutionPpi?: number
   xmp?: Uint8Array
+  /** Full output ICC profile, embedded as TIFF tag 34675 without pixel conversion. */
+  iccProfile?: Uint8Array
 }
 
 function writeTiffResolution(out: Uint8Array, offset: number, ppi: number) {
@@ -130,6 +132,11 @@ export function encodeTiff(
     tags.push({ tag: 282, type: 5, count: 1 }, { tag: 283, type: 5, count: 1 }, { tag: 296, type: 3, count: 1 })
   }
   if (meta.xmp?.length) tags.push({ tag: 700, type: 1, count: meta.xmp.length })
+  if (meta.iccProfile?.length) {
+    if(meta.iccProfile.length<128||meta.iccProfile.length>1024*1024)
+      throw Error('Unsupported ICC profile length')
+    tags.push({ tag: 34675, type: 7, count: meta.iccProfile.length })
+  }
   tags.sort((a, b) => a.tag - b.tag)
 
   const ifdOff = 8
@@ -142,6 +149,8 @@ export function encodeTiff(
   if (hasResolution) extra = resolutionOff + 16
   const xmpOff = meta.xmp?.length ? ((extra + 3) & ~3) : 0
   if (meta.xmp?.length) extra = xmpOff + meta.xmp.length
+  const iccOff = meta.iccProfile?.length ? ((extra + 3) & ~3) : 0
+  if (meta.iccProfile?.length) extra = iccOff + meta.iccProfile.length
   const dataStart = (extra + 3) & ~3
 
   const stripOffsets: number[] = []
@@ -158,6 +167,7 @@ export function encodeTiff(
   for (let s = 0; s < numStrips; s++) view.setUint32(countArr + s * 4, strips[s].length, true)
   if (hasResolution) writeTiffResolution(out, resolutionOff, Number(meta.resolutionPpi))
   if (meta.xmp?.length) out.set(meta.xmp, xmpOff)
+  if (meta.iccProfile?.length) out.set(meta.iccProfile, iccOff)
 
   view.setUint16(ifdOff, tags.length, true)
   let e = ifdOff + 2
@@ -182,6 +192,7 @@ export function encodeTiff(
       case 296: view.setUint16(field, 2, true); break
       case 338: view.setUint16(field, 2, true); break
       case 700: view.setUint32(field, xmpOff, true); break
+      case 34675: view.setUint32(field, iccOff, true); break
     }
     e += 12
   }
@@ -249,6 +260,11 @@ export function encodeTiff16(
     tags.push({ tag: 282, type: 5, count: 1 }, { tag: 283, type: 5, count: 1 }, { tag: 296, type: 3, count: 1 })
   }
   if (meta.xmp?.length) tags.push({ tag: 700, type: 1, count: meta.xmp.length })
+  if (meta.iccProfile?.length) {
+    if(meta.iccProfile.length<128||meta.iccProfile.length>1024*1024)
+      throw Error('Unsupported ICC profile length')
+    tags.push({ tag: 34675, type: 7, count: meta.iccProfile.length })
+  }
   tags.sort((a, b) => a.tag - b.tag)
 
   const ifdOff = 8
@@ -261,6 +277,8 @@ export function encodeTiff16(
   if (hasResolution) extra = resolutionOff + 16
   const xmpOff = meta.xmp?.length ? ((extra + 3) & ~3) : 0
   if (meta.xmp?.length) extra = xmpOff + meta.xmp.length
+  const iccOff = meta.iccProfile?.length ? ((extra + 3) & ~3) : 0
+  if (meta.iccProfile?.length) extra = iccOff + meta.iccProfile.length
   const dataStart = (extra + 3) & ~3
   const stripOffsets: number[] = []
   let acc = dataStart
@@ -278,6 +296,7 @@ export function encodeTiff16(
   }
   if (hasResolution) writeTiffResolution(out, resolutionOff, Number(meta.resolutionPpi))
   if (meta.xmp?.length) out.set(meta.xmp, xmpOff)
+  if (meta.iccProfile?.length) out.set(meta.iccProfile, iccOff)
 
   view.setUint16(ifdOff, tags.length, true)
   let e = ifdOff + 2
@@ -302,6 +321,7 @@ export function encodeTiff16(
       case 296: view.setUint16(field, 2, true); break
       case 338: view.setUint16(field, 2, true); break
       case 700: view.setUint32(field, xmpOff, true); break
+      case 34675: view.setUint32(field, iccOff, true); break
     }
     e += 12
   }
