@@ -352,7 +352,7 @@ check(rawMaskCoverage(gradient,0.1,0.5)===1 &&
 check(rawMaskCoverage({...gradient,x2:gradient.x,y2:gradient.y},0.9,0.5)===0,
   'Degenerate gradient cannot accidentally alter the whole photo')
 const localColor=applyRawLocalMasks(mixSample,[{...gradient,saturation:0,warmth:80}])
-check(localColor.rgba16![0]>mixSample.rgba16[0] || localColor.rgba16![2]<mixSample.rgba16[2],
+check(localColor.rgba16![6]<mixSample.rgba16[6],
   'Local warmth changes selected pixels')
 check(localColor.rgba16![3]===65535 && mixSample.rgba16[0]===mixOriginal[0],
   'Local color grade retains full alpha and source')
