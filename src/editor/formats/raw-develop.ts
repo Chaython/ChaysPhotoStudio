@@ -5,6 +5,7 @@ import { RAW_CURVE_CHANNELS, DEFAULT_RAW_CURVES, normalizeRawCurves, applyRawCur
 import type { RawImage } from './decoders'
 import { applyRawLocalMasks, normalizeRawLocalMasks, makeRawLocalMask, MAX_RAW_LOCAL_MASKS, MAX_RAW_BRUSH_STROKES, MAX_RAW_BRUSH_POINTS, type RawLocalMask } from './raw-local-masks'
 import { DEFAULT_RAW_DETAIL, normalizeRawDetail, applyRawDetail, type RawDetailSettings } from './raw-detail'
+import { DEFAULT_CAMERA_MATRIX, DEFAULT_WB_MULTIPLIERS, normalizeWhiteBalance, normalizeCameraMatrix, normalizeWbMultipliers, type RawWhiteBalance, type RawCameraMatrix, type RawWbMultipliers } from './raw-camera-color'
 import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
 import type { ImageMetadata } from '../types'
 import { cameraExif, importLensfunXml, loadedLensfunCount, matchLensfun } from './lensfun-xml'
@@ -12,7 +13,9 @@ import { cameraExif, importLensfunXml, loadedLensfunCount, matchLensfun } from '
 // never image files or camera-identifying metadata.
 export interface RawDevelopSettings {
   exposureEv: number
-  whiteBalance: 'camera' | 'auto' | 'daylight'
+  whiteBalance: RawWhiteBalance
+  cameraMatrix: RawCameraMatrix
+  whiteBalanceMultipliers: RawWbMultipliers
   interpolation: 0 | 3 | 4
   highlight: number
   denoise: number
@@ -26,7 +29,7 @@ export interface RawDevelopSettings {
   detail: RawDetailSettings
 }
 export const DEFAULT_RAW_SETTINGS: RawDevelopSettings = {
-  exposureEv: 0, whiteBalance: 'camera', interpolation: 3,
+  exposureEv: 0, whiteBalance: 'camera', cameraMatrix:DEFAULT_CAMERA_MATRIX, whiteBalanceMultipliers:[...DEFAULT_WB_MULTIPLIERS], interpolation: 3,
   highlight: 0, denoise: 0, halfSize: false,
   smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE}, curves: structuredClone(DEFAULT_RAW_CURVES), colorMix: structuredClone(DEFAULT_RAW_COLOR_MIX), localMasks:[], detail:{...DEFAULT_RAW_DETAIL},
 }
@@ -42,7 +45,9 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
   const ev = Number(raw.exposureEv), highlight=Number(raw.highlight), denoise=Number(raw.denoise)
   return {
     exposureEv: Number.isFinite(ev)?Math.max(-5,Math.min(5,ev)):0,
-    whiteBalance: raw.whiteBalance === 'auto' || raw.whiteBalance === 'daylight' ? raw.whiteBalance : 'camera',
+    whiteBalance:normalizeWhiteBalance(raw.whiteBalance),
+    cameraMatrix:normalizeCameraMatrix(raw.cameraMatrix),
+    whiteBalanceMultipliers:normalizeWbMultipliers(raw.whiteBalanceMultipliers),
     interpolation:raw.interpolation===0||raw.interpolation===4?raw.interpolation:3,
     highlight:Number.isFinite(highlight)?Math.max(0,Math.min(9,Math.round(highlight))):0,
     denoise:Number.isFinite(denoise)?Math.max(0,Math.min(500,denoise)):0,
@@ -65,6 +70,10 @@ export function makeBatchSafeRawSettings(source:RawDevelopSettings):RawDevelopSe
   const normalized=normalizeRawSettings(source)
   return {
     ...normalized,
+    // White-balance sensor multipliers are valid only for the originating
+    // camera/image. Batch processing must not propagate them to other sources.
+    whiteBalance:normalized.whiteBalance==='custom'?'camera':normalized.whiteBalance,
+    whiteBalanceMultipliers:[...DEFAULT_WB_MULTIPLIERS],
     lensProfile:normalizeLensProfile(DEFAULT_LENS_PROFILE),
     localMasks:[],
   }
@@ -79,7 +88,11 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
   // Local mask geometry belongs to a particular image. Opening a different
   // RAW must not silently apply a previous photo's coordinates/adjustments.
   // Redeveloping an existing RAW Smart Object keeps its embedded mask recipe.
-  if(!initial)current.localMasks=[]
+  if(!initial){
+    current.localMasks=[]
+    if(current.whiteBalance==='custom')current.whiteBalance='camera'
+    current.whiteBalanceMultipliers=[...DEFAULT_WB_MULTIPLIERS]
+  }
   // Never carry a calibrated lens from a previously opened camera into a new
   // unrelated RAW. Re-match using this file's EXIF or leave only manual values.
   if(!initial && current.lensProfile.lensfun){
@@ -122,7 +135,35 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     }
     const exposure=field('Exposure (EV, -5 to +5)','number',String(current.exposureEv)) as HTMLInputElement
     exposure.min='-5';exposure.max='5';exposure.step='0.1'
-    const whiteBalance=field('White balance','select',current.whiteBalance,['camera|Camera','auto|Auto','daylight|Neutral / daylight'])
+    const whiteBalance=field('White balance','select',current.whiteBalance,
+      ['camera|Camera as-shot','auto|Auto (LibRaw)','daylight|Daylight (LibRaw)','custom|Custom sensor multipliers'])
+    const matrixMode=field('Camera color calibration','select',current.cameraMatrix,
+      ['embedded|Prefer embedded DNG/file matrix','built-in|LibRaw built-in calibration'])
+    const multiplierInputs:HTMLInputElement[]=[]
+    const customWbRows:HTMLElement[]=[]
+    for(const [index,label] of ['Red sensor gain','Green sensor gain','Blue sensor gain','Second green gain'].entries()){
+      const text=document.createElement('label')
+      text.textContent=label+' (0.1–16)'
+      text.style.cssText='font-size:12px'
+      const input=document.createElement('input')
+      input.type='number';input.min='0.1';input.max='16';input.step='0.01'
+      input.value=String(current.whiteBalanceMultipliers[index])
+      input.setAttribute('aria-label',label)
+      input.style.cssText='padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--foreground);width:100%'
+      multiplierInputs.push(input)
+      customWbRows.push(text,input)
+      form.append(text,input)
+    }
+    const colorNote=document.createElement('p')
+    colorNote.style.cssText='grid-column:1/-1;font-size:12px;opacity:.8'
+    colorNote.textContent='Embedded camera matrices are used only if present. Custom multipliers apply before demosaicing, are specific to this photograph, and are not Kelvin/tint controls or ICC/DCP profiles.'
+    form.append(colorNote)
+    const showCustomWb=()=>{
+      const visible=whiteBalance.value==='custom'
+      for(const control of customWbRows)control.style.display=visible?'':'none'
+    }
+    whiteBalance.addEventListener('change',showCustomWb)
+    showCustomWb()
     const interpolation=field('Demosaicing','select',String(current.interpolation),['0|Bilinear (fast)','3|AHD (balanced)','4|DCB (detail)'])
     const highlight=field('Highlight recovery (0–9)','number',String(current.highlight)) as HTMLInputElement
     highlight.min='0';highlight.max='9';highlight.step='1'
@@ -615,6 +656,8 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     const readSettings=():RawDevelopSettings=>normalizeRawSettings({
       exposureEv:exposure.valueAsNumber,
       whiteBalance:whiteBalance.value as RawDevelopSettings['whiteBalance'],
+      cameraMatrix:matrixMode.value as RawCameraMatrix,
+      whiteBalanceMultipliers:normalizeWbMultipliers(multiplierInputs.map(input=>input.valueAsNumber)),
       interpolation:Number(interpolation.value) as RawDevelopSettings['interpolation'],
       highlight:highlight.valueAsNumber,
       denoise:denoise.valueAsNumber,
@@ -746,7 +789,8 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     let previewLoading=false
     let previewTimer:ReturnType<typeof setTimeout>|undefined
     const sensorKey=(settings:RawDevelopSettings)=>JSON.stringify({
-      ev:settings.exposureEv,wb:settings.whiteBalance,interpolation:settings.interpolation,
+      ev:settings.exposureEv,wb:settings.whiteBalance,wbMultipliers:settings.whiteBalanceMultipliers,
+      cameraMatrix:settings.cameraMatrix,interpolation:settings.interpolation,
       highlight:settings.highlight,denoise:settings.denoise,lens:settings.lensProfile,
     })
     const paint=(canvas:HTMLCanvasElement,image:RawImage)=>{
@@ -879,7 +923,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       curveInputs[channel].forEach(input=>input.addEventListener('input',schedulePreview))
     for(const band of RAW_MIX_BANDS)
       for(const property of mixProperties)mixInputs[band][property].addEventListener('input',schedulePreview)
-    const sensorInputs=[exposure,whiteBalance,interpolation,highlight,denoise,
+    const sensorInputs=[exposure,whiteBalance,matrixMode,...multiplierInputs,interpolation,highlight,denoise,
       k1,k2,tca,vignette,lensName]
     for(const input of sensorInputs){
       input.addEventListener('input',schedulePreview)
@@ -904,7 +948,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       const text=document.createElement('span')
       text.textContent='Apply these global development settings to the remaining '+
         batch.remaining+' RAW photo'+(batch.remaining===1?'':'s')+
-        '. The other photos keep their own camera white balance metadata. Lens calibrations and local/brush masks are not copied.'
+        '. Other photos keep their own camera white balance; custom sensor gains, lens calibration and local masks are not copied.'
       batchLabel.append(batchCheckbox,text)
     }
     actions.append(cancel,apply)
