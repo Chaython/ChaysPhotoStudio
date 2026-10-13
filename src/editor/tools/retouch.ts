@@ -20,6 +20,7 @@ import { getTip, tipExtentMul, drawTipCursor } from './brush-tips'
 import { retouchDabIntersectsCanvas, sameRetouchTarget } from './retouch-stroke-guards'
 import { applyFloat32RetouchDab, type HdrRetouchMode, type HdrSelectionRegion } from '../image-ops/hdr-retouch'
 import { applyFloat32DetailDab } from '../image-ops/hdr-detail-retouch'
+import { applyFloat32SmudgeDab } from '../image-ops/hdr-smudge'
 
 type RetouchId = 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
 type RetouchOp = (x: number, y: number, p: PointerInfo) => void
@@ -253,10 +254,14 @@ function makeRetouch(
       if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
       const opts = getOptions(id)
       const hdrRetouch = doc.workingBitDepth === 32
-        && (id === 'dodge' || id === 'burn' || id === 'sponge' || id === 'blur' || id === 'sharpen')
+        && (id === 'dodge' || id === 'burn' || id === 'sponge' || id === 'blur' || id === 'sharpen' || id === 'smudge')
       if (hdrRetouch) {
-        if ((id === 'blur' || id === 'sharpen') && opts.output === 'new') {
-          engine.ui?.toast('32-bit Blur/Sharpen New Layer output needs an HDR-safe layer source; choose Current Layer', 'info')
+        if ((id === 'blur' || id === 'sharpen' || id === 'smudge') && opts.output === 'new') {
+          engine.ui?.toast('32-bit retouch New Layer output needs an HDR-safe layer source; choose Current Layer', 'info')
+          return
+        }
+        if (id === 'smudge' && (opts.sampleAllLayers === true || opts.fingerPainting === true)) {
+          engine.ui?.toast('32-bit Smudge currently supports Current Layer pickup only; disable Sample All Layers and Finger Painting', 'info')
           return
         }
         if (layer.kind !== 'raster' || !layer.canvas || !layer.hdrPixels ||
@@ -671,6 +676,9 @@ function makeSmudgeTool(): Tool {
     )) return origMove(p)
     if (!prev) return origMove(p)
     const opts = getOptions('smudge')
+    // The standard stroke walker already interpolates dabs and flushes the
+    // Float32 display patch. Retain custom extra taps for 8-bit Smudge only.
+    if (engine.activeDoc?.workingBitDepth === 32) return origMove(p)
     const step = clamp((Number(opts.size) || 50) * 0.05, 2, 8)
     const start = { ...prev }
     const dx = p.docX - start.x, dy = p.docY - start.y
@@ -706,6 +714,33 @@ function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: num
   const r = shape.radius
   let strength = clamp((opts.strength ?? 60) / 100, 0.05, 0.95)
   if (p.pointerType === 'pen' && opts.pressureStrength !== false) strength *= .2 + .8 * pressure
+  if (doc.workingBitDepth === 32) {
+    if (!l.hdrPixels || l.kind !== 'raster') return
+    const radius = shape.radius * shape.extent
+    let selection: HdrSelectionRegion | undefined
+    if (doc.selection) {
+      const x0 = Math.max(0, Math.floor(x - radius))
+      const y0 = Math.max(0, Math.floor(y - radius))
+      const x1 = Math.min(doc.width, Math.ceil(x + radius))
+      const y1 = Math.min(doc.height, Math.ceil(y + radius))
+      if (x1 <= x0 || y1 <= y0) return
+      selection = {
+        x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+        data: ctx2d(doc.selection.mask).getImageData(x0, y0, x1 - x0, y1 - y0).data,
+      }
+    }
+    const changed = applyFloat32SmudgeDab({
+      pixels: l.hdrPixels,
+      width: l.canvas.width, height: l.canvas.height,
+      offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0,
+      x, y, previousX: prev.x, previousY: prev.y,
+      radius, strength, alpha: shape.alpha,
+      selection, hasSelection: !!doc.selection,
+    })
+    if (changed) noteHdrRetouchChange(retouchContext, l, x, y, radius)
+    setPrev({ x, y })
+    return
+  }
   const ctx = ctx2d(l.canvas)
   const size = shape.mask.side
   const tmp = getSmudgeScratch(size)
