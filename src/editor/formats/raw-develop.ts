@@ -4,6 +4,7 @@ import { downsampleRawPreview, rawPreviewHistogram } from './raw-preview'
 import { RAW_CURVE_CHANNELS, DEFAULT_RAW_CURVES, normalizeRawCurves, applyRawCurves, evaluateRawCurve, type RawPointCurves, type RawCurveChannel } from './raw-curves'
 import type { RawImage } from './decoders'
 import { applyRawLocalMasks, normalizeRawLocalMasks, makeRawLocalMask, MAX_RAW_LOCAL_MASKS, MAX_RAW_BRUSH_STROKES, MAX_RAW_BRUSH_POINTS, type RawLocalMask } from './raw-local-masks'
+import { DEFAULT_RAW_DETAIL, normalizeRawDetail, applyRawDetail, type RawDetailSettings } from './raw-detail'
 import { DEFAULT_LENS_PROFILE, normalizeLensProfile, type LensProfile } from './lens-correction'
 import type { ImageMetadata } from '../types'
 import { cameraExif, importLensfunXml, loadedLensfunCount, matchLensfun } from './lensfun-xml'
@@ -22,11 +23,12 @@ export interface RawDevelopSettings {
   curves: RawPointCurves
   colorMix: RawColorMix
   localMasks: RawLocalMask[]
+  detail: RawDetailSettings
 }
 export const DEFAULT_RAW_SETTINGS: RawDevelopSettings = {
   exposureEv: 0, whiteBalance: 'camera', interpolation: 3,
   highlight: 0, denoise: 0, halfSize: false,
-  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE}, curves: structuredClone(DEFAULT_RAW_CURVES), colorMix: structuredClone(DEFAULT_RAW_COLOR_MIX), localMasks:[],
+  smartObject: true, lensProfile: {...DEFAULT_LENS_PROFILE}, tone: {...DEFAULT_RAW_TONE}, curves: structuredClone(DEFAULT_RAW_CURVES), colorMix: structuredClone(DEFAULT_RAW_COLOR_MIX), localMasks:[], detail:{...DEFAULT_RAW_DETAIL},
 }
 const storageKey = 'chaysstudio.raw-develop.v1'
 export function rawSettingsFromSaved(): RawDevelopSettings {
@@ -51,6 +53,7 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
     curves:normalizeRawCurves(raw.curves),
     colorMix:normalizeRawColorMix(raw.colorMix),
     localMasks:normalizeRawLocalMasks(raw.localMasks),
+    detail:normalizeRawDetail(raw.detail),
   }
 }
 
@@ -268,6 +271,34 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       }
       mixInputs[band]=inputs
     }
+    const detail=group('Detail — edge-aware noise reduction & sharpening',false)
+    const detailInputs={} as Record<keyof RawDetailSettings,HTMLInputElement>
+    for(const [key,label,min,max,step] of [
+      ['luminanceDenoise','Luminance noise reduction',0,100,1],
+      ['colorDenoise','Color noise reduction',0,100,1],
+      ['sharpenAmount','Sharpen amount',0,200,1],
+      ['sharpenRadius','Sharpen radius (developed pixels)',1,3,1],
+      ['sharpenThreshold','Sharpen noise threshold',0,100,1],
+    ] as [keyof RawDetailSettings,string,number,number,number][]){
+      const input=field(label,'number',String(current.detail[key]),undefined,detail.grid) as HTMLInputElement
+      input.min=String(min);input.max=String(max);input.step=String(step)
+      detailInputs[key]=input
+      sliderFor(input)
+    }
+    const detailNote=document.createElement('p')
+    detailNote.style.cssText='grid-column:1/-1;opacity:.8;font-size:12px'
+    detailNote.textContent='16-bit display-referred, edge-aware noise reduction and sharpening. Preview operates on a downsampled image, so inspect full-resolution output at 100% for accurate detail.'
+    const detailReset=document.createElement('button')
+    detailReset.type='button';detailReset.textContent='Reset detail'
+    detailReset.style.cssText='grid-column:1/-1;padding:7px 10px;border:1px solid var(--border);border-radius:6px'
+    detailReset.addEventListener('click',()=>{
+      for(const key of Object.keys(detailInputs) as (keyof RawDetailSettings)[]){
+        const input=detailInputs[key];input.value=String(DEFAULT_RAW_DETAIL[key])
+        const slider=sliders.get(input);if(slider)slider.value=input.value
+        input.dispatchEvent(new Event('input',{bubbles:true}))
+      }
+    })
+    detail.grid.append(detailNote,detailReset)
     const local=group('Local adjustments — radial, linear and painted brush masks',false)
     const localMasks:RawLocalMask[]=normalizeRawLocalMasks(current.localMasks)
     let localCounter=0
@@ -582,6 +613,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,
         tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
       localMasks:normalizeRawLocalMasks(localMasks),
+      detail:normalizeRawDetail(Object.fromEntries(Object.entries(detailInputs).map(([key,input])=>[key,input.valueAsNumber]))),
     })
     // The LibRaw sensor stage is expensive. Decode it only on explicit request
     // at half resolution, then update Basic/HSL adjustments on a bounded
@@ -713,7 +745,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         previewStatus.textContent='Sensor or optics settings changed. Refresh RAW preview to see their effect.'
         return
       }
-      const adjusted=applyRawLocalMasks(applyRawColorMix(applyRawCurves(applyRawTone(previewBase,settings.tone),settings.curves),settings.colorMix),settings.localMasks)
+      const adjusted=applyRawLocalMasks(applyRawDetail(applyRawColorMix(applyRawCurves(applyRawTone(previewBase,settings.tone),settings.curves),settings.colorMix),settings.detail),settings.localMasks)
       paint(beforeCanvas,previewBase);paint(afterCanvas,adjusted)
       // Shape overlay exists only on the UI preview canvas. The histogram,
       // original RAW, Smart Object source and exported pixels never include it.
@@ -808,7 +840,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         const {decodeCameraRaw}=await import('./wasm-codecs')
         const decoded=await decodeCameraRaw(await sourceFile.arrayBuffer(),{
           ...settings,halfSize:true,tone:{...DEFAULT_RAW_TONE},
-          colorMix:normalizeRawColorMix(DEFAULT_RAW_COLOR_MIX),curves:normalizeRawCurves(DEFAULT_RAW_CURVES),localMasks:[],
+          colorMix:normalizeRawColorMix(DEFAULT_RAW_COLOR_MIX),curves:normalizeRawCurves(DEFAULT_RAW_CURVES),localMasks:[],detail:{...DEFAULT_RAW_DETAIL},
         })
         if(generation!==previewGeneration||!dialog.open)return
         previewBase=downsampleRawPreview(decoded,480)
@@ -825,6 +857,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       }
     })
     for(const input of Object.values(toneInputs))input.addEventListener('input',schedulePreview)
+    for(const input of Object.values(detailInputs))input.addEventListener('input',schedulePreview)
     for(const channel of RAW_CURVE_CHANNELS)
       curveInputs[channel].forEach(input=>input.addEventListener('input',schedulePreview))
     for(const band of RAW_MIX_BANDS)
@@ -843,7 +876,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     local.details.addEventListener('toggle',schedulePreview)
     presetTools.append(savePreset,loadPreset,presetStatus)
     actions.append(cancel,apply)
-    dialog.append(heading,caption,previewSection,form,basic.details,curve.details,mix.details,local.details,optics.details,presetTools,actions)
+    dialog.append(heading,caption,previewSection,form,basic.details,curve.details,mix.details,detail.details,local.details,optics.details,presetTools,actions)
     dialog.addEventListener('close',()=>{
       previewGeneration++
       previewBase=null
