@@ -743,15 +743,15 @@ Measure calibrated distances and keep color sample readouts on an editable docum
 
 1. Open a 32-bit document and select a raster layer with valid Float32 pixels.
 2. Choose Blur or Sharpen with Output set to Current Layer to adjust scene-linear detail without reducing HDR precision.
-3. Choose Smudge with Output set to Current Layer and disable Sample All Layers and Finger Painting. Drag to smear the previous brush position into the new location with Float32 interpolation.
-4. Smudge respects brush-tip alpha, pen pressure, layer offsets and selection coverage. The native Float32 source is used, not the rendered 8-bit preview.
+3. Choose Smudge with Output set to Current Layer and disable Sample All Layers. Drag to smear the previous brush position into the new location with Float32 interpolation.
+4. Smudge respects brush-tip alpha, pen pressure, layer offsets and selection coverage. Enable Finger Painting to blend the foreground sRGB color into the picked-up color after conversion to linear-sRGB Float32.
 5. Use Dodge, Burn, or Sponge with their existing tonal and saturation options.
 6. Undo or redo real changes through History. Only affected preview regions are refreshed.
 
 **Notes and tips:**
 
-- High-depth Smudge supports only Current Layer pickup. Sample All Layers, Finger Painting, and New Layer output remain blocked in 32-bit documents.
+- High-depth Smudge supports Current Layer pickup and Finger Painting. Sample All Layers and New Layer output remain blocked in 32-bit documents.
 - Blur and Sharpen New Layer output is also blocked in 32-bit mode; it would require a precision-safe compositing source.
 - 16-bit retouching still requires its own precision-safe implementation; unsupported tools remain guarded against 8-bit quantization.
-- Smudge uses bilinear premultiplied Float32 pickup and source-over deposition. Its response can differ from Photoshop's engine.
+- Smudge uses bilinear premultiplied Float32 pickup and source-over deposition. Finger Painting follows source-atop semantics: empty pickup does not receive foreground paint.
 - Transparent pixels are alpha-aware; invisible RGB is not smeared onto visible pixels.

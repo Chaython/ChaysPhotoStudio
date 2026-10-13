@@ -14,7 +14,7 @@ import type { Tool, PointerInfo, PsDocument, Layer } from '../types'
 import { engine } from '../engine/engine'
 import { getOptions, getFgColor, canUseByteRetouch, regionProcess, drawBrushCursor, walkDabs } from './shared'
 import { smoothstep } from './dab-utils'
-import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb, cloneCanvas, getImageData, putImageData, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
+import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb, cloneCanvas, getImageData, putImageData, hdrFloat32ToPreviewCanvas, hexToRgb, srgbToLinear } from '../utils/canvas'
 import { getFlatComposite, newLayer, invalidateFlat } from '../engine/document'
 import { getTip, tipExtentMul, drawTipCursor } from './brush-tips'
 import { retouchDabIntersectsCanvas, sameRetouchTarget } from './retouch-stroke-guards'
@@ -260,8 +260,8 @@ function makeRetouch(
           engine.ui?.toast('32-bit retouch New Layer output needs an HDR-safe layer source; choose Current Layer', 'info')
           return
         }
-        if (id === 'smudge' && (opts.sampleAllLayers === true || opts.fingerPainting === true)) {
-          engine.ui?.toast('32-bit Smudge currently supports Current Layer pickup only; disable Sample All Layers and Finger Painting', 'info')
+        if (id === 'smudge' && opts.sampleAllLayers === true) {
+          engine.ui?.toast('32-bit Smudge supports Current Layer pickup only; disable Sample All Layers', 'info')
           return
         }
         if (layer.kind !== 'raster' || !layer.canvas || !layer.hdrPixels ||
@@ -729,13 +729,22 @@ function smudgeTap(x: number, y: number, p: PointerInfo, getPrev: () => { x: num
         data: ctx2d(doc.selection.mask).getImageData(x0, y0, x1 - x0, y1 - y0).data,
       }
     }
+    const foreground = opts.fingerPainting === true ? hexToRgb(getFgColor()) : null
+    const fingerPainting = foreground ? {
+      color: [
+        srgbToLinear(foreground[0]),
+        srgbToLinear(foreground[1]),
+        srgbToLinear(foreground[2]),
+      ] as [number, number, number],
+      opacity: .12 + strength * .18,
+    } : undefined
     const changed = applyFloat32SmudgeDab({
       pixels: l.hdrPixels,
       width: l.canvas.width, height: l.canvas.height,
       offsetX: l.offsetX ?? 0, offsetY: l.offsetY ?? 0,
       x, y, previousX: prev.x, previousY: prev.y,
       radius, strength, alpha: shape.alpha,
-      selection, hasSelection: !!doc.selection,
+      selection, hasSelection: !!doc.selection, fingerPainting,
     })
     if (changed) noteHdrRetouchChange(retouchContext, l, x, y, radius)
     setPrev({ x, y })
