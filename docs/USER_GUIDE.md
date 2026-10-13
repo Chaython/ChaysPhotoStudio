@@ -1,6 +1,6 @@
 # Chay's Photo Studio — User Guide
 
-This manual mirrors the in-app **Help** dialog. Click the Help button in the editor toolbar or choose **Help → User Guide & Documentation…**.
+This manual mirrors the in-app **Help** dialog. Click the Help button in the editor toolbar or choose **Help → User Guide & Documentation…**. In-app topics are bundled for offline use.
 
 For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For development, see [README.md](../README.md).
 
