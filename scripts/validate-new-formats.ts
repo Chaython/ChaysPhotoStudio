@@ -4,6 +4,7 @@ import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
+import { applyRawDetail, normalizeRawDetail, DEFAULT_RAW_DETAIL } from '../src/editor/formats/raw-detail'
 import { applyRawCurves, evaluateRawCurve, normalizeRawCurves, DEFAULT_RAW_CURVES } from '../src/editor/formats/raw-curves'
 import { applyRawLocalMasks, rawMaskCoverage, normalizeRawLocalMasks, makeRawLocalMask } from '../src/editor/formats/raw-local-masks'
 import { rawBrushCoverage, normalizeRawBrushStrokes, MAX_RAW_BRUSH_STROKES, MAX_RAW_BRUSH_POINTS } from '../src/editor/formats/raw-local-masks'
@@ -239,6 +240,87 @@ check(rawToneSample.rgba16.every((v,i)=>v===originalToneBytes[i]),'RAW source sa
 check(colorTone.rgba16![3]===65535 && colorTone.rgba16![7]===65535,'RAW alpha must not receive tonal changes')
 check(normalizeRawTone({contrast:Number.POSITIVE_INFINITY, saturation:400}).contrast===0,'Invalid RAW tone input must normalize')
 check(normalizeRawTone({saturation:400}).saturation===100,'RAW tone must enforce control range')
+
+// RAW Detail remains reversible, channel-aware and 16-bit. Synthetic fixtures
+// verify tonal edge handling without relying on display/browser image APIs.
+const detailW=7,detailH=5,detailPixelCount=detailW*detailH
+const detail16=new Uint16Array(detailPixelCount*4)
+const detail8=new Uint8ClampedArray(detailPixelCount*4)
+for(let y=0;y<detailH;y++)for(let x=0;x<detailW;x++){
+  const index=(y*detailW+x)*4
+  const value=x>=4?49000:14500
+  for(let c=0;c<3;c++){detail16[index+c]=value;detail8[index+c]=Math.round(value/257)}
+  detail16[index+3]=65535;detail8[index+3]=255
+}
+const detailCenter=(2*detailW+2)*4
+const detailNoisy=detail16.slice(),detailNoisy8=detail8.slice()
+for(let c=0;c<3;c++){
+  detailNoisy[detailCenter+c]=21000
+  detailNoisy8[detailCenter+c]=Math.round(21000/257)
+}
+const detailImage={width:detailW,height:detailH,
+  rgba:detailNoisy8 as Uint8ClampedArray<ArrayBuffer>,
+  rgba16:detailNoisy,sourceBitDepth:16}
+const beforeDetail=detailNoisy.slice()
+check(applyRawDetail(detailImage,DEFAULT_RAW_DETAIL)===detailImage,
+  'Neutral RAW detail is an identity operation')
+const smoothDetail=applyRawDetail(detailImage,{luminanceDenoise:100})
+check(smoothDetail.rgba16![detailCenter]<detailImage.rgba16[detailCenter] &&
+  smoothDetail.rgba16![detailCenter]>14000,'Luminance noise reduction smooths a pixel outlier')
+check(smoothDetail.rgba16![(2*detailW+4)*4]>44000,
+  'Luminance noise reduction must preserve a high-contrast edge')
+check(detailNoisy.every((sample,i)=>sample===beforeDetail[i]),
+  '16-bit RAW detail cannot mutate original decoded samples')
+check(smoothDetail.rgba16![detailCenter+3]===65535 &&
+  smoothDetail.sourceBitDepth===16,
+  'RAW detail keeps high bit depth and transparency')
+const chroma16=detail16.slice()
+const chroma8=detail8.slice()
+chroma16[detailCenter]=25500;chroma16[detailCenter+1]=13500;chroma16[detailCenter+2]=13000
+for(let c=0;c<3;c++)chroma8[detailCenter+c]=Math.round(chroma16[detailCenter+c]/257)
+const colorInput={width:detailW,height:detailH,sourceBitDepth:16,
+  rgba:chroma8 as Uint8ClampedArray<ArrayBuffer>,rgba16:chroma16}
+const denoiseColor=applyRawDetail(colorInput,{colorDenoise:100})
+check(Math.abs(denoiseColor.rgba16![detailCenter]-denoiseColor.rgba16![detailCenter+2])<
+  Math.abs(chroma16[detailCenter]-chroma16[detailCenter+2]),
+  'Chroma denoise reduces isolated color differences')
+const colorCenterLum=(sample:Uint16Array)=>(
+  sample[detailCenter]*0.2126+sample[detailCenter+1]*0.7152+sample[detailCenter+2]*0.0722)
+check(Math.abs(colorCenterLum(denoiseColor.rgba16!)-colorCenterLum(chroma16))<400,
+  'Chroma-only denoise preserves approximate pixel luminance')
+const sharpenedDetail=applyRawDetail({width:detailW,height:detailH,
+  rgba:detail8 as Uint8ClampedArray<ArrayBuffer>,rgba16:detail16,sourceBitDepth:16},{
+  sharpenAmount:120,sharpenRadius:1,sharpenThreshold:0,
+})
+const edge=(2*detailW+3)*4
+check(sharpenedDetail.rgba16![edge]<detail16[edge],
+  'Sharpening should darken shadow side of contrast edge')
+check(sharpenedDetail.rgba16![detailCenter]===detail16[detailCenter],
+  'Sharpening must leave flat midtone regions unchanged')
+const guarded=applyRawDetail({width:detailW,height:detailH,
+  rgba:detail8 as Uint8ClampedArray<ArrayBuffer>,rgba16:detail16,sourceBitDepth:16},{
+  sharpenAmount:120,sharpenThreshold:100,
+})
+check(guarded.rgba16![detailCenter]===detail16[detailCenter],
+  'High sharpening threshold suppresses flat-region sharpening')
+const transparent16=detail16.slice(),transparent8=detail8.slice()
+transparent16[3]=0;transparent8[3]=0
+transparent16[0]=65535;transparent8[0]=255
+const alphaDetail=applyRawDetail({width:detailW,height:detailH,
+  rgba:transparent8 as Uint8ClampedArray<ArrayBuffer>,rgba16:transparent16,sourceBitDepth:16
+},{luminanceDenoise:75,sharpenAmount:65})
+check(alphaDetail.rgba16![3]===0&&alphaDetail.rgba16![0]===65535,
+  'Transparent RAW pixels preserve their values and alpha')
+check(normalizeRawDetail({luminanceDenoise:Infinity,sharpenAmount:900,
+  sharpenRadius:2.6,sharpenThreshold:-20}).sharpenRadius===3 &&
+  normalizeRawDetail({sharpenAmount:900}).sharpenAmount===200,
+  'RAW detail settings clamp malformed values and integer sharpening radius')
+check(normalizeRawDetail(undefined).sharpenAmount===0,
+  'Older RAW Smart Object recipes default to neutral detail')
+const detail8Only=applyRawDetail({width:detailW,height:detailH,
+  rgba:detail8 as Uint8ClampedArray<ArrayBuffer>,sourceBitDepth:8},{sharpenAmount:65})
+check(!detail8Only.rgba16 && detail8Only.rgba.length===detail8.length,
+  'RAW detail 8-bit compatibility path never claims nonexistent precision')
 
 // RAW tone curves: independent composite and RGB 16-bit LUTs, older recipes,
 // safe endpoints, alpha, neutral identity, and conservative input normalization.
