@@ -516,7 +516,7 @@ const fakeJpeg=new Uint8Array([0xff,0xd8,0xff,0xe0,0x00,0x04,0x4a,0x46,
 const taggedJpeg=embedSrgbIccJpeg(fakeJpeg,srgbIcc)
 const appLength=(taggedJpeg[4]<<8)|taggedJpeg[5]
 check(taggedJpeg[2]===0xff&&taggedJpeg[3]===0xe2 &&
-  iccAscii(taggedJpeg,6,12)==='ICC_PROFILE\\0'.replace('\\0','\\u0000') &&
+  iccAscii(taggedJpeg,6,11)==='ICC_PROFILE' && taggedJpeg[17]===0 &&
   taggedJpeg[18]===1&&taggedJpeg[19]===1,
   'JPEG APP2 ICC segment carries identifier and single-part sequence numbering')
 check(appLength===srgbIcc.length+16 &&
