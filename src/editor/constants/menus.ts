@@ -289,6 +289,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'file-save-project', label: 'Save Project', shortcut: sc('save'), run: () => { void saveProject() } },
     { id: 'file-save-project-as', label: 'Save Project As…', shortcut: sc('saveAs'), run: () => { void saveProject({ saveAs: true }) } },
     { id: 'file-export', label: 'Export As…', shortcut: sc('export'), run: () => openDlg('export') },
+    { id: 'file-batch-raw-export', label: 'Batch Export RAW Photos…', run: () => openDlg('raw-batch-export') },
     { id: 'file-export-layers', label: 'Export Layers to Files…', enabled: () => !!engine.activeDoc?.layers.some(layer => layer.kind !== 'adjustment'), run: () => openDlg('export-layers') },
     { id: 'file-quick-export', label: 'Quick Export PNG', run: async () => {
       const doc = engine.activeDoc
