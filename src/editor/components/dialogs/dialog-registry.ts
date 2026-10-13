@@ -37,6 +37,7 @@ const ToolbarCustomizeDialog = deferredDialog(() => import('./toolbar-dialog').t
 const RecoveryDialog = deferredDialog(() => import('./recovery-dialog').then(m => ({ default: m.RecoveryDialog })))
 const ApplyImageDialog = deferredDialog(() => import('./apply-image-dialog').then(m => ({ default: m.ApplyImageDialog })))
 const CalculationsDialog = deferredDialog(() => import('./calculations-dialog').then(m => ({ default: m.CalculationsDialog })))
+const RawBatchExportDialog = deferredDialog(() => import('./raw-batch-export-dialog').then(m => ({ default: m.RawBatchExportDialog })))
 const ExportLayersDialog = deferredDialog(() => import('./export-layers-dialog').then(m => ({ default: m.ExportLayersDialog })))
 const DuplicateLayerDialog = deferredDialog(() => import('./duplicate-layer-dialog').then(m => ({ default: m.DuplicateLayerDialog })))
 const StrokeSelectionDialog = deferredDialog(() => import('./stroke-selection-dialog').then(m => ({ default: m.StrokeSelectionDialog })))
@@ -90,6 +91,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'canvas-size': CanvasSizeDialog,
   'export': ExportDialog,
   'export-layers': ExportLayersDialog,
+  'raw-batch-export': RawBatchExportDialog,
   'duplicate-layer': DuplicateLayerDialog,
   'stroke-selection': StrokeSelectionDialog,
   'help-guide': HelpGuideDialog,
