@@ -193,8 +193,9 @@ export function encodeTiff(
 }
 
 
-/** 16-bit/channel RGBA TIFF. Input samples are normalized floats (0..1),
- * typically from rgba-float16 Canvas ImageData. */
+/** 16-bit/channel RGBA TIFF. Input may be normalized floats (0..1)
+ * from Float16 Canvas, or native Uint16Array LibRaw samples (0..65535).
+ * Preserve integer values exactly instead of round-tripping via 8-bit Canvas. */
 export function encodeTiff16(
   rgba: ArrayLike<number>,
   width: number,
@@ -202,6 +203,9 @@ export function encodeTiff16(
   lzw: boolean,
   meta: TiffMetadataOptions = {},
 ): Uint8Array {
+  if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||
+    rgba.length!==width*height*4)throw Error('Invalid 16-bit TIFF sample dimensions')
+  const integerSamples=rgba instanceof Uint16Array
   const samplesPerPixel = 4
   const bytesPerRow = width * samplesPerPixel * 2
   const rowsPerStrip = Math.max(1, Math.min(height, Math.floor((1 << 20) / bytesPerRow) || 1))
@@ -216,8 +220,12 @@ export function encodeTiff16(
     const start = y0 * width * 4
     const end = start + rows * width * 4
     for (let i = start; i < end; i++) {
-      const sample = Math.max(0, Math.min(1, Number(rgba[i]) || 0))
-      view.setUint16(o, Math.round(sample * 65535), true)
+      if(integerSamples){
+        view.setUint16(o,rgba[i],true)
+      }else{
+        const sample = Math.max(0, Math.min(1, Number(rgba[i]) || 0))
+        view.setUint16(o, Math.round(sample * 65535), true)
+      }
       o += 2
     }
     strips.push(lzw ? lzwEncodeTiff(raw) : raw)
