@@ -439,7 +439,7 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     ],
     "tips": [
       "Brush strokes are limited to 48 strokes per mask and 128 samples per stroke to bound project size and full-resolution processing. Paint and erase strokes work in order; local masks and brush paths never modify original RAW bytes. The current brush implementation is manual, not AI subject selection.",
-      "Local mask recipes live with RAW Smart Object settings and are applied after global Basic, RGB curves and HSL. Color presets deliberately omit local masks; the initial implementation does not yet provide brush-painted, subject-aware or AI masks. Mask coordinates are relative to the developed image dimensions.",
+      "Local mask recipes live with RAW Smart Object settings and are applied after global Basic, RGB curves and HSL. Color presets deliberately omit local masks. Manual brush-painted masks are supported, but automatic subject-aware or AI-generated masks are not. Mask coordinates are relative to the developed image dimensions.",
       "RAW color presets export/import Basic tone, RGB/per-channel point curves and HSL as local JSON. Camera, EXIF and lens calibration are excluded; older presets without curves import with a neutral identity curve. Display-referred color rendering is not equivalent to Adobe Lightroom's proprietary camera profiles.",
       "Files larger than 64 MiB can be developed as ordinary raster images but their original RAW bytes are not embedded. RAW decoders may use a clearly labeled 8-bit camera preview if sensor decoding fails.",
       "Imported Lensfun XML uses recorded calibration values with conservative EXIF matching; the full licensed database and WASM remapping engine are not bundled. Save the project to retain RAW originals and recipes.",
@@ -563,7 +563,7 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     ],
     "tips": [
       "File extension recognition does not guarantee decoding.",
-      "RAW development on main is largely preview-oriented; deeper development is in PRs #79/#84.",
+      "RAW development supports editable settings, curves, HSL adjustments and manual local masks, but decoder coverage, lens corrections and non-destructive compatibility vary by camera and file format.",
       "HEIC, JPEG XL and JPEG 2000 depend on operating-system/WebView codecs."
     ]
   },
