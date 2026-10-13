@@ -713,6 +713,26 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "The Info panel lets you enter exact X/Y sampler coordinates, copy non-transparent HEX values and export sampler readings to CSV.",
       "Fully transparent or empty-layer samples are reported as Transparent, without fake black RGB/CMYK/Lab values."
     ]
+  },
+  {
+    "id": "hdr-retouch-tools",
+    "title": "32-bit HDR tonal retouching",
+    "category": "Tools",
+    "path": "Dodge / Burn / Sponge tools in a 32-bit document",
+    "summary": "Edit Dodge, Burn and Sponge directly in the scene-linear Float32 raster without clipping highlight values or quantizing colors to 8-bit.",
+    "steps": [
+      "Open a 32-bit document with a raster layer that contains Float32 HDR pixels.",
+      "Select Dodge, Burn, or Sponge and paint with the normal brush controls; pressure, brush tip alpha, layer offsets and selections are respected.",
+      "For Dodge and Burn, choose Shadows, Midtones, or Highlights where applicable; Alt/Option temporarily reverses the tonal direction.",
+      "For Sponge, use Saturate or Desaturate and optionally Vibrance. Changes appear through a refreshed display preview and remain in the Float32 pixel store.",
+      "Use History to undo or redo a stroke. The preview is not the authoritative HDR data."
+    ],
+    "tips": [
+      "32-bit HDR support in this release covers Dodge, Burn and Sponge only. Blur, Sharpen, Smudge and other byte-based retouch tools remain guarded.",
+      "16-bit retouching is not yet supported by this Float32 path and remains protected against 8-bit quantization.",
+      "The HDR operations are scene-linear adaptations; their visual tonal response may differ from Photoshop's display-referred implementation.",
+      "Avoid painting uninitialized or invalid Float32 rasters; unsupported layers are rejected without converting their color data."
+    ]
   }
 ]
 

@@ -40,6 +40,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Tool groups and choosing the right tool](#tool-groups-and-choosing-the-right-tool)
 - [Paths, text and shapes](#paths-text-and-shapes)
 - [Ruler measurements and persistent color sampler points](#ruler-measurements-and-persistent-color-sampler-points)
+- [32-bit HDR tonal retouching](#32-bit-hdr-tonal-retouching)
 
 ### Color & files
 
@@ -733,3 +734,22 @@ Measure calibrated distances and keep color sample readouts on an editable docum
 - Some high-depth colors are represented as display-preview values; these readouts are not a substitute for scene-linear sampling.
 - The Info panel lets you enter exact X/Y sampler coordinates, copy non-transparent HEX values and export sampler readings to CSV.
 - Fully transparent or empty-layer samples are reported as Transparent, without fake black RGB/CMYK/Lab values.
+
+## 32-bit HDR tonal retouching
+
+Edit Dodge, Burn and Sponge directly in the scene-linear Float32 raster without clipping highlight values or quantizing colors to 8-bit.
+
+**Where:** Dodge / Burn / Sponge tools in a 32-bit document
+
+1. Open a 32-bit document with a raster layer that contains Float32 HDR pixels.
+2. Select Dodge, Burn, or Sponge and paint with the normal brush controls; pressure, brush tip alpha, layer offsets and selections are respected.
+3. For Dodge and Burn, choose Shadows, Midtones, or Highlights where applicable; Alt/Option temporarily reverses the tonal direction.
+4. For Sponge, use Saturate or Desaturate and optionally Vibrance. Changes appear through a refreshed display preview and remain in the Float32 pixel store.
+5. Use History to undo or redo a stroke. The preview is not the authoritative HDR data.
+
+**Notes and tips:**
+
+- 32-bit HDR support in this release covers Dodge, Burn and Sponge only. Blur, Sharpen, Smudge and other byte-based retouch tools remain guarded.
+- 16-bit retouching is not yet supported by this Float32 path and remains protected against 8-bit quantization.
+- The HDR operations are scene-linear adaptations; their visual tonal response may differ from Photoshop's display-referred implementation.
+- Avoid painting uninitialized or invalid Float32 rasters; unsupported layers are rejected without converting their color data.
