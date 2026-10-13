@@ -10,7 +10,8 @@ import { useEditorStore } from '../../store'
 import { DEFAULT_RAW_SETTINGS, makeBatchSafeRawSettings, rawSettingsFromSaved } from '../../formats/raw-develop'
 import { runRawBatchExport, MAX_BATCH_RAW_FILES, type BatchRawExportFormat } from '../../formats/raw-batch-export'
 import { rawToCanvas } from '../../formats/decoders'
-import { encodeTiff16 } from '../../formats/encoders'
+import { encodeTiff, encodeTiff16 } from '../../formats/encoders'
+import { generateSrgbIccV2, embedSrgbIccJpeg } from '../../formats/srgb-icc'
 import { encodeCanvas } from '../../formats'
 import { downloadBlob } from '../../utils/canvas'
 import { publishedFormatKind } from '../../formats/photopea-formats'
@@ -90,6 +91,7 @@ export function RawBatchExportDialog({onClose}:DialogProps){
       // half-size preview; the original RAW is read but never written.
       recipe.halfSize=false
       const {decodeCameraRaw}=await import('../../formats/wasm-codecs')
+      const srgbIcc=generateSrgbIccV2()
       const result=await runRawBatchExport(files,format,async(file,name)=>{
         if(publishedFormatKind(file.name)!=='raw')throw Error('Not a recognized camera RAW file')
         if(file.size<=0||file.size>MAX_RAW_BYTES)
@@ -98,14 +100,18 @@ export function RawBatchExportDialog({onClose}:DialogProps){
         let blob:Blob
         if(format==='tiff16'){
           if(!decoded.rgba16)throw Error('Decoder returned no 16-bit samples; refusing 8-bit substitution')
-          const bytes=encodeTiff16(decoded.rgba16,decoded.width,decoded.height,true)
+          const bytes=encodeTiff16(decoded.rgba16,decoded.width,decoded.height,true,{iccProfile:srgbIcc})
+          blob=new Blob([new Uint8Array(bytes)],{type:'image/tiff'})
+        }else if(format==='tiff8'){
+          const bytes=encodeTiff(decoded.rgba,decoded.width,decoded.height,true,{iccProfile:srgbIcc})
           blob=new Blob([new Uint8Array(bytes)],{type:'image/tiff'})
         }else{
           const canvas=rawToCanvas(decoded)
-          blob=await encodeCanvas(canvas,format==='jpeg'?'jpeg':'tiff',{
-            quality,includeMetadata:false,tiffCompression:'lzw',tiffBitDepth:8,
-            background:'#ffffff',
+          const jpeg=await encodeCanvas(canvas,'jpeg',{
+            quality,includeMetadata:false,background:'#ffffff',
           })
+          const tagged=embedSrgbIccJpeg(new Uint8Array(await jpeg.arrayBuffer()),srgbIcc)
+          blob=new Blob([new Uint8Array(tagged)],{type:'image/jpeg'})
         }
         if(directory)await saveInto(directory,name,blob)
         else{
@@ -197,7 +203,7 @@ export function RawBatchExportDialog({onClose}:DialogProps){
         {canChooseFolder?' Choose an output folder for more reliable multi-photo saving.':''}
       </p>}
       <p className="text-[11px] text-muted-foreground">
-        Existing files in an output folder are not overwritten. 16-bit TIFF retains
+        JPEG and both TIFF variants embed a generated sRGB ICC profile without\n        changing developed pixel values. Existing files in an output folder are not overwritten. 16-bit TIFF retains
         decoded 16-bit samples; JPEG and 8-bit TIFF are display-referred. Camera RAW
         development runs on the main thread and cancellation takes effect between photos.
       </p>
