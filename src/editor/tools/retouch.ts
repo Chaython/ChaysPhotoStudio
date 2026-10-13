@@ -19,6 +19,7 @@ import { getFlatComposite, newLayer, invalidateFlat } from '../engine/document'
 import { getTip, tipExtentMul, drawTipCursor } from './brush-tips'
 import { retouchDabIntersectsCanvas, sameRetouchTarget } from './retouch-stroke-guards'
 import { applyFloat32RetouchDab, type HdrRetouchMode, type HdrSelectionRegion } from '../image-ops/hdr-retouch'
+import { applyNativeFloat16ToneDab, supportsNativeFloat16ToneCanvas } from '../image-ops/native-float16-tone'
 import { applyFloat32DetailDab } from '../image-ops/hdr-detail-retouch'
 import { applyFloat32SmudgeDab } from '../image-ops/hdr-smudge'
 
@@ -34,6 +35,8 @@ interface RetouchContext {
   /** True when Float32 scene-linear pixels need their display mirror refreshed. */
   hdrChanged?: boolean
   hdrEverChanged?: boolean
+  native16EverChanged?: boolean
+  native16Failed?: boolean
   hdrDirtyBounds?: { x0: number; y0: number; x1: number; y1: number }
 }
 let retouchContext: RetouchContext | null = null
@@ -220,7 +223,8 @@ function makeRetouch(
     flushHdrPreview()
     // The active document can change while the pen is down. History always
     // belongs to the original document, never the newly focused document.
-    if ((mutated || retouchContext?.hdrEverChanged) && strokeDoc && engine.docs.includes(strokeDoc)) {
+    if ((mutated || retouchContext?.hdrEverChanged || retouchContext?.native16EverChanged) &&
+        strokeDoc && engine.docs.includes(strokeDoc)) {
       engine.pushHistory(`${id[0].toUpperCase()}${id.slice(1)} Tool`, strokeDoc)
       engine.emit()
     }
@@ -255,6 +259,8 @@ function makeRetouch(
       const opts = getOptions(id)
       const hdrRetouch = doc.workingBitDepth === 32
         && (id === 'dodge' || id === 'burn' || id === 'sponge' || id === 'blur' || id === 'sharpen' || id === 'smudge')
+      const native16Tone = doc.workingBitDepth === 16 &&
+        (id === 'dodge' || id === 'burn' || id === 'sponge')
       if (hdrRetouch) {
         if ((id === 'blur' || id === 'sharpen' || id === 'smudge') && opts.output === 'new') {
           engine.ui?.toast('32-bit retouch New Layer output needs an HDR-safe layer source; choose Current Layer', 'info')
@@ -267,6 +273,12 @@ function makeRetouch(
         if (layer.kind !== 'raster' || !layer.canvas || !layer.hdrPixels ||
             layer.hdrPixels.length !== layer.canvas.width * layer.canvas.height * 4) {
           engine.ui?.toast('32-bit retouch requires a raster layer with intact Float32 pixels', 'info')
+          return
+        }
+      } else if (native16Tone) {
+        if (layer.kind !== 'raster' || !layer.canvas ||
+            !supportsNativeFloat16ToneCanvas(layer.canvas)) {
+          engine.ui?.toast('16-bit Dodge/Burn/Sponge requires native Float16 sRGB readback; no 8-bit fallback', 'info')
           return
         }
       } else if (!canUseByteRetouch(id[0].toUpperCase() + id.slice(1))) return
@@ -300,7 +312,7 @@ function makeRetouch(
         if (!l?.canvas) return
         retouchContext = { docId: doc.id, targetId: l.id, sourceLayerId: l.id, source: null, outputNew: false }
       }
-      mutated = !hdrRetouch
+      mutated = !(hdrRetouch || native16Tone)
       strokeDoc = doc
       active = true
       last = { x: p.docX, y: p.docY }
@@ -842,6 +854,55 @@ function float32ToneDab(
   if (changed) noteHdrRetouchChange(state, layer, x, y, radius)
 }
 
+
+/** 16-bit tonal retouch runs on only the brush rect using native Float16
+ * ImageData. Convert the temporary patch to scene-linear Float32 for the
+ * operation, then write back changed RGB halves without touching alpha. */
+function native16ToneDab(
+  mode: HdrRetouchMode, x: number, y: number, p: PointerInfo,
+  opts: Record<string, any>, strength: number,
+): void {
+  const doc = engine.activeDoc
+  const layer = engine.activeLayer
+  const state = retouchContext
+  if (!doc || doc.workingBitDepth !== 16 || !layer?.canvas || !state ||
+      state.native16Failed || !sameRetouchTarget(state, doc.id, layer.id)) return
+  const shape = retouchBrushShape(opts, p)
+  const radius = shape.radius * shape.extent
+  let selection: HdrSelectionRegion | undefined
+  if (doc.selection) {
+    const x0 = Math.max(0, Math.floor(x - radius))
+    const y0 = Math.max(0, Math.floor(y - radius))
+    const x1 = Math.min(doc.width, Math.ceil(x + radius))
+    const y1 = Math.min(doc.height, Math.ceil(y + radius))
+    if (x0 >= x1 || y0 >= y1) return
+    selection = {
+      x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+      data: ctx2d(doc.selection.mask).getImageData(x0, y0, x1 - x0, y1 - y0).data,
+    }
+  }
+  try {
+    const changed = applyNativeFloat16ToneDab({
+      canvas: layer.canvas,
+      offsetX: layer.offsetX ?? 0, offsetY: layer.offsetY ?? 0,
+      x, y, radius, mode, strength, alpha: shape.alpha,
+      selection, hasSelection: !!doc.selection,
+      range: opts.range ?? 'midtones',
+      protectTones: opts.protectTones !== false,
+      saturate: p.alt ? opts.mode === 'desaturate' : opts.mode !== 'desaturate',
+      vibrance: opts.vibrance === true,
+    })
+    if (changed) {
+      state.native16EverChanged = true
+      layer._v++
+      invalidateFlat(doc)
+    }
+  } catch (error) {
+    state.native16Failed = true
+    engine.ui?.toast(error instanceof Error ? error.message : 'Native Float16 retouch failed safely', 'info')
+  }
+}
+
 // ---------- dodge / burn ----------
 function toneWeight(v: number, range: string): number {
   if (range === 'shadows') return 1 - smoothstep(0, 85, v)
@@ -864,6 +925,10 @@ function toneOp(kind: 'dodge' | 'burn', x: number, y: number, p: PointerInfo) {
   const protectTones = opts.protectTones !== false
   if (engine.activeDoc?.workingBitDepth === 32) {
     float32ToneDab(burn ? 'burn' : 'dodge', x, y, p, opts, exposure)
+    return
+  }
+  if (engine.activeDoc?.workingBitDepth === 16) {
+    native16ToneDab(burn ? 'burn' : 'dodge', x, y, p, opts, exposure)
     return
   }
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {
@@ -905,6 +970,10 @@ function spongeOp(x: number, y: number, p: PointerInfo) {
   const k = 1.6
   if (engine.activeDoc?.workingBitDepth === 32) {
     float32ToneDab('sponge', x, y, p, opts, flow)
+    return
+  }
+  if (engine.activeDoc?.workingBitDepth === 16) {
+    native16ToneDab('sponge', x, y, p, opts, flow)
     return
   }
   regionProcess(layer.id, x, y, r, (region, falloff, rw, rh) => {

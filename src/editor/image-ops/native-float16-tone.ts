@@ -15,6 +15,22 @@ export interface NativeFloat16ToneDab extends Omit<HdrRetouchDab, 'pixels' | 'wi
   offsetY: number
 }
 
+
+/** Browser-gated preflight before clone-on-write or creating a history entry. */
+export function supportsNativeFloat16ToneCanvas(canvas: HTMLCanvasElement): boolean {
+  const profile = canvasProfile(canvas)
+  if (profile.bitDepth !== 16 || profile.colorSpace !== 'srgb' ||
+      canvas.width <= 0 || canvas.height <= 0) return false
+  try {
+    const sample = (ctx2d(canvas) as any).getImageData(0, 0, 1, 1, {
+      pixelFormat: 'rgba-float16', colorSpace: 'srgb',
+    })
+    return sample?.data?.constructor?.name === 'Float16Array' && sample.data.length === 4
+  } catch {
+    return false
+  }
+}
+
 export function applyNativeFloat16ToneDab(d: NativeFloat16ToneDab): boolean {
   const { canvas, x, y, radius, offsetX, offsetY } = d
   if (![x, y, radius, offsetX, offsetY].every(Number.isFinite) || radius <= 0) return false
