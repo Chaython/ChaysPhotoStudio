@@ -406,7 +406,7 @@ check(excessiveBatchRejected,'RAW batch file count must be bounded')
 // bytes, including values not representable by 8-bit conversion.
 const nativeTiffPixels=new Uint16Array([1001,29001,60002,65535,271,32003,43343,50000])
 const nativeTiff=encodeTiff16(nativeTiffPixels,2,1,false)
-const decodedNative=decodeTiff(nativeTiff)
+const decodedNative=await decodeTiff(nativeTiff)
 check(decodedNative.width===2&&decodedNative.height===1 &&
   decodedNative.rgba16?.[0]===1001 && decodedNative.rgba16?.[1]===29001 &&
   decodedNative.rgba16?.[6]===43343 && decodedNative.rgba16?.[7]===50000,
