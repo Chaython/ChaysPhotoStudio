@@ -32,6 +32,7 @@ interface RetouchContext {
   /** True when Float32 scene-linear pixels need their display mirror refreshed. */
   hdrChanged?: boolean
   hdrEverChanged?: boolean
+  hdrDirtyBounds?: { x0: number; y0: number; x1: number; y1: number }
 }
 let retouchContext: RetouchContext | null = null
 
@@ -166,12 +167,36 @@ function makeRetouch(
 
   const flushHdrPreview = () => {
     const state = retouchContext
-    if (!state?.hdrChanged) return
+    if (!state?.hdrChanged || !state.hdrDirtyBounds) return
     const doc = engine.docs.find(d => d.id === state.docId)
     const layer = doc?.layers.find(l => l.id === state.targetId)
+    const bounds = state.hdrDirtyBounds
     state.hdrChanged = false
+    state.hdrDirtyBounds = undefined
     if (!doc || !layer?.canvas || !layer.hdrPixels) return
-    layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
+    // Updating the entire HDR canvas after every dab would allocate and
+    // convert millions of pixels repeatedly. Refresh only the union of
+    // touched brush regions, preserving both HDR backing and display alpha.
+    const x0 = Math.max(0, Math.min(layer.canvas.width, bounds.x0))
+    const y0 = Math.max(0, Math.min(layer.canvas.height, bounds.y0))
+    const x1 = Math.max(x0, Math.min(layer.canvas.width, bounds.x1))
+    const y1 = Math.max(y0, Math.min(layer.canvas.height, bounds.y1))
+    const w = x1 - x0, h = y1 - y0
+    if (!w || !h) return
+    const patch = new Float32Array(w * h * 4)
+    for (let row = 0; row < h; row++) {
+      const si = ((y0 + row) * layer.canvas.width + x0) * 4
+      patch.set(layer.hdrPixels.subarray(si, si + w * 4), row * w * 4)
+    }
+    const mirror = hdrFloat32ToPreviewCanvas(patch, w, h, 'srgb')
+    const ctx = ctx2d(layer.canvas)
+    ctx.save()
+    // Clear this rectangle before source-over, otherwise translucent HDR
+    // pixels would be composited twice and become incorrectly opaque.
+    ctx.clearRect(x0, y0, w, h)
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(mirror, x0, y0)
+    ctx.restore()
     layer._hdrPreviewBefore = null
     layer._v++
     invalidateFlat(doc)
@@ -695,6 +720,15 @@ function float32ToneDab(
   if (changed) {
     state.hdrChanged = true
     state.hdrEverChanged = true
+    const x0 = Math.max(0, Math.floor(x - radius - (layer.offsetX ?? 0)))
+    const y0 = Math.max(0, Math.floor(y - radius - (layer.offsetY ?? 0)))
+    const x1 = Math.min(layer.canvas.width, Math.ceil(x + radius - (layer.offsetX ?? 0)))
+    const y1 = Math.min(layer.canvas.height, Math.ceil(y + radius - (layer.offsetY ?? 0)))
+    const bounds = state.hdrDirtyBounds
+    state.hdrDirtyBounds = bounds
+      ? { x0: Math.min(bounds.x0, x0), y0: Math.min(bounds.y0, y0),
+          x1: Math.max(bounds.x1, x1), y1: Math.max(bounds.y1, y1) }
+      : { x0, y0, x1, y1 }
   }
 }
 
