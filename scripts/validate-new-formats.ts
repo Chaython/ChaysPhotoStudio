@@ -5,6 +5,7 @@ import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { applyRawCurves, evaluateRawCurve, normalizeRawCurves, DEFAULT_RAW_CURVES } from '../src/editor/formats/raw-curves'
+import { applyRawLocalMasks, rawMaskCoverage, normalizeRawLocalMasks, makeRawLocalMask } from '../src/editor/formats/raw-local-masks'
 import { applyRawColorMix, normalizeRawColorMix, DEFAULT_RAW_COLOR_MIX } from '../src/editor/formats/raw-color-mix'
 import { downsampleRawPreview, rawPreviewHistogram } from '../src/editor/formats/raw-preview'
 import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
@@ -310,6 +311,59 @@ check(normalizeRawColorMix({red:{hue:500,saturation:Number.NaN,luminance:-300}})
   normalizeRawColorMix({red:{hue:500,saturation:Number.NaN,luminance:-300}}).red.luminance===-100,
   'Color Mixer must bound persisted/user values')
 check(DEFAULT_RAW_COLOR_MIX.red.saturation===0,'Default RAW mixer neutral')
+
+// RAW local adjustments: normalized elliptical/ramp coverage and immutable
+// 16-bit editing from the original source, including disable/invert/alpha.
+const radial=makeRawLocalMask('radial','radial-test')
+radial.radiusX=0.27;radial.radiusY=0.27
+radial.exposureEv=1
+check(rawMaskCoverage(radial,0.5,0.5)===1,'Radial mask fully covers optical center')
+check(rawMaskCoverage(radial,0.02,0.02)===0,'Radial mask excludes distant corner')
+const localBase16=new Uint16Array(5*5*4)
+const localBase8=new Uint8ClampedArray(5*5*4)
+for(let i=0;i<25;i++){
+  for(let c=0;c<3;c++){localBase16[i*4+c]=16000;localBase8[i*4+c]=62}
+  localBase16[i*4+3]=65535;localBase8[i*4+3]=255
+}
+const localInput={width:5,height:5,rgba:localBase8 as Uint8ClampedArray<ArrayBuffer>,
+  rgba16:localBase16,sourceBitDepth:16}
+const localBefore=localBase16.slice()
+const localEdit=applyRawLocalMasks(localInput,[radial])
+check(localEdit.rgba16![12*4]>localBefore[12*4],'Radial exposure adjusts selected center')
+check(localEdit.rgba16![0]===localBefore[0],'Radial exposure leaves out-of-mask pixels unchanged')
+check(localInput.rgba16.every((v,i)=>v===localBefore[i]),
+  'Local adjustment never modifies source 16-bit data')
+check(localEdit.rgba16![12*4+3]===65535,'Local adjustments never modify alpha')
+const offMask={...radial,enabled:false}
+check(applyRawLocalMasks(localInput,[offMask])===localInput,'Disabled local mask is no-op')
+const zeroMask={...radial,exposureEv:0}
+check(applyRawLocalMasks(localInput,[zeroMask])===localInput,'Neutral local mask is no-op')
+const invertMask={...radial,invert:true}
+check(rawMaskCoverage(invertMask,0.5,0.5)===0 &&
+  rawMaskCoverage(invertMask,0.02,0.02)===1,'Invert local coverage swaps inside/outside')
+const gradient=makeRawLocalMask('linear','linear-test')
+gradient.x=0.1;gradient.y=0.5;gradient.x2=0.9;gradient.y2=0.5
+gradient.saturation=80
+check(rawMaskCoverage(gradient,0.1,0.5)===1 &&
+  rawMaskCoverage(gradient,0.9,0.5)===0 &&
+  rawMaskCoverage(gradient,0.5,0.5)>0.4 &&
+  rawMaskCoverage(gradient,0.5,0.5)<0.6,
+  'Linear mask interpolates coverage between endpoints')
+check(rawMaskCoverage({...gradient,x2:gradient.x,y2:gradient.y},0.9,0.5)===0,
+  'Degenerate gradient cannot accidentally alter the whole photo')
+const localColor=applyRawLocalMasks(mixSample,[{...gradient,saturation:0,warmth:80}])
+check(localColor.rgba16![0]>mixSample.rgba16[0] || localColor.rgba16![2]<mixSample.rgba16[2],
+  'Local warmth changes selected pixels')
+check(localColor.rgba16![3]===65535 && mixSample.rgba16[0]===mixOriginal[0],
+  'Local color grade retains full alpha and source')
+const malformedMasks=normalizeRawLocalMasks(Array.from({length:15},(_,i)=>({
+  ...radial,id:'bad-'+i,x:Infinity,exposureEv:99,strength:-9,name:'  Hello  ',
+})))
+check(malformedMasks.length===8 && malformedMasks[0].x===0.5 &&
+  malformedMasks[0].exposureEv===3 && malformedMasks[0].strength===0 &&
+  malformedMasks[0].name==='Hello','Local mask recipe bounds and defaults')
+check(normalizeRawLocalMasks([{},null,{kind:'invalid'}]).length===0,
+  'Reject invalid persisted mask records')
 
 // RAW preview sampling must be bounded and lossless for selected 16-bit
 // samples, keep alpha, and never mutate the original decoded sensor image.
