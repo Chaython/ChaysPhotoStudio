@@ -34,9 +34,7 @@ async function makeThumbnail(file:File):Promise<{blob:Blob|null;width:number;hei
       image=await decodePublishedFormatPreview(file,file.name)
     }else{
       try{image=await createImageBitmap(file)}
-      catch{image=(await import('../../formats')).decodeFile
-        ?(await (await import('../../formats')).decodeFile(file)).canvas
-        :await decodePublishedFormatPreview(file,file.name)}
+      catch{image=(await (await import('../../formats')).decodeFile(file)).canvas}
     }
     const width=image.width,height=image.height
     const ratio=Math.min(1,320/Math.max(width,height))
