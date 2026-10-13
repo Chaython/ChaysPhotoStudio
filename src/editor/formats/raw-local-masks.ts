@@ -115,7 +115,7 @@ export function rawMaskCoverage(mask:RawLocalMask,x:number,y:number):number {
 // Spatial index for brush segments: each 64×64 tile only contains dabs
 // intersecting that tile. Avoid O(image pixels × every saved stroke point).
 interface BrushSegment {
-  x1:number;y1:number;x2:number;y2:number;radius:number;feather:number;erase:boolean
+  x1:number;y1:number;x2:number;y2:number;radius:number;feather:number;erase:boolean;order:number
 }
 const BRUSH_TILE = 64
 function indexedBrush(mask:RawLocalMask,width:number,height:number):{
@@ -124,13 +124,13 @@ function indexedBrush(mask:RawLocalMask,width:number,height:number):{
   const buckets=new Map<number,BrushSegment[]>()
   const tilesWide=Math.ceil(width/BRUSH_TILE)
   const tilesHigh=Math.ceil(height/BRUSH_TILE)
-  for(const stroke of mask.strokes??[]){
+  for(const [order,stroke] of (mask.strokes??[]).entries()){
     const radius=Math.max(0.5,stroke.size/200*Math.min(width,height))
     for(let i=0;i<stroke.points.length;i++){
       const first=stroke.points[Math.max(0,i-1)],last=stroke.points[i]
       const segment:BrushSegment={
         x1:first.x*width,y1:first.y*height,x2:last.x*width,y2:last.y*height,
-        radius,feather:stroke.feather,erase:stroke.mode==='erase',
+        radius,feather:stroke.feather,erase:stroke.mode==='erase',order,
       }
       const x0=Math.max(0,Math.floor((Math.min(segment.x1,segment.x2)-radius)/BRUSH_TILE))
       const x1=Math.min(tilesWide-1,Math.floor((Math.max(segment.x1,segment.x2)+radius)/BRUSH_TILE))
@@ -147,9 +147,18 @@ function indexedBrush(mask:RawLocalMask,width:number,height:number):{
   return {buckets,tilesWide}
 }
 function brushCoverage(segments:readonly BrushSegment[]|undefined,x:number,y:number):number {
-  let coverage=0
   if(!segments)return 0
+  let coverage=0
+  let active=-1,strokeAlpha=0,erase=false
+  const flush=()=>{
+    if(active<0)return
+    coverage=erase?coverage*(1-strokeAlpha):Math.max(coverage,strokeAlpha)
+  }
   for(const s of segments){
+    if(s.order!==active){
+      flush()
+      active=s.order;strokeAlpha=0;erase=s.erase
+    }
     const vx=s.x2-s.x1,vy=s.y2-s.y1,length=vx*vx+vy*vy
     const t=length>1e-8?clamp(((x-s.x1)*vx+(y-s.y1)*vy)/length,0,1):0
     const dx=x-(s.x1+vx*t),dy=y-(s.y1+vy*t)
@@ -157,8 +166,9 @@ function brushCoverage(segments:readonly BrushSegment[]|undefined,x:number,y:num
     if(distance>s.radius)continue
     const inner=s.radius*(1-s.feather)
     const dab=s.feather<=0?1:1-smooth((distance-inner)/Math.max(1e-8,s.radius*s.feather))
-    coverage=s.erase?coverage*(1-dab):Math.max(coverage,dab)
+    strokeAlpha=Math.max(strokeAlpha,dab)
   }
+  flush()
   return coverage
 }
 /** Reference evaluator for preview/tests; production uses indexed tile lookup. */
