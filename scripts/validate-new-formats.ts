@@ -5,6 +5,7 @@ import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
 import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { applyRawDetail, normalizeRawDetail, DEFAULT_RAW_DETAIL } from '../src/editor/formats/raw-detail'
+import { DEFAULT_RAW_SETTINGS, normalizeRawSettings, makeBatchSafeRawSettings } from '../src/editor/formats/raw-develop'
 import { applyRawCurves, evaluateRawCurve, normalizeRawCurves, DEFAULT_RAW_CURVES } from '../src/editor/formats/raw-curves'
 import { applyRawLocalMasks, rawMaskCoverage, normalizeRawLocalMasks, makeRawLocalMask } from '../src/editor/formats/raw-local-masks'
 import { rawBrushCoverage, normalizeRawBrushStrokes, MAX_RAW_BRUSH_STROKES, MAX_RAW_BRUSH_POINTS } from '../src/editor/formats/raw-local-masks'
@@ -321,6 +322,45 @@ const detail8Only=applyRawDetail({width:detailW,height:detailH,
   rgba:detail8 as Uint8ClampedArray<ArrayBuffer>,sourceBitDepth:8},{sharpenAmount:65})
 check(!detail8Only.rgba16 && detail8Only.rgba.length===detail8.length,
   'RAW detail 8-bit compatibility path never claims nonexistent precision')
+
+// A multi-photo develop recipe transfers only global settings. In particular,
+ // reusing manual lens calibration or image-relative masks would silently
+ // change unrelated photos, so those must be strictly isolated per file.
+const batchInput=normalizeRawSettings({
+  ...DEFAULT_RAW_SETTINGS,
+  exposureEv:1.5,whiteBalance:'camera',highlight:2,interpolation:4,denoise:50,
+  halfSize:false,smartObject:true,
+  tone:{...DEFAULT_RAW_SETTINGS.tone,contrast:35,shadows:-25},
+  curves:{...DEFAULT_RAW_SETTINGS.curves,red:[0,30,50,75,100]},
+  colorMix:{...DEFAULT_RAW_SETTINGS.colorMix,blue:{hue:14,saturation:20,luminance:-10}},
+  detail:{...DEFAULT_RAW_DETAIL,colorDenoise:30,sharpenAmount:80},
+  lensProfile:{...DEFAULT_RAW_SETTINGS.lensProfile,name:'Specific 85mm',
+    k1:0.05,k2:-0.02,tca:0.003,vignette:0.14},
+  localMasks:[{...makeRawLocalMask('brush','batch-local'),exposureEv:1,
+    strokes:[{mode:'add',size:10,feather:0.4,points:[{x:0.25,y:0.3}]}]}],
+})
+const batchFirstFileJSON=JSON.stringify(batchInput)
+const transferred=makeBatchSafeRawSettings(batchInput)
+check(transferred.exposureEv===1.5 && transferred.whiteBalance==='camera' &&
+  transferred.highlight===2 && transferred.interpolation===4 && transferred.denoise===50,
+  'Batch developing carries the global sensor recipe and reevaluates camera WB per file')
+check(transferred.tone.contrast===35 && transferred.tone.shadows===-25 &&
+  transferred.curves.red[1]===30 && transferred.colorMix.blue.hue===14 &&
+  transferred.detail.sharpenAmount===80 && transferred.detail.colorDenoise===30,
+  'Batch developing includes global tone/curves/HSL/detail adjustments')
+check(transferred.localMasks.length===0 &&
+  transferred.lensProfile.k1===0 && transferred.lensProfile.tca===0 &&
+  transferred.lensProfile.name==='' && !transferred.lensProfile.lensfun,
+  'Batch developing excludes per-image masks and camera/lens calibration')
+transferred.curves.red[1]=60
+transferred.colorMix.blue.saturation=75
+transferred.tone.contrast=0
+check(JSON.stringify(batchInput)===batchFirstFileJSON,
+  'Batch settings never alias or mutate the source photo recipe')
+const batchThird=makeBatchSafeRawSettings(transferred)
+check(batchThird.localMasks.length===0 &&
+  batchThird.lensProfile.name==='' && batchThird.curves.red[1]===60,
+  'Subsequent batch photos receive distinct settings, without local-mask leakage')
 
 // RAW tone curves: independent composite and RGB 16-bit LUTs, older recipes,
 // safe endpoints, alpha, neutral identity, and conservative input normalization.

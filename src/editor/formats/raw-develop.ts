@@ -57,7 +57,24 @@ export function normalizeRawSettings(raw: Partial<RawDevelopSettings>): RawDevel
   }
 }
 
-export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings, metadata?:ImageMetadata, sourceFile?:File):Promise<RawDevelopSettings|null> {
+/** A transferable RAW recipe for a different photograph. Global developing
+ * controls are intentionally retained; image-specific geometry, calibrated
+ * lens profiles, and brush/local masks never cross into the next photo.
+ * Each subsequent file uses its own source metadata and camera WB values. */
+export function makeBatchSafeRawSettings(source:RawDevelopSettings):RawDevelopSettings {
+  const normalized=normalizeRawSettings(source)
+  return {
+    ...normalized,
+    lensProfile:normalizeLensProfile(DEFAULT_LENS_PROFILE),
+    localMasks:[],
+  }
+}
+
+export interface RawBatchOption {
+  remaining: number
+  onApplyToRemaining: (settings:RawDevelopSettings)=>void
+}
+export async function chooseRawDevelopSettings(fileName:string, initial?:RawDevelopSettings, metadata?:ImageMetadata, sourceFile?:File, batch?:RawBatchOption):Promise<RawDevelopSettings|null> {
   const current=initial?normalizeRawSettings(initial):rawSettingsFromSaved()
   // Local mask geometry belongs to a particular image. Opening a different
   // RAW must not silently apply a previous photo's coordinates/adjustments.
@@ -875,14 +892,36 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     notifyLocalPreview=schedulePreview
     local.details.addEventListener('toggle',schedulePreview)
     presetTools.append(savePreset,loadPreset,presetStatus)
+    let batchCheckbox:HTMLInputElement|undefined
+    let batchLabel:HTMLLabelElement|undefined
+    if(batch && Number.isInteger(batch.remaining) && batch.remaining>0){
+      batchCheckbox=document.createElement('input')
+      batchCheckbox.type='checkbox'
+      batchCheckbox.checked=false
+      batchCheckbox.style.cssText='flex:none;accent-color:var(--primary)'
+      batchLabel=document.createElement('label')
+      batchLabel.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:10px 0;font-size:12px'
+      const text=document.createElement('span')
+      text.textContent='Apply these global development settings to the remaining '+
+        batch.remaining+' RAW photo'+(batch.remaining===1?'':'s')+
+        '. The other photos keep their own camera white balance metadata. Lens calibrations and local/brush masks are not copied.'
+      batchLabel.append(batchCheckbox,text)
+    }
     actions.append(cancel,apply)
-    dialog.append(heading,caption,previewSection,form,basic.details,curve.details,mix.details,detail.details,local.details,optics.details,presetTools,actions)
+    dialog.append(heading,caption,previewSection,form,basic.details,curve.details,mix.details,detail.details,local.details,optics.details,presetTools)
+    if(batchLabel)dialog.append(batchLabel)
+    dialog.append(actions)
     dialog.addEventListener('close',()=>{
       previewGeneration++
       previewBase=null
       if(previewTimer!==undefined)clearTimeout(previewTimer)
       const result=dialog.returnValue==='apply'?readSettings():null
-      if(result)try{localStorage.setItem(storageKey,JSON.stringify(result))}catch{}
+      if(result) {
+        try{localStorage.setItem(storageKey,JSON.stringify(result))}catch{}
+        if(batchCheckbox?.checked && batch){
+          batch.onApplyToRemaining(makeBatchSafeRawSettings(result))
+        }
+      }
       dialog.remove();resolve(result)
     },{once:true})
     document.body.append(dialog)
