@@ -6,6 +6,7 @@ import { applyLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { applyRawCurves, evaluateRawCurve, normalizeRawCurves, DEFAULT_RAW_CURVES } from '../src/editor/formats/raw-curves'
 import { applyRawLocalMasks, rawMaskCoverage, normalizeRawLocalMasks, makeRawLocalMask } from '../src/editor/formats/raw-local-masks'
+import { rawBrushCoverage, normalizeRawBrushStrokes, MAX_RAW_BRUSH_STROKES, MAX_RAW_BRUSH_POINTS } from '../src/editor/formats/raw-local-masks'
 import { applyRawColorMix, normalizeRawColorMix, DEFAULT_RAW_COLOR_MIX } from '../src/editor/formats/raw-color-mix'
 import { downsampleRawPreview, rawPreviewHistogram } from '../src/editor/formats/raw-preview'
 import { detectFormat, decodeTiff, tiffPageOffsets, decodePcx, dcxPageOffsets } from '../src/editor/formats/decoders'
@@ -364,6 +365,66 @@ check(malformedMasks.length===8 && malformedMasks[0].x===0.5 &&
   malformedMasks[0].name==='Hello','Local mask recipe bounds and defaults')
 check(normalizeRawLocalMasks([{},null,{kind:'invalid'}]).length===0,
   'Reject invalid persisted mask records')
+
+// Painted brush masks: bounded, serializable stroke geometry; erase order;
+ // 16-bit full-resolution processing must preserve alpha and input image.
+const painted=makeRawLocalMask('brush','painted')
+painted.exposureEv=1
+painted.strokes=[{
+  mode:'add',size:28,feather:0.3,
+  points:[{x:0.5,y:0.5},{x:0.6,y:0.5}],
+}]
+const centerBrush=rawBrushCoverage(painted,0.5,0.5,50,50)
+check(centerBrush>0.99,'Brush center receives full coverage')
+check(rawBrushCoverage(painted,0.02,0.02,50,50)===0,
+  'Brush does not affect pixels outside painted shape')
+const brushEdited=applyRawLocalMasks(localInput,[painted])
+check(brushEdited.rgba16![12*4]>localBefore[12*4] &&
+  brushEdited.rgba16![0]===localBefore[0],
+  '16-bit brush changes painted center but not distant corner')
+check(brushEdited.rgba16![12*4+3]===65535 &&
+  localInput.rgba16.every((v,i)=>v===localBefore[i]),
+  'Brush alpha and source samples stay intact')
+const erased=normalizeRawLocalMasks([{
+  ...painted,strokes:[...painted.strokes!,{
+    mode:'erase',size:30,feather:0,points:[{x:0.5,y:0.5}],
+  }],
+}])[0]
+check(rawBrushCoverage(erased,0.5,0.5,50,50)===0,
+  'Eraser removes preceding brush coverage')
+const brushPaintOnly={...painted,strokes:[painted.strokes![0]]}
+const singleEraser={...brushPaintOnly,strokes:[
+  painted.strokes![0],{mode:'erase' as const,size:20,feather:1,
+    points:[{x:0.5,y:0.5}]},
+]}
+const repeatedEraser={...brushPaintOnly,strokes:[
+  painted.strokes![0],{mode:'erase' as const,size:20,feather:1,
+    points:[{x:0.5,y:0.5},{x:0.5,y:0.5}]},
+]}
+check(Math.abs(rawBrushCoverage(singleEraser,0.58,0.5,50,50)-
+  rawBrushCoverage(repeatedEraser,0.58,0.5,50,50))<1e-6,
+  'Repeated brush segments within one stroke must not compound erasure')
+check(rawBrushCoverage(erased,0.59,0.5,50,50)<1,
+  'Erase stroke affects neighboring pixels inside its diameter')
+check(applyRawLocalMasks(localInput,[{...painted,strokes:[],invert:true}])===localInput,
+  'Empty inverted brush mask must be a no-op')
+check(applyRawLocalMasks(localInput,[{
+  ...painted,strokes:[{mode:'erase',size:20,feather:0,points:[{x:0.5,y:0.5}]}],
+  invert:true,
+}])===localInput,'Erase-only inverted brush mask must be a no-op')
+const savedBrush=JSON.parse(JSON.stringify(painted))
+const restoredBrush=normalizeRawLocalMasks([savedBrush])[0]
+check(restoredBrush.kind==='brush' && restoredBrush.strokes?.[0].points[1].x===0.6,
+  'Brush strokes persist through JSON-based RAW Smart Object recipes')
+const manyStrokes=normalizeRawBrushStrokes(Array.from({length:100},()=>({
+  mode:'add',size:999,feather:3,points:Array.from({length:400},()=>({x:0.5,y:0.5})),
+})))
+check(manyStrokes.length===MAX_RAW_BRUSH_STROKES &&
+  manyStrokes[0].points.length===MAX_RAW_BRUSH_POINTS &&
+  manyStrokes[0].size===40 && manyStrokes[0].feather===1,
+  'Brush recipes bound stroke count, sample count, size and feather')
+check(normalizeRawBrushStrokes([{mode:'add',points:[{x:NaN,y:0.5},{x:2,y:-2}]}])[0].points[0].x===1,
+  'Invalid brush points are skipped and out-of-bounds points clamped')
 
 // RAW preview sampling must be bounded and lossless for selected 16-bit
 // samples, keep alpha, and never mutate the original decoded sensor image.
