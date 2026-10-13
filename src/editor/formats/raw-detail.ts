@@ -30,8 +30,6 @@ export function normalizeRawDetail(raw:Partial<RawDetailSettings>|null|undefined
 }
 const luminance=(r:number,g:number,b:number)=>r*0.2126+g*0.7152+b*0.0722
 const viewAt=(x:number,y:number,width:number)=>((y*width+x)*4)
-const rgbAt=(data:Uint16Array|Uint8ClampedArray,index:number,scale:number)=>
-  [data[index]/scale,data[index+1]/scale,data[index+2]/scale] as const
 
 /** Joint-bilateral 3x3 smooth in Y, (R-Y), (B-Y): chroma noise reduction
  * doesn't blur luminance. Neighbors across high-contrast edges contribute
@@ -59,7 +57,8 @@ export function applyRawDetail(image:RawImage,input:Partial<RawDetailSettings>|n
     const edgeTolerance=0.028+Math.max(lumaAmount,chromaAmount)*0.09
     for(let y=0;y<height;y++)for(let x=0;x<width;x++){
       const idx=viewAt(x,y,width)
-      const [r,g,b]=rgbAt(src,idx,scale),centerY=luminance(r,g,b)
+      const r=src[idx]/scale,g=src[idx+1]/scale,b=src[idx+2]/scale
+      const centerY=luminance(r,g,b)
       if(src[idx+3]===0){
         for(let c=0;c<4;c++)mid[idx+c]=src[idx+c]
         continue
@@ -103,8 +102,9 @@ export function applyRawDetail(image:RawImage,input:Partial<RawDetailSettings>|n
         continue
       }
       let sum=center*4,weights=4
-      for(const [dx,dy] of [[-radius,0],[radius,0],[0,-radius],[0,radius]]){
-        const ix=clamp(x+dx,0,width-1),iy=clamp(y+dy,0,height-1)
+      for(let side=0;side<4;side++){
+        const ix=side<2?clamp(x+(side===0?-radius:radius),0,width-1):x
+        const iy=side>=2?clamp(y+(side===2?-radius:radius),0,height-1):y
         const neighbor=viewAt(ix,iy,width)
         const w=mid[neighbor+3]/scale
         if(w===0)continue
