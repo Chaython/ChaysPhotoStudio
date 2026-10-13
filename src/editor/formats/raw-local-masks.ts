@@ -150,13 +150,9 @@ function brushCoverage(segments:readonly BrushSegment[]|undefined,x:number,y:num
   if(!segments)return 0
   let coverage=0
   let active=-1,strokeAlpha=0,erase=false
-  const flush=()=>{
-    if(active<0)return
-    coverage=erase?coverage*(1-strokeAlpha):Math.max(coverage,strokeAlpha)
-  }
   for(const s of segments){
     if(s.order!==active){
-      flush()
+      if(active>=0)coverage=erase?coverage*(1-strokeAlpha):Math.max(coverage,strokeAlpha)
       active=s.order;strokeAlpha=0;erase=s.erase
     }
     const vx=s.x2-s.x1,vy=s.y2-s.y1,length=vx*vx+vy*vy
@@ -168,7 +164,7 @@ function brushCoverage(segments:readonly BrushSegment[]|undefined,x:number,y:num
     const dab=s.feather<=0?1:1-smooth((distance-inner)/Math.max(1e-8,s.radius*s.feather))
     strokeAlpha=Math.max(strokeAlpha,dab)
   }
-  flush()
+  if(active>=0)coverage=erase?coverage*(1-strokeAlpha):Math.max(coverage,strokeAlpha)
   return coverage
 }
 /** Reference evaluator for preview/tests; production uses indexed tile lookup. */
@@ -200,11 +196,12 @@ export function applyRawLocalMasks(image:RawImage,raw:unknown):RawImage {
     for(let mi=0;mi<masks.length;mi++){
       const mask=masks[mi]
       const brush=indexed[mi]
-      const w=brush?(()=>{
+      let w:number
+      if(brush){
         const bucket=brush.buckets.get(Math.floor(y/BRUSH_TILE)*brush.tilesWide+Math.floor(x/BRUSH_TILE))
         const alpha=brushCoverage(bucket,x+0.5,y+0.5)
-        return (mask.invert?1-alpha:alpha)*mask.strength/100
-      })():rawMaskCoverage(mask,normalizedX,normalizedY)
+        w=(mask.invert?1-alpha:alpha)*mask.strength/100
+      }else w=rawMaskCoverage(mask,normalizedX,normalizedY)
       if(w<=0)continue
       if(mask.exposureEv!==0){
         const gain=Math.pow(2,mask.exposureEv*w)
