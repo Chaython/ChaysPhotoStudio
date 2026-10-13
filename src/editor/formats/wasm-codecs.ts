@@ -8,6 +8,7 @@ import { applyRawTone } from './raw-tone'
 import { applyRawColorMix } from './raw-color-mix'
 import { applyRawCurves } from './raw-curves'
 import { applyRawLocalMasks } from './raw-local-masks'
+import { applyRawDetail } from './raw-detail'
 
 function shape(width:number,height:number){
   if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width*height>64*1024*1024)
@@ -59,10 +60,12 @@ export async function decodeCameraRaw(buffer:ArrayBuffer,options?:RawDevelopSett
       rgba[dst+3]=bits===16?Math.round(alpha/257):alpha
       if(rgba16)rgba16[dst+3]=alpha
     }
-    return applyRawLocalMasks(applyRawColorMix(applyRawCurves(applyRawTone(applyLensProfile({
+    // Detail belongs after demosaicing and global tone/color, before local
+    // adjustments so brushes can be blended over a consistent base.
+    return applyRawLocalMasks(applyRawDetail(applyRawColorMix(applyRawCurves(applyRawTone(applyLensProfile({
       width,height,rgba:rgba as Uint8ClampedArray<ArrayBuffer>,rgba16,
       sourceBitDepth:bits,
-    },settings.lensProfile),settings.tone),settings.curves),settings.colorMix),settings.localMasks)
+    },settings.lensProfile),settings.tone),settings.curves),settings.colorMix),settings.detail),settings.localMasks)
   }finally{decoder.dispose()}
 }
 
