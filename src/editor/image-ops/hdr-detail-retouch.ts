@@ -140,6 +140,9 @@ export function applyFloat32DetailDab(d: Float32DetailDab): boolean {
       let any = false
       for (let channel = 0; channel < 3; channel++) {
         const base = original[srcIdx + channel]
+        // Initialize every component, including malformed values, so a dab
+        // on a valid channel never overwrites another channel with zero.
+        staged[dest + channel] = base
         if (!Number.isFinite(base)) continue
         const blurredRgb = blurred[outIdx + channel] / blurA
         let next = base + (blurredRgb - base) * f
