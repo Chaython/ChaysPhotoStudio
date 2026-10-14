@@ -43,8 +43,9 @@ export function normalizeWebRegions(input: unknown, width: number, height: numbe
     if (coords.some(n => !Number.isSafeInteger(n))) continue
     let [x, y, w, h] = coords
     if (w < 1 || h < 1 || x >= width || y >= height || x + w <= 0 || y + h <= 0) continue
+    const right = Math.min(width, x + w), bottom = Math.min(height, y + h)
     x = Math.max(0, x); y = Math.max(0, y)
-    w = Math.min(width - x, w); h = Math.min(height - y, h)
+    w = right - x; h = bottom - y
     if (w < 1 || h < 1) continue
     ids.add(r.id)
     out.push({
