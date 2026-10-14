@@ -105,8 +105,10 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       video.pause()
       importFrame.disabled = true
       status.textContent = 'Seeking…'
+      // Do not call update() here: seeking is asynchronous and update() could
+      // re-enable Import Frame while the old frame is still being displayed.
+      if (Math.abs(video.currentTime - next) < 0.0005) { update(); return }
       try { video.currentTime = next } catch { fail('Unable to seek to this frame') }
-      update()
     }
 
     video.addEventListener('loadedmetadata', () => {
@@ -126,6 +128,10 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     video.addEventListener('loadeddata', () => {
       if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null }
       update()
+    })
+    video.addEventListener('seeking', () => {
+      importFrame.disabled = true
+      status.textContent = 'Seeking…'
     })
     video.addEventListener('seeked', update)
     video.addEventListener('timeupdate', update)
