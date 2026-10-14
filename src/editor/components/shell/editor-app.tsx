@@ -16,6 +16,7 @@ import { useKeyboardShortcuts } from '../../keyboard-shortcuts'
 import { useEditorStore } from '../../store'
 import { engine } from '../../engine/engine'
 import { openFiles, placeImageAsSmartLayer } from '../../engine/io'
+import { isVideoImport } from '../../formats/photopea-formats'
 import { startAutoSave } from '../../engine/autosave'
 import { dataUrlToCanvas } from '../../image-ops'
 import { dispatchEditorKey, getViewport, setCursorCallbacks, setVirtualInputState } from '../../engine/render'
@@ -158,7 +159,7 @@ export function EditorApp() {
       const files = filesOf(e)
       if (!files.length) return
       const projects = files.filter(f => f.name.endsWith('.zproj.json'))
-      const supported = (f: File) => f.type.startsWith('image/') || /\.(mp4|webm|mkv)$/i.test(f.name)
+      const supported = (f: File) => f.type.startsWith('image/') || isVideoImport(f)
       const importable = files.filter(f => !f.name.endsWith('.zproj.json') && supported(f))
       const others = files.filter(f => !f.name.endsWith('.zproj.json') && !supported(f))
       if (others.length) useEditorStore.getState().pushToast(`Skipped ${others.length} unsupported file${others.length > 1 ? 's' : ''}`, 'error')
