@@ -801,14 +801,14 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Open an editable document, choose File → Design Templates & Brand Kits, and use Save active document as template. Name and categorize the template for later reuse.",
       "Search local templates and choose Use template to open a separate editable document; the original template remains unchanged. Export a .ztemplate.json backup or import one on another Studio installation.",
       "Switch to Brand kits and create a kit. Add named hex swatches, local font family names and PNG/JPEG/WebP logo images (up to 512 KiB each). Save the kit.",
-      "Click a brand swatch to set the foreground color and recolor an active editable shape or text layer. Click a brand font to update the selected text layer; a font must exist on the device.",
-      "Click Place on a logo to place it as a Smart Object in the active document. Export/import .zbrand.json files to transfer a kit, or duplicate kits to create variations."
+      "Choose Apply on a swatch/font for a one-time change. Choose Link to give the selected editable text/shape layer a persistent brand-style reference; linked colors/fonts remain editable and save with the project.",
+      "Edit an existing swatch color/name or font family in the kit without deleting its identity; choose Save brand kit & update links to propagate changes to linked layers across open documents with Undo/Redo. Choose Unlink selected layer to keep its current appearance without future propagation."
     ],
     "tips": [
       "Template projects are copies of native .zproj.json content (up to 32 MiB each); the thumbnail is only a preview. Huge documents should be saved as standalone projects instead of templates.",
       "The design library uses browser/device IndexedDB storage. Clearing site/app data deletes local templates and brand kits; export backups before doing so.",
-      "Imported font family names do not install fonts. Brand kits currently are manually applied presets, not synchronized or linked design tokens that propagate automatically to other documents.",
-      "Templates and brand kits are user-created; this feature does not supply Canva stock assets, licensed design packs, network publishing or collaboration."
+      "Imported font names do not install fonts. Linked brand styles are embedded per project and update across currently open documents when their matching local brand kit is saved or explicitly synced. Closed documents preserve their last saved colors until reopened and synced.",
+      "Deleted kit colors/fonts do not erase artwork: linked layers retain their last embedded values, and you can unlink them. This is local brand-token propagation, not Canva's stock-asset marketplace, multi-user permissions, network publishing or real-time collaboration."
     ]
   },
   {
