@@ -303,7 +303,17 @@ const clampInspectorSplit = (value: number) => Math.max(22, Math.min(70, value))
 function PhotoshopRightDock() {
   const inspector = useEditorStore(s => s.panels.photoshopInspector)
   const setInspector = useEditorStore(s => s.setPhotoshopInspector)
-  const { upperTab: upperSelection, lowerTab: lowerSelection, upperTabs, lowerTabs, upperPercent, collapsed } = inspector
+  const { upperTab: upperSelection, lowerTab: lowerSelection, upperTabs, lowerTabs,
+    sideTabs, sideTab: sideSelection, sideWidth, sideOpen, upperPercent, collapsed } = inspector
+  const [wideScreen, setWideScreen] = useState(false)
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1100px)')
+    const update = () => setWideScreen(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  const showSide = sideOpen && wideScreen
   const moveInspectorTab = useEditorStore(s => s.movePhotoshopInspectorTab)
   const resizing = useRef(false)
   const rightTab = useEditorStore(s => s.panels.rightTab)
@@ -320,16 +330,21 @@ function PhotoshopRightDock() {
   // Keep both groups' selected tabs when clicking the other group, while
   // honouring an externally selected Window-menu panel.
   const isUpper = upperTabs.includes(rightTab)
+  const isSide = sideTabs.includes(rightTab)
   const upper = isUpper ? rightTab : upperSelection
-  const lower = !isUpper && PANEL_MAP[rightTab] ? rightTab : lowerSelection
-  const visibleLowerTabs = lowerTabs.includes(lower) ? lowerTabs : [...lowerTabs, lower]
+  // On narrow viewports, keep side-column panels reachable through the lower
+  // stack without rewriting the persisted column membership.
+  const lower = !isUpper && (!isSide || !showSide) && PANEL_MAP[rightTab] ? rightTab : lowerSelection
+  const side = isSide ? rightTab : sideSelection
+  const visibleLowerTabs = !showSide ? [...lowerTabs, ...sideTabs] : lowerTabs
   const selectUpper = (id: string) => { setInspector({ upperTab: id, collapsed: false }); useEditorStore.getState().setRightPanelTab(id) }
   const selectLower = (id: string) => { setInspector({ lowerTab: id, collapsed: false }); useEditorStore.getState().setRightPanelTab(id) }
+  const selectSide = (id: string) => { setInspector({ sideTab: id, sideOpen: true, collapsed: false }); useEditorStore.getState().setRightPanelTab(id) }
 
   // Drag tabs within a stack or into the other inspector stack. Alt+arrows
   // provide the same actions without a pointer.
   const tabs = (ids: readonly string[], active: string, choose: (id: string) => void,
-    label: string, group: 'upper' | 'lower') => (
+    label: string, group: 'upper' | 'lower' | 'side') => (
     <div className="flex h-8 shrink-0 overflow-x-auto border-b border-border/70 bg-panel zphoto-scroll"
       role="tablist" aria-label={label} data-inspector-tabs={group}
       onDragOver={e => { if (e.dataTransfer.types.includes(PHOTOSHOP_TAB_MIME)) e.preventDefault() }}
@@ -348,7 +363,7 @@ function PhotoshopRightDock() {
           <PanelContextMenu key={id} id={id}>
             <button type="button" role="tab" draggable data-inspector-tab={id}
               aria-selected={active === id}
-              title={def.label + (relocated ? ' (arranged elsewhere)' : ' — drag to reorder or change stack; Alt+arrows to move; double-click to float')}
+              title={def.label + (relocated ? ' (arranged elsewhere)' : ' — drag to another stack or column; Alt+Shift+Right to secondary column, Alt+Shift+Left to lower stack; double-click to float')}
               className={cn('relative flex shrink-0 items-center gap-1 px-2 text-[10px] border-r border-border/40 cursor-grab active:cursor-grabbing',
                 active === id ? 'text-foreground bg-background font-semibold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}
               onClick={() => choose(id)}
@@ -374,7 +389,14 @@ function PhotoshopRightDock() {
                 const restoreFocus = () => requestAnimationFrame(() => {
                   document.querySelector<HTMLButtonElement>(`[data-inspector-tab="${id}"]`)?.focus()
                 })
-                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                if (e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+                  e.preventDefault()
+                  const destination = e.key === 'ArrowRight' ? 'side' : 'lower'
+                  if (destination !== group) {
+                    moveInspectorTab(id, destination)
+                    restoreFocus()
+                  }
+                } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                   e.preventDefault()
                   const destination = e.key === 'ArrowUp' ? 'upper' : 'lower'
                   if (destination !== group) {
@@ -421,7 +443,7 @@ function PhotoshopRightDock() {
         title="Expand inspector" aria-label="Expand Photoshop inspector" onClick={() => setInspector({ collapsed: false })}>
         <PanelRightOpen size={16} />
       </button>
-      {[...upperTabs, ...lowerTabs].map(id => {
+      {[...upperTabs, ...lowerTabs, ...sideTabs].map(id => {
         const def = PANEL_MAP[id]
         if (!def) return null
         const Icon = def.icon
@@ -432,6 +454,7 @@ function PhotoshopRightDock() {
             // Photoshop Essentials template. Otherwise moved tabs open in the
             // wrong stack when the inspector is collapsed.
             if (upperTabs.includes(id)) selectUpper(id)
+            else if (sideTabs.includes(id)) selectSide(id)
             else selectLower(id)
           }}>
           <Icon size={15} />
@@ -460,50 +483,89 @@ function PhotoshopRightDock() {
   }
   return (
     <aside data-panel-dock="right" data-photoshop-dock="true" data-drop-active={dropActive ? '1' : undefined}
-      className="relative hidden md:flex shrink-0 min-h-0 flex-col border-l border-border bg-panel panel-dock-drop"
-      style={{ width }} aria-label="Photoshop-style inspector panels">
-      <WidthDivider side="right" width={width} onWidth={setWidth} onReset={resetWidth} />
-      <div className="h-7 shrink-0 pl-2 border-b flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <span>Essentials</span>
-        <div className="flex items-center">
-          <AddPanelMenu side="right" mobile={false} />
-          <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
-            title="Restore the default Photoshop inspector tab groups"
-            aria-label="Reset Photoshop inspector tab groups"
-            onClick={() => setInspector({
-              upperTabs: [...PHOTOSHOP_UPPER_TABS], lowerTabs: [...PHOTOSHOP_LOWER_TABS],
-              upperTab: 'color', lowerTab: 'layers',
-            })}><RotateCcw size={12}/></button>
-          <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
-            title="Collapse inspector to icons" aria-label="Collapse Photoshop inspector"
-            onClick={() => setInspector({ collapsed: true })}><PanelRightClose size={13} /></button>
+      data-secondary-visible={showSide ? 'true' : 'false'}
+      className="relative hidden md:flex shrink-0 min-h-0 border-l border-border bg-panel panel-dock-drop"
+      style={{ width: width + (showSide ? sideWidth : 0) }} aria-label="Photoshop-style inspector panels">
+      <WidthDivider side="right" width={width + (showSide ? sideWidth : 0)}
+        onWidth={next => setWidth(next - (showSide ? sideWidth : 0))} onReset={resetWidth} />
+      <div className="flex shrink-0 min-h-0 flex-col" style={{ width }} data-inspector-column="primary">
+        <div className="h-7 shrink-0 pl-2 border-b flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span>Essentials</span>
+          <div className="flex items-center">
+            <AddPanelMenu side="right" mobile={false} />
+            <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
+              title={sideOpen ? 'Hide second inspector column' : 'Show second inspector column (wide screens)'}
+              aria-label={sideOpen ? 'Hide second inspector column' : 'Show second inspector column'}
+              aria-pressed={sideOpen}
+              onClick={() => setInspector({ sideOpen: !sideOpen, collapsed: false })}>
+              <PanelRightOpen size={13} />
+            </button>
+            <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
+              title="Restore the default Photoshop inspector tab groups"
+              aria-label="Reset Photoshop inspector tab groups"
+              onClick={() => {
+                setInspector({
+                  upperTabs: [...PHOTOSHOP_UPPER_TABS], lowerTabs: [...PHOTOSHOP_LOWER_TABS],
+                  sideTabs: [], sideTab: '', sideOpen: false, sideWidth: 280,
+                  upperTab: 'color', lowerTab: 'layers',
+                })
+                useEditorStore.getState().setRightPanelTab('layers')
+              }}><RotateCcw size={12}/></button>
+            <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
+              title="Collapse inspector to icons" aria-label="Collapse Photoshop inspector"
+              onClick={() => setInspector({ collapsed: true })}><PanelRightClose size={13} /></button>
+          </div>
         </div>
+        <section data-photoshop-stack="upper" className="flex min-h-0 flex-col"
+          style={{ flex: '0 0 ' + upperPercent + '%' }}>
+          {tabs(upperTabs, upper, selectUpper, 'Upper inspector panel tabs', 'upper')}
+          <div className="flex flex-1 min-h-0 flex-col overflow-auto zphoto-scroll">{content(upper)}</div>
+        </section>
+        <div role="separator" tabIndex={0} aria-label="Resize Photoshop inspector groups"
+          aria-orientation="horizontal" aria-valuemin={22} aria-valuemax={70} aria-valuenow={upperPercent}
+          title="Drag to resize upper and lower panels; arrow keys resize"
+          className="h-2 shrink-0 flex items-center cursor-row-resize touch-none border-y border-border/60 bg-panel hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
+          onPointerDown={onSplitPointerDown} onPointerMove={onSplitPointerMove}
+          onPointerUp={onSplitPointerUp} onPointerCancel={onSplitPointerUp}
+          onDoubleClick={() => setInspector({ upperPercent: 40 })}
+          onKeyDown={e => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault()
+              setInspector({ upperPercent: clampInspectorSplit(upperPercent + (e.key === 'ArrowDown' ? 5 : -5)) })
+            } else if (e.key === 'Home') { e.preventDefault(); setInspector({ upperPercent: 22 }) }
+            else if (e.key === 'End') { e.preventDefault(); setInspector({ upperPercent: 70 }) }
+          }}>
+          <span aria-hidden className="mx-auto h-px w-9 bg-muted-foreground/60" />
+        </div>
+        <section data-photoshop-stack="lower" className="flex min-h-0 flex-1 flex-col">
+          {tabs(visibleLowerTabs, lower, selectLower, 'Lower inspector panel tabs', 'lower')}
+          <div className="flex-1 flex min-h-0 flex-col overflow-auto zphoto-scroll">{content(lower)}</div>
+        </section>
       </div>
-      <section data-photoshop-stack="upper" className="flex min-h-0 flex-col"
-        style={{ flex: '0 0 ' + upperPercent + '%' }}>
-        {tabs(upperTabs, upper, selectUpper, 'Upper inspector panel tabs', 'upper')}
-        <div className="flex flex-1 min-h-0 flex-col overflow-auto zphoto-scroll">{content(upper)}</div>
-      </section>
-      <div role="separator" tabIndex={0} aria-label="Resize Photoshop inspector groups"
-        aria-orientation="horizontal" aria-valuemin={22} aria-valuemax={70} aria-valuenow={upperPercent}
-        title="Drag to resize upper and lower panels; arrow keys resize"
-        className="h-2 shrink-0 flex items-center cursor-row-resize touch-none border-y border-border/60 bg-panel hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
-        onPointerDown={onSplitPointerDown} onPointerMove={onSplitPointerMove}
-        onPointerUp={onSplitPointerUp} onPointerCancel={onSplitPointerUp}
-        onDoubleClick={() => setInspector({ upperPercent: 40 })}
-        onKeyDown={e => {
-          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            e.preventDefault()
-            setInspector({ upperPercent: clampInspectorSplit(upperPercent + (e.key === 'ArrowDown' ? 5 : -5)) })
-          } else if (e.key === 'Home') { e.preventDefault(); setInspector({ upperPercent: 22 }) }
-          else if (e.key === 'End') { e.preventDefault(); setInspector({ upperPercent: 70 }) }
-        }}>
-        <span aria-hidden className="mx-auto h-px w-9 bg-muted-foreground/60" />
-      </div>
-      <section data-photoshop-stack="lower" className="flex min-h-0 flex-1 flex-col">
-        {tabs(visibleLowerTabs, lower, selectLower, 'Lower inspector panel tabs', 'lower')}
-        <div className="flex-1 flex min-h-0 flex-col overflow-auto zphoto-scroll">{content(lower)}</div>
-      </section>
+      {showSide && <section data-inspector-column="secondary" className="relative flex min-h-0 shrink-0 flex-col border-l border-border"
+        style={{ width: sideWidth }}>
+        <WidthDivider side="right" width={sideWidth}
+          onWidth={next => setInspector({ sideWidth: next })}
+          onReset={() => setInspector({ sideWidth: 280 })} />
+        <div className="flex h-7 shrink-0 items-center justify-between border-b px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span>Secondary</span>
+          <button type="button" title="Hide second inspector column" aria-label="Hide second inspector column"
+            className="h-6 w-6 flex items-center justify-center hover:bg-accent"
+            onClick={() => setInspector({ sideOpen: false })}><PanelRightClose size={13}/></button>
+        </div>
+        {tabs(sideTabs, side, selectSide, 'Secondary inspector panel tabs', 'side')}
+        {sideTabs.length ? <div className="flex min-h-0 flex-1 flex-col overflow-auto zphoto-scroll">{content(side)}</div>
+          : <div className="flex-1 flex flex-col items-center justify-center gap-2 px-3 text-center text-xs text-muted-foreground"
+            onDragOver={e => { if (e.dataTransfer.types.includes(PHOTOSHOP_TAB_MIME)) e.preventDefault() }}
+            onDrop={e => {
+              const id = e.dataTransfer.getData(PHOTOSHOP_TAB_MIME)
+              if (!id) return
+              e.preventDefault()
+              moveInspectorTab(id, 'side')
+            }}>
+            Drag an inspector tab here, or use Alt+Shift+Right on a tab.
+          </div>}
+      </section>}
       {dropActive && <DropOverlay side="right" />}
     </aside>
   )
