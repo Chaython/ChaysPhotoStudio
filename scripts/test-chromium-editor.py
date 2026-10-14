@@ -737,6 +737,37 @@ def main():
                       "Unlock did not restore toolbar customization")
                 check(not errors, f"workspace locks generated JavaScript errors: {errors[:3]}")
 
+            def floating_window_layout_lock_during_drag():
+                _, page, errors = app_page(browser)
+                page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setWorkspacePreset('photoshop')
+                    s.resetWorkspaceLayout()
+                    s.floatPanel('history', {x:320, y:170, w:280, h:300})
+                }""")
+                frame = page.locator('[data-floating-panel="history"]')
+                handle = frame.locator('.panel-window-titlebar')
+                box = handle.bounding_box()
+                check(box is not None, "Floating panel title bar unavailable")
+                initial = frame.evaluate("(node) => ({left:parseFloat(node.style.left), top:parseFloat(node.style.top)})")
+                page.mouse.move(box["x"] + 75, box["y"] + 12)
+                page.mouse.down()
+                page.mouse.move(box["x"] + 120, box["y"] + 48, steps=4)
+                page.evaluate("""() => window.__zphotoStore.getState().setWorkspaceLayoutLock('panels', true)""")
+                page.mouse.move(box["x"] + 160, box["y"] + 70, steps=3)
+                page.mouse.up()
+                after = frame.evaluate("(node) => ({left:parseFloat(node.style.left), top:parseFloat(node.style.top)})")
+                check(abs(after["left"] - initial["left"]) <= 2 and
+                      abs(after["top"] - initial["top"]) <= 2,
+                      f"Locking while dragging left stale unsaved DOM geometry: {initial} -> {after}")
+                check(store(page, "s.panels.floating.history.x") == 320 and
+                      store(page, "s.panels.floating.history.y") == 170,
+                      "Locked floating window committed moved geometry")
+                check(frame.locator('[aria-label="Resize floating panel"]').count() == 0 or
+                      frame.locator('[class*="resize"]').count() == 0,
+                      "Locked floating panel still offers visible resize handles")
+                check(not errors, f"floating panel lock caused JavaScript errors: {errors[:3]}")
+
             def named_layout_manager_safety():
                 _, page, errors = app_page(browser)
                 seed = page.evaluate("""() => {
@@ -1173,6 +1204,7 @@ def main():
                 ("photoshop_inspector_extra_panels_and_collapsed_routing", photoshop_inspector_extra_panels_and_collapsed_routing),
                 ("photoshop_secondary_inspector_column", photoshop_secondary_inspector_column),
                 ("workspace_layout_lock_isolation", workspace_layout_lock_isolation),
+                ("floating_window_layout_lock_during_drag", floating_window_layout_lock_during_drag),
                 ("named_layout_manager_safety", named_layout_manager_safety),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("color_sampler_info_panel", color_sampler_info_panel),
