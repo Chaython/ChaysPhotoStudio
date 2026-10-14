@@ -810,6 +810,26 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Imported font family names do not install fonts. Brand kits currently are manually applied presets, not synchronized or linked design tokens that propagate automatically to other documents.",
       "Templates and brand kits are user-created; this feature does not supply Canva stock assets, licensed design packs, network publishing or collaboration."
     ]
+  },
+  {
+    "id": "bulk-design",
+    "title": "Bulk Create designs from CSV",
+    "category": "Color & files",
+    "path": "File → Bulk Create from CSV…",
+    "summary": "Create multiple flattened designs by replacing text-layer placeholders with literal values from an imported CSV, without changing the source design.",
+    "steps": [
+      "Add editable text layers to a document using exact {{Column Name}} placeholders, such as {{Name}} and {{Job}}.",
+      "Choose File → Bulk Create from CSV and load a UTF-8 CSV file. The first row defines column names; commas, quoted strings and newlines are supported.",
+      "Check the columns against detected text placeholders. Every placeholder must match a CSV heading exactly before export. Choose a filename column and PNG, JPEG or WebP.",
+      "Click Export designs, choose an output directory when supported and review the images. Each CSV row creates a separate flattened design using detached text-layer copies.",
+      "Stop after the current design if needed. The source document, text layers and editing History are left unchanged."
+    ],
+    "tips": [
+      "CSV imports are local-only, limited to 1 MiB, 64 columns and 100 data rows. Individual CSV fields are limited to 2,000 characters.",
+      "Text placeholders are literal substitutions, not script execution or rich formatting. This first version does not merge images, modify shapes/colors from CSV, or produce new layered documents per row.",
+      "For browsers lacking a folder-picker API, downloading more than 20 images at once is disabled to avoid blocked/missing browser downloads.",
+      "Missing CSV columns block export rather than producing accidentally unfilled placeholders. Text with matched placeholders retains its existing layer styling."
+    ]
   }
 ]
 
