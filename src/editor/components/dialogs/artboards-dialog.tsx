@@ -196,20 +196,38 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
         if (!rect) continue
         store.setProgress({ active: true, label: 'Exporting artboard ' + (i + 1) + '/' + output.length,
           value: i / output.length })
-        const cropped = createCanvas(rect.sw, rect.sh)
-        ctx2d(cropped).drawImage(previewArtboard(doc, board), rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, rect.sw, rect.sh)
-        const blob = await encodeCanvas(cropped, format, { quality, background: '#ffffff',
-          includeMetadata: false, resolutionPpi: doc.resolutionPpi ?? 72 })
-        const filename = prefix + '-artboard-' + String(i + 1).padStart(2, '0')
-          + '-' + fileStem(board.name) + '.' + extension
-        if (directory) {
-          const file = await directory.getFileHandle(filename, { create: true })
-          const writable = await file.createWritable()
-          try { await writable.write(blob) } finally { await writable.close() }
-        } else {
-          downloadBlob(blob, filename)
-          // Avoid a burst of simultaneous downloads in browser fallback.
-          await new Promise(resolve => setTimeout(resolve, 80))
+        const baseName = prefix + '-artboard-' + String(i + 1).padStart(2, '0')
+          + '-' + fileStem(board.name)
+        const saveArtifact = async (blob: Blob, filename: string) => {
+          if (directory) {
+            const file = await directory.getFileHandle(filename, { create: true })
+            const writable = await file.createWritable()
+            try { await writable.write(blob) } finally { await writable.close() }
+          } else {
+            downloadBlob(blob, filename)
+            await new Promise(resolve => setTimeout(resolve, 80))
+          }
+        }
+        const saveVariant = async (slot: RolloverSlot, filename: string) => {
+          const cropped = createCanvas(rect.sw, rect.sh)
+          ctx2d(cropped).drawImage(previewArtboard(doc, board, slot),
+            rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, rect.sw, rect.sh)
+          const blob = await encodeCanvas(cropped, format, { quality,
+            background: '#ffffff', includeMetadata: false, resolutionPpi: doc.resolutionPpi ?? 72 })
+          await saveArtifact(blob, filename)
+        }
+        const normalFile = baseName + '.' + extension
+        await saveVariant('normal', normalFile)
+        const validComp = (id?: string) => !!id && (doc.layerComps ?? []).some(comp => comp.id === id)
+        const hoverFile = validComp(board.rollover?.hoverCompId) ? baseName + '-hover.' + extension : undefined
+        const pressedFile = validComp(board.rollover?.pressedCompId) ? baseName + '-pressed.' + extension : undefined
+        if (hoverFile) await saveVariant('hover', hoverFile)
+        if (pressedFile) await saveVariant('pressed', pressedFile)
+        if (hoverFile || pressedFile) {
+          const html = buildArtboardRolloverHtml(board.name, rect.sw, rect.sh, {
+            normal: normalFile, hover: hoverFile, pressed: pressedFile,
+          })
+          await saveArtifact(new Blob([html], { type: 'text/html;charset=utf-8' }), baseName + '-rollover.html')
         }
       }
       store.pushToast('Exported ' + output.length + ' artboard' + (output.length === 1 ? '' : 's'), 'success')
@@ -364,7 +382,7 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
             <input aria-label="Artboard image quality" type="range" min={1} max={100} value={quality}
               onChange={e => setQuality(Number(e.target.value))}/></label>}
         </div>
-        <p className="text-[10px] text-muted-foreground">Artboards are editable document-space rectangles saved in .zproj.json. Each can include its own subset of existing editable layers for preview and export, without mutating other artboards. They still share a single editing layer stack and canvas: there is no separate per-page layer tree, off-canvas expansion, native AI/Fireworks interchange or independent page history. Exports are flattened at display precision.</p>
+        <p className="text-[10px] text-muted-foreground">Artboards store individual layer selections and optional Normal/Hover/Pressed Layer Comp references in .zproj.json. HTML rollover previews use CSS, with separately exported flattened images. The editor still shares one canvas/layer tree; there are no off-canvas pages, true Fireworks state objects, Illustrator AI round trips or independent page histories.</p>
       </div>
     )}
     <DialogFooter>
