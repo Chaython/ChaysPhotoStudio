@@ -15,7 +15,7 @@ This companion to the [Photoshop/GIMP/Fireworks/Illustrator/PhotoCraft matrix](C
 | Editable shape, path and typographic content | ✓ | ✓ | ✓ | ✓ | Studio's sophisticated vector/layout typography and SVG fidelity remain incomplete |
 | Curated *design templates* (poster, social, presentation) | ◐ | ✓ | ✓ | ◐ | **Studio now supports user-created editable project templates** with local gallery, thumbnails, categories, import/export and new-from-template. Missing curated prebuilt design packs, dynamic fillable layouts and licensed assets. |
 | Searchable *stock* graphics/icons/photos/fonts catalog | — | ✓ | ✓ | ◐ | Studio has an individual local-photo catalog and asset import; not a licensed stock marketplace |
-| Reusable brand kit (logos, fonts, palettes, guidelines) | ◐ | ✓ | ✓ | ◐ | **Studio now has local brand kits** with swatches, system-font references and bounded logo images; direct apply to text/shapes and Smart Object logo placement. Missing linked cross-document tokens, brand rules/governance and automatic updates. |
+| Reusable brand kit (logos, fonts, palettes, guidelines) | ◐ | ✓ | ✓ | ◐ | **Studio now has local brand kits** with swatches, system-font references and bounded logo images; direct apply to text/shapes and Smart Object logo placement. Studio now supports embedded linked color/font IDs and propagates saved-kit edits across **currently open** linked documents. Missing closed-file synchronization, shared team token servers and governance. |
 | Brand template locks, approvals and governance | — | ✓ | ◐ | ◐ | No controlled templates, reviewer permissions or approval model |
 | Linked reusable *design components* | ◐ | ✓ | ◐ | ✓ | Smart Objects/Layer Comps overlap but not a cross-document component-instance library |
 | Responsive auto-layout with constraints and reflow | — | ◐ | ◐ | ✓ | Artboard rectangles/grid generation do **not** reflow elements when text or bounds change |
@@ -73,7 +73,7 @@ Clip Studio Paint's professional multi-page comic and full animation features ar
 **Evidence:** [Krita official features](https://krita.org/en/features/) (brush resources and animation), [Inkscape overview](https://inkscape.org/acerca-de/) (native SVG and vector editing), [Clip Studio painting and animation](https://www.clipstudio.net/en/), [Clip Studio comics](https://www.clipstudio.net/en/comics-manga/), and [3D pose reference](https://www.clipstudio.net/en/animation/tool/3d/).
 
 
-**Implementation evidence:** [native template and brand kit persistence](../src/editor/library/design-library.ts), [gallery and brand-kit application dialog](../src/editor/components/dialogs/design-library-dialog.tsx), and [import validation tests](../scripts/validate-design-library.ts). Imported design templates are **native Studio project snapshots**, not Canva or Express document importers; linked brand tokens and publishing remain missing.
+**Implementation evidence:** [native template and brand kit persistence](../src/editor/library/design-library.ts), [gallery and brand-kit application dialog](../src/editor/components/dialogs/design-library-dialog.tsx), and [import validation tests](../scripts/validate-design-library.ts). Imported design templates are **native Studio project snapshots**, not Canva or Express document importers; linked brand colors/fonts work locally on open projects; centrally managed shared tokens and publishing remain missing.
 
 ## 4. Gap prioritization for Chay's Photo Studio
 
@@ -82,7 +82,7 @@ These **are development targets, not implemented features**. Rank by usefulness 
 | Priority | Missing / incomplete feature | Nearest references | Meaningful first milestone and verification |
 |---|---|---|---|
 | **High** | **Template gallery depth** — partial | Canva, Adobe Express, Clip Studio | Implement preset template packs, configurable placeholders, editable category layouts, thumbnail maintenance and a fixtures-based template import/open/export suite; basic saved editable templates are implemented. |
-| **High** | **Linked brand styles / governance** — partial | Canva, Adobe Express, Figma | Local palettes/fonts/logos and portable kits are implemented. Add named linked color/text styles referenced by layers, cross-document overrides, global propagation, invalidation and undo tests; optional governance separate from editor. |
+| **High** | **Advanced brand governance / shared tokens** — partial | Canva, Adobe Express, Figma | Linked document-embedded color/font tokens and undoable propagation into open projects are implemented. Still missing server-synced cross-device tokens, closed-project propagation, global rules/roles, and linked paragraph/character styles. |
 | **High** | **True component symbols and instances** | Figma, Canva, Illustrator, Fireworks | Link reusable components across multiple artboards; update original without flattening, scoped instance overrides, Undo, persistence and cycle checks |
 | **High** | **Responsive frames and auto-layout** | Figma, Canva (adaptive layout) | Parent constraints, padding/gap/alignment/wrap, intrinsic text measurement and non-destructive reflow when width changes; benchmark complex nested frames |
 | **High** | **Editable page models** | Canva, Affinity, Clip Studio EX | Page-local layer trees and independent page size/background, duplication/reorder, export selected/all while preserving the current canvas legacy path |
