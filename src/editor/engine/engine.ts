@@ -676,6 +676,7 @@ export class Engine {
       metadata: src.metadata ? structuredClone(src.metadata) : undefined,
       proof: src.proof ? structuredClone(src.proof) : undefined,
       layers,
+      linkedDesignStyles: src.linkedDesignStyles?.map(t => structuredClone(t)),
       activeLayerId: remapLayerId(src.activeLayerId),
       selectedLayerIds: (src.selectedLayerIds ?? []).map(id => layerIds.get(id)).filter((id): id is string => !!id),
       selection: this.cloneHistorySelection(src.selection),
@@ -768,6 +769,7 @@ export class Engine {
       adjustment: layer.adjustment ? structuredClone(layer.adjustment) : null,
       text: layer.text ? structuredClone(layer.text) : null,
       shape: layer.shape ? structuredClone(layer.shape) : null,
+      linkedDesignStyles: layer.linkedDesignStyles ? { ...layer.linkedDesignStyles } : undefined,
       blendIf: layer.blendIf ? structuredClone(layer.blendIf) : null,
       fx: layer.fx ? structuredClone(layer.fx) : null,
       psdAdditionalInfo: layer.psdAdditionalInfo ? [...layer.psdAdditionalInfo] : layer.psdAdditionalInfo,
@@ -828,6 +830,7 @@ export class Engine {
       artboards: doc.artboards?.map(a => structuredClone(a)),
       activeArtboardId: doc.activeArtboardId ?? null,
       showArtboardOutlines: doc.showArtboardOutlines !== false,
+      linkedDesignStyles: doc.linkedDesignStyles?.map(t => structuredClone(t)),
     }
   }
 
@@ -853,6 +856,7 @@ export class Engine {
     if ('artboards' in st) doc.artboards = st.artboards?.map(a => structuredClone(a))
     if ('activeArtboardId' in st) doc.activeArtboardId = st.activeArtboardId ?? null
     if ('showArtboardOutlines' in st) doc.showArtboardOutlines = st.showArtboardOutlines !== false
+    if ('linkedDesignStyles' in st) doc.linkedDesignStyles = st.linkedDesignStyles?.map(t => structuredClone(t))
     doc._stroke = null; doc._strokeLayerId = null; doc._strokeBlendMode = 'normal'; doc._strokeBbox = null
     doc.previewFilter = null; doc.previewAdjustment = null
     doc._epoch++
