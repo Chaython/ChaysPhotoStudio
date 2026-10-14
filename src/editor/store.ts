@@ -407,6 +407,20 @@ function validateLayoutImport(value: unknown): SavedWorkspaceLayout {
     throw Error('Invalid panel layout structure')
   if (raw.kind !== 'panels' && raw.toolbar !== null && !Array.isArray(raw.toolbar))
     throw Error('Invalid tool layout')
+  if (raw.panels && raw.kind !== 'tools') {
+    for (const field of ['zTop', 'dockWidth', 'leftWidth', 'topHeight', 'bottomHeight']) {
+      const value = raw.panels[field]
+      if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value)))
+        throw Error('Invalid panel dimension: ' + field)
+    }
+    for (const rect of Object.values(raw.panels.floating as Record<string, any>)) {
+      if (!rect || typeof rect !== 'object' || !Number.isFinite((rect as any).x) ||
+          !Number.isFinite((rect as any).y) ||
+          (rect as any).w !== undefined && !Number.isFinite((rect as any).w) ||
+          (rect as any).h !== undefined && !Number.isFinite((rect as any).h))
+        throw Error('Invalid floating panel geometry')
+    }
+  }
   const panels = raw.kind === 'tools' ? undefined : loadPanelLayout(JSON.stringify(raw.panels))
   if (raw.kind !== 'tools' && !panels) throw Error('Invalid panel layout')
   const toolbar = raw.kind === 'panels' ? undefined :
@@ -680,13 +694,26 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { panels, toolbarLayout }
   }),
   importNamedLayout: (json) => {
+    if (json.length > 250_000) throw Error('Layout file exceeds 250 KB')
     const layout = validateLayoutImport(JSON.parse(json))
+    let importedName = layout.name
     set(s => {
-      const savedLayouts = [...s.savedLayouts.filter(x => x.name !== layout.name), layout]
+      // An imported file must never silently overwrite an existing layout.
+      const names = new Set(s.savedLayouts.map(x => x.name))
+      if (names.has(importedName)) {
+        let index = 2
+        let candidate: string
+        do {
+          const suffix = ` (${index++})`
+          candidate = importedName.slice(0, 100 - suffix.length) + suffix
+        } while (names.has(candidate))
+        importedName = candidate
+      }
+      const savedLayouts = [...s.savedLayouts, { ...layout, name: importedName }]
       saveNamedLayouts(savedLayouts)
       return { savedLayouts }
     })
-    return layout.name
+    return importedName
   },
   exportNamedLayout: (name) => {
     const layout = get().savedLayouts.find(x => x.name === name)
