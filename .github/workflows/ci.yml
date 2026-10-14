@@ -243,6 +243,7 @@ jobs:
             if curl -fsS http://127.0.0.1:8765/ >/dev/null; then break; fi
             sleep 0.25
           done
+          command -v ffmpeg || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
           python scripts/test-chromium-editor.py
 
       - name: Upload Chromium E2E diagnostics
