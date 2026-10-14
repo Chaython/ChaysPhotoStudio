@@ -67,3 +67,32 @@ export function artboardCrop(
   const valid = normalizeArtboards([artboard], documentWidth, documentHeight)[0]
   return valid ? { sx: valid.x, sy: valid.y, sw: valid.width, sh: valid.height } : null
 }
+
+
+/** Move all artboards as Canvas Size / Crop change the document origin. */
+export function translateArtboards(
+  input: unknown, oldWidth: number, oldHeight: number,
+  dx: number, dy: number, newWidth: number, newHeight: number,
+): Artboard[] {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return []
+  const original = normalizeArtboards(input, oldWidth, oldHeight)
+  return normalizeArtboards(original.map(a => ({
+    ...a, x: Math.round(a.x + dx), y: Math.round(a.y + dy),
+  })), newWidth, newHeight)
+}
+
+/** Scale rectangle edges, not width independently: adjacent tiled boards retain matching borders. */
+export function scaleArtboards(
+  input: unknown, oldWidth: number, oldHeight: number,
+  newWidth: number, newHeight: number,
+): Artboard[] {
+  if (![oldWidth, oldHeight, newWidth, newHeight].every(n => Number.isSafeInteger(n) && n > 0)) return []
+  const sx = newWidth / oldWidth, sy = newHeight / oldHeight
+  const original = normalizeArtboards(input, oldWidth, oldHeight)
+  return normalizeArtboards(original.map(a => {
+    const left = Math.round(a.x * sx), top = Math.round(a.y * sy)
+    const right = Math.round((a.x + a.width) * sx)
+    const bottom = Math.round((a.y + a.height) * sy)
+    return { ...a, x: left, y: top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) }
+  }), newWidth, newHeight)
+}
