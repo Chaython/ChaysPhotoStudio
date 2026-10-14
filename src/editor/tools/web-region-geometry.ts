@@ -4,8 +4,8 @@ export type RegionRect = Pick<WebRegion, 'x' | 'y' | 'width' | 'height'>
 export type RegionPoint = { x: number; y: number }
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
 export function regionPoint(x: number, y: number, width: number, height: number): RegionPoint {
-  return { x: clamp(Math.round(x), 0, Math.max(0, width - 1)),
-    y: clamp(Math.round(y), 0, Math.max(0, height - 1)) }
+  return { x: clamp(Number.isFinite(x) ? Math.round(x) : 0, 0, Math.max(0, width - 1)),
+    y: clamp(Number.isFinite(y) ? Math.round(y) : 0, 0, Math.max(0, height - 1)) }
 }
 export function regionFromDrag(a: RegionPoint, b: RegionPoint, docW: number, docH: number, square = false): RegionRect {
   const start = regionPoint(a.x, a.y, docW, docH)
