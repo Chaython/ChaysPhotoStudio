@@ -318,6 +318,37 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
             </div>
             <p className="text-[10px] text-muted-foreground">Artboard-only layer inclusion affects its preview and export; it does not remove layers from the main canvas or change their global visibility. Hidden document layers remain hidden.</p>
           </div>
+          <div className="space-y-2 border-t border-border/60 pt-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="text-[11px]">Rollover states (Layer Comps)</Label>
+              <select aria-label="Preview rollover state" className="rounded border border-border bg-background p-1"
+                value={previewSlot} onChange={e => setPreviewSlot(e.target.value as RolloverSlot)}>
+                <option value="normal">Preview normal</option>
+                <option value="hover">Preview hover</option>
+                <option value="pressed">Preview pressed</option>
+              </select>
+            </div>
+            {([
+              ['normal', 'normalCompId', 'Normal'],
+              ['hover', 'hoverCompId', 'Hover'],
+              ['pressed', 'pressedCompId', 'Pressed'],
+            ] as const).map(([slot, key, label]) => <div key={slot} className="flex items-center gap-2">
+              <Label className="w-14 text-[11px]">{label}</Label>
+              <select aria-label={label + ' Layer Comp'} className="min-w-0 flex-1 rounded border border-border bg-background p-1"
+                value={active.rollover?.[key] ?? ''} disabled={busy}
+                onChange={e => modify({ rollover: { ...active.rollover, [key]: e.target.value || undefined } })}>
+                <option value="">{slot === 'normal' ? 'Live document' : 'Use normal state'}</option>
+                {(doc.layerComps ?? []).map(comp => <option key={comp.id} value={comp.id}>{comp.name}</option>)}
+              </select>
+              <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
+                if (engine.activeDoc?.id !== sourceId) return
+                const comp = engine.createLayerComp(active.name + ' — ' + label,
+                  { visibility: true, position: true, appearance: true })
+                if (comp) modify({ rollover: { ...active.rollover, [key]: comp.id } })
+              }}>Capture</Button>
+            </div>)}
+            <p className="text-[10px] text-muted-foreground">Capture records the live layer appearance as a reusable Layer Comp. Assign separate Hover and Pressed comps to export CSS-only prototype states; unassigned states fall back to Normal. Use the Layer Comps panel to update snapshots after editing. This is not native Fireworks state or symbol support.</p>
+          </div>
         </div>}
         <div className="flex flex-wrap items-center gap-2">
           <Label>Export</Label>
