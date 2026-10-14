@@ -41,6 +41,7 @@ const PhotoLibraryDialog = deferredDialog(() => import('./photo-library-dialog')
 const RawBatchExportDialog = deferredDialog(() => import('./raw-batch-export-dialog').then(m => ({ default: m.RawBatchExportDialog })))
 const ExportLayersDialog = deferredDialog(() => import('./export-layers-dialog').then(m => ({ default: m.ExportLayersDialog })))
 const WebAssetsDialog = deferredDialog(() => import('./web-assets-dialog').then(m => ({ default: m.WebAssetsDialog })))
+const ArtboardsDialog = deferredDialog(() => import('./artboards-dialog').then(m => ({ default: m.ArtboardsDialog })))
 const DuplicateLayerDialog = deferredDialog(() => import('./duplicate-layer-dialog').then(m => ({ default: m.DuplicateLayerDialog })))
 const StrokeSelectionDialog = deferredDialog(() => import('./stroke-selection-dialog').then(m => ({ default: m.StrokeSelectionDialog })))
 const HelpGuideDialog = deferredDialog(() => import('./help-guide-dialog').then(m => ({ default: m.HelpGuideDialog })))
@@ -94,6 +95,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'export': ExportDialog,
   'export-layers': ExportLayersDialog,
   'web-assets': WebAssetsDialog,
+  'artboards': ArtboardsDialog,
   'raw-batch-export': RawBatchExportDialog,
   'photo-library': PhotoLibraryDialog,
   'duplicate-layer': DuplicateLayerDialog,
