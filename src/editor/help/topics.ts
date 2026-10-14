@@ -394,7 +394,7 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     ],
     "tips": [
       "The Shortcuts dialog shows the current binding if it has been customized.",
-      "Main registers 52 tools, including Freeform/Curvature Pen and both Type Mask variants; shared keys cycle within tool families."
+      "The editor registers 54 tools, including Freeform/Curvature Pen, both Type Mask variants, and canvas Slice/Hotspot; shared shortcuts cycle within tool families."
     ]
   },
   {
