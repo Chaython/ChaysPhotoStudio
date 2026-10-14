@@ -1270,6 +1270,12 @@ def main():
                 regions = page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions")
                 check(len(regions) == 2 and regions[1]["kind"] == "hotspot",
                       f"Hotspot did not create an independent project region: {regions}")
+                page.evaluate("() => window.__zphotoEngine.undo()")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions.length") == 1,
+                      "Undo did not remove the newly created hotspot")
+                page.evaluate("() => window.__zphotoEngine.redo()")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions.length") == 2,
+                      "Redo did not restore the hotspot annotation")
                 page.mouse.click(**pt(110, 44))
                 page.keyboard.press("ArrowRight")
                 moved = page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions[1].x")
