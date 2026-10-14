@@ -311,7 +311,8 @@ function PhotoshopRightDock() {
   const dockSide = useEditorStore(s => s.panels.dockSide)
   const savedWidth = useEditorStore(s => s.panels.dockWidth)
   const widthManual = useEditorStore(s => s.panels.dockWidthManual)
-  const width = widthManual ? savedWidth : Math.max(300, autoSideDockWidth(PANEL_MAP[lowerSelection], true))
+  const width = widthManual ? savedWidth : Math.max(300,
+    autoSideDockWidth(PANEL_MAP[upperSelection], true), autoSideDockWidth(PANEL_MAP[lowerSelection], true))
   const setWidth = useEditorStore(s => s.setDockWidth)
   const resetWidth = useEditorStore(s => s.resetDockWidthAuto)
   const hasDoc = useEditorStore(s => !!s.activeDocId)
@@ -362,6 +363,7 @@ function PhotoshopRightDock() {
                 const dragged = e.dataTransfer.getData(PHOTOSHOP_TAB_MIME)
                 if (!dragged) return
                 e.preventDefault()
+                if (dragged === id) { e.stopPropagation(); return }
                 e.stopPropagation()
                 moveInspectorTab(dragged, group, id)
               }}
@@ -405,7 +407,7 @@ function PhotoshopRightDock() {
       data-drop-active={dropActive ? '1' : undefined}
       className="relative hidden md:flex w-9 shrink-0 min-h-0 overflow-y-auto zphoto-scroll flex-col items-center gap-1 border-l bg-panel py-1 panel-dock-drop"
       aria-label="Collapsed Photoshop inspector">
-      <button type="button" className="h-8 w-8 flex items-center justify-center hover:bg-accent"
+      <button type="button" className="h-8 w-8 shrink-0 flex items-center justify-center hover:bg-accent"
         title="Expand inspector" aria-label="Expand Photoshop inspector" onClick={() => setInspector({ collapsed: false })}>
         <PanelRightOpen size={16} />
       </button>
@@ -413,7 +415,7 @@ function PhotoshopRightDock() {
         const def = PANEL_MAP[id]
         if (!def) return null
         const Icon = def.icon
-        return <button type="button" key={id} className="h-8 w-8 flex items-center justify-center hover:bg-accent text-muted-foreground hover:text-foreground"
+        return <button type="button" key={id} className="h-8 w-8 shrink-0 flex items-center justify-center hover:bg-accent text-muted-foreground hover:text-foreground"
           title={def.label} aria-label={'Show ' + def.label + ' panel'}
           onClick={() => { if (PHOTOSHOP_UPPER_TABS.includes(id)) selectUpper(id); else selectLower(id); setInspector({ collapsed: false }) }}>
           <Icon size={15} />
