@@ -622,12 +622,13 @@ Choose import paths for raster, layered and media files.
 **Where:** File → Open… / Open as Layer… / Place (Smart Object)…
 
 1. Open a file as a new document, Open as Layer… to add to the current image, or Place… as a Smart Object.
-2. Open MP4/WebM/MKV to scrub a local preview, choose a timestamp and Import frame.
+2. Open MP4/WebM/MKV to scrub a local preview, choose a timestamp, or use the estimated frame-step buttons with a selected FPS (24, 25, 30 or 60), then choose Import frame.
 3. Consult the feature/format reference to distinguish native codecs from previews and fallback extractors.
 
 **Notes and tips:**
 
 - File extension recognition does not guarantee decoding.
+- Browser video support depends on installed codecs; MKV and some MP4 variants may not decode. Frame stepping advances by an assumed 1/FPS interval, not an exact source-frame index. Import is blocked until asynchronous seek completes; Cancel leaves the document unchanged.
 - RAW development supports editable settings, curves, HSL adjustments and manual local masks, but decoder coverage, lens corrections and non-destructive compatibility vary by camera and file format.
 - HEIC, JPEG XL and JPEG 2000 depend on operating-system/WebView codecs.
 
