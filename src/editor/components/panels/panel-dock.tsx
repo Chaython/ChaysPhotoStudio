@@ -427,7 +427,13 @@ function PhotoshopRightDock() {
         const Icon = def.icon
         return <button type="button" key={id} className="h-8 w-8 shrink-0 flex items-center justify-center hover:bg-accent text-muted-foreground hover:text-foreground"
           title={def.label} aria-label={'Show ' + def.label + ' panel'}
-          onClick={() => { if (PHOTOSHOP_UPPER_TABS.includes(id)) selectUpper(id); else selectLower(id); setInspector({ collapsed: false }) }}>
+          onClick={() => {
+            // Routing follows the user's saved grouping, not the original
+            // Photoshop Essentials template. Otherwise moved tabs open in the
+            // wrong stack when the inspector is collapsed.
+            if (upperTabs.includes(id)) selectUpper(id)
+            else selectLower(id)
+          }}>
           <Icon size={15} />
         </button>
       })}
