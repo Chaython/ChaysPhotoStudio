@@ -20,7 +20,7 @@ function findMatches(code: string, needles: string[]): string[] {
 export function detectPluginSourceFormat(
   text: string,
   fallbackName = 'plugin.js',
-  manifest?: { entrypoints?: unknown; manifestVersion?: unknown },
+  manifest?: { id?: unknown; entrypoints?: unknown; manifestVersion?: unknown },
 ): PluginSourceFormat {
   const fileName = String(fallbackName || 'plugin.js').toLowerCase()
   const isJson = /^\s*\{/.test(text)
