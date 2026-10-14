@@ -486,7 +486,8 @@ def main():
                       "renaming did not update the saved layout")
                 check(not store(page, "s.savedLayouts.some(x => x.name === 'Layout alpha')"),
                       "rename left behind a duplicate old name")
-                page.get_by_role("button", name="Workspace template").click()
+                if not page.get_by_role("button", name="Delete Layout gamma").is_visible():
+                    page.get_by_role("button", name="Workspace template").click()
                 page.get_by_role("button", name="Delete Layout gamma").click()
                 page.get_by_role("button", name="Confirm delete Layout gamma").click()
                 check(not store(page, "s.savedLayouts.some(x => x.name === 'Layout gamma')"),
