@@ -56,6 +56,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [High-depth workflows and guarded edits](#high-depth-workflows-and-guarded-edits)
 - [Artboards, page layers and export](#artboards-page-layers-and-export)
 - [Design templates and brand kits](#design-templates-and-brand-kits)
+- [Bulk Create designs from CSV](#bulk-create-designs-from-csv)
 
 ### Workspace
 
@@ -830,3 +831,22 @@ Create new editable designs from saved local project templates, and reuse brand 
 - The design library uses browser/device IndexedDB storage. Clearing site/app data deletes local templates and brand kits; export backups before doing so.
 - Imported font family names do not install fonts. Brand kits currently are manually applied presets, not synchronized or linked design tokens that propagate automatically to other documents.
 - Templates and brand kits are user-created; this feature does not supply Canva stock assets, licensed design packs, network publishing or collaboration.
+
+## Bulk Create designs from CSV
+
+Create multiple flattened designs by replacing text-layer placeholders with literal values from an imported CSV, without changing the source design.
+
+**Where:** File → Bulk Create from CSV…
+
+1. Add editable text layers to a document using exact {{Column Name}} placeholders, such as {{Name}} and {{Job}}.
+2. Choose File → Bulk Create from CSV and load a UTF-8 CSV file. The first row defines column names; commas, quoted strings and newlines are supported.
+3. Check the columns against detected text placeholders. Every placeholder must match a CSV heading exactly before export. Choose a filename column and PNG, JPEG or WebP.
+4. Click Export designs, choose an output directory when supported and review the images. Each CSV row creates a separate flattened design using detached text-layer copies.
+5. Stop after the current design if needed. The source document, text layers and editing History are left unchanged.
+
+**Notes and tips:**
+
+- CSV imports are local-only, limited to 1 MiB, 64 columns and 100 data rows. Individual CSV fields are limited to 2,000 characters.
+- Text placeholders are literal substitutions, not script execution or rich formatting. This first version does not merge images, modify shapes/colors from CSV, or produce new layered documents per row.
+- For browsers lacking a folder-picker API, downloading more than 20 images at once is disabled to avoid blocked/missing browser downloads.
+- Missing CSV columns block export rather than producing accidentally unfilled placeholders. Text with matched placeholders retains its existing layer styling.
