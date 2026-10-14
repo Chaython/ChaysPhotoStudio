@@ -446,6 +446,59 @@ def main():
                       "lower inspector tab was lost on reload")
                 check(not errors, f"workspace snapshot reloading threw JS errors: {errors[:3]}")
 
+            def named_layout_manager_safety():
+                _, page, errors = app_page(browser)
+                seed = page.evaluate("""() => {
+                    const st = window.__zphotoStore.getState()
+                    st.saveNamedLayout('Layout alpha', 'both')
+                    st.saveNamedLayout('Layout beta', 'tools')
+                    let collisionRejected = false
+                    try { st.renameNamedLayout('Layout alpha', 'Layout beta') }
+                    catch { collisionRejected = true }
+                    const unmodified = window.__zphotoStore.getState().savedLayouts.some(x => x.name === 'Layout alpha')
+                    const prototype = Storage.prototype
+                    const original = prototype.setItem
+                    let rejected = false
+                    try {
+                      prototype.setItem = function(key, value) {
+                        if (key === 'zphoto-saved-layouts-v1') throw new DOMException('No storage', 'QuotaExceededError')
+                        return original.call(this, key, value)
+                      }
+                      try { st.saveNamedLayout('Should never appear', 'tools') }
+                      catch (e) { rejected = String(e).includes('Unable to save layouts') }
+                    } finally { prototype.setItem = original }
+                    const inMemorySafe = !window.__zphotoStore.getState().savedLayouts.some(x => x.name === 'Should never appear')
+                    return {collisionRejected, unmodified, rejected, inMemorySafe}
+                }""")
+                check(all(seed.values()), f"Saved layout transactional operations failed: {seed}")
+                page.get_by_role("button", name="Workspace template").click()
+                page.get_by_role("button", name="Delete Layout alpha").click()
+                # First click must only request confirmation.
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Layout alpha')"),
+                      "delete button removed a preset without confirmation")
+                page.get_by_role("button", name="Cancel deleting Layout alpha").click()
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Layout alpha')"),
+                      "cancelling deletion lost the preset")
+                page.get_by_role("button", name="Rename Layout alpha").click()
+                page.get_by_role("textbox", name="Layout name").fill("Layout gamma")
+                page.get_by_role("menuitem", name="Rename saved layout").click()
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Layout gamma')"),
+                      "renaming did not update the saved layout")
+                check(not store(page, "s.savedLayouts.some(x => x.name === 'Layout alpha')"),
+                      "rename left behind a duplicate old name")
+                page.get_by_role("button", name="Workspace template").click()
+                page.get_by_role("button", name="Delete Layout gamma").click()
+                page.get_by_role("button", name="Confirm delete Layout gamma").click()
+                check(not store(page, "s.savedLayouts.some(x => x.name === 'Layout gamma')"),
+                      "confirmed deletion did not remove the preset")
+                page.reload()
+                page.wait_for_function("() => !!window.__zphotoStore")
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Layout beta')"),
+                      "reload lost the untouched named layout")
+                check(not store(page, "s.savedLayouts.some(x => x.name === 'Layout gamma')"),
+                      "deleted layout unexpectedly survived reload")
+                check(not errors, f"named layout management threw JavaScript exceptions: {errors[:3]}")
+
             def editable_layer_context_menu():
                 _, page, errors = app_page(browser)
                 page.evaluate("""() => {
@@ -769,6 +822,7 @@ def main():
                 ("workspace_all_tools_dialog", workspace_and_dialog),
                 ("workspace_layout_profiles", workspace_layout_profiles),
                 ("workspace_restore_precedence_and_inspector_sync", workspace_restore_precedence_and_inspector_sync),
+                ("named_layout_manager_safety", named_layout_manager_safety),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("color_sampler_info_panel", color_sampler_info_panel),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
