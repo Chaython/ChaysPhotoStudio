@@ -25,7 +25,7 @@ let drag: DragState | null = null
 let selected: { docId: string; id: string } | null = null
 
 function selectedId(): string | null {
-  return selected?.docId === engine.activeDoc?.id ? selected.id : null
+  return selected && selected.docId === engine.activeDoc?.id ? selected.id : null
 }
 function currentRegions(): WebRegion[] {
   const doc = engine.activeDoc
@@ -143,7 +143,7 @@ function overlay(ctx: CanvasRenderingContext2D, view: { zoom: number; panX: numb
     drawRegion(ctx, candidate, view, candidate.id === selection, showLabels)
   }
   if (preview?.mode === 'create' && preview.draft) {
-    drawRegion(ctx, { ...preview.draft, id: '', kind: preview.kind, name: 'New ' + preview.kind },
+    drawRegion(ctx, { ...preview.draft, kind: preview.kind, name: 'New ' + preview.kind },
       view, true, false)
   }
   ctx.restore()
