@@ -20,8 +20,14 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       ' <div class="flex shrink-0 flex-col gap-3 px-4 py-3">',
       '  <div class="flex items-center gap-3">',
       '   <button type="button" data-video-play class="min-w-16 rounded border border-border px-2 py-1 text-xs hover:bg-accent" disabled>Play</button>',
-      '   <input data-video-timeline type="range" min="0" max="0" step="0.01" value="0" disabled class="min-w-0 flex-1" aria-label="Select video frame time"/>',
+      '   <input data-video-timeline type="range" min="0" max="0" step="0.001" value="0" disabled class="min-w-0 flex-1" aria-label="Select video frame time"/>',
       '   <span data-video-clock class="min-w-28 text-right font-mono text-xs text-muted-foreground">00:00.000</span>',
+      '  </div>',
+      '  <div class="flex flex-wrap items-center gap-2 text-xs">',
+      '   <button type="button" data-video-prev disabled aria-label="Step backward by an estimated frame" class="rounded border border-border px-2 py-1 hover:bg-accent">◀ Step</button>',
+      '   <label class="flex items-center gap-1 text-muted-foreground">Assumed FPS <select data-video-fps aria-label="Frame step rate" class="rounded border border-input bg-background px-1 py-1"><option value="24">24</option><option value="25">25</option><option value="30" selected>30</option><option value="60">60</option></select></label>',
+      '   <button type="button" data-video-next disabled aria-label="Step forward by an estimated frame" class="rounded border border-border px-2 py-1 hover:bg-accent">Step ▶</button>',
+      '   <span class="text-muted-foreground">Approximate — change FPS for your clip</span>',
       '  </div>',
       '  <div class="flex flex-wrap items-center justify-between gap-2">',
       '   <label class="flex items-center gap-2 text-xs text-muted-foreground">Time (seconds)',
@@ -48,6 +54,9 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     const status = get<HTMLElement>('[data-video-status]')
     const play = get<HTMLButtonElement>('[data-video-play]')
     const importFrame = get<HTMLButtonElement>('[data-video-import]')
+    const previousFrame = get<HTMLButtonElement>('[data-video-prev]')
+    const nextFrame = get<HTMLButtonElement>('[data-video-next]')
+    const stepRate = get<HTMLSelectElement>('[data-video-fps]')
     const cancel = get<HTMLButtonElement>('[data-video-cancel]')
     const close = get<HTMLButtonElement>('[data-video-close]')
     get<HTMLElement>('[data-video-name]').textContent = (file as File).name || 'Video'
@@ -95,6 +104,8 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       play.disabled = true
       timeline.disabled = true
       timeInput.disabled = true
+      previousFrame.disabled = true
+      nextFrame.disabled = true
       importFrame.disabled = true
       status.textContent = message
     }
@@ -145,6 +156,8 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       timeInput.max = String(seekMax())
       timeline.disabled = false
       timeInput.disabled = false
+      previousFrame.disabled = false
+      nextFrame.disabled = false
       play.disabled = false
       update()
     })
@@ -169,6 +182,17 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     video.addEventListener('error', () => fail('Video codec/container is not supported by this browser'))
     timeline.addEventListener('input', () => seek(Number(timeline.value)))
     timeInput.addEventListener('change', () => seek(Number(timeInput.value)))
+    const step = (direction: -1 | 1) => {
+      if (finished || failed || !duration) return
+      const fps = Number(stepRate.value)
+      if (!Number.isFinite(fps) || fps < 1 || fps > 240) return
+      const base = pendingSeek && requestedTime !== null ? requestedTime : video.currentTime
+      // This changes time by an assumed frame interval, not a guaranteed
+      // decoded source frame: browser video APIs do not expose frame indices.
+      seek(Math.round((base + direction / fps) * 1_000_000) / 1_000_000)
+    }
+    previousFrame.addEventListener('click', () => step(-1))
+    nextFrame.addEventListener('click', () => step(1))
     play.addEventListener('click', () => {
       if (!video.paused) { video.pause(); return }
       void video.play().catch(() => { status.textContent = 'Playback unavailable — scrub to choose a frame'; update() })
