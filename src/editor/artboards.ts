@@ -9,6 +9,10 @@ export interface Artboard {
   y: number
   width: number
   height: number
+  /** Optional per-artboard layer visibility. Undefined = all layers (legacy/default);
+   * [] = empty artboard; an ID list = only those layers. This does not clone
+   * editable layers or alter the document's global visibility flags. */
+  visibleLayerIds?: string[]
 }
 export const MAX_ARTBOARDS = 64
 
@@ -31,7 +35,9 @@ export function normalizeArtboards(input: unknown, width: number, height: number
     w = right - x; h = bottom - y
     if (w < 1 || h < 1) continue
     seen.add(a.id)
-    out.push({ id: a.id, name: a.name.trim().slice(0, 120), x, y, width: w, height: h })
+    const visibleLayerIds = normalizeArtboardLayerIds(a.visibleLayerIds)
+    out.push({ id: a.id, name: a.name.trim().slice(0, 120), x, y, width: w, height: h,
+      ...(visibleLayerIds === undefined ? {} : { visibleLayerIds }) })
   }
   return out
 }
@@ -95,4 +101,30 @@ export function scaleArtboards(
     const bottom = Math.round((a.y + a.height) * sy)
     return { ...a, x: left, y: top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) }
   }), newWidth, newHeight)
+}
+
+
+/** Null/invalid input means default/all; a deliberately empty array means none.
+ * IDs do not have to reference an existing layer: this enables safe import of
+ * documents with stale references without ever rendering an unrelated layer. */
+export function normalizeArtboardLayerIds(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined
+  if (!Array.isArray(value)) return undefined
+  const ids: string[] = []
+  const seen = new Set<string>()
+  for (const id of value.slice(0, 4096)) {
+    if (typeof id !== 'string' || !id || id.length > 100 || seen.has(id)) continue
+    ids.push(id); seen.add(id)
+  }
+  return ids
+}
+
+/** Preserve the document's z-order and layer metadata while selecting only
+ * page-specific content. This function must not mutate source layer objects. */
+export function layersForArtboard<T extends { id: string }>(
+  layers: readonly T[], artboard: Artboard,
+): T[] {
+  if (artboard.visibleLayerIds === undefined) return Array.from(layers)
+  const include = new Set(artboard.visibleLayerIds)
+  return layers.filter(layer => include.has(layer.id))
 }
