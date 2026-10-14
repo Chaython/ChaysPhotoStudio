@@ -60,6 +60,9 @@ jobs:
       - name: Validate local design templates and brand kits
         run: bun run design-library:validate
 
+      - name: Validate CSV-driven design merge and source isolation
+        run: bun run design-merge:validate
+
       - name: Validate ruler calibration and persistent-tool overlays
         run: bun scripts/validate-measure.ts
 
