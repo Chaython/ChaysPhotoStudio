@@ -117,7 +117,7 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
         </MenubarMenu>
       ))}
 
-      <input ref={layoutFile} type="file" accept=".json,.zlayout.json,application/json" className="hidden" aria-label="Import layout file"
+      <input ref={layoutFile} type="file" data-file-purpose="layout" accept=".json,.zlayout.json,application/json" className="hidden" aria-label="Import layout file"
         onChange={e => { void loadLayoutFile(e.target.files?.[0]); e.target.value = '' }} />
       <div className="ml-auto flex h-full items-center gap-0.5 pr-2 pl-2 border-l border-border/60">
         <button
