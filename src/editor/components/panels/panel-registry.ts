@@ -8,6 +8,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders, Wrench, Files, LayoutList, Tags,
 } from 'lucide-react'
+import type { PanelId } from '../../constants/panel-ids'
 import { Toolbar } from '../toolbar/toolbar'
 import { ToolOptionsBar } from '../toolbar/tool-options-bar'
 import { DocumentTabs } from '../workspace/document-tabs'
@@ -43,10 +44,7 @@ const PatternsPanel = deferredPanel(() => import('./patterns-panel').then(m => (
 const ToolPresetsPanel = deferredPanel(() => import('./tool-presets-panel').then(m => ({ default: m.ToolPresetsPanel })))
 const LayerCompsPanel = deferredPanel(() => import('./layer-comps-panel').then(m => ({ default: m.LayerCompsPanel })))
 
-export type PanelId =
-  | 'color' | 'layers' | 'channels' | 'history' | 'actions'
-  | 'adjustments' | 'properties' | 'metadata' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns' | 'tool-presets' | 'layer-comps'
-  | 'tools' | 'tool-options' | 'documents'
+export type { PanelId } from '../../constants/panel-ids'
 
 export interface PanelDef {
   id: PanelId

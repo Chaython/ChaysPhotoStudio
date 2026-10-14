@@ -498,6 +498,51 @@ def main():
                       "Resetting inspector tabs deleted a named layout")
                 check(not errors, f"inspector grouping caused uncaught JS errors: {errors[:3]}")
 
+            def photoshop_inspector_extra_panels_and_collapsed_routing():
+                _, page, errors = app_page(browser)
+                result = page.evaluate("""() => {
+                    const st = window.__zphotoStore.getState()
+                    st.setWorkspacePreset('photoshop')
+                    st.resetWorkspaceLayout()
+                    st.dockPanel('metadata', 'right')
+                    const added = window.__zphotoStore.getState().panels.photoshopInspector.lowerTabs.includes('metadata')
+                    st.movePhotoshopInspectorTab('metadata', 'upper', 'color')
+                    st.setPhotoshopInspector({collapsed:true})
+                    const inspector = window.__zphotoStore.getState().panels.photoshopInspector
+                    return { added, moved:inspector.upperTabs[0] === 'metadata' &&
+                        !inspector.lowerTabs.includes('metadata'), collapsed:inspector.collapsed }
+                }""")
+                check(all(result.values()), f"Failed to add external inspector panel: {result}")
+                page.get_by_role("button", name="Show Metadata panel").click()
+                check(store(page, "s.panels.photoshopInspector.upperTab") == "metadata",
+                      "collapsed inspector routed moved Metadata tab to the lower stack")
+                check(store(page, "s.panels.photoshopInspector.collapsed") is False,
+                      "collapsed inspector failed to expand")
+                page.evaluate("""() => {
+                    const st = window.__zphotoStore.getState()
+                    st.revealPanel('timeline')
+                    st.revealPanel('timeline')
+                    st.saveNamedLayout('Expanded Photoshop panels', 'panels')
+                    st.setWorkspacePreset('classic')
+                    st.setWorkspacePreset('photoshop')
+                }""")
+                check(store(page, "s.panels.photoshopInspector.lowerTabs.filter(id => id === 'timeline').length") == 1,
+                      "Window panel reveal duplicated a tab")
+                check(store(page, "s.panels.photoshopInspector.lowerTab") == "timeline",
+                      "Window panel reveal didn't select the extra inspector tab")
+                check(store(page, "s.panels.photoshopInspector.upperTabs[0]") == "metadata",
+                      "switching workspaces lost custom upper inspector order")
+                exported = store(page, "JSON.parse(s.exportNamedLayout('Expanded Photoshop panels')).panels.photoshopInspector")
+                check("metadata" in exported["upperTabs"] and "timeline" in exported["lowerTabs"],
+                      "named panel layout export lost additional inspector panels")
+                page.reload()
+                page.wait_for_function("() => !!window.__zphotoStore")
+                check(store(page, "s.panels.photoshopInspector.upperTabs[0]") == "metadata",
+                      "reloading lost extra inspector panel")
+                check(store(page, "s.panels.photoshopInspector.lowerTabs.includes('timeline')"),
+                      "reloading lost extra Timeline panel")
+                check(not errors, f"external inspector panel tests threw exceptions: {errors[:3]}")
+
             def named_layout_manager_safety():
                 _, page, errors = app_page(browser)
                 seed = page.evaluate("""() => {
@@ -876,6 +921,7 @@ def main():
                 ("workspace_layout_profiles", workspace_layout_profiles),
                 ("workspace_restore_precedence_and_inspector_sync", workspace_restore_precedence_and_inspector_sync),
                 ("photoshop_inspector_tab_group_layout", photoshop_inspector_tab_group_layout),
+                ("photoshop_inspector_extra_panels_and_collapsed_routing", photoshop_inspector_extra_panels_and_collapsed_routing),
                 ("named_layout_manager_safety", named_layout_manager_safety),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("color_sampler_info_panel", color_sampler_info_panel),
