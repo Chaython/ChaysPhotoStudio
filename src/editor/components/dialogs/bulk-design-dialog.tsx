@@ -39,6 +39,10 @@ export function BulkDesignDialog({ onClose }: DialogProps) {
   const unknown = placeholders.filter(n => !table?.columns.includes(n))
   const exportAll = async () => {
     if (!doc || !table || exporting || engine.activeDoc?.id !== documentId || unknown.length) return
+    if (doc.width * doc.height > 16_000_000) {
+      setError('Bulk export is limited to 16 megapixels per design; resize or duplicate the document first')
+      return
+    }
     setExporting(true); stop.current = false; setError('')
     let directory: any = null
     let count = 0
