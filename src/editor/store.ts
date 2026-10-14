@@ -44,6 +44,8 @@ export interface PanelRect {
 }
 
 /** Inspector grouping is part of the panel layout, not an unexportable UI preference. */
+export const PHOTOSHOP_INSPECTOR_UPPER_TABS = ['color', 'adjustments', 'properties', 'navigator', 'histogram'] as const
+
 export interface PhotoshopInspectorLayout {
   upperTab: string
   lowerTab: string
@@ -52,6 +54,15 @@ export interface PhotoshopInspectorLayout {
 }
 function defaultPhotoshopInspector(): PhotoshopInspectorLayout {
   return { upperTab: 'color', lowerTab: 'layers', upperPercent: 40, collapsed: false }
+}
+
+/** Dock actions and Window-menu navigation must update the same tab selections
+ *  saved by the inspector UI, otherwise returning to a stack reverts its tab. */
+function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: string, enabled: boolean): PhotoshopInspectorLayout {
+  if (!enabled || !tab) return current
+  return PHOTOSHOP_INSPECTOR_UPPER_TABS.some(id => id === tab)
+    ? { ...current, upperTab: tab, collapsed: false }
+    : { ...current, lowerTab: tab, collapsed: false }
 }
 function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
   const fallback = defaultPhotoshopInspector()
@@ -663,7 +674,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   timelineActiveFrame: 0,
   timelineLoop: true,
   timelineFrames: [],
-  panels: { ...defaultPanelState(), ...(loadPanelLayout() ?? readWorkspaceRecord(loadWorkspacePreset())?.panels ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
+  // Workspace-specific records are authoritative; the legacy global key is a
+  // migration fallback only and must never silently overwrite an edited workspace.
+  panels: { ...defaultPanelState(), ...(readWorkspaceRecord(loadWorkspacePreset())?.panels ?? loadPanelLayout() ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
   view: {
     // rulers ON by default for fresh users; anyone with persisted prefs
     // keeps their saved choice (the loader merges over these defaults)
@@ -836,10 +849,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   bump: () => set(s => ({ renderTick: s.renderTick + 1 })),
   setProgress: (p) => set({ progress: p }),
   setRightPanelTab: (tab) => set(s => {
-    const panels = { ...s.panels, rightTab: tab, photoshopInspector: {
-      ...s.panels.photoshopInspector,
-      collapsed: s.workspacePreset === 'photoshop' ? false : s.panels.photoshopInspector.collapsed,
-    } }
+    const panels = { ...s.panels, rightTab: tab, photoshopInspector:
+      withPhotoshopInspectorTab(s.panels.photoshopInspector, tab, s.workspacePreset === 'photoshop') }
     persistPanelLayout(panels)
     return { panels }
   }),
@@ -889,6 +900,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const panels = {
         ...s.panels,
         rightTab: eff === 'right' ? id : s.panels.rightTab,
+        photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop' && eff === 'right'),
         leftTab: eff === 'left' ? id : s.panels.leftTab,
         leftOpen: eff === 'left' ? true : s.panels.leftOpen,
         topOrder: eff === 'top' && !s.panels.topOrder.includes(id)
@@ -905,6 +917,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       floating,
       dockSide: { ...s.panels.dockSide, [id]: eff },
       rightTab: eff === 'right' ? id : s.panels.rightTab,
+      photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop' && eff === 'right'),
       leftTab: eff === 'left' ? id : s.panels.leftTab,
       leftOpen: eff === 'left' ? true : s.panels.leftOpen,
       topOrder: eff === 'top'
@@ -947,6 +960,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const panels = {
       ...s.panels,
       rightTab: side === 'right' ? id : s.panels.rightTab,
+      photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop' && side === 'right'),
       leftTab: side === 'left' ? id : s.panels.leftTab,
       leftOpen: side === 'left' ? true : s.panels.leftOpen,
     }
