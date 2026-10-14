@@ -120,6 +120,14 @@ const documentFake = {
     throw Error('Unexpected DOM element: ' + tag)
   },
 }
+const currentOverlay = (): FakeNode => {
+  if (!overlay) throw Error('Video overlay did not mount')
+  return overlay
+}
+const currentVideo = (): FakeVideo => {
+  if (!activeVideo) throw Error('Video element did not mount')
+  return activeVideo
+}
 Object.assign(globalThis, {
   document: documentFake,
   HTMLMediaElement: { HAVE_CURRENT_DATA: 2 },
@@ -132,28 +140,28 @@ movie.name = 'example.mp4'
 try {
   // The direct picker should wait for a real user selection.
   const direct = pickVideoFrame(movie)
-  assert.ok(overlay && !overlay.removed, 'picker shown')
+  assert.ok(!currentOverlay().removed, 'picker shown')
   const timeline = controls.get('[data-video-timeline]')!
   const importButton = controls.get('[data-video-import]')!
   assert.equal(timeline.disabled, false, 'timeline enabled when metadata loads')
   timeline.value = '12.25'
   timeline.dispatch('input')
   assert.equal(importButton.disabled, true, 'cannot capture a stale frame while seeking')
-  assert.equal(activeVideo?.currentTime, 12.25)
-  activeVideo!.completeSeek()
+  assert.equal(currentVideo().currentTime, 12.25)
+  currentVideo().completeSeek()
   assert.equal(importButton.disabled, false, 'selected frame ready for capture')
   importButton.dispatch('click')
   const selected = await direct as unknown as FakeCanvas
   assert.equal(selected.selectedTime, 12.25)
   assert.equal(selected.width, 640)
   assert.equal(selected.height, 360)
-  assert.equal(overlay!.removed, true)
+  assert.equal(currentOverlay().removed, true)
   assert.equal(revokedUrls.length, 1)
 
   // The legacy decoder must also open the picker, not pick a timestamp itself.
   const oldPath = decodeVideoFrame(movie)
   await new Promise(resolve => setTimeout(resolve, 0))
-  assert.ok(overlay && !overlay.removed)
+  assert.ok(!currentOverlay().removed)
   controls.get('[data-video-cancel]')!.dispatch('click')
   await assert.rejects(oldPath, error => error instanceof Error && error.name === 'AbortError')
   assert.equal(revokedUrls.length, 2)
@@ -166,12 +174,12 @@ try {
   }) as unknown as File
   const decoded = decodeFile(trapped)
   await new Promise(resolve => setTimeout(resolve, 0))
-  assert.ok(overlay && !overlay.removed)
-  assert.equal(activeVideo?.src, 'blob:local-video-test')
+  assert.ok(!currentOverlay().removed)
+  assert.equal(currentVideo().src, 'blob:local-video-test')
   const time = controls.get('[data-video-time]')!
   time.value = '6.5'
   time.dispatch('change')
-  activeVideo!.completeSeek()
+  currentVideo().completeSeek()
   controls.get('[data-video-import]')!.dispatch('click')
   const frame = await decoded
   assert.equal((frame.canvas as unknown as FakeCanvas).selectedTime, 6.5)
