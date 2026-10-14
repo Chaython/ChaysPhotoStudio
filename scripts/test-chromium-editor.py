@@ -413,6 +413,39 @@ def main():
                       "Classic reset incorrectly expanded Photoshop inspector")
                 check(not errors, f"workspace layout profiles threw exceptions: {errors[:3]}")
 
+            def workspace_restore_precedence_and_inspector_sync():
+                _, page, errors = app_page(browser)
+                result = page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setWorkspacePreset('photoshop')
+                    s.setDockWidth(385)
+                    s.setRightPanelTab('properties')
+                    const selectedUpper = window.__zphotoStore.getState().panels.photoshopInspector.upperTab === 'properties'
+                    s.dockPanel('channels', 'right')
+                    const selectedLower = window.__zphotoStore.getState().panels.photoshopInspector.lowerTab === 'channels'
+                    s.revealPanel('histogram')
+                    const revealedUpper = window.__zphotoStore.getState().panels.photoshopInspector.upperTab === 'histogram'
+                    const snapshot = JSON.parse(localStorage.getItem('zphoto-workspace-layouts-v1'))
+                    const recorded = snapshot.photoshop?.panels.dockWidth === 385
+                    // Mimic a stale legacy global value left by an older version.
+                    const legacy = JSON.parse(localStorage.getItem('zphoto-panel-layout'))
+                    legacy.dockWidth = 220
+                    legacy.rightTab = 'layers'
+                    localStorage.setItem('zphoto-panel-layout', JSON.stringify(legacy))
+                    return {selectedUpper, selectedLower, revealedUpper, recorded}
+                }""")
+                check(all(result.values()), f"Inspector navigation did not synchronize: {result}")
+                page.reload()
+                page.wait_for_function("() => !!window.__zphotoStore")
+                check(store(page, "s.workspacePreset") == "photoshop", "wrong workspace after reload")
+                check(store(page, "s.panels.dockWidth") == 385,
+                      "stale global panel layout overrode the active workspace's profile")
+                check(store(page, "s.panels.photoshopInspector.upperTab") == "histogram",
+                      "upper inspector tab was lost on reload")
+                check(store(page, "s.panels.photoshopInspector.lowerTab") == "channels",
+                      "lower inspector tab was lost on reload")
+                check(not errors, f"workspace snapshot reloading threw JS errors: {errors[:3]}")
+
             def editable_layer_context_menu():
                 _, page, errors = app_page(browser)
                 page.evaluate("""() => {
@@ -735,6 +768,7 @@ def main():
                 ("dock_context_move_float", context_float),
                 ("workspace_all_tools_dialog", workspace_and_dialog),
                 ("workspace_layout_profiles", workspace_layout_profiles),
+                ("workspace_restore_precedence_and_inspector_sync", workspace_restore_precedence_and_inspector_sync),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("color_sampler_info_panel", color_sampler_info_panel),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
