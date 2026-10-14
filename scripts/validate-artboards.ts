@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { MAX_ARTBOARDS, artboardCrop, gridArtboards, normalizeArtboards, scaleArtboards, translateArtboards } from '../src/editor/artboards'
+import { MAX_ARTBOARDS, artboardCrop, gridArtboards, layersForArtboard, normalizeArtboardLayerIds, normalizeArtboards, scaleArtboards, translateArtboards } from '../src/editor/artboards'
 
 const first = { id: 'a', name: ' Page A ', x: 1, y: 2, width: 20, height: 10 }
 assert.deepEqual(normalizeArtboards([first], 100, 80), [{ ...first, name: 'Page A' }])
@@ -40,4 +40,22 @@ const resized = scaleArtboards(gridArtboards(101, 71, 2, 1, (() => { let i=0;ret
 assert.deepEqual(resized.map(a => [a.x, a.width, a.height]), [[0, 100, 142], [100, 102, 142]])
 assert.equal(scaleArtboards([first], 100, 80, 0, 40).length, 0)
 
-console.log('Artboard geometry, grids, project normalization and crop safety validated')
+const layers = [{ id: 'bottom', name: 'Background' }, { id: 'middle' }, { id: 'top' }]
+const defaultBoard = { ...first, visibleLayerIds: undefined }
+assert.deepEqual(layersForArtboard(layers, defaultBoard), layers)
+assert.notEqual(layersForArtboard(layers, defaultBoard), layers, 'returned layer array is detached')
+assert.deepEqual(layersForArtboard(layers, { ...first, visibleLayerIds: [] }), [])
+assert.deepEqual(layersForArtboard(layers, { ...first, visibleLayerIds: ['top', 'bottom'] }).map(l => l.id), ['bottom','top'],
+  'filtered layers must retain original compositing stack order')
+assert.deepEqual(normalizeArtboardLayerIds(['top','top','missing',12,'']), ['top','missing'])
+assert.equal(normalizeArtboardLayerIds('top'), undefined)
+const explicitlyEmpty = normalizeArtboards([{ ...first, visibleLayerIds: [] }], 100, 80)
+assert.deepEqual(explicitlyEmpty[0].visibleLayerIds, [], 'empty means blank, not default-all')
+const legacy = normalizeArtboards([first], 100, 80)
+assert.equal(legacy[0].visibleLayerIds, undefined, 'legacy projects must export all layers')
+const scoped = normalizeArtboards([{ ...first, visibleLayerIds: ['top', 'middle'] }], 100, 80)
+assert.deepEqual(scoped[0].visibleLayerIds, ['top','middle'])
+assert.deepEqual(scaleArtboards(scoped, 100, 80, 200, 160)[0].visibleLayerIds, ['top','middle'])
+assert.deepEqual(translateArtboards(scoped, 100, 80, 2, 1, 105, 85)[0].visibleLayerIds, ['top','middle'])
+
+console.log('Artboard geometry, grids, per-artboard layers and crop safety validated')
