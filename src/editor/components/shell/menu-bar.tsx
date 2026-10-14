@@ -151,7 +151,7 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
               <LayoutGrid size={13} /><span className="hidden 2xl:inline">{workspacePreset === 'photoshop' ? 'Photoshop-style' : 'Classic'}</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="bottom" align="end" className="min-w-52">
+          <DropdownMenuContent side="bottom" align="end" className="w-72 max-w-[calc(100vw-1rem)]">
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace template</div>
             <DropdownMenuItem onClick={() => setWorkspacePreset('photoshop')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Photoshop-style</span>{workspacePreset === 'photoshop' && <Check size={13} />}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => setWorkspacePreset('classic')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Classic / custom</span>{workspacePreset === 'classic' && <Check size={13} />}</DropdownMenuItem>
@@ -168,9 +168,12 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             </div>
             <DropdownMenuItem disabled={!layoutName.trim()} onSelect={e => {
               e.preventDefault()
-              try { saveNamedLayout(layoutName, layoutKind); pushToast('Layout saved', 'success') }
-              catch (error) { pushToast(String(error), 'error') }
-            }} className="gap-2 text-xs"><Save size={13} /> Save named layout</DropdownMenuItem>
+              try {
+                saveNamedLayout(layoutName, layoutKind)
+                pushToast('Layout ' + (savedLayouts.some(x => x.name === layoutName.trim()) ? 'updated' : 'saved'), 'success')
+              } catch (error) { pushToast(String(error), 'error') }
+            }} className="gap-2 text-xs"><Save size={13} /> {savedLayouts.some(x => x.name === layoutName.trim()) ? 'Update existing layout' : 'Save named layout'}</DropdownMenuItem>
+            <div className="max-h-52 overflow-y-auto zphoto-scroll" role="group" aria-label="Saved layouts">
             {savedLayouts.map(layout => (
               <div key={layout.name} className="flex items-center px-1 hover:bg-accent">
                 <button type="button" className="min-w-0 flex-1 truncate text-left px-2 py-1.5 text-xs"
@@ -184,6 +187,7 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
                   onClick={() => deleteNamedLayout(layout.name)}><Trash2 size={12} /></button>
               </div>
             ))}
+            </div>
             <DropdownMenuItem onSelect={e => { e.preventDefault(); layoutFile.current?.click() }}
               className="gap-2 text-xs"><Upload size={13}/> Import layout JSON</DropdownMenuItem>
 
