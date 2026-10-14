@@ -126,7 +126,7 @@ export function parseBrandKitFile(raw: unknown): BrandKit {
   return normalizeBrandKit((raw as BrandKitFile).kit)
 }
 export function safeDesignFilename(value: string): string {
-  return clean(value, 90).replace(/[\\/:*?"<>|]/g, '-').replace(/^\.+/, '').replace(/\s+/g, '-') || 'Design'
+  return clean(value, 90).replace(/[\\/:*?"<>|]/g, '-').replace(/^[.-]+/, '').replace(/\s+/g, '-') || 'Design'
 }
 
 type StoreName = 'templates' | 'brand-kits'
