@@ -7,7 +7,7 @@ import { useEditorStore } from '../store'
 import { createCanvas, ctx2d, getImageData, getMaskAlpha, putImageData } from '../utils/canvas'
 import { getFlatComposite, invalidateFlat } from '../engine/document'
 import { getPluginWorkerURL } from './plugin-worker'
-import { analyzeUxpCompatibility, uxpManifestToPlugin } from './compatibility'
+import { analyzePluginCompatibility, analyzeUxpCompatibility, detectPluginSourceFormat, uxpManifestToPlugin } from './compatibility'
 import { runNativeGegl, runNativeGmic } from './native-host'
 import type { StoredPlugin, PluginManifest, PluginCommand, PluginPermission, PluginSourceFormat } from './plugin-types'
 
@@ -516,6 +516,7 @@ export function parsePluginSource(text: string, fallbackName: string): StoredPlu
     const m = text.match(/\/\*\s*@zphoto\s+(\{[\s\S]*?\})\s*\*\//)
     if (m) { try { manifest = JSON.parse(m[1]) } catch { /* bad header json */ } }
   }
+  const declaredManifest = manifest
   if (!manifest) {
     manifest = {
       id: 'user-' + fallbackName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
@@ -526,12 +527,24 @@ export function parsePluginSource(text: string, fallbackName: string): StoredPlu
   if (!manifest.id) manifest.id = 'user-' + Date.now().toString(36)
   if (!manifest.name) manifest.name = manifest.id
   if (!manifest.permissions) manifest.permissions = LEGACY_PERMS
-  return { manifest, code, enabled: true, commands: [], sourceFormat: 'zphoto', grantedPermissions: manifest.permissions }
+  const sourceFormat = detectPluginSourceFormat(code, fallbackName, declaredManifest ?? undefined)
+  const isExecutable = sourceFormat === 'zphoto' || sourceFormat === 'uxp' || sourceFormat === 'photoshop' || sourceFormat === 'photoshop-uxp'
+  return {
+    manifest,
+    code,
+    enabled: isExecutable,
+    commands: [],
+    sourceFormat,
+    compatibility: analyzePluginCompatibility(code, fallbackName, manifest),
+    grantedPermissions: manifest.permissions,
+  }
 }
 
 function postDiscover(p: StoredPlugin) {
+  const format = p.sourceFormat ?? 'zphoto'
+  if (!(format === 'zphoto' || format === 'uxp' || format === 'photoshop' || format === 'photoshop-uxp')) return
   const w = ensureWorker()
-  if (w) w.postMessage({ kind: 'run', pluginId: p.manifest.id, commandId: null, code: p.code, format: p.sourceFormat ?? 'zphoto' })
+  if (w) w.postMessage({ kind: 'run', pluginId: p.manifest.id, commandId: null, code: p.code, format })
 }
 
 export const pluginManager = {
@@ -547,7 +560,10 @@ export const pluginManager = {
       sourceFormat: opts?.sourceFormat ?? 'zphoto', compatibility: opts?.compatibility,
       grantedPermissions: manifest.permissions ?? LEGACY_PERMS,
     }
-    plugins.push(plugin); save(); notify(); postDiscover(plugin)
+    const executableFormat = plugin.sourceFormat === 'zphoto' || plugin.sourceFormat === 'uxp' || plugin.sourceFormat === 'photoshop' || plugin.sourceFormat === 'photoshop-uxp'
+    if (executableFormat) plugin.enabled = true
+    else plugin.enabled = false
+    plugins.push(plugin); save(); notify(); if (plugin.enabled) postDiscover(plugin)
     return plugin
   },
 
@@ -568,13 +584,28 @@ export const pluginManager = {
     return pluginManager.install(candidate.manifest, candidate.code, { sourceFormat: 'uxp', compatibility: candidate.compatibility ?? analyzeUxpCompatibility(manifest, code) })
   },
 
-  async setEnabled(id: string, enabled: boolean): Promise<void> { const p = plugins.find(p => p.manifest.id === id); if (p) { p.enabled = enabled; save(); notify() } },
+  async setEnabled(id: string, enabled: boolean): Promise<void> {
+    const p = plugins.find(p => p.manifest.id === id)
+    if (!p) return
+    const format = p.sourceFormat ?? 'zphoto'
+    if (enabled && !(format === 'zphoto' || format === 'uxp' || format === 'photoshop' || format === 'photoshop-uxp')) {
+      throw new Error(`"${p.manifest.name}" is a compatibility-only ${format} source and cannot run in the editor runtime`)
+    }
+    p.enabled = enabled
+    save()
+    notify()
+  },
   async setPermissions(id: string, permissions: PluginPermission[]): Promise<void> { const p = plugins.find(p => p.manifest.id === id); if (p) { p.grantedPermissions = [...new Set(permissions)]; save(); notify() } },
   async uninstall(id: string): Promise<void> { plugins = plugins.filter(p => p.manifest.id !== id); try { localStorage.removeItem(PLUGIN_DATA_PREFIX + id) } catch {} save(); notify() },
 
   async runCommand(pluginId: string, commandId: string | null): Promise<void> {
     const p = plugins.find(p => p.manifest.id === pluginId)
     if (!p || !p.enabled) return
+    const sourceFormat = p.sourceFormat ?? 'zphoto'
+    if (!(sourceFormat === 'zphoto' || sourceFormat === 'uxp' || sourceFormat === 'photoshop' || sourceFormat === 'photoshop-uxp')) {
+      useEditorStore.getState().pushToast(`"${p.manifest.name}" is a compatibility-only ${sourceFormat} plugin and cannot run in the editor runtime`, 'error')
+      return
+    }
     const doc = engine.activeDoc, layer = engine.activeLayer
     if (!doc || !layer) { useEditorStore.getState().pushToast('Open a document with an active layer first', 'error'); return }
     if (layer.kind === 'adjustment') { useEditorStore.getState().pushToast('Plugin needs a pixel-capable layer', 'error'); return }
