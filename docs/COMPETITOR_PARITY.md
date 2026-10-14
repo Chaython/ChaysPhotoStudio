@@ -2,7 +2,7 @@
 
 **Audit baseline:** Chay's Photo Studio **main** (14 October 2026). This is a source-code/documentation audit, **not** a guarantee of runtime parity or an automated end-to-end comparison. It complements the [52-tool Photoshop-oriented audit](../TOOL_PARITY.md) and the [format-specific limitations](FEATURES_AND_FORMATS.md).
 
-**Compared products:** Adobe Photoshop (desktop), **GIMP 3.2**, **Adobe Fireworks CS6** (legacy/discontinued), and Adobe Illustrator (desktop). Fireworks is compared against CS6, not a current Adobe release. Competitor columns identify whether each product has that *kind* of workflow; they do **not** imply compatible file formats or identical semantics.
+**Compared products:** Adobe Photoshop (desktop), **GIMP 3.2**, **Adobe Fireworks CS6** (legacy/discontinued), Adobe Illustrator (desktop), and **PhotoCraft** (the `storytold/photocraft` open-source Photoshop-targeting editor). Fireworks is compared against CS6, not a current Adobe release. Competitor columns identify whether each product has that *kind* of workflow; they do **not** imply compatible file formats or identical semantics.
 
 ## Legend
 
@@ -27,6 +27,28 @@ The following workflows are still **absent** rather than merely incomplete; prio
 | **Native ICC-managed CMYK/spot separations** | Illustrator, Photoshop | Editable press-color documents rather than approximate RGB previews |
 
 **No longer entirely missing:** basic rectangular **web slices and hotspots** now have a dedicated File-menu editor, native-project persistence and standalone HTML/image-map export. This remains **partial Fireworks parity**, not native Fireworks project support.
+
+
+## PhotoCraft comparison — missing and partial workflow focus
+
+**Reference:** [PhotoCraft](https://github.com/storytold/photocraft) and its published [capability assessment](https://github.com/storytold/photocraft/blob/main/docs/target-app-parity.md), [gaps](https://github.com/storytold/photocraft/blob/main/docs/gaps.md), and [UI audit](https://github.com/storytold/photocraft/blob/main/docs/ui-parity.md), inspected 14 October 2026. PhotoCraft's `0.6.0` reference materials describe **alpha**, not complete Photoshop equivalence. Different stacks (PhotoCraft native Rust/egui, Studio web/Electron) mean the same UI name is not proof of identical behavior.
+
+| Workflow / gap | Studio | PhotoCraft | Action to reach parity |
+|---|:---:|:---:|---|
+| Photoshop-like desktop workspace, tool rail, menus, document tabs | ◐ | ◐ | **Studio:** interactive Essentials inspector and dense toolbar; **still not pixel-identical** to current Photoshop. Verify placements, scaling, keyboard and docking on real desktop displays. |
+| Flexible panels: float, dock, tab groups and layout persistence | ◐ | ◐ | **Studio:** eight dock locations, individual floating panels, content-fit sizing and persisted layouts; Photoshop preset has two inspector stacks and collapsible icon rail. **Missing:** full drag-and-merge arbitrary panel tab groups, dedicated workspace locking, configurable multiple inspector columns. |
+| Color, adjustments, properties, layers and history inspector stacks | ✓ | ◐ | Studio renders real panels in a two-stack Photoshop layout, not placeholders. PhotoCraft documents incomplete Color panel and floating-panel grouping; neither is a Photoshop-equivalent guarantee. |
+| Brush responsiveness / pen pressure and feel | ◐ | ◐ | Studio should run large brush pressure/tilt, spacing and latency benchmarks; PhotoCraft also documents brush lag and feel gaps. |
+| PSD/PSB deep, editable interchange with Photoshop | ◐ | ◐ | Both can open/edit meaningful PSD structures but **neither establishes universal Photoshop round trips**. Add a shared oracle corpus with Photoshop-authored fixtures, Smart Objects, type, CMYK, adjustment and complex masks; never conflate file opening with object fidelity. |
+| Artboards within one document | — | ✓ | **Studio missing:** editable multi-artboard/page model and independently managed per-artboard exports. PhotoCraft documents working artboards. |
+| Native Photoshop Actions `.atn` import/export | ◐ | ◐ | Studio has its own recording and replay, but Photoshop binary action interchange is not demonstrated here. PhotoCraft reports mapped `.atn` actions; the mapping is not exhaustive. |
+| Camera Raw and lens corrections | ◐ | ◐ | Studio has RAW development and lens work but not verified full camera-model/codec coverage; PhotoCraft also records Camera Raw depth gaps. |
+| CMYK/Lab/ICC color-managed editing | ◐ | ◐ | Studio's editing pipeline remains primarily RGB; PhotoCraft has CMYK/Lab infrastructure, but its published Photoshop oracle still identifies color/adjustment discrepancies. |
+| Select and Mask, Content-Aware Fill and Vanishing Point workspaces | ◐ | ◐ | Studio must distinguish dedicated interactive workspaces from a set of tool dialogs. PhotoCraft likewise records parameter-dialog versus workspace gaps. |
+| Photoshop UXP and native binary plug-ins | ◐ | — | Studio's limited compatibility bridge is not full UXP/.8BF. PhotoCraft documents no native .8BF or UXP host. |
+| Multi-page Fireworks design / Illustrator Shape Builder / editable vector tracing | — / ◐ | ? | These are **Studio gaps** from the matrix below; PhotoCraft's Photoshop-oriented audit is not evidence of equivalent Fireworks/Illustrator behavior. Test before scoring. |
+
+Here **?** means unverified from PhotoCraft's referenced audit; ratings are qualitative rather than percentages. Items labelled ◐ can be usable, but need representative round-trip or interaction tests. Studio's Photoshop workspace only changes interface organization; it does **not** import Photoshop code or imply feature equivalence.
 
 ## Implemented, partial and missing compared with other editors
 
