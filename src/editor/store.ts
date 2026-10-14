@@ -430,7 +430,11 @@ function readSavedLayouts(): SavedWorkspaceLayout[] {
   } catch { return [] }
 }
 function saveNamedLayouts(layouts: SavedWorkspaceLayout[]) {
-  try { localStorage.setItem(SAVED_LAYOUTS_KEY, JSON.stringify(layouts)) } catch { /* storage unavailable */ }
+  // A save/export manager must never tell the user an operation succeeded if
+  // private browsing, quota limits, or disabled storage rejected the write.
+  if (layouts.length > 100) throw Error('Maximum 100 saved layouts; remove an unused layout before adding another')
+  try { localStorage.setItem(SAVED_LAYOUTS_KEY, JSON.stringify(layouts)) }
+  catch { throw Error('Unable to save layouts to browser storage. Check available space and storage permissions, or export a backup.') }
 }
 function clonePanelLayout(panels: EditorStore['panels']): EditorStore['panels'] {
   return { ...panels, floating: { ...panels.floating }, dockSide: { ...panels.dockSide },
@@ -502,6 +506,7 @@ interface EditorStore {
   savedLayouts: SavedWorkspaceLayout[]
   saveNamedLayout(name: string, kind: SavedLayoutKind): void
   applyNamedLayout(name: string): void
+  renameNamedLayout(oldName: string, newName: string): void
   deleteNamedLayout(name: string): void
   importNamedLayout(json: string): string
   exportNamedLayout(name: string): string
@@ -735,6 +740,17 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         section.kind === 'single' ? { ...section } : { ...section, tools: [...section.tools] }) } : {}),
     }
     const savedLayouts = [...s.savedLayouts.filter(x => x.name !== cleanName), layout]
+    saveNamedLayouts(savedLayouts)
+    return { savedLayouts }
+  }),
+  renameNamedLayout: (oldName, newName) => set(s => {
+    const cleanName = newName.trim()
+    if (!cleanName || cleanName.length > 100) throw Error('Layout name must be 1–100 characters')
+    const current = s.savedLayouts.find(x => x.name === oldName)
+    if (!current) throw Error('Layout not found')
+    if (cleanName === oldName) return {}
+    if (s.savedLayouts.some(x => x.name === cleanName)) throw Error('A layout already uses that name')
+    const savedLayouts = s.savedLayouts.map(x => x.name === oldName ? { ...x, name: cleanName } : x)
     saveNamedLayouts(savedLayouts)
     return { savedLayouts }
   }),
