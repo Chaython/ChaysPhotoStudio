@@ -51,6 +51,8 @@ class FakeNode {
     for (const listener of this.listeners.get(name) ?? []) listener(event)
   }
   setAttribute(_name: string, _value: string) {}
+  getAttribute(_name: string) { return null }
+  getClientRects() { return [{ width: 1, height: 1 }] }
   removeAttribute(name: string) { if (name === 'src') this.src = '' }
   focus() { documentFake.activeElement = this }
   remove() { this.removed = true; this.isConnected = false }
@@ -187,13 +189,31 @@ try {
   assert.equal(documentFake.activeElement, previousFocus, 'original keyboard focus must be restored')
   assert.equal(revokedUrls.length, 1)
 
+  // Frame-rate selects must participate in the modal keyboard focus cycle.
+  const keyboardImport = pickVideoFrame(movie)
+  const keyboardOverlay = currentOverlay()
+  const focusables = [...controls.values()]
+  const fpsControl = controls.get('[data-video-fps]')!
+  assert.ok(focusables.includes(fpsControl))
+  fpsControl.focus()
+  keyboardOverlay.dispatch('keydown', { key: 'Tab', shiftKey: true })
+  assert.notEqual(documentFake.activeElement, previousFocus, 'Tab must not escape the picker')
+  focusables[focusables.length - 1].focus()
+  keyboardOverlay.dispatch('keydown', { key: 'Tab', shiftKey: false })
+  assert.equal(documentFake.activeElement, focusables[0], 'forward Tab wraps to first control')
+  focusables[0].focus()
+  keyboardOverlay.dispatch('keydown', { key: 'Tab', shiftKey: true })
+  assert.equal(documentFake.activeElement, focusables[focusables.length - 1], 'reverse Tab wraps to last control')
+  controls.get('[data-video-cancel]')!.dispatch('click')
+  await assert.rejects(keyboardImport, error => error instanceof Error && error.name === 'AbortError')
+
   // The legacy decoder must also open the picker, not pick a timestamp itself.
   const oldPath = decodeVideoFrame(movie)
   await new Promise(resolve => setTimeout(resolve, 0))
   assert.ok(!currentOverlay().removed)
   controls.get('[data-video-cancel]')!.dispatch('click')
   await assert.rejects(oldPath, error => error instanceof Error && error.name === 'AbortError')
-  assert.equal(revokedUrls.length, 2)
+  assert.equal(revokedUrls.length, 3)
 
   // The public decoder must route early, before requesting the video's bytes.
   const { decodeFile } = await import('../src/editor/formats/index')
@@ -214,7 +234,7 @@ try {
   assert.equal((frame.canvas as unknown as FakeCanvas).selectedTime, 6.5)
   assert.equal(frame.width, 640)
   assert.equal(frame.height, 360)
-  assert.equal(revokedUrls.length, 3)
+  assert.equal(revokedUrls.length, 4)
 
   // A codec error can race with a late metadata event. Controls must stay
   // disabled rather than accepting a broken/stale frame.
@@ -230,7 +250,7 @@ try {
       'media controls cannot revive after decoding failed: ' + name)
   controls.get('[data-video-cancel]')!.dispatch('click')
   await assert.rejects(failedImport, (error: unknown) => error instanceof Error && error.name === 'AbortError')
-  assert.equal(revokedUrls.length, 4)
+  assert.equal(revokedUrls.length, 5)
 } finally {
   URL.createObjectURL = realCreate
   URL.revokeObjectURL = realRevoke
