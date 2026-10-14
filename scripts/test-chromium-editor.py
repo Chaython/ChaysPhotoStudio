@@ -446,6 +446,54 @@ def main():
                       "lower inspector tab was lost on reload")
                 check(not errors, f"workspace snapshot reloading threw JS errors: {errors[:3]}")
 
+            def photoshop_inspector_tab_group_layout():
+                _, page, errors = app_page(browser)
+                page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setWorkspacePreset('photoshop')
+                    s.movePhotoshopInspectorTab('history', 'upper', 'adjustments')
+                }""")
+                check(store(page, "s.panels.photoshopInspector.upperTabs.slice(0,3).join(',')") ==
+                      "color,history,adjustments", "store failed to reorder inspector tabs")
+                check(not store(page, "s.panels.photoshopInspector.lowerTabs.includes('history')"),
+                      "moving a tab copied it instead of moving it")
+                # Real Chromium HTML drag-and-drop must update the live tab groups.
+                page.locator('[data-inspector-tab="channels"]').drag_to(
+                    page.locator('[data-inspector-tab="color"]'))
+                check(store(page, "s.panels.photoshopInspector.upperTabs[0]") == "channels",
+                      "pointer drag failed to move Channels into the upper inspector")
+                check(not store(page, "s.panels.photoshopInspector.lowerTabs.includes('channels')"),
+                      "pointer drag duplicated Channels between stacks")
+                # Keyboard users can move tabs back without a drag.
+                page.locator('[data-inspector-tab="channels"]').focus()
+                page.keyboard.press("Alt+ArrowDown")
+                check(store(page, "s.panels.photoshopInspector.lowerTabs.includes('channels')"),
+                      "Alt+Down failed to move inspector tab to lower stack")
+                page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.saveNamedLayout('Custom inspector tabs', 'panels')
+                    s.setWorkspacePreset('classic')
+                    s.setWorkspacePreset('photoshop')
+                }""")
+                check(store(page, "s.panels.photoshopInspector.upperTabs.includes('history')"),
+                      "workspace switch lost moved inspector tabs")
+                page.reload()
+                page.wait_for_function("() => !!window.__zphotoStore")
+                check(store(page, "s.panels.photoshopInspector.upperTabs.includes('history')"),
+                      "reload forgot custom inspector tab grouping")
+                check(store(page, "s.panels.photoshopInspector.lowerTabs.includes('channels')"),
+                      "reload forgot keyboard-moved inspector tab")
+                saved = store(page, "JSON.parse(s.exportNamedLayout('Custom inspector tabs')).panels.photoshopInspector")
+                check("history" in saved["upperTabs"] and "channels" in saved["lowerTabs"],
+                      "export omitted inspector tab groups")
+                page.get_by_role("button", name="Reset Photoshop inspector tab groups").click()
+                check(store(page, "s.panels.photoshopInspector.upperTabs") ==
+                      ["color", "adjustments", "properties", "navigator", "histogram"],
+                      "Reset inspector tab groups did not restore Photoshop defaults")
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Custom inspector tabs')"),
+                      "Resetting inspector tabs deleted a named layout")
+                check(not errors, f"inspector grouping caused uncaught JS errors: {errors[:3]}")
+
             def named_layout_manager_safety():
                 _, page, errors = app_page(browser)
                 seed = page.evaluate("""() => {
@@ -823,6 +871,7 @@ def main():
                 ("workspace_all_tools_dialog", workspace_and_dialog),
                 ("workspace_layout_profiles", workspace_layout_profiles),
                 ("workspace_restore_precedence_and_inspector_sync", workspace_restore_precedence_and_inspector_sync),
+                ("photoshop_inspector_tab_group_layout", photoshop_inspector_tab_group_layout),
                 ("named_layout_manager_safety", named_layout_manager_safety),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("color_sampler_info_panel", color_sampler_info_panel),
