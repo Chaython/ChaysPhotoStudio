@@ -51,6 +51,9 @@ jobs:
       - name: Validate all editor tools
         run: bun run tools:validate
 
+      - name: Validate web slices, hotspots and safe HTML image maps
+        run: bun run web-assets:validate
+
       - name: Validate ruler calibration and persistent-tool overlays
         run: bun scripts/validate-measure.ts
 
