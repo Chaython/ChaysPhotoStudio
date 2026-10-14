@@ -46,7 +46,8 @@ export interface PanelRect {
 // ---- floating panel layout persistence ---------------------------------------
 const PANEL_LAYOUT_KEY = 'zphoto-panel-layout'
 const WORKSPACE_PRESET_KEY = 'zphoto-workspace-preset'
-const CLASSIC_LAYOUT_BACKUP_KEY = 'zphoto-classic-layout-backup'
+const WORKSPACE_LAYOUTS_KEY = 'zphoto-workspace-layouts-v1'
+const SAVED_LAYOUTS_KEY = 'zphoto-saved-layouts-v1'
 export type WorkspacePreset = 'classic' | 'photoshop'
 
 function loadWorkspacePreset(): WorkspacePreset {
@@ -303,6 +304,65 @@ function persistToolbarLayout(sections: ToolbarSection[] | null) {
   } catch { /* noop */ }
 }
 
+export type SavedLayoutKind = 'tools' | 'panels' | 'both'
+export interface SavedWorkspaceLayout {
+  version: 1
+  name: string
+  kind: SavedLayoutKind
+  panels?: EditorStore['panels']
+  toolbar?: ToolbarSection[] | null
+}
+function readWorkspaceRecord(preset: WorkspacePreset): { panels: ReturnType<typeof loadPanelLayout>; toolbar: ToolbarSection[] | null } | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const all = JSON.parse(localStorage.getItem(WORKSPACE_LAYOUTS_KEY) || '{}')
+    const data = all?.[preset]
+    if (!data || typeof data !== 'object') return null
+    return {
+      panels: typeof data.panels === 'object' && data.panels !== null
+        ? loadPanelLayout(JSON.stringify(data.panels)) : null,
+      toolbar: Array.isArray(data.toolbar) && data.toolbar.length ? sanitizeToolbarLayout(data.toolbar) : null,
+    }
+  } catch { return null }
+}
+function saveWorkspaceRecord(preset: WorkspacePreset, panels: EditorStore['panels'], toolbar: ToolbarSection[] | null) {
+  try {
+    const all = JSON.parse(localStorage.getItem(WORKSPACE_LAYOUTS_KEY) || '{}')
+    all[preset] = { panels, toolbar }
+    localStorage.setItem(WORKSPACE_LAYOUTS_KEY, JSON.stringify(all))
+  } catch { /* private browsing can block persistence */ }
+}
+function readSavedLayouts(): SavedWorkspaceLayout[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVED_LAYOUTS_KEY) || '[]')
+    return Array.isArray(saved) ? saved.filter((x: any) => x?.version === 1 && typeof x.name === 'string') : []
+  } catch { return [] }
+}
+function saveNamedLayouts(layouts: SavedWorkspaceLayout[]) {
+  try { localStorage.setItem(SAVED_LAYOUTS_KEY, JSON.stringify(layouts)) } catch { /* storage unavailable */ }
+}
+function clonePanelLayout(panels: EditorStore['panels']): EditorStore['panels'] {
+  return { ...panels, floating: { ...panels.floating }, dockSide: { ...panels.dockSide },
+    topOrder: [...panels.topOrder], dockHeights: { ...panels.dockHeights } }
+}
+function validateLayoutImport(value: unknown): SavedWorkspaceLayout {
+  if (!value || typeof value !== 'object') throw Error('Not a workspace layout')
+  const raw = value as Record<string, any>
+  if (raw.version !== 1 || typeof raw.name !== 'string' || !raw.name.trim() || raw.name.length > 100 ||
+      !['tools', 'panels', 'both'].includes(raw.kind)) throw Error('Unsupported layout format')
+  if (raw.kind !== 'tools' && (!raw.panels || typeof raw.panels !== 'object' || Array.isArray(raw.panels)))
+    throw Error('Missing panel layout')
+  if (raw.kind !== 'panels' && raw.toolbar !== null && !Array.isArray(raw.toolbar))
+    throw Error('Invalid tool layout')
+  const panels = raw.kind === 'tools' ? undefined : loadPanelLayout(JSON.stringify(raw.panels))
+  if (raw.kind !== 'tools' && !panels) throw Error('Invalid panel layout')
+  const toolbar = raw.kind === 'panels' ? undefined :
+    raw.toolbar === null ? null : sanitizeToolbarLayout(raw.toolbar)
+  return { version: 1, name: raw.name.trim(), kind: raw.kind,
+    ...(panels ? { panels: { ...defaultPanelState(), ...panels } } : {}),
+    ...(raw.kind !== 'panels' ? { toolbar } : {}) }
+}
+
 function defaultPanelState(): EditorStore['panels'] {
   return {
     rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
@@ -327,6 +387,12 @@ function photoshopPanelState(current: EditorStore['panels']): EditorStore['panel
 interface EditorStore {
   workspacePreset: WorkspacePreset
   setWorkspacePreset(preset: WorkspacePreset): void
+  savedLayouts: SavedWorkspaceLayout[]
+  saveNamedLayout(name: string, kind: SavedLayoutKind): void
+  applyNamedLayout(name: string): void
+  deleteNamedLayout(name: string): void
+  importNamedLayout(json: string): string
+  exportNamedLayout(name: string): string
   activeTool: ToolId
   toolOptions: Record<string, Record<string, any>>
   fgColor: string
@@ -494,7 +560,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   timelineActiveFrame: 0,
   timelineLoop: true,
   timelineFrames: [],
-  panels: { ...defaultPanelState(), ...(loadPanelLayout() ?? {}) },
+  panels: { ...defaultPanelState(), ...(readWorkspaceRecord(loadWorkspacePreset())?.panels ?? loadPanelLayout() ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
   view: {
     // rulers ON by default for fresh users; anyone with persisted prefs
     // keeps their saved choice (the loader merges over these defaults)
@@ -514,29 +580,65 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       : {}),
   },
   shortcutOverrides: loadShortcutOverrides(),
-  toolbarLayout: loadToolbarLayout(),
+  toolbarLayout: readWorkspaceRecord(loadWorkspacePreset())?.toolbar ?? loadToolbarLayout(),
+  savedLayouts: readSavedLayouts(),
 
   setWorkspacePreset: (preset) => set(s => {
     if (preset === s.workspacePreset) return {}
-    let panels: EditorStore['panels']
-    if (preset === 'photoshop') {
-      // Snapshot the user's existing dock and floating layout, so the original
-      // workspace can be restored after experimenting with the preset.
-      try { localStorage.setItem(CLASSIC_LAYOUT_BACKUP_KEY, JSON.stringify(s.panels)) } catch { /* storage blocked */ }
-      panels = photoshopPanelState(s.panels)
-    } else {
-      let previous: ReturnType<typeof loadPanelLayout> = null
-      try {
-        const raw = localStorage.getItem(CLASSIC_LAYOUT_BACKUP_KEY)
-        if (raw) previous = loadPanelLayout(raw)
-        localStorage.removeItem(CLASSIC_LAYOUT_BACKUP_KEY)
-      } catch { /* storage blocked */ }
-      panels = { ...defaultPanelState(), ...(previous ?? {}) }
-    }
-    try { localStorage.setItem(WORKSPACE_PRESET_KEY, preset) } catch { /* storage blocked */ }
+    // A template is applied on first entry only. Subsequent visits restore the
+    // independent, last-edited panel and toolbar layouts of this workspace.
+    saveWorkspaceRecord(s.workspacePreset, s.panels, s.toolbarLayout)
+    const previous = readWorkspaceRecord(preset)
+    const panels = previous?.panels
+      ? { ...defaultPanelState(), ...previous.panels }
+      : preset === 'photoshop' ? photoshopPanelState(defaultPanelState()) : defaultPanelState()
+    const toolbarLayout = previous ? previous.toolbar : null
+    try { localStorage.setItem(WORKSPACE_PRESET_KEY, preset) } catch { /* noop */ }
     persistPanelLayout(panels)
-    return { workspacePreset: preset, panels }
+    persistToolbarLayout(toolbarLayout)
+    return { workspacePreset: preset, panels, toolbarLayout }
   }),
+  saveNamedLayout: (name, kind) => set(s => {
+    const cleanName = name.trim()
+    if (!cleanName || cleanName.length > 100) throw Error('Layout name must be 1–100 characters')
+    const layout: SavedWorkspaceLayout = {
+      version: 1, name: cleanName, kind,
+      ...(kind !== 'tools' ? { panels: clonePanelLayout(s.panels) } : {}),
+      ...(kind !== 'panels' ? { toolbar: s.toolbarLayout ? [...s.toolbarLayout] : null } : {}),
+    }
+    const savedLayouts = [...s.savedLayouts.filter(x => x.name !== cleanName), layout]
+    saveNamedLayouts(savedLayouts)
+    return { savedLayouts }
+  }),
+  deleteNamedLayout: (name) => set(s => {
+    const savedLayouts = s.savedLayouts.filter(x => x.name !== name)
+    saveNamedLayouts(savedLayouts)
+    return { savedLayouts }
+  }),
+  applyNamedLayout: (name) => set(s => {
+    const saved = s.savedLayouts.find(x => x.name === name)
+    if (!saved) return {}
+    const panels = saved.panels ? clonePanelLayout(saved.panels) : s.panels
+    const toolbarLayout = saved.kind === 'panels' ? s.toolbarLayout : saved.toolbar ?? null
+    persistPanelLayout(panels)
+    persistToolbarLayout(toolbarLayout)
+    saveWorkspaceRecord(s.workspacePreset, panels, toolbarLayout)
+    return { panels, toolbarLayout }
+  }),
+  importNamedLayout: (json) => {
+    const layout = validateLayoutImport(JSON.parse(json))
+    set(s => {
+      const savedLayouts = [...s.savedLayouts.filter(x => x.name !== layout.name), layout]
+      saveNamedLayouts(savedLayouts)
+      return { savedLayouts }
+    })
+    return layout.name
+  },
+  exportNamedLayout: (name) => {
+    const layout = get().savedLayouts.find(x => x.name === name)
+    if (!layout) throw Error('Layout not found')
+    return JSON.stringify(layout, null, 2)
+  },
 
   setTool: (t) => { set({ activeTool: t }) },
   setToolOption: (tool, key, value) => set(s => {
@@ -831,6 +933,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ? photoshopPanelState(defaultPanelState())
       : defaultPanelState()
     persistPanelLayout(panels)
+    saveWorkspaceRecord(s.workspacePreset, panels, s.toolbarLayout)
     return { panels }
   }),
   setViewPref: (key: 'showRulers' | 'showGuides' | 'snapGuides' | 'showGrid' | 'snapGrid' | 'showGridLabels' | 'showPixelGrid' | 'rulerUnits', value: boolean | 'px' | 'in' | 'cm' | 'mm') => set(s => {
@@ -859,14 +962,17 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { shortcutOverrides: {} }
   }),
 
-  setToolbarLayout: (sections) => set(() => {
+  setToolbarLayout: (sections) => set(s => {
     const clean = sections ? sanitizeToolbarLayout(sections) : null
-    persistToolbarLayout(clean && clean.length ? clean : null)
-    return { toolbarLayout: clean && clean.length ? clean : null }
+    const toolbarLayout = clean && clean.length ? clean : null
+    persistToolbarLayout(toolbarLayout)
+    saveWorkspaceRecord(s.workspacePreset, s.panels, toolbarLayout)
+    return { toolbarLayout }
   }),
 
-  resetToolbarLayout: () => set(() => {
+  resetToolbarLayout: () => set(s => {
     try { localStorage.removeItem(TOOLBAR_KEY) } catch { /* noop */ }
+    saveWorkspaceRecord(s.workspacePreset, s.panels, null)
     return { toolbarLayout: null }
   }),
 
