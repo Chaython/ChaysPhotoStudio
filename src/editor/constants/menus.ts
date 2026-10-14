@@ -285,6 +285,7 @@ export const MENUS: MenuItem[][] = [
     S(),
     { id: 'file-open-recent', label: 'Recent & Recovery…', run: () => openDlg('recovery') },
     { id: 'file-photo-library', label: 'Photo Library / Catalog…', run: () => openDlg('photo-library') },
+    { id: 'file-design-library', label: 'Design Templates & Brand Kits…', run: () => openDlg('design-library') },
     { id: 'file-info', label: 'File Info / Metadata…', enabled: () => !!engine.activeDoc, run: () => store().revealPanel('metadata') },
     S(),
     { id: 'file-save-project', label: 'Save Project', shortcut: sc('save'), run: () => { void saveProject() } },
