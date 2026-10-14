@@ -72,7 +72,7 @@ jobs:
       - name: Validate camera, HDR, scientific and multi-page formats
         run: bun run formats:validate
 
-      - name: Validate PDF page selection, memory budgets and error handling
+      - name: Validate PDF page selection, native text/vector objects and memory budgets
         run: bun run pdf:validate
 
       - name: Validate independent PSD/PSB binary fixtures
