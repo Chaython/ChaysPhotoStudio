@@ -117,6 +117,16 @@ export function linkBrandStyle(
   layer.linkedDesignStyles = { ...layer.linkedDesignStyles, [slot]: id }
   const updated = setLayerSlot(layer, slot, match.value)
   if (!updated && oldRef !== id) layer._v++
+  // Linking to a revised saved-kit value must update other already-linked
+  // layers too, rather than changing the shared token but leaving stale pixels.
+  if (oldToken && oldToken.value !== token.value) {
+    for (const other of doc.layers) {
+      if (other === layer) continue
+      for (const target of ['fill', 'textColor', 'fontFamily'] as const) {
+        if (other.linkedDesignStyles?.[target] === id) setLayerSlot(other, target, token.value)
+      }
+    }
+  }
   doc._epoch++
   return tokenChanged || updated || oldRef !== id
 }
