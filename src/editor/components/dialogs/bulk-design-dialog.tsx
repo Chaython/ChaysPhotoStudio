@@ -60,7 +60,9 @@ export function BulkDesignDialog({ onClose }: DialogProps) {
         store.setProgress({ active: true, label: 'Bulk design ' + (index + 1) + '/' + table.rows.length,
           value: index / table.rows.length })
         // Detached composite: never mutate source text layers, history or cached pixels.
-        const layers = mergeEditableLayers(doc.layers, row)
+        // Clone *all* layer shells: prepareLayer caches on layer objects, so
+        // passing a source layer directly would poison live document caches.
+        const layers = mergeEditableLayers(doc.layers, row).map(layer => ({ ...layer }))
         const temp = {
           ...doc, id: doc.id + '-bulk-' + index, layers, _epoch: doc._epoch + index + 1,
           _liveDrag: null, _stroke: null, _strokeLayerId: null, previewFilter: null,
