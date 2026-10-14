@@ -12,6 +12,22 @@
 - The **Studio** column rates current behavior; **a feature name, recognized file extension, dialog or optional bridge does not by itself earn ✓**. External installed programs, downloads and optional ComfyUI workflows are not treated as built-in parity.
 - The **Other products** columns are reference capability checks, not exhaustive compatibility tests.
 
+## Missing-first implementation backlog
+
+The following workflows are still **absent** rather than merely incomplete; prioritize these before polishing already working Photoshop-style tools.
+
+| Missing functionality | Reference app | First complete milestone |
+|---|---|---|
+| **Multi-artboard/page document architecture** | Illustrator, Fireworks | Editable named artboards/pages within one document; layer association and per-artboard export |
+| **Native Fireworks layered PNG import/export** | Fireworks CS6 | Detect Fireworks metadata, preserve editability when supported, and warn before flattening |
+| **Interactive UI states and rollovers** | Fireworks CS6 | States panel with transition previews and per-state export |
+| **Vector Live Paint** | Illustrator | Select intersecting vector faces and recolor editable regions |
+| **Full gradient mesh editor** | Illustrator | Editable mesh points and interpolation on shape objects |
+| **Full Illustrator AI round-trip writer** | Illustrator | Loss-aware preservation of editable vector appearance and artboard structure |
+| **Native ICC-managed CMYK/spot separations** | Illustrator, Photoshop | Editable press-color documents rather than approximate RGB previews |
+
+**No longer entirely missing:** basic rectangular **web slices and hotspots** now have a dedicated File-menu editor, native-project persistence and standalone HTML/image-map export. This remains **partial Fireworks parity**, not native Fireworks project support.
+
 ## Implemented, partial and missing compared with other editors
 
 | Workflow | Studio | Photoshop | GIMP | Fireworks CS6 | Illustrator | What Studio has / still lacks |
@@ -30,7 +46,7 @@
 | Multiple artboards / pages in **one document** | — | ✓ | ◐ | ✓ | ✓ | Studio supports multiple **document tabs**, not per-document artboards/pages with separate bounds, page organization and per-page export. |
 | Reusable linked symbols, shared design components / master pages | ◐ | ◐ | ◐ | ✓ | ✓ | Smart Objects and layer comps are related, but Studio lacks a dedicated linked symbol-instance library and shared master-page inheritance. |
 | Interactive UI states / rollover prototype workflow | — | ◐ | ◐ | ✓ | ◐ | Layer Comps capture alternative layer states; no Fireworks-style button rollover/state sequencing, interaction links or prototype preview/export. |
-| Web slices / hotspots / image maps | — | ✓ | ◐ | ✓ | ◐ | Export Layers to Files exists, but no editable slice/hotspot overlay, per-slice links or HTML image-map output. |
+| Web slices / hotspots / image maps | ◐ | ✓ | ◐ | ✓ | ◐ | **File → Web Slices & Hotspots** now allows rectangular slice/hotspot editing, cropped image export and safe clickable image-map HTML. Polygon hotspots, main-canvas overlays and Fireworks metadata interchange remain missing. |
 | Per-slice web-image optimization and export | ◐ | ✓ | ◐ | ✓ | ◐ | PNG/JPEG/WebP export settings and independent layer export exist, not slice-specific optimization or Fireworks multi-page/state/slice output. |
 | Export individual layers/assets | ✓ | ✓ | ◐ | ✓ | ✓ | Export Layers to Files supports selected formats and transparency; not a full UI-asset batch/spec generator or Fireworks state export. |
 | Native editable vector/SVG design interchange | ◐ | ◐ | ◐ | ◐ | ✓ | Selected SVG paths/shapes can be parsed; unsupported SVG paint features and AI/EPS/PDF operators may be dropped/approximated. No Illustrator-grade editable AI writer. |
@@ -47,7 +63,7 @@
 | **High** | **Illustrator: true image-to-vector trace** | The current guide is a raster image and must not be marketed as automatic vectorization. | Trace returns editable Bézier path objects; threshold/color modes, simplification and exports have reference fixtures. |
 | **High** | **Fireworks: pages, states and design components** | A single Studio canvas plus Layer Comps cannot reproduce reusable multi-page/state UI mockups. | Editable Pages/States panels, linked component/symbol instances, master-page behavior, per-page/state export and round-trip tests. |
 | **High** | **Native format safety and parity** | Flat preview import can look successful while silently discarding editing structure. | Detect Fireworks layered-PNG metadata explicitly and report unsupported structures; preserve supported layers/objects or offer an explicit flatten-only import; AI/EPS/PDF imports accurately report lost vectors. |
-| **Medium** | **Fireworks: slices, hotspots and web assets** | Core to the Fireworks web design workflow but absent from the Studio export model. | Editable slice/hotspot geometry, link/alt fields, preview and independently optimized asset plus HTML/image-map export. |
+| **Medium** | **Fireworks: advanced web assets** | Basic rectangular web regions now exist, but Fireworks-class authoring and optimized output are still incomplete. | Main-canvas overlay tools, polygon hotspots, per-slice format/quality, full layout export and native Fireworks layered-PNG metadata interchange. |
 | **Medium** | **Illustrator: gradients, meshes and typography** | Existing gradients, text and shape layers do not cover Illustrator's vector object/appearance toolchain. | Editable gradient meshes/freeform stops, compound paths and per-run typographic styling retained in native project saves. |
 | **Medium** | **GIMP: richer XCF and GEGL parity** | Raster extraction and an optional GIMP subprocess are not a complete independent XCF editor. | Round-trip group/effect/text semantics for supported fixtures; unsupported effects are visibly reported; in-process vs external requirements clear. |
 | **Medium** | **Photoshop: PSD/PSB deep interchange** | The broad tool list overstates parity if native layer descriptors disappear on interchange. | Fixtures for editable type, adjustments, Smart Objects, masks, nested groups and supported high-depth documents with explicit loss reports. |
