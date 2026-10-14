@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import type { DialogInstance, DialogType, ToolId, PsAction, ChannelView, ToolbarSection } from './types'
 import { TOOL_DEFS, TOOL_MAP } from './constants/tools'
+import { DOCKABLE_PANEL_IDS, isDockablePanelId } from './constants/panel-ids'
 import { engine } from './engine/engine'
 
 export interface LayerMeta {
@@ -70,7 +71,7 @@ function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
   const fallback = defaultPhotoshopInspector()
   if (!input || typeof input !== 'object' || Array.isArray(input)) return fallback
   const data = input as Partial<PhotoshopInspectorLayout>
-  const allowed = new Set<string>([...PHOTOSHOP_INSPECTOR_UPPER_TABS, ...PHOTOSHOP_INSPECTOR_LOWER_TABS])
+  const allowed = new Set<string>(DOCKABLE_PANEL_IDS)
   const seen = new Set<string>()
   const clean = (candidate: unknown): string[] => {
     if (!Array.isArray(candidate)) return []
@@ -104,10 +105,15 @@ function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
 /** Dock actions and Window-menu navigation must update the same tab selections
  * that the Photoshop inspector persists, even after a tab was moved between stacks. */
 function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: string, enabled: boolean): PhotoshopInspectorLayout {
-  if (!enabled || !tab) return current
-  return current.upperTabs.includes(tab)
-    ? { ...current, upperTab: tab, collapsed: false }
-    : { ...current, lowerTab: tab, collapsed: false }
+  if (!enabled || !isDockablePanelId(tab)) return current
+  if (current.upperTabs.includes(tab)) return { ...current, upperTab: tab, collapsed: false }
+  if (current.lowerTabs.includes(tab)) return { ...current, lowerTab: tab, collapsed: false }
+  // Window → Show Panel, Add Panel and Dock Right can bring any registered
+  // panel into Essentials. Persist the new tab in the lower stack; otherwise
+  // it disappears when the user selects a different panel or reloads.
+  return normalizePhotoshopInspector({
+    ...current, lowerTabs: [...current.lowerTabs, tab], lowerTab: tab, collapsed: false,
+  })
 }
 
 // ---- floating panel layout persistence ---------------------------------------
