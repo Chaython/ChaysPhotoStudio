@@ -1,4 +1,6 @@
 // Fireworks-inspired web regions. Not a native Fireworks PNG decoder.
+// Exported image maps must stay at intrinsic pixel size: scaling the <img>
+// without recalculating <area> coords makes the clickable hotspots misalign.
 export type WebRegionKind = 'slice' | 'hotspot'
 export interface WebRegion {
   id: string
@@ -71,7 +73,7 @@ export function buildImageMapHtml(imageName: string, width: number, height: numb
   }).filter(Boolean)
   const hasMap = areas.length > 0
   const image = '  <img src="' + escapeWebHtml(imageName) + '" alt="Exported artwork" width="'
-    + width + '" height="' + height + '" style="max-width:100%;height:auto"'
+    + width + '" height="' + height + '"'
     + (hasMap ? ' usemap="#studio-web-map"' : '') + '>'
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '  <meta charset="utf-8">',
