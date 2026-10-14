@@ -410,31 +410,72 @@ def main():
                 page.wait_for_function("""() => {
                     const d = window.__zphotoEngine?.activeDoc
                     return !!d && d.name.includes('two-pages') &&
-                      d.width === 400 && d.height === 240 && d.layers?.length === 2
+                      d.width === 400 && d.height === 240 && d.layers?.length >= 6
                 }""", timeout=45000)
                 data = page.evaluate("""() => {
                   const d = window.__zphotoEngine.activeDoc
                   return {
                     name: d.name, width: d.width, height: d.height,
                     layers: d.layers.map(l => ({
-                      name: l.name, visible: l.visible, width: l.canvas?.width,
+                      name: l.name, kind: l.kind, visible: l.visible,
+                      text: l.text?.content, fontSize: l.text?.fontSize,
+                      shape: l.shape?.shape, shapeFill: l.shape?.fill,
+                      anchors: l.shape?.pathAnchors?.length,
+                      width: l.canvas?.width,
                       pixel: l.canvas ? Array.from(l.canvas.getContext('2d').getImageData(
                         200, 170, 1, 1).data) : null,
                     }))
                   }
                 }""")
-                print("  PDF import:", data, flush=True)
-                check({l["name"] for l in data["layers"]} ==
-                      {"PDF Page 1", "PDF Page 2"}, "PDF pages not imported distinctly")
-                reds = [l for l in data["layers"] if l["name"] == "PDF Page 1"]
-                blues = [l for l in data["layers"] if l["name"] == "PDF Page 2"]
-                check(len(reds) == 1 and reds[0]["pixel"][0] > 210 and reds[0]["pixel"][2] < 80,
+                print("  PDF native import:", data, flush=True)
+                refs = [l for l in data["layers"] if "Visual reference" in l["name"]]
+                texts = [l for l in data["layers"] if l["kind"] == "text"]
+                shapes = [l for l in data["layers"] if l["kind"] == "shape"]
+                check(len(refs) == 2, "each PDF page retains its visual reference")
+                check(refs[0]["pixel"][0] > 210 and refs[0]["pixel"][2] < 80,
                       "PDF.js must render page 1 red vector rectangle")
-                check(len(blues) == 1 and blues[0]["pixel"][2] > 210 and blues[0]["pixel"][0] < 80,
+                check(refs[1]["pixel"][2] > 210 and refs[1]["pixel"][0] < 80,
                       "PDF.js must render page 2 blue vector rectangle")
-                check(bool(reds[0]["visible"]) and not bool(blues[0]["visible"]),
-                      "first PDF page should be visible and second hidden")
-                check(not errors, f"PDF import threw JavaScript errors: {errors[:3]}")
+                check(refs[0]["visible"] and not refs[1]["visible"],
+                      "first PDF reference visible and second hidden")
+                check(any("First page" in str(l["text"]) for l in texts) and
+                      any("Second page" in str(l["text"]) for l in texts),
+                      "PDF text objects must import as native editable text layers")
+                check(all(l["fontSize"] > 5 and not l["visible"] for l in texts),
+                      "native text font geometry and non-destructive visibility")
+                check(len(shapes) >= 2 and all(l["shape"] == "path" and
+                      l["anchors"] >= 4 and not l["visible"] for l in shapes),
+                      "PDF vector rectangles must import as editable closed paths")
+                check(any(l["shapeFill"] == "#ff0000" for l in shapes) and
+                      any(l["shapeFill"] == "#0000ff" for l in shapes),
+                      "PDF native paths retain fill colors")
+                edited = page.evaluate("""() => {
+                  const e = window.__zphotoEngine, d = e.activeDoc
+                  const text = d.layers.find(l => l.kind === 'text')
+                  const path = d.layers.find(l => l.kind === 'shape')
+                  const ref = d.layers.find(l => l.kind === 'raster')
+                  const originalPixel = [...ref.canvas.getContext('2d').getImageData(50, 50, 1, 1).data]
+                  e.setLayerProps(text.id, { text: {...text.text, content: 'PDF edited in Studio'}, visible: true })
+                  e.setLayerProps(path.id, { shape: {...path.shape, fill: '#12ab34'}, visible: true })
+                  e.setLayerProps(ref.id, { visible: false })
+                  const textPixels = e.layerCanvas(text.id)
+                  const shapePixels = e.layerCanvas(path.id)
+                  const after = [...ref.canvas.getContext('2d').getImageData(50, 50, 1, 1).data]
+                  return {
+                    text: d.layers.find(l => l.id === text.id)?.text?.content,
+                    shapeFill: d.layers.find(l => l.id === path.id)?.shape?.fill,
+                    originalPixel, after,
+                    referenceHidden: !d.layers.find(l => l.id === ref.id)?.visible,
+                    textRendered: !!textPixels?.width, shapeRendered: !!shapePixels?.width,
+                  }
+                }""")
+                check(edited["text"] == "PDF edited in Studio" and
+                      edited["shapeFill"] == "#12ab34" and edited["referenceHidden"],
+                      "native PDF text/vector objects must be independently editable")
+                check(edited["originalPixel"] == edited["after"] and
+                      edited["textRendered"] and edited["shapeRendered"],
+                      "editing native layers must not mutate original PDF visual reference")
+                check(not errors, f"PDF native import threw JavaScript errors: {errors[:3]}")
 
             def real_psd_browser_import():
                 _, page, errors = app_page(browser)
