@@ -121,7 +121,8 @@ bun run dist:all         # Shared icons, web build, Electron & extensions (not T
 | [**User Guide**](docs/USER_GUIDE.md) | Tutorials and troubleshooting, mirrored in the app |
 | [**Feature & Format Reference**](docs/FEATURES_AND_FORMATS.md) | Formats, bit depth, runtime limitations and feature overview |
 | [**Tool Parity Audit**](TOOL_PARITY.md) | Photoshop-style tool audit and remaining tool work |
-| [**Cross-app Parity Matrix**](docs/COMPETITOR_PARITY.md) | Status against Photoshop, GIMP, Fireworks CS6 and Illustrator, with prioritized gaps and import/round-trip distinctions |
+| [**Cross-app Parity Matrix**](docs/COMPETITOR_PARITY.md) | Photoshop, GIMP, Fireworks CS6, Illustrator and PhotoCraft; status, priorities and fidelity limits |
+| [**Canva and Creative-Suite Comparison**](docs/CREATIVE_SUITE_PARITY.md) | Canva, Adobe Express, Figma, Affinity, Photopea, Pixlr, Krita, Inkscape and Clip Studio; missing and partial features |
 | [**Distribution Guide**](DISTRIBUTION.md) | Native builds, release artifacts, optional configuration and packaging |
 | [**Development & Testing**](docs/DEVELOPMENT_AND_TESTING.md) | Source-of-truth files, validation scripts, CI and release smoke tests |
 | [**Changelog**](CHANGELOG.md) | Historical changes; upcoming PRs are not treated as released |

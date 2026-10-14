@@ -2,7 +2,7 @@
 
 **Audit baseline:** Chay's Photo Studio **main** (14 October 2026). This is a source-code/documentation audit, **not** a guarantee of runtime parity or an automated end-to-end comparison. It complements the [52-tool Photoshop-oriented audit](../TOOL_PARITY.md) and the [format-specific limitations](FEATURES_AND_FORMATS.md).
 
-**Compared products:** Adobe Photoshop (desktop), **GIMP 3.2**, **Adobe Fireworks CS6** (legacy/discontinued), Adobe Illustrator (desktop), and **PhotoCraft** (the `storytold/photocraft` open-source Photoshop-targeting editor). Fireworks is compared against CS6, not a current Adobe release. Competitor columns identify whether each product has that *kind* of workflow; they do **not** imply compatible file formats or identical semantics.
+**Compared products:** Adobe Photoshop (desktop), **GIMP 3.2**, **Adobe Fireworks CS6** (legacy/discontinued), Adobe Illustrator (desktop), and **PhotoCraft** (the `storytold/photocraft` open-source Photoshop-targeting editor). See the [companion comparison of Canva, Adobe Express, Figma, Affinity, Photopea, Pixlr, Krita, Inkscape and Clip Studio Paint](CREATIVE_SUITE_PARITY.md) for template, publishing, UI-design and drawing workflows. Fireworks is compared against CS6, not a current Adobe release. Competitor columns identify whether each product has that *kind* of workflow; they do **not** imply compatible file formats or identical semantics.
 
 ## Legend
 
@@ -11,6 +11,10 @@
 - **—** = no corresponding native workflow identified, or not a primary capability.
 - The **Studio** column rates current behavior; **a feature name, recognized file extension, dialog or optional bridge does not by itself earn ✓**. External installed programs, downloads and optional ComfyUI workflows are not treated as built-in parity.
 - The **Other products** columns are reference capability checks, not exhaustive compatibility tests.
+
+## Additional popular and adjacent editors
+
+The [Canva and creative-suite companion chart](CREATIVE_SUITE_PARITY.md) scores **nine additional competitors** separately so this Photoshop/Fireworks-focused matrix remains readable. Its highest-impact *missing* Studio workflows are **editable design templates, brand kits, component instances, responsive auto-layout and true independent page models**. It also distinguishes Canva/Adobe Express **cloud publishing and collaboration** from local-first image editing, and compares painting/animation gaps with Krita and Clip Studio Paint. No new editor features are implied by this documentation update.
 
 ## Missing-first implementation backlog
 
