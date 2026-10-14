@@ -765,6 +765,20 @@ def main():
                       "Locked floating window committed moved geometry")
                 check(frame.locator('div[aria-hidden][class*="cursor-"][class*="resize"]').count() == 0,
                       "Locked floating panel still offers resize handles")
+                page.evaluate("""() => window.__zphotoStore.getState().setWorkspaceLayoutLock('panels', false)""")
+                box = handle.bounding_box()
+                check(box is not None, "Floating panel disappeared after unlocking")
+                page.mouse.move(box["x"] + 75, box["y"] + 12)
+                page.mouse.down()
+                page.mouse.move(box["x"] + 115, box["y"] + 42, steps=4)
+                page.evaluate("""() => window.__zphotoStore.getState().setWorkspaceLayoutLock('panels', true)""")
+                # No movement event after enabling the lock; pointer-up itself
+                # must restore unsaved DOM geometry.
+                page.mouse.up()
+                final = frame.evaluate("(node) => ({left:parseFloat(node.style.left), top:parseFloat(node.style.top)})")
+                check(abs(final["left"] - initial["left"]) <= 2 and
+                      abs(final["top"] - initial["top"]) <= 2,
+                      f"Pointer release after a mid-drag lock left shifted DOM: {final}")
                 check(not errors, f"floating panel lock caused JavaScript errors: {errors[:3]}")
 
             def named_layout_manager_safety():
