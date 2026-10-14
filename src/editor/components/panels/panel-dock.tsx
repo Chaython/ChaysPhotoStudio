@@ -452,6 +452,13 @@ function PhotoshopRightDock() {
         <div className="flex items-center">
           <AddPanelMenu side="right" mobile={false} />
           <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
+            title="Restore the default Photoshop inspector tab groups"
+            aria-label="Reset Photoshop inspector tab groups"
+            onClick={() => setInspector({
+              upperTabs: [...PHOTOSHOP_UPPER_TABS], lowerTabs: [...PHOTOSHOP_LOWER_TABS],
+              upperTab: 'color', lowerTab: 'layers',
+            })}><RotateCcw size={12}/></button>
+          <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
             title="Collapse inspector to icons" aria-label="Collapse Photoshop inspector"
             onClick={() => setInspector({ collapsed: true })}><PanelRightClose size={13} /></button>
         </div>
