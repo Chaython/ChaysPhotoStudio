@@ -18,7 +18,7 @@ import urllib.request
 import zlib
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 from video_fixture import video_fixture
 
 APP_URL = os.getenv("CHAYS_E2E_URL", "http://127.0.0.1:8765/")
@@ -704,7 +704,7 @@ def main():
                 dialog = page.get_by_role("dialog", name="Import frame from video")
                 dialog.wait_for(state="visible", timeout=30000)
                 video = dialog.locator("video[data-video-preview]")
-                dialog.locator("input[data-video-time]").wait_for(state="enabled", timeout=15000)
+                expect(dialog.locator("input[data-video-time]")).to_be_enabled(timeout=15000)
                 page.wait_for_function("""() => {
                   const v = document.querySelector('[data-video-preview]')
                   return !!v && v.videoWidth === 80 && v.videoHeight === 60 && v.readyState >= 2
