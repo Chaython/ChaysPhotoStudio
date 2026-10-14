@@ -37,7 +37,7 @@ assert.equal(linkBrandStyle(doc, plain, kit, 'color', 'unknown'), false)
 assert.deepEqual(normalizeLinkedDesignStyles(doc.linkedDesignStyles), doc.linkedDesignStyles)
 assert.equal(normalizeLinkedDesignStyles([{ id:'bad', kind:'color', value:'javascript:evil', sourceKitId:'ok',
   sourceItemId:'test', name:'Unsafe' }]).length, 0)
-assert.equal(normalizeLayerStyleReferences({ fill:'kit-color', wrong:'other', fontFamily:42 }),
+assert.deepEqual(normalizeLayerStyleReferences({ fill:'kit-color', wrong:'other', fontFamily:42 }),
   { fill:'kit-color' })
 
 const beforeEpoch = doc._epoch
