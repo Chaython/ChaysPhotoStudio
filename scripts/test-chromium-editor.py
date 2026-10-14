@@ -8,6 +8,7 @@ No external web services, third-party models, or native plugins are used.
 from __future__ import annotations
 
 import os
+import base64
 import re
 import shutil
 import struct
@@ -56,6 +57,12 @@ def pixel_png(width=8, height=8) -> bytes:
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
+
+# 80x60, two-second VP8/WebM fixture with first second red and second blue.
+# Generated from two lavfi color sources; embedded so browser CI needs no ffmpeg.
+VIDEO_TWO_TONE_WEBM = base64.b64decode(
+    "GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAOxEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHWTbuMU6uEElTDZ1OsggEjTbuMU6uEHFO7a1OsggOJ7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsCrXsYMPQkBNgIxMYXZmNjEuNy4xMDNXQYxMYXZmNjEuNy4xMDNEiYhAn0AAAAAAABZUrmvIrgEAAAAAAAA/14EBc8WIWpiZnpyE6/OcgQAitZyDdW5kiIEAhoVWX1ZQOIOBASPjg4QHc1lA4JCwgVC6gTyagQJVsIRVuYEBElTDZ/tzc59jwIBnyJlFo4dFTkNPREVSRIeMTGF2ZjYxLjcuMTAzc3PWY8CLY8WIWpiZnpyE6/NnyKFFo4dFTkNPREVSRIeUTGF2YzYxLjE5LjEwMSBsaWJ2cHhnyKFFo4hEVVJBVElPTkSHkzAwOjAwOjAyLjAwMDAwMDAwMAAfQ7Z1QeDngQCjxYEAAIDwAwCdASpQADwAAEcIhYWIhYSIAgICdaoD+AP6Agb/skyZMmTJkyZLwP79bvP/45k3MMT/jm3/8WE8DijI//FhRAKOWgQB9ANEBAAEQEAAYABhYL/QACIhgAKOWgQD6ANEBAAEQEAAYABhYL/QACIhgAKOWgQF3ANEBAAEQEAAYABhYL/QACIhgAKOWgQH0ANEBAAEQEAAYABhYL/QACIhgAKOWgQJxANEBAAEQEAAYABhYL/QACIhgAKOWgQLuANEBAAEQEAAYABhYL/QACIhgAKOWgQNrANEBAAEQEBRgAGFgv9AAIiGAAKPEgQPogLADAJ0BKlAAPAAARwiFhYiFhIgCAgJ1qgP4AgbOMkyZMmTJkyZLwP7/TRL//FhX8WFfxYV/8WFf/PzO7cX85gCjloEEZQDRAQABEBAAGAAYWC/0AAiIYACjloEE4gDRAQABEBAAGAAYWC/0AAiIYACjloEFXwDRAQABEBAAGAAYWC/0AAiIYACjloEF3ADRAQABEBAAGAAYWC/0AAiIYACjloEGWQDRAQABEBAAGAAYWC/0AAiIYACjloEG1gDRAQABEBAAGAAYWC/0AAiIYACjloEHUwDRAQABEBAUYABhYL/QACIhgAAcU7tro7uPs4EAt4r3gQHxggGj8IEDu5CzggPot4r3gQHxggGj8IHy"
+)
 
 def pdf_fixture() -> bytes:
     """Minimal, valid two-page vector PDF with distinct solid page colors."""
@@ -693,6 +700,61 @@ def main():
                 check(value["afterRedo"] == value["added"], "redo did not restore added layer")
                 check(not errors, f"image import/history threw uncaught errors: {errors[:3]}")
 
+            def video_frame_picker():
+                _, page, errors = app_page(browser)
+                upload = {"name": "two-tone.webm", "mimeType": "video/webm",
+                          "buffer": VIDEO_TWO_TONE_WEBM}
+                file_input = page.locator('input[data-file-purpose="document"]').first
+                initial_count = page.evaluate("() => window.__zphotoEngine.docs.length")
+                file_input.set_input_files(upload)
+                dialog = page.get_by_role("dialog", name="Import frame from video")
+                dialog.wait_for(state="visible", timeout=30000)
+                video = dialog.locator("video[data-video-preview]")
+                dialog.locator("input[data-video-time]").wait_for(state="enabled", timeout=15000)
+                page.wait_for_function("""() => {
+                  const v = document.querySelector('[data-video-preview]')
+                  return !!v && v.videoWidth === 80 && v.videoHeight === 60 && v.readyState >= 2
+                }""", timeout=20000)
+                timestamp = dialog.locator("input[data-video-time]")
+                timestamp.fill("1.5")
+                timestamp.press("Tab")
+                page.wait_for_function("""() => {
+                  const v = document.querySelector('[data-video-preview]')
+                  const b = document.querySelector('[data-video-import]')
+                  return !!v && Math.abs(v.currentTime - 1.5) < 0.1 &&
+                    !v.seeking && !!b && !b.disabled
+                }""", timeout=20000)
+                preview = video.evaluate("""video => {
+                  const c = document.createElement('canvas')
+                  c.width = 80; c.height = 60
+                  const cx = c.getContext('2d')
+                  cx.drawImage(video, 0, 0)
+                  return Array.from(cx.getImageData(40, 30, 1, 1).data)
+                }""")
+                check(preview[2] > 140 and preview[0] < 100,
+                      f"selected 1.5-second frame must be blue: {preview}")
+                dialog.locator('button[data-video-import]').click()
+                dialog.wait_for(state="hidden", timeout=10000)
+                page.wait_for_function("""count => {
+                  const e = window.__zphotoEngine
+                  return e.docs.length === count + 1 && e.activeDoc?.width === 80 &&
+                    e.activeDoc?.height === 60
+                }""", arg=initial_count, timeout=20000)
+                imported = page.evaluate("""() => {
+                  const l = window.__zphotoEngine.activeDoc.layers[0]
+                  return Array.from(l.canvas.getContext('2d').getImageData(40, 30, 1, 1).data)
+                }""")
+                check(imported[2] > 140 and imported[0] < 100,
+                      f"imported document did not retain selected blue frame: {imported}")
+                file_input.set_input_files(upload)
+                dialog.wait_for(state="visible", timeout=30000)
+                dialog.locator("button[data-video-cancel]").click()
+                dialog.wait_for(state="hidden", timeout=10000)
+                page.wait_for_timeout(400)
+                check(page.evaluate("() => window.__zphotoEngine.docs.length") == initial_count + 1,
+                      "cancelling a video should not create a document")
+                check(not errors, f"video frame picker caused uncaught errors: {errors[:3]}")
+
             def pdf_multi_page_import():
                 _, page, errors = app_page(browser)
                 page.locator('input[data-file-purpose="document"]').first.set_input_files(
@@ -926,6 +988,7 @@ def main():
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("color_sampler_info_panel", color_sampler_info_panel),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
+                ("video_frame_picker_real_webm", video_frame_picker),
                 ("real_psd_chromium_import", real_psd_browser_import),
                 ("pdf_two_page_vector_render", pdf_multi_page_import),
                 ("gimp_lazy_interpreters", gimp_lazy_interpreters),
