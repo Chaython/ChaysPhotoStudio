@@ -144,6 +144,23 @@ const PANEL_LAYOUT_KEY = 'zphoto-panel-layout'
 const WORKSPACE_PRESET_KEY = 'zphoto-workspace-preset'
 const WORKSPACE_LAYOUTS_KEY = 'zphoto-workspace-layouts-v1'
 const SAVED_LAYOUTS_KEY = 'zphoto-saved-layouts-v1'
+const WORKSPACE_LOCKS_KEY = 'zphoto-workspace-layout-locks-v1'
+export type WorkspaceLayoutLockKind = 'tools' | 'panels'
+export type WorkspaceLayoutLocks = Record<WorkspacePreset, Record<WorkspaceLayoutLockKind, boolean>>
+function readWorkspaceLocks(): WorkspaceLayoutLocks {
+  const defaults: WorkspaceLayoutLocks = { classic: { tools: false, panels: false }, photoshop: { tools: false, panels: false } }
+  try {
+    const saved = JSON.parse(localStorage.getItem(WORKSPACE_LOCKS_KEY) || '{}')
+    for (const preset of ['classic', 'photoshop'] as const) {
+      for (const kind of ['tools', 'panels'] as const) defaults[preset][kind] = saved?.[preset]?.[kind] === true
+    }
+  } catch { /* old clients/private browsing start with unlocked layouts */ }
+  return defaults
+}
+function persistWorkspaceLocks(locks: WorkspaceLayoutLocks) {
+  try { localStorage.setItem(WORKSPACE_LOCKS_KEY, JSON.stringify(locks)) }
+  catch { throw Error('Cannot save workspace lock settings. Check browser storage permissions.') }
+}
 const LEGACY_CLASSIC_BACKUP_KEY = 'zphoto-classic-layout-backup'
 export type WorkspacePreset = 'classic' | 'photoshop'
 
@@ -563,6 +580,8 @@ function photoshopPanelState(current: EditorStore['panels']): EditorStore['panel
 interface EditorStore {
   workspacePreset: WorkspacePreset
   setWorkspacePreset(preset: WorkspacePreset): void
+  workspaceLayoutLocks: WorkspaceLayoutLocks
+  setWorkspaceLayoutLock(kind: WorkspaceLayoutLockKind, locked: boolean): void
   /** Reapply this workspace's original panel and tool templates without touching saved profiles. */
   resetWorkspaceLayout(): void
   savedLayouts: SavedWorkspaceLayout[]
@@ -715,6 +734,17 @@ let toastSeq = 1
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
   workspacePreset: loadWorkspacePreset(),
+  workspaceLayoutLocks: readWorkspaceLocks(),
+  setWorkspaceLayoutLock: (kind, locked) => set(s => {
+    const preset = s.workspacePreset
+    if (s.workspaceLayoutLocks[preset][kind] === locked) return {}
+    const workspaceLayoutLocks = {
+      ...s.workspaceLayoutLocks,
+      [preset]: { ...s.workspaceLayoutLocks[preset], [kind]: locked },
+    }
+    persistWorkspaceLocks(workspaceLayoutLocks)
+    return { workspaceLayoutLocks }
+  }),
   activeTool: 'move',
   toolOptions: defaultOptions(),
   fgColor: '#ffffff',
@@ -783,6 +813,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { workspacePreset: preset, panels, toolbarLayout }
   }),
   resetWorkspaceLayout: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels || s.workspaceLayoutLocks[s.workspacePreset].tools) return {}
     // Explicit reset is the only action that discards this workspace's edited
     // toolbar and panel layout. Switching templates never implicitly resets it.
     const panels = s.workspacePreset === 'photoshop'
@@ -825,6 +856,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   applyNamedLayout: (name) => set(s => {
     const saved = s.savedLayouts.find(x => x.name === name)
     if (!saved) return {}
+    const locks = s.workspaceLayoutLocks[s.workspacePreset]
+    if ((saved.kind !== 'tools' && locks.panels) || (saved.kind !== 'panels' && locks.tools))
+      throw Error('Unlock the corresponding workspace tool/panel layout before applying this preset.')
     const panels = saved.panels ? clonePanelLayout(saved.panels) : s.panels
     const toolbarLayout = saved.kind === 'panels' ? s.toolbarLayout : saved.toolbar ?? null
     persistPanelLayout(panels)
@@ -934,6 +968,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { panels }
   }),
   setPhotoshopInspector: (patch) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels && [
+      'upperTabs', 'lowerTabs', 'sideTabs', 'upperPercent', 'sideWidth',
+    ].some(key => Object.prototype.hasOwnProperty.call(patch, key))) return {}
     const next = normalizePhotoshopInspector({ ...s.panels.photoshopInspector, ...patch })
     if (JSON.stringify(next) === JSON.stringify(s.panels.photoshopInspector)) return {}
     const panels = { ...s.panels, photoshopInspector: next }
@@ -941,6 +978,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { panels }
   }),
   movePhotoshopInspectorTab: (id, target, beforeId) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const current = s.panels.photoshopInspector
     const group = current.upperTabs.includes(id) ? 'upper'
       : current.lowerTabs.includes(id) ? 'lower'
@@ -980,6 +1018,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   toggleColorPanel: () => set(s => ({ panels: { ...s.panels, colorPanelOpen: !s.panels.colorPanelOpen } })),
 
   floatPanel: (id, rect) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800
     const prev = s.panels.floating[id]
@@ -1002,6 +1041,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   dockPanel: (id, side) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) {
+      // Selecting existing tabs is still editing/navigation, not rearrangement.
+      const target = side ?? s.panels.dockSide[id] ?? 'right'
+      if (s.panels.floating[id] || target !== (s.panels.dockSide[id] ?? 'right')) return {}
+      return target === 'right' ? { panels: { ...s.panels, rightTab: id,
+        photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop') } } : {}
+    }
     // Every registered panel is treated identically. Explicit side wins;
     // otherwise a floating panel returns to its last dock, defaulting right.
     const eff: DockSide = side ?? s.panels.dockSide[id] ?? 'right'
@@ -1038,6 +1084,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   homePanel: (id) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const floating = { ...s.panels.floating }
     delete floating[id]
     const dockSide = { ...s.panels.dockSide }
@@ -1078,6 +1125,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   movePanel: (id, x, y) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const r = s.panels.floating[id]
     if (!r) return {}
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
@@ -1094,6 +1142,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resizePanel: (id, w, h) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const r = s.panels.floating[id]
     if (!r) return {}
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
@@ -1110,6 +1159,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setPanelRect: (id, next) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const r = s.panels.floating[id]
     if (!r) return {}
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
@@ -1144,6 +1194,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setDockWidth: (px) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const dockWidth = clampNum(Math.round(px), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX)
     if (dockWidth === s.panels.dockWidth && s.panels.dockWidthManual) return {}
     const panels = { ...s.panels, dockWidth, dockWidthManual: true }
@@ -1152,6 +1203,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setLeftDockWidth: (px) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const leftWidth = clampNum(Math.round(px), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX)
     if (leftWidth === s.panels.leftWidth && s.panels.leftWidthManual) return {}
     const panels = { ...s.panels, leftWidth, leftWidthManual: true }
@@ -1160,6 +1212,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetDockWidthAuto: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     if (!s.panels.dockWidthManual) return {}
     const panels = { ...s.panels, dockWidthManual: false }
     persistPanelLayout(panels)
@@ -1167,6 +1220,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetLeftDockWidthAuto: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     if (!s.panels.leftWidthManual) return {}
     const panels = { ...s.panels, leftWidthManual: false }
     persistPanelLayout(panels)
@@ -1176,6 +1230,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   // Size overrides are tied to a specific strip. Resizing top-left should
   // never force top-right or the center dock to consume the same height.
   setHorizontalDockHeight: (side, px) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     if (!HORIZONTAL_DOCKS.includes(side) || !Number.isFinite(px)) return {}
     const height = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
     if (s.panels.dockHeights[side] === height) return {}
@@ -1185,6 +1240,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetHorizontalDockHeight: (side) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     if (s.panels.dockHeights[side] === undefined) return {}
     const dockHeights = { ...s.panels.dockHeights }
     delete dockHeights[side]
@@ -1194,6 +1250,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetPanelLayout: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const panels = s.workspacePreset === 'photoshop'
       ? photoshopPanelState(defaultPanelState())
       : defaultPanelState()
@@ -1228,6 +1285,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setToolbarLayout: (sections) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].tools) return {}
     const clean = sections ? sanitizeToolbarLayout(sections) : null
     const toolbarLayout = clean && clean.length ? clean : null
     persistToolbarLayout(toolbarLayout)
@@ -1236,6 +1294,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetToolbarLayout: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].tools) return {}
     try { localStorage.removeItem(TOOLBAR_KEY) } catch { /* noop */ }
     saveWorkspaceRecord(s.workspacePreset, s.panels, null)
     return { toolbarLayout: null }
