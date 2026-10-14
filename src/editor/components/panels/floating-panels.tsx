@@ -115,6 +115,11 @@ function dockZoneAt(x: number, y: number, _id: string): DockZone | null {
 function onSessionMove(e: PointerEvent) {
   const s = session
   if (!s || e.pointerId !== s.pointerId) return
+  const state = useEditorStore.getState()
+  if (state.workspaceLayoutLocks[state.workspacePreset].panels) {
+    commitSession(true)
+    return
+  }
   // Browser context menus and React reparenting can outlive the pointer
   // capture of the original dock tab. A stale mouse drag must never be
   // updated by hover or right-click movement after the left button releases.
@@ -226,6 +231,9 @@ function commitSession(cancel: boolean) {
   setDockDrop(false)
   releaseChrome(s)
   const store = useEditorStore.getState()
+  // Pointer-up may be the first event after another control locks the layout.
+  // Never leave the directly mutated DOM at an unsaved position.
+  if (store.workspaceLayoutLocks[store.workspacePreset].panels) cancel = true
 
   if (cancel) {
     if (s.originHome) {
@@ -268,6 +276,8 @@ function startSession(
   startRect: PanelRect,
   opts: { origin?: PanelRect | null; originDocked?: boolean; originHome?: boolean } = {},
 ) {
+  const state = useEditorStore.getState()
+  if (state.workspaceLayoutLocks[state.workspacePreset].panels) return
   if (session) commitSession(false) // one gesture at a time
   session = {
     id,
@@ -299,6 +309,7 @@ export function beginWindowDrag(id: string, e: { clientX: number; clientY: numbe
   const def = PANEL_MAP[id]
   if (!def) return
   const store = useEditorStore.getState()
+  if (store.workspaceLayoutLocks[store.workspacePreset].panels) return
   const existing = store.panels.floating[id]
   const hadExplicitDock = !!store.panels.dockSide[id]
   const wasHome = !existing && !hadExplicitDock && !!def.home
@@ -332,6 +343,7 @@ interface FloatingWindowProps {
 }
 
 const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps) {
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
   const rect = useEditorStore(s => s.panels.floating[id])
   const def = PANEL_MAP[id]
   if (!rect || !def) return null
@@ -341,7 +353,7 @@ const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps)
   const focus = () => useEditorStore.getState().focusPanel(id)
 
   const onTitlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return
+    if (panelsLocked || e.button !== 0) return
     if ((e.target as HTMLElement).closest('button')) return // chrome buttons handle themselves
     const r = useEditorStore.getState().panels.floating[id]
     if (!r) return
@@ -351,7 +363,7 @@ const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps)
   }
 
   const startResize = (mode: DragMode) => (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return
+    if (panelsLocked || e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
     const r = useEditorStore.getState().panels.floating[id]
@@ -380,7 +392,7 @@ const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps)
       <PanelContextMenu id={id}>
         <div
           className="panel-window-titlebar h-7 flex items-center gap-1 px-1.5 border-b bg-panel/80 flex-shrink-0"
-          title={`${def.label} — drag to move · right-click for panel options`}
+          title={panelsLocked ? `${def.label} — panel position locked; right-click for options` : `${def.label} — drag to move · right-click for panel options`}
           onPointerDown={onTitlePointerDown}
         >
           <Icon size={11} className="text-primary shrink-0" />
@@ -396,7 +408,7 @@ const FloatingWindow = memo(function FloatingWindow({ id }: FloatingWindowProps)
       )}
 
       {/* eight-way resize handles — every floating panel behaves like a real window */}
-      {!rect.collapsed && (
+      {!rect.collapsed && !panelsLocked && (
         <>
           <ResizeHandle edge="n" onPointerDown={startResize('resize-n')} />
           <ResizeHandle edge="ne" onPointerDown={startResize('resize-ne')} />

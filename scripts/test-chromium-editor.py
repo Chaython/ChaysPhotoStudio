@@ -652,6 +652,136 @@ def main():
                 check(all(legacy.values()), f"Legacy single-column layout migration failed: {legacy}")
                 check(not errors, f"secondary inspector caused JavaScript errors: {errors[:3]}")
 
+            def workspace_layout_lock_isolation():
+                _, page, errors = app_page(browser)
+                page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setWorkspacePreset('photoshop')
+                    s.resetWorkspaceLayout()
+                    s.saveNamedLayout('Before lock', 'both')
+                }""")
+                page.get_by_role("button", name="Workspace template").click()
+                page.get_by_role("menuitem", name="Lock panels layout").click()
+                page.get_by_role("menuitem", name="Lock tools layout").click()
+                page.keyboard.press("Escape")  # close modal dropdown before inspecting the workspace
+                check(store(page, "s.workspaceLayoutLocks.photoshop") == {"tools": True, "panels": True},
+                      "Workspace menu did not independently lock both layouts")
+                check(page.locator('[data-inspector-tab="color"]').get_attribute("draggable") == "false",
+                      "Locked Photoshop tabs are still draggable")
+                check(page.locator('[aria-label="Resize Photoshop inspector groups"]').get_attribute("aria-disabled") == "true",
+                      "Locked inspector splitter is still enabled")
+                check(page.get_by_role("button", name="Arrange panels for the right dock").is_disabled(),
+                      "Locked inspector still offers the Add Panel rearrangement menu")
+                page.locator('[data-inspector-tab="color"]').click(button="right")
+                check(page.get_by_role("menuitem", name="Float panel").is_disabled(),
+                      "Context menu still allows floating a panel when layout is locked")
+                page.keyboard.press("Escape")
+                blocked = page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    const before = JSON.stringify({panels:s.panels, toolbar:s.toolbarLayout})
+                    s.movePhotoshopInspectorTab('history', 'side')
+                    s.setPhotoshopInspector({upperPercent:65, sideWidth:410, sideOpen:true})
+                    s.setRightPanelTab('metadata') // cannot silently append an unlisted panel while locked
+                    s.revealPanel('metadata')
+                    s.floatPanel('history')
+                    s.dockPanel('color', 'left')
+                    s.setDockWidth(420)
+                    s.setToolbarLayout([{kind:'single', tool:'eraser'}])
+                    s.resetToolbarLayout()
+                    s.resetPanelLayout()
+                    s.resetWorkspaceLayout()
+                    let applyRejected = false
+                    try { s.applyNamedLayout('Before lock') }
+                    catch { applyRejected = true }
+                    const unchanged = JSON.stringify({
+                       panels:window.__zphotoStore.getState().panels,
+                       toolbar:window.__zphotoStore.getState().toolbarLayout
+                    }) === before
+                    s.setTool('brush')
+                    s.setRightPanelTab('history')
+                    const selected = window.__zphotoStore.getState().activeTool === 'brush' &&
+                       window.__zphotoStore.getState().panels.rightTab === 'history'
+                    return {unchanged, selected, applyRejected}
+                }""")
+                check(all(blocked.values()), f"Workspace lock allowed a layout mutation: {blocked}")
+                # Classic is independently unlocked, so it can be customized.
+                switched = page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setWorkspacePreset('classic')
+                    const unlocked = !window.__zphotoStore.getState().workspaceLayoutLocks.classic.tools &&
+                                     !window.__zphotoStore.getState().workspaceLayoutLocks.classic.panels
+                    s.setDockWidth(365)
+                    s.setToolbarLayout([{kind:'single', tool:'eraser'}])
+                    const classicChanged = window.__zphotoStore.getState().panels.dockWidth === 365 &&
+                                          window.__zphotoStore.getState().toolbarLayout?.[0]?.tool === 'eraser'
+                    s.setWorkspacePreset('photoshop')
+                    return {unlocked, classicChanged}
+                }""")
+                check(all(switched.values()), f"Locks leaked across workspaces: {switched}")
+                page.reload()
+                page.wait_for_function("() => !!window.__zphotoStore")
+                check(store(page, "s.workspaceLayoutLocks.photoshop") == {"tools": True, "panels": True},
+                      "Layout locks did not survive reload")
+                check(store(page, "s.workspaceLayoutLocks.classic") == {"tools": False, "panels": False},
+                      "Reload unexpectedly locked Classic")
+                page.get_by_role("button", name="Workspace template").click()
+                page.get_by_role("menuitem", name="Unlock panels layout").click()
+                page.get_by_role("menuitem", name="Unlock tools layout").click()
+                page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.movePhotoshopInspectorTab('history', 'side')
+                    s.setToolbarLayout([{kind:'single', tool:'eraser'}])
+                }""")
+                check(store(page, "s.panels.photoshopInspector.sideTabs.includes('history')"),
+                      "Unlock did not restore panel rearrangement")
+                check(store(page, "s.toolbarLayout?.[0]?.tool") == "eraser",
+                      "Unlock did not restore toolbar customization")
+                check(not errors, f"workspace locks generated JavaScript errors: {errors[:3]}")
+
+            def floating_window_layout_lock_during_drag():
+                _, page, errors = app_page(browser)
+                page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setWorkspacePreset('photoshop')
+                    s.resetWorkspaceLayout()
+                    s.floatPanel('history', {x:320, y:170, w:280, h:300})
+                }""")
+                frame = page.locator('[data-floating-panel="history"]')
+                handle = frame.locator('.panel-window-titlebar')
+                box = handle.bounding_box()
+                check(box is not None, "Floating panel title bar unavailable")
+                initial = frame.evaluate("(node) => ({left:parseFloat(node.style.left), top:parseFloat(node.style.top)})")
+                page.mouse.move(box["x"] + 75, box["y"] + 12)
+                page.mouse.down()
+                page.mouse.move(box["x"] + 120, box["y"] + 48, steps=4)
+                page.evaluate("""() => window.__zphotoStore.getState().setWorkspaceLayoutLock('panels', true)""")
+                page.mouse.move(box["x"] + 160, box["y"] + 70, steps=3)
+                page.mouse.up()
+                after = frame.evaluate("(node) => ({left:parseFloat(node.style.left), top:parseFloat(node.style.top)})")
+                check(abs(after["left"] - initial["left"]) <= 2 and
+                      abs(after["top"] - initial["top"]) <= 2,
+                      f"Locking while dragging left stale unsaved DOM geometry: {initial} -> {after}")
+                check(store(page, "s.panels.floating.history.x") == 320 and
+                      store(page, "s.panels.floating.history.y") == 170,
+                      "Locked floating window committed moved geometry")
+                check(frame.locator('div[aria-hidden][class*="cursor-"][class*="resize"]').count() == 0,
+                      "Locked floating panel still offers resize handles")
+                page.evaluate("""() => window.__zphotoStore.getState().setWorkspaceLayoutLock('panels', false)""")
+                box = handle.bounding_box()
+                check(box is not None, "Floating panel disappeared after unlocking")
+                page.mouse.move(box["x"] + 75, box["y"] + 12)
+                page.mouse.down()
+                page.mouse.move(box["x"] + 115, box["y"] + 42, steps=4)
+                page.evaluate("""() => window.__zphotoStore.getState().setWorkspaceLayoutLock('panels', true)""")
+                # No movement event after enabling the lock; pointer-up itself
+                # must restore unsaved DOM geometry.
+                page.mouse.up()
+                final = frame.evaluate("(node) => ({left:parseFloat(node.style.left), top:parseFloat(node.style.top)})")
+                check(abs(final["left"] - initial["left"]) <= 2 and
+                      abs(final["top"] - initial["top"]) <= 2,
+                      f"Pointer release after a mid-drag lock left shifted DOM: {final}")
+                check(not errors, f"floating panel lock caused JavaScript errors: {errors[:3]}")
+
             def named_layout_manager_safety():
                 _, page, errors = app_page(browser)
                 seed = page.evaluate("""() => {
@@ -1087,6 +1217,8 @@ def main():
                 ("photoshop_inspector_tab_group_layout", photoshop_inspector_tab_group_layout),
                 ("photoshop_inspector_extra_panels_and_collapsed_routing", photoshop_inspector_extra_panels_and_collapsed_routing),
                 ("photoshop_secondary_inspector_column", photoshop_secondary_inspector_column),
+                ("workspace_layout_lock_isolation", workspace_layout_lock_isolation),
+                ("floating_window_layout_lock_during_drag", floating_window_layout_lock_during_drag),
                 ("named_layout_manager_safety", named_layout_manager_safety),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("color_sampler_info_panel", color_sampler_info_panel),

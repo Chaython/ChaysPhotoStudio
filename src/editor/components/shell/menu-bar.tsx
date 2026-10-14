@@ -7,7 +7,7 @@ import {
 import type { MenuItem } from '../../constants/menus'
 import { MENUS, PLUGINS_MENU_INDEX, getPluginsMenuItems } from '../../constants/menus'
 import { useEditorStore } from '../../store'
-import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2, Pencil, X } from 'lucide-react'
+import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2, Pencil, X, Lock, Unlock } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -69,6 +69,8 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
   const workspacePreset = useEditorStore(s => s.workspacePreset)
   const setWorkspacePreset = useEditorStore(s => s.setWorkspacePreset)
   const resetWorkspaceLayout = useEditorStore(s => s.resetWorkspaceLayout)
+  const workspaceLocks = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset])
+  const setWorkspaceLayoutLock = useEditorStore(s => s.setWorkspaceLayoutLock)
   const savedLayouts = useEditorStore(s => s.savedLayouts)
   const saveNamedLayout = useEditorStore(s => s.saveNamedLayout)
   const applyNamedLayout = useEditorStore(s => s.applyNamedLayout)
@@ -159,7 +161,22 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace template</div>
             <DropdownMenuItem onClick={() => setWorkspacePreset('photoshop')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Photoshop-style</span>{workspacePreset === 'photoshop' && <Check size={13} />}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => setWorkspacePreset('classic')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Classic / custom</span>{workspacePreset === 'classic' && <Check size={13} />}</DropdownMenuItem>
-            <DropdownMenuItem
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Protect workspace arrangement</div>
+            {(['panels', 'tools'] as const).map(kind => (
+              <DropdownMenuItem key={kind} className="gap-2 text-xs" onSelect={e => {
+                e.preventDefault()
+                try {
+                  setWorkspaceLayoutLock(kind, !workspaceLocks[kind])
+                  pushToast((workspaceLocks[kind] ? 'Unlocked ' : 'Locked ') + kind + ' layout for ' + workspacePreset, 'success')
+                } catch (error) { pushToast(String(error), 'error') }
+              }}>
+                {workspaceLocks[kind] ? <Lock size={13} /> : <Unlock size={13} />}
+                <span className="flex-1">{workspaceLocks[kind] ? 'Unlock' : 'Lock'} {kind} layout</span>
+                {workspaceLocks[kind] && <Check size={13} />}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem disabled={workspaceLocks.panels || workspaceLocks.tools}
               onClick={() => { resetWorkspaceLayout(); pushToast('Restored current workspace template; saved layouts were kept.', 'success') }}
               title="Reset tools and panels in this workspace only. Named layouts and the other workspace stay unchanged."
               className="gap-2 text-xs"><RotateCcw size={13} /><span className="flex-1">Restore {workspacePreset === 'photoshop' ? 'Photoshop-style' : 'Classic'} template</span></DropdownMenuItem>
@@ -197,7 +214,10 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
               <div key={layout.name} className="flex items-center px-1 hover:bg-accent">
                 <button type="button" className="min-w-0 flex-1 truncate text-left px-2 py-1.5 text-xs"
                   title={'Apply ' + layout.name + ' (' + layout.kind + ')'}
-                  onClick={() => { applyNamedLayout(layout.name); pushToast('Applied ' + layout.name, 'success') }}>
+                  onClick={() => {
+                    try { applyNamedLayout(layout.name); pushToast('Applied ' + layout.name, 'success') }
+                    catch (error) { pushToast(String(error), 'error') }
+                  }}>
                   {layout.name} <span className="text-muted-foreground">({layout.kind})</span>
                 </button>
                 {pendingLayoutDelete === layout.name ? <>
@@ -276,7 +296,7 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('plugin-manager')}>
               <Puzzle size={13} /><span className="flex-1">Plugin manager</span>
             </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => resetLayout()}>
+            <DropdownMenuItem disabled={workspaceLocks.panels} className="gap-2 text-xs" onClick={() => resetLayout()}>
               <RotateCcw size={13} /><span className="flex-1">Reset panel layout</span>
             </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('about')}>

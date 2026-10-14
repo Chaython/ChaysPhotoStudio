@@ -29,6 +29,7 @@ interface PullDrag {
 }
 
 export function useDockDrop(side: DockTabSide, mobile: boolean): boolean {
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
   const [active, setActive] = useState(false)
   useEffect(() => {
     const onDropEvt = (e: Event) => {
@@ -38,11 +39,12 @@ export function useDockDrop(side: DockTabSide, mobile: boolean): boolean {
     window.addEventListener(DOCK_DROP_EVENT, onDropEvt as EventListener)
     return () => window.removeEventListener(DOCK_DROP_EVENT, onDropEvt as EventListener)
   }, [side])
-  return active && !mobile
+  return active && !mobile && !panelsLocked
 }
 
 /** Move any panel to this dock. The badge always reflects its actual location. */
 export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: boolean }) {
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
   if (mobile) return null
@@ -54,8 +56,9 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0"
-          title={`Arrange panels — move panels into the ${side.includes('top') || side.includes('bottom') ? side.replaceAll('-', ' ') + ' strip' : side + ' dock'}`}
+          disabled={panelsLocked}
+          className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          title={panelsLocked ? 'Unlock panel layout to rearrange panels' : `Arrange panels — move panels into the ${side.includes('top') || side.includes('bottom') ? side.replaceAll('-', ' ') + ' strip' : side + ' dock'}`}
           aria-label={`Arrange panels for the ${side === 'top' ? 'top strip' : side + ' dock'}`}
         >
           <Plus size={13} />
@@ -116,6 +119,7 @@ function DockTabs({ side, mobile, extra }: {
 }) {
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
   const activeTab = useEditorStore(s => side === 'left' ? s.panels.leftTab : s.panels.rightTab)
   const setTabLeft = useEditorStore(s => s.setLeftPanelTab)
   const setTabRight = useEditorStore(s => s.setRightPanelTab)
@@ -131,14 +135,14 @@ function DockTabs({ side, mobile, extra }: {
   const suppressClick = useRef(false)
 
   const onPullDown = (id: string) => (e: React.PointerEvent<HTMLElement>) => {
-    if (mobile || e.button !== 0 || (e.buttons & 1) === 0) { pullDrag.current = null; return }
+    if (mobile || panelsLocked || e.button !== 0 || (e.buttons & 1) === 0) { pullDrag.current = null; return }
     suppressClick.current = false
     pullDrag.current = { id, x: e.clientX, y: e.clientY, handedOff: false }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   const onPullMove = (e: React.PointerEvent<HTMLElement>) => {
-    if ((e.buttons & 1) === 0) { pullDrag.current = null; return }
+    if (panelsLocked || (e.buttons & 1) === 0) { pullDrag.current = null; return }
     const d = pullDrag.current
     if (!d || d.handedOff) return
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > PULL_THRESHOLD) {
@@ -167,7 +171,7 @@ function DockTabs({ side, mobile, extra }: {
             className={cn(
               'flex-1 min-w-8 h-8 flex items-center justify-center relative',
               activeTab === t.id ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
-              !mobile && 'cursor-grab active:cursor-grabbing',
+              !mobile && (panelsLocked ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'),
             )}
             onClick={() => {
               if (suppressClick.current) {
@@ -176,7 +180,7 @@ function DockTabs({ side, mobile, extra }: {
               }
               setTab(t.id)
             }}
-            onDoubleClick={() => !mobile && useEditorStore.getState().floatPanel(t.id, t.defaultFloat)}
+            onDoubleClick={() => !mobile && !panelsLocked && useEditorStore.getState().floatPanel(t.id, t.defaultFloat)}
             onPointerDown={onPullDown(t.id)}
             onPointerMove={onPullMove}
             onPointerUp={onPullUp}
@@ -212,11 +216,12 @@ function DockPanelHeader({ id, mobile }: { id: string; mobile: boolean }) {
   return mobile ? header : <PanelContextMenu id={id}>{header}</PanelContextMenu>
 }
 
-function WidthDivider({ side, width, onWidth, onReset }: {
+function WidthDivider({ side, width, onWidth, onReset, disabled = false }: {
   side: 'left' | 'right'
   width: number
   onWidth: (px: number) => void
   onReset: () => void
+  disabled?: boolean
 }) {
   const [active, setActive] = useState(false)
   const drag = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -229,7 +234,7 @@ function WidthDivider({ side, width, onWidth, onReset }: {
 
   const sign = side === 'left' ? 1 : -1
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return
+    if (disabled || e.button !== 0) return
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
     drag.current = { startX: e.clientX, startWidth: e.currentTarget.parentElement?.getBoundingClientRect().width || width }
@@ -259,13 +264,15 @@ function WidthDivider({ side, width, onWidth, onReset }: {
     <div
       role="separator"
       aria-orientation="vertical"
+      aria-disabled={disabled}
       aria-label={`Resize ${side} panel dock`}
       title="Drag to resize dock · double-click to fit panel automatically"
       className={cn(
         side === 'left'
           ? 'absolute right-0 top-0 bottom-0 -mr-[3px] w-[6px]'
           : 'absolute left-0 top-0 bottom-0 -ml-[3px] w-[6px]',
-        'z-20 cursor-col-resize touch-none transition-colors hover:bg-primary/40',
+        'z-20 touch-none transition-colors',
+        disabled ? 'cursor-default opacity-30' : 'cursor-col-resize hover:bg-primary/40',
         active ? 'bg-primary/60' : 'bg-transparent',
       )}
       onPointerDown={onDown}
@@ -273,6 +280,7 @@ function WidthDivider({ side, width, onWidth, onReset }: {
       onPointerUp={onUp}
       onPointerCancel={onUp}
       onDoubleClick={() => {
+        if (disabled) return
         if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = 0 }
         pending.current = null
         onReset()
@@ -301,6 +309,7 @@ const PHOTOSHOP_TAB_MIME = 'application/x-zphoto-inspector-tab'
 const clampInspectorSplit = (value: number) => Math.max(22, Math.min(70, value))
 
 function PhotoshopRightDock() {
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
   const inspector = useEditorStore(s => s.panels.photoshopInspector)
   const setInspector = useEditorStore(s => s.setPhotoshopInspector)
   const { upperTab: upperSelection, lowerTab: lowerSelection, upperTabs, lowerTabs,
@@ -347,8 +356,9 @@ function PhotoshopRightDock() {
     label: string, group: 'upper' | 'lower' | 'side') => (
     <div className="flex h-8 shrink-0 overflow-x-auto border-b border-border/70 bg-panel zphoto-scroll"
       role="tablist" aria-label={label} data-inspector-tabs={group}
-      onDragOver={e => { if (e.dataTransfer.types.includes(PHOTOSHOP_TAB_MIME)) e.preventDefault() }}
+      onDragOver={e => { if (!panelsLocked && e.dataTransfer.types.includes(PHOTOSHOP_TAB_MIME)) e.preventDefault() }}
       onDrop={e => {
+        if (panelsLocked) return
         const id = e.dataTransfer.getData(PHOTOSHOP_TAB_MIME)
         if (!id) return
         e.preventDefault()
@@ -361,20 +371,22 @@ function PhotoshopRightDock() {
         const relocated = !!floating[id] || (dockSide[id] != null && dockSide[id] !== 'right')
         return (
           <PanelContextMenu key={id} id={id}>
-            <button type="button" role="tab" draggable data-inspector-tab={id}
+            <button type="button" role="tab" draggable={!panelsLocked} data-inspector-tab={id}
               aria-selected={active === id}
               title={def.label + (relocated ? ' (arranged elsewhere)' : ' — drag to another stack or column; Alt+Shift+Right to secondary column, Alt+Shift+Left to lower stack; double-click to float')}
               className={cn('relative flex shrink-0 items-center gap-1 px-2 text-[10px] border-r border-border/40 cursor-grab active:cursor-grabbing',
                 active === id ? 'text-foreground bg-background font-semibold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}
               onClick={() => choose(id)}
-              onDoubleClick={() => useEditorStore.getState().floatPanel(id, def.defaultFloat)}
+              onDoubleClick={() => { if (!panelsLocked) useEditorStore.getState().floatPanel(id, def.defaultFloat) }}
               onDragStart={e => {
+                if (panelsLocked) { e.preventDefault(); return }
                 e.dataTransfer.effectAllowed = 'move'
                 e.dataTransfer.setData(PHOTOSHOP_TAB_MIME, id)
                 e.dataTransfer.setData('text/plain', id)
               }}
               onDragOver={e => { if (e.dataTransfer.types.includes(PHOTOSHOP_TAB_MIME)) e.preventDefault() }}
               onDrop={e => {
+                if (panelsLocked) return
                 const dragged = e.dataTransfer.getData(PHOTOSHOP_TAB_MIME)
                 if (!dragged) return
                 e.preventDefault()
@@ -383,7 +395,7 @@ function PhotoshopRightDock() {
                 moveInspectorTab(dragged, group, id)
               }}
               onKeyDown={e => {
-                if (!e.altKey) return
+                if (panelsLocked || !e.altKey) return
                 // React may reparent the tab when changing stacks; keep the
                 // keyboard user's focus on the same tab after its move.
                 const restoreFocus = () => requestAnimationFrame(() => {
@@ -486,7 +498,7 @@ function PhotoshopRightDock() {
       data-secondary-visible={showSide ? 'true' : 'false'}
       className="relative hidden md:flex shrink-0 min-h-0 border-l border-border bg-panel panel-dock-drop"
       style={{ width: width + (showSide ? sideWidth : 0) }} aria-label="Photoshop-style inspector panels">
-      <WidthDivider side="right" width={width + (showSide ? sideWidth : 0)}
+      <WidthDivider side="right" disabled={panelsLocked} width={width + (showSide ? sideWidth : 0)}
         onWidth={next => setWidth(next - (showSide ? sideWidth : 0))} onReset={resetWidth} />
       <div className="flex shrink-0 min-h-0 flex-col" style={{ width }} data-inspector-column="primary">
         <div className="h-7 shrink-0 pl-2 border-b flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -500,7 +512,7 @@ function PhotoshopRightDock() {
               onClick={() => setInspector({ sideOpen: !sideOpen, collapsed: false })}>
               <PanelRightOpen size={13} />
             </button>
-            <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
+            <button type="button" disabled={panelsLocked} className="h-7 w-7 flex items-center justify-center hover:bg-accent disabled:opacity-40"
               title="Restore the default Photoshop inspector tab groups"
               aria-label="Reset Photoshop inspector tab groups"
               onClick={() => {
@@ -525,10 +537,12 @@ function PhotoshopRightDock() {
           aria-orientation="horizontal" aria-valuemin={22} aria-valuemax={70} aria-valuenow={upperPercent}
           title="Drag to resize upper and lower panels; arrow keys resize"
           className="h-2 shrink-0 flex items-center cursor-row-resize touch-none border-y border-border/60 bg-panel hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
-          onPointerDown={onSplitPointerDown} onPointerMove={onSplitPointerMove}
+          aria-disabled={panelsLocked}
+          onPointerDown={e => { if (!panelsLocked) onSplitPointerDown(e) }} onPointerMove={onSplitPointerMove}
           onPointerUp={onSplitPointerUp} onPointerCancel={onSplitPointerUp}
           onDoubleClick={() => setInspector({ upperPercent: 40 })}
           onKeyDown={e => {
+            if (panelsLocked) return
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault()
               setInspector({ upperPercent: clampInspectorSplit(upperPercent + (e.key === 'ArrowDown' ? 5 : -5)) })
@@ -544,7 +558,7 @@ function PhotoshopRightDock() {
       </div>
       {showSide && <section data-inspector-column="secondary" className="relative flex min-h-0 shrink-0 flex-col border-l border-border"
         style={{ width: sideWidth }}>
-        <WidthDivider side="right" width={sideWidth}
+        <WidthDivider side="right" disabled={panelsLocked} width={sideWidth}
           onWidth={next => setInspector({ sideWidth: next })}
           onReset={() => setInspector({ sideWidth: 280 })} />
         <div className="flex h-7 shrink-0 items-center justify-between border-b px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
