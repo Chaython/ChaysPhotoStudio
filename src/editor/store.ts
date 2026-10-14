@@ -560,7 +560,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   timelineActiveFrame: 0,
   timelineLoop: true,
   timelineFrames: [],
-  panels: { ...defaultPanelState(), ...(readWorkspaceRecord(loadWorkspacePreset())?.panels ?? loadPanelLayout() ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
+  panels: { ...defaultPanelState(), ...(loadPanelLayout() ?? readWorkspaceRecord(loadWorkspacePreset())?.panels ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
   view: {
     // rulers ON by default for fresh users; anyone with persisted prefs
     // keeps their saved choice (the loader merges over these defaults)
@@ -580,7 +580,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       : {}),
   },
   shortcutOverrides: loadShortcutOverrides(),
-  toolbarLayout: readWorkspaceRecord(loadWorkspacePreset())?.toolbar ?? loadToolbarLayout(),
+  toolbarLayout: readWorkspaceRecord(loadWorkspacePreset()) ? readWorkspaceRecord(loadWorkspacePreset())!.toolbar : loadToolbarLayout(),
   savedLayouts: readSavedLayouts(),
 
   setWorkspacePreset: (preset) => set(s => {
