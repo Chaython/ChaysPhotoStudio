@@ -242,7 +242,36 @@ function persistShortcutOverrides(overrides: Record<string, string>) {
 }
 
 /** default toolbar: ToolDef groups → sections, preserving TOOL_DEFS order */
-export function defaultToolbarLayout(): ToolbarSection[] {
+export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): ToolbarSection[] {
+  if (preset === 'photoshop') {
+    // Photoshop Essentials-style flyouts. Every registered editor tool stays
+    // accessible, with new tools appended automatically by the sanitizer.
+    const groups: ToolId[][] = [
+      ['move'],
+      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
+      ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
+      ['object-select', 'quick-select', 'magic-wand'],
+      ['crop', 'perspective-crop'],
+      ['eyedropper', 'color-sampler', 'measure'],
+      ['spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
+      ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
+      ['clone-stamp', 'pattern-stamp'],
+      ['history-brush', 'art-history-brush'],
+      ['eraser', 'background-eraser', 'magic-eraser'],
+      ['gradient', 'paint-bucket'],
+      ['blur', 'sharpen', 'smudge'],
+      ['dodge', 'burn', 'sponge'],
+      ['pen', 'pen-freeform', 'pen-curvature'],
+      ['text', 'type-mask-horizontal', 'type-mask-vertical'],
+      ['path-select', 'direct-select'],
+      ['shape'],
+      ['hand'],
+      ['zoom'],
+    ]
+    return sanitizeToolbarLayout(groups.map(ids => ids.length === 1
+      ? { kind: 'single' as const, tool: ids[0] }
+      : { kind: 'group' as const, tools: ids }))
+  }
   const map = new Map<number, ToolId[]>()
   for (const def of TOOL_DEFS) {
     if (!map.has(def.group)) map.set(def.group, [])
