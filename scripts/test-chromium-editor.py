@@ -357,6 +357,20 @@ def main():
                     return {duplicated, rejected, inspectorExport}
                 }""")
                 check(all(safeguards.values()), f"Import safety failed: {safeguards}")
+                # Test the actual file-picker UI path, not just the store import
+                # method. Importing a saved layout must not auto-apply it.
+                ui_import = page.evaluate("""() => window.__zphotoStore.getState()
+                    .exportNamedLayout('Test tools').replace('"Test tools"', '"Browser JSON layout"')""")
+                toolbar_before_file = store(page, "JSON.stringify(s.toolbarLayout)")
+                page.locator('input[data-file-purpose="layout"]').set_input_files({
+                    "name": "browser-layout.zlayout.json",
+                    "mimeType": "application/json",
+                    "buffer": ui_import.encode("utf-8"),
+                })
+                page.wait_for_function("""() => window.__zphotoStore.getState()
+                    .savedLayouts.some(x => x.name === 'Browser JSON layout')""", timeout=15000)
+                check(store(page, "JSON.stringify(s.toolbarLayout)") == toolbar_before_file,
+                      "Importing a named layout unexpectedly changed the active toolbar")
                 page.reload()
                 page.wait_for_function("() => !!window.__zphotoStore")
                 check(store(page, "s.workspacePreset") == "photoshop",
