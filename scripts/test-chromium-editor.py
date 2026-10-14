@@ -466,6 +466,10 @@ def main():
                       "pointer drag duplicated Channels between stacks")
                 # Keyboard users can move tabs back without a drag.
                 page.locator('[data-inspector-tab="channels"]').focus()
+                before_up = store(page, "s.panels.photoshopInspector.upperTabs")
+                page.keyboard.press("Alt+ArrowUp")
+                check(store(page, "s.panels.photoshopInspector.upperTabs") == before_up,
+                      "Alt+Up reordered a tab already in the upper inspector")
                 page.keyboard.press("Alt+ArrowDown")
                 check(store(page, "s.panels.photoshopInspector.lowerTabs.includes('channels')"),
                       "Alt+Down failed to move inspector tab to lower stack")
