@@ -663,11 +663,12 @@ def main():
                 page.get_by_role("button", name="Workspace template").click()
                 page.get_by_role("menuitem", name="Lock panels layout").click()
                 page.get_by_role("menuitem", name="Lock tools layout").click()
+                page.keyboard.press("Escape")  # close modal dropdown before inspecting the workspace
                 check(store(page, "s.workspaceLayoutLocks.photoshop") == {"tools": True, "panels": True},
                       "Workspace menu did not independently lock both layouts")
                 check(page.locator('[data-inspector-tab="color"]').get_attribute("draggable") == "false",
                       "Locked Photoshop tabs are still draggable")
-                check(page.get_by_role("separator", name="Resize Photoshop inspector groups").get_attribute("aria-disabled") == "true",
+                check(page.locator('[aria-label="Resize Photoshop inspector groups"]').get_attribute("aria-disabled") == "true",
                       "Locked inspector splitter is still enabled")
                 check(page.get_by_role("button", name="Arrange panels for the right dock").is_disabled(),
                       "Locked inspector still offers the Add Panel rearrangement menu")
