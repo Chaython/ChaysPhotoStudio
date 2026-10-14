@@ -68,6 +68,7 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
   const resetLayout = useEditorStore(s => s.resetPanelLayout)
   const workspacePreset = useEditorStore(s => s.workspacePreset)
   const setWorkspacePreset = useEditorStore(s => s.setWorkspacePreset)
+  const resetWorkspaceLayout = useEditorStore(s => s.resetWorkspaceLayout)
   const savedLayouts = useEditorStore(s => s.savedLayouts)
   const saveNamedLayout = useEditorStore(s => s.saveNamedLayout)
   const applyNamedLayout = useEditorStore(s => s.applyNamedLayout)
@@ -155,6 +156,10 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace template</div>
             <DropdownMenuItem onClick={() => setWorkspacePreset('photoshop')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Photoshop-style</span>{workspacePreset === 'photoshop' && <Check size={13} />}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => setWorkspacePreset('classic')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Classic / custom</span>{workspacePreset === 'classic' && <Check size={13} />}</DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => { resetWorkspaceLayout(); pushToast('Restored current workspace template; saved layouts were kept.', 'success') }}
+              title="Reset tools and panels in this workspace only. Named layouts and the other workspace stay unchanged."
+              className="gap-2 text-xs"><RotateCcw size={13} /><span className="flex-1">Restore {workspacePreset === 'photoshop' ? 'Photoshop-style' : 'Classic'} template</span></DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Saved layouts (independent from workspace)</div>
             <div className="flex gap-1 px-2 py-1" onKeyDown={e => e.stopPropagation()}>
