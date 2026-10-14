@@ -53,9 +53,15 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     get<HTMLElement>('[data-video-name]').textContent = (file as File).name || 'Video'
     video.muted = true
     video.playsInline = true
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     let finished = false
+    let failed = false
     let duration = 0
+    let pendingSeek = false
+    let requestedTime: number | null = null
     let loadTimeout: ReturnType<typeof setTimeout> | null = null
+    // Chrome can fire pause/timeupdate/loadeddata during a seek. Never let those
+    // events unlock Import Frame until the newest seek has completed.
 
     const fmt = (seconds: number) => {
       const millis = Math.round(Math.max(0, seconds) * 1000)
@@ -64,21 +70,30 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       return mins + ':' + secs + '.' + (millis % 1000).toString().padStart(3, '0')
     }
     const seekMax = () => Math.max(0, duration - 0.001)
-    const canCapture = () => !!video.videoWidth && !!video.videoHeight && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !video.seeking
+    const canCapture = () => !finished && !failed && !pendingSeek && !!video.videoWidth &&
+      !!video.videoHeight && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !video.seeking
     const update = () => {
       if (finished) return
-      const seconds = Number.isFinite(video.currentTime) ? video.currentTime : 0
+      const seconds = pendingSeek && requestedTime !== null ? requestedTime
+        : Number.isFinite(video.currentTime) ? video.currentTime : 0
+      // Preserve the requested slider position while asynchronous decoding is
+      // in flight; pause/timeupdate must not snap it back to the previous frame.
       timeline.value = String(Math.min(seconds, seekMax()))
       if (document.activeElement !== timeInput) timeInput.value = seconds.toFixed(3)
       clock.textContent = fmt(seconds) + ' / ' + fmt(duration)
       importFrame.disabled = !canCapture()
-      if (canCapture()) status.textContent = video.videoWidth + ' × ' + video.videoHeight + ' px'
+      if (pendingSeek) status.textContent = 'Seeking…'
+      else if (canCapture()) status.textContent = video.videoWidth + ' × ' + video.videoHeight + ' px'
       play.textContent = video.paused ? 'Play' : 'Pause'
     }
     const fail = (message: string) => {
       if (finished) return
+      failed = true
+      pendingSeek = false
       video.pause()
       play.disabled = true
+      timeline.disabled = true
+      timeInput.disabled = true
       importFrame.disabled = true
       status.textContent = message
     }
@@ -91,6 +106,7 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       video.load()
       URL.revokeObjectURL(url)
       overlay.remove()
+      if (previousFocus?.isConnected) previousFocus.focus()
       return true
     }
     const abort = () => {
@@ -100,15 +116,21 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       reject(err)
     }
     const seek = (requested: number) => {
-      if (!Number.isFinite(requested) || !duration) return
+      if (finished || failed || !Number.isFinite(requested) || !duration) return
       const next = Math.min(Math.max(0, requested), seekMax())
-      video.pause()
+      if (!pendingSeek && !video.seeking && Math.abs(video.currentTime - next) < 0.0005) {
+        update()
+        return
+      }
+      // Set this BEFORE pausing: pause emits synchronous media events in some
+      // browser implementations, which previously enabled stale-frame import.
+      pendingSeek = true
+      requestedTime = next
       importFrame.disabled = true
       status.textContent = 'Seeking…'
-      // Do not call update() here: seeking is asynchronous and update() could
-      // re-enable Import Frame while the old frame is still being displayed.
-      if (Math.abs(video.currentTime - next) < 0.0005) { update(); return }
+      video.pause()
       try { video.currentTime = next } catch { fail('Unable to seek to this frame') }
+      update()
     }
 
     video.addEventListener('loadedmetadata', () => {
@@ -133,7 +155,13 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       importFrame.disabled = true
       status.textContent = 'Seeking…'
     })
-    video.addEventListener('seeked', update)
+    video.addEventListener('seeked', () => {
+      // A newer range-input seek may have superseded this event.
+      if (finished || video.seeking) return
+      pendingSeek = false
+      requestedTime = null
+      update()
+    })
     video.addEventListener('timeupdate', update)
     video.addEventListener('play', update)
     video.addEventListener('pause', update)
@@ -145,8 +173,14 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       void video.play().catch(() => { status.textContent = 'Playback unavailable — scrub to choose a frame'; update() })
     })
     importFrame.addEventListener('click', () => {
-      if (!canCapture() || finished) return
+      if (!canCapture()) return
       try {
+        if (video.videoWidth * video.videoHeight > 32_000_000) {
+          throw new Error('This video frame exceeds the 32-megapixel import safety limit')
+        }
+        // Freeze playback at the chosen timestamp before copying pixels.
+        if (!video.paused) video.pause()
+        if (!canCapture()) return
         const canvas = document.createElement('canvas')
         canvas.width = video.videoWidth
         canvas.height = video.videoHeight
@@ -175,8 +209,14 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     })
     document.body.appendChild(overlay)
     cancel.focus()
+    // Arm before video.load(): cached media can dispatch loadeddata
+    // synchronously in embeds/tests, otherwise the stale timeout survives.
     loadTimeout = setTimeout(() => fail('Timed out loading the video. Try another codec or file.'), 20000)
-    video.src = url
-    video.load()
+    try {
+      video.src = url
+      video.load()
+    } catch (err) {
+      fail(err instanceof Error ? err.message : 'Unable to load this video')
+    }
   })
 }
