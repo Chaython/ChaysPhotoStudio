@@ -543,6 +543,67 @@ def main():
                       "reloading lost extra Timeline panel")
                 check(not errors, f"external inspector panel tests threw exceptions: {errors[:3]}")
 
+            def photoshop_secondary_inspector_column():
+                _, page, errors = app_page(browser)
+                page.set_viewport_size({"width": 1440, "height": 900})
+                result = page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setWorkspacePreset('photoshop')
+                    s.resetWorkspaceLayout()
+                    s.setPhotoshopInspector({ sideOpen: true, sideWidth: 335 })
+                    s.movePhotoshopInspectorTab('history', 'side')
+                    const i = window.__zphotoStore.getState().panels.photoshopInspector
+                    return { sideOpen:i.sideOpen, moved:i.sideTabs.includes('history'),
+                             removed:!i.lowerTabs.includes('history'), kept:i.lowerTabs.length > 0 }
+                }""")
+                check(all(result.values()), f"Second inspector column was not initialized correctly: {result}")
+                page.wait_for_selector('[data-inspector-column="secondary"]')
+                check(page.locator('[data-inspector-column="secondary"] [data-inspector-tab="history"]').count() == 1,
+                      "History tab was not rendered in the second inspector column")
+                check(store(page, "s.panels.photoshopInspector.sideWidth") == 335,
+                      "Second inspector column lost its configured width")
+                # Real keyboard navigation can move a panel into and out of column 2.
+                page.locator('[data-inspector-column="primary"] [data-inspector-tab="histogram"]').focus()
+                page.keyboard.press('Alt+Shift+ArrowRight')
+                check(store(page, "s.panels.photoshopInspector.sideTabs.includes('histogram')"),
+                      "Alt+Shift+Right failed to move tab into the secondary column")
+                page.locator('[data-inspector-column="secondary"] [data-inspector-tab="histogram"]').focus()
+                page.keyboard.press('Alt+Shift+ArrowLeft')
+                check(store(page, "s.panels.photoshopInspector.lowerTabs.includes('histogram')"),
+                      "Alt+Shift+Left failed to move tab into lower stack")
+                page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.saveNamedLayout('Two-column inspector', 'panels')
+                    s.setWorkspacePreset('classic')
+                    s.setWorkspacePreset('photoshop')
+                }""")
+                check(store(page, "s.panels.photoshopInspector.sideTabs.includes('history')"),
+                      "Switching workspaces lost the second inspector column's panel tabs")
+                check(store(page, "s.panels.photoshopInspector.sideWidth") == 335,
+                      "Switching workspaces lost the second inspector column width")
+                exported = store(page, "JSON.parse(s.exportNamedLayout('Two-column inspector')).panels.photoshopInspector")
+                check(exported["sideTabs"] == ["history"] and exported["sideOpen"] and exported["sideWidth"] == 335,
+                      "Named layout export did not preserve the secondary inspector column")
+                page.reload()
+                page.wait_for_function("() => !!window.__zphotoStore")
+                page.wait_for_selector('[data-inspector-column="secondary"]')
+                check(store(page, "s.panels.photoshopInspector.sideTabs") == ["history"],
+                      "Reload forgot the secondary inspector group")
+                # When the viewport cannot fit two columns, tabs remain available
+                # through the existing lower stack rather than disappearing.
+                page.set_viewport_size({"width": 900, "height": 700})
+                page.wait_for_function("""() => document.querySelector('[data-photoshop-dock]')
+                    ?.getAttribute('data-secondary-visible') === 'false'""")
+                check(page.locator('[data-inspector-column="secondary"]').count() == 0,
+                      "Secondary column rendered over the canvas in a narrow window")
+                check(page.locator('[data-photoshop-stack="lower"] [data-inspector-tab="history"]').count() == 1,
+                      "Narrow viewport stranded the hidden second-column panel")
+                page.set_viewport_size({"width": 1440, "height": 900})
+                page.wait_for_selector('[data-inspector-column="secondary"]')
+                check(store(page, "s.panels.photoshopInspector.sideWidth") == 335,
+                      "Responsive fallback changed the persistent column width")
+                check(not errors, f"secondary inspector caused JavaScript errors: {errors[:3]}")
+
             def named_layout_manager_safety():
                 _, page, errors = app_page(browser)
                 seed = page.evaluate("""() => {
@@ -922,6 +983,7 @@ def main():
                 ("workspace_restore_precedence_and_inspector_sync", workspace_restore_precedence_and_inspector_sync),
                 ("photoshop_inspector_tab_group_layout", photoshop_inspector_tab_group_layout),
                 ("photoshop_inspector_extra_panels_and_collapsed_routing", photoshop_inspector_extra_panels_and_collapsed_routing),
+                ("photoshop_secondary_inspector_column", photoshop_secondary_inspector_column),
                 ("named_layout_manager_safety", named_layout_manager_safety),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("color_sampler_info_panel", color_sampler_info_panel),
