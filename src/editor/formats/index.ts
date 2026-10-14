@@ -18,7 +18,7 @@ import {
 import { decodePsd, psdBlendKeyToMode } from './psd'
 import type { ImportFormatId, RawImage } from './decoders'
 import type { ExportFormatId } from './encoders'
-import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtension, publishedFormatKind, PHOTOPEA_IMPORT_ACCEPT } from './photopea-formats'
+import { decodePublishedFormatPreview, fileExtension, isPhotopeaPublishedExtension, isVideoImport, publishedFormatKind, PHOTOPEA_IMPORT_ACCEPT } from './photopea-formats'
 import { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 import { decodeDds, decodeIcns, decodeIff } from './legacy-raster'
 import { decodeSgi, decodeSunRaster } from './heritage-raster'
@@ -37,7 +37,7 @@ export { detectFormat, rawToCanvas, scanAlpha } from './decoders'
 export { buildOpenRaster } from './openraster'
 export { ICO_SIZE_POOL } from './encoders'
 export { decodePsd, buildPsd, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFingerprint, stripPsdNativeObjectBlocks, psdNativeObjectKind, psdWillReplaceSourceFx, psdImportedSmartIsUnchanged } from './psd'
-export { PHOTOPEA_IMPORT_ACCEPT, PHOTOPEA_COMPLEX_EXTENSIONS, PHOTOPEA_RASTER_EXTENSIONS, PHOTOPEA_RAW_EXTENSIONS, PHOTOPEA_ANIMATED_EXTENSIONS, EXTRA_IMPORT_EXTENSIONS, fileExtension, publishedFormatKind, isPhotopeaPublishedExtension } from './photopea-formats'
+export { PHOTOPEA_IMPORT_ACCEPT, PHOTOPEA_COMPLEX_EXTENSIONS, PHOTOPEA_RASTER_EXTENSIONS, PHOTOPEA_RAW_EXTENSIONS, PHOTOPEA_ANIMATED_EXTENSIONS, EXTRA_IMPORT_EXTENSIONS, fileExtension, publishedFormatKind, isPhotopeaPublishedExtension, isVideoImport } from './photopea-formats'
 export { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 
 // ============================================================
@@ -214,6 +214,18 @@ function fromRaw(raw: RawImage, format: string): DecodedImage {
  *  createImageBitmap/<img>; anything the browser can't do (16-bit
  *  TIFF, PSD, TGA, PNM, QOI, PCX, ICO-DIB) is decoded here. */
 export async function decodeFile(file: File | Blob, options?: { rawSettings?: RawDevelopSettings }): Promise<DecodedImage> {
+  // Never read an entire movie into memory or silently import the first frame.
+  // The video picker was orphaned when the Photopea fallback was introduced;
+  // route video before generic image detection and always let users choose.
+  if (isVideoImport(file as File)) {
+    const { pickVideoFrame } = await import('./video-frame-picker')
+    const canvas = await pickVideoFrame(file)
+    return {
+      canvas, width: canvas.width, height: canvas.height,
+      hasAlpha: false, format: fileExtension((file as File).name || '') || file.type || 'video',
+      sourceBitDepth: 8,
+    }
+  }
   const bytes = new Uint8Array(await file.arrayBuffer())
   const sourceName = (file as File).name || ''
   if (bytes.length>=4 && bytes[0]===0x42 && bytes[1]===0x50 && bytes[2]===0x47 && bytes[3]===0xfb) {
@@ -280,9 +292,7 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
   if (!format) {
     const name = (file as File).name || ''
     if (isPhotopeaPublishedExtension(name)) {
-      const canvas = publishedFormatKind(name) === 'video'
-        ? (await import('./photopea-formats')).decodeVideoFrame(file)
-        : decodePublishedFormatPreview(file, name)
+      const canvas = decodePublishedFormatPreview(file, name)
       const resolved = await canvas
       return {
         canvas: resolved,
