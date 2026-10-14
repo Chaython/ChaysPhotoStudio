@@ -13,6 +13,9 @@ assert.equal(isVideoImport({ name: 'still.png', type: 'image/png' }), false)
 assert.equal(isVideoImport({ name: 'poster.webp', type: '' }), false)
 
 const io = readFileSync('src/editor/engine/io.ts', 'utf8')
+const shell = readFileSync('src/editor/components/shell/editor-app.tsx', 'utf8')
+assert.match(shell, /f\.type\.startsWith\('image\/'\) \|\| isVideoImport\(f\)/,
+  'Drag and drop should accept video MIME types as well as extensions')
 const formats = readFileSync('src/editor/formats/index.ts', 'utf8')
 assert.match(io, /if \(isVideoImport\(file\)\) \{\s*const decoded = await decodeFile\(file\)/,
   'Open / Place must decode videos via the picker before image decoding')
