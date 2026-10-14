@@ -653,7 +653,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const layout: SavedWorkspaceLayout = {
       version: 1, name: cleanName, kind,
       ...(kind !== 'tools' ? { panels: clonePanelLayout(s.panels) } : {}),
-      ...(kind !== 'panels' ? { toolbar: s.toolbarLayout ? [...s.toolbarLayout] : null } : {}),
+      ...(kind !== 'panels' ? { toolbar: (s.toolbarLayout ?? defaultToolbarLayout(s.workspacePreset)).map(section =>
+        section.kind === 'single' ? { ...section } : { ...section, tools: [...section.tools] }) } : {}),
     }
     const savedLayouts = [...s.savedLayouts.filter(x => x.name !== cleanName), layout]
     saveNamedLayouts(savedLayouts)
