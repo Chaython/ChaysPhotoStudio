@@ -491,6 +491,8 @@ export interface HistoryState {
   frames?: AnimFrame[]
   /** Snapshot of editable artboard regions for geometry Undo/Redo. */
   artboards?: import('./artboards').Artboard[]
+  /** Editable Slice/Hotspot annotations in History and durable Snapshots. */
+  webRegions?: import('./web-assets').WebRegion[]
   activeArtboardId?: string | null
   showArtboardOutlines?: boolean
   linkedDesignStyles?: import('./linked-design-styles').LinkedDesignStyle[]
