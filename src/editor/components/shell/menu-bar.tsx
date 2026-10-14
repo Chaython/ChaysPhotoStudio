@@ -296,7 +296,7 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('plugin-manager')}>
               <Puzzle size={13} /><span className="flex-1">Plugin manager</span>
             </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => resetLayout()}>
+            <DropdownMenuItem disabled={workspaceLocks.panels} className="gap-2 text-xs" onClick={() => resetLayout()}>
               <RotateCcw size={13} /><span className="flex-1">Reset panel layout</span>
             </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('about')}>
