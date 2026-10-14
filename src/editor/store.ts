@@ -56,6 +56,11 @@ export interface PhotoshopInspectorLayout {
   /** Optional second vertical inspector column, kept in the panel layout. */
   sideTabs: string[]
   sideTab: string
+  /** Optional lower group within the secondary inspector column. */
+  sideLowerTabs: string[]
+  sideLowerTab: string
+  sideSplit: boolean
+  sideUpperPercent: number
   sideOpen: boolean
   sideWidth: number
   upperPercent: number
@@ -66,7 +71,8 @@ function defaultPhotoshopInspector(): PhotoshopInspectorLayout {
     upperTab: 'color', lowerTab: 'layers',
     upperTabs: [...PHOTOSHOP_INSPECTOR_UPPER_TABS],
     lowerTabs: [...PHOTOSHOP_INSPECTOR_LOWER_TABS],
-    sideTabs: [], sideTab: '', sideOpen: false, sideWidth: 280,
+    sideTabs: [], sideTab: '', sideLowerTabs: [], sideLowerTab: '',
+    sideSplit: false, sideUpperPercent: 50, sideOpen: false, sideWidth: 280,
     upperPercent: 40, collapsed: false,
   }
 }
@@ -92,6 +98,7 @@ function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
   // Read the secondary column first: tabs intentionally moved there must not
   // get reintroduced into the original Photoshop template stacks on load.
   const sideTabs = clean(data.sideTabs ?? fallback.sideTabs)
+  const sideLowerTabs = clean(data.sideLowerTabs ?? fallback.sideLowerTabs)
   const upperTabs = clean(data.upperTabs ?? fallback.upperTabs)
   const lowerTabs = clean(data.lowerTabs ?? fallback.lowerTabs)
   for (const id of PHOTOSHOP_INSPECTOR_UPPER_TABS) if (!seen.has(id)) { upperTabs.push(id); seen.add(id) }
@@ -106,9 +113,15 @@ function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
     if (id) lowerTabs.push(id)
   }
   return {
-    upperTabs, lowerTabs, sideTabs,
+    upperTabs, lowerTabs, sideTabs, sideLowerTabs,
     sideTab: typeof data.sideTab === 'string' && sideTabs.includes(data.sideTab)
       ? data.sideTab : sideTabs[0] ?? '',
+    sideLowerTab: typeof data.sideLowerTab === 'string' && sideLowerTabs.includes(data.sideLowerTab)
+      ? data.sideLowerTab : sideLowerTabs[0] ?? '',
+    // Imported layouts must never strand a lower-group tab behind a closed split.
+    sideSplit: data.sideSplit === true || sideLowerTabs.length > 0,
+    sideUpperPercent: typeof data.sideUpperPercent === 'number' && Number.isFinite(data.sideUpperPercent)
+      ? clampNum(Math.round(data.sideUpperPercent), 22, 70) : fallback.sideUpperPercent,
     sideOpen: data.sideOpen === true,
     sideWidth: typeof data.sideWidth === 'number' && Number.isFinite(data.sideWidth)
       ? clampNum(Math.round(data.sideWidth), 220, 420) : fallback.sideWidth,
@@ -131,6 +144,7 @@ function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: strin
   // If the user explicitly hid column two, Window → Show Panel should reveal
   // its tabs in the folded lower stack rather than reopening that column.
   if (current.sideTabs.includes(tab)) return { ...current, sideTab: tab, collapsed: false }
+  if (current.sideLowerTabs.includes(tab)) return { ...current, sideLowerTab: tab, collapsed: false }
   // Window → Show Panel, Add Panel and Dock Right can bring any registered
   // panel into Essentials. Persist the new tab in the lower stack; otherwise
   // it disappears when the user selects a different panel or reloads.
@@ -678,7 +692,7 @@ interface EditorStore {
   setProgress(p: { active: boolean; label: string; value: number } | null): void
   setRightPanelTab(tab: string): void
   setPhotoshopInspector(patch: Partial<PhotoshopInspectorLayout>): void
-  movePhotoshopInspectorTab(id: string, target: 'upper' | 'lower' | 'side', beforeId?: string): void
+  movePhotoshopInspectorTab(id: string, target: 'upper' | 'lower' | 'side' | 'side-lower', beforeId?: string): void
   setLeftPanelTab(tab: string): void
   setLeftDockOpen(open: boolean): void
   toggleColorPanel(): void
@@ -964,7 +978,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setRightPanelTab: (tab) => set(s => {
     if (s.workspacePreset === 'photoshop' && s.workspaceLayoutLocks.photoshop.panels &&
         ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
-          ...s.panels.photoshopInspector.sideTabs].includes(tab)) return {}
+          ...s.panels.photoshopInspector.sideTabs, ...s.panels.photoshopInspector.sideLowerTabs].includes(tab)) return {}
     const panels = { ...s.panels, rightTab: tab, photoshopInspector:
       withPhotoshopInspectorTab(s.panels.photoshopInspector, tab, s.workspacePreset === 'photoshop') }
     persistPanelLayout(panels)
@@ -972,7 +986,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
   setPhotoshopInspector: (patch) => set(s => {
     if (s.workspaceLayoutLocks[s.workspacePreset].panels && [
-      'upperTabs', 'lowerTabs', 'sideTabs', 'upperPercent', 'sideWidth', 'sideOpen',
+      'upperTabs', 'lowerTabs', 'sideTabs', 'sideLowerTabs',
+      'upperPercent', 'sideWidth', 'sideOpen', 'sideSplit', 'sideUpperPercent',
     ].some(key => Object.prototype.hasOwnProperty.call(patch, key))) return {}
     const next = normalizePhotoshopInspector({ ...s.panels.photoshopInspector, ...patch })
     if (JSON.stringify(next) === JSON.stringify(s.panels.photoshopInspector)) return {}
@@ -985,27 +1000,34 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const current = s.panels.photoshopInspector
     const group = current.upperTabs.includes(id) ? 'upper'
       : current.lowerTabs.includes(id) ? 'lower'
-      : current.sideTabs.includes(id) ? 'side' : null
+      : current.sideTabs.includes(id) ? 'side'
+      : current.sideLowerTabs.includes(id) ? 'side-lower' : null
     if (!group) return {}
     const source = group === 'upper' ? current.upperTabs
-      : group === 'lower' ? current.lowerTabs : current.sideTabs
-    // Never strand the primary two-stack inspector without any usable tabs.
-    if (group !== target && group !== 'side' && source.length <= 1) return {}
+      : group === 'lower' ? current.lowerTabs
+      : group === 'side' ? current.sideTabs : current.sideLowerTabs
+    // Primary groups must always retain a selectable tab.
+    if (group !== target && (group === 'upper' || group === 'lower') && source.length <= 1) return {}
     const upperTabs = current.upperTabs.filter(tab => tab !== id)
     const lowerTabs = current.lowerTabs.filter(tab => tab !== id)
     const sideTabs = current.sideTabs.filter(tab => tab !== id)
-    const dest = target === 'upper' ? upperTabs : target === 'lower' ? lowerTabs : sideTabs
+    const sideLowerTabs = current.sideLowerTabs.filter(tab => tab !== id)
+    const dest = target === 'upper' ? upperTabs : target === 'lower' ? lowerTabs
+      : target === 'side' ? sideTabs : sideLowerTabs
     const insertIndex = beforeId ? dest.indexOf(beforeId) : -1
     dest.splice(insertIndex >= 0 ? insertIndex : dest.length, 0, id)
     if (upperTabs.join('|') === current.upperTabs.join('|') &&
         lowerTabs.join('|') === current.lowerTabs.join('|') &&
-        sideTabs.join('|') === current.sideTabs.join('|')) return {}
+        sideTabs.join('|') === current.sideTabs.join('|') &&
+        sideLowerTabs.join('|') === current.sideLowerTabs.join('|')) return {}
     const next = normalizePhotoshopInspector({
-      ...current, upperTabs, lowerTabs, sideTabs,
+      ...current, upperTabs, lowerTabs, sideTabs, sideLowerTabs,
       upperTab: target === 'upper' ? id : current.upperTab,
       lowerTab: target === 'lower' ? id : current.lowerTab,
       sideTab: target === 'side' ? id : current.sideTab,
-      sideOpen: target === 'side' ? true : current.sideOpen,
+      sideLowerTab: target === 'side-lower' ? id : current.sideLowerTab,
+      sideOpen: target === 'side' || target === 'side-lower' ? true : current.sideOpen,
+      sideSplit: target === 'side-lower' ? true : current.sideSplit,
     })
     const panels = { ...s.panels, photoshopInspector: next, rightTab: id }
     persistPanelLayout(panels)
@@ -1050,7 +1072,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       if (s.panels.floating[id] || target !== (s.panels.dockSide[id] ?? 'right')) return {}
       if (s.workspacePreset === 'photoshop' && target === 'right' &&
           ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
-            ...s.panels.photoshopInspector.sideTabs].includes(id)) return {}
+            ...s.panels.photoshopInspector.sideTabs, ...s.panels.photoshopInspector.sideLowerTabs].includes(id)) return {}
       return target === 'right' ? { panels: { ...s.panels, rightTab: id,
         photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop') } } : {}
     }
@@ -1108,7 +1130,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   revealPanel: (id) => set(s => {
     if (s.workspacePreset === 'photoshop' && s.workspaceLayoutLocks.photoshop.panels &&
         ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
-          ...s.panels.photoshopInspector.sideTabs].includes(id) &&
+          ...s.panels.photoshopInspector.sideTabs, ...s.panels.photoshopInspector.sideLowerTabs].includes(id) &&
         (s.panels.dockSide[id] ?? 'right') === 'right') return {}
     if (s.panels.floating[id]) {
       const r = s.panels.floating[id]
