@@ -231,11 +231,12 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       e.stopPropagation()
       if (e.key === 'Escape') { e.preventDefault(); abort() }
       if (e.key === 'Tab') {
-        const focusable = Array.from(overlay.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)'))
-        if (!focusable.length) return
+        const focusable = Array.from(overlay.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"]):not(:disabled)'))
+          .filter(element => element.getAttribute('tabindex') !== '-1' && element.getClientRects().length > 0)
+        if (!focusable.length) { e.preventDefault(); return }
         const index = focusable.indexOf(document.activeElement as HTMLElement)
         if (e.shiftKey && index <= 0) { e.preventDefault(); focusable[focusable.length - 1].focus() }
-        if (!e.shiftKey && index === focusable.length - 1) { e.preventDefault(); focusable[0].focus() }
+        else if (!e.shiftKey && (index === -1 || index === focusable.length - 1)) { e.preventDefault(); focusable[0].focus() }
       }
     })
     document.body.appendChild(overlay)
