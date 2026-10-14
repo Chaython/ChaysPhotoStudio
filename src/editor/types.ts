@@ -657,6 +657,9 @@ export interface AnimFrame {
 }
 
 export interface PsDocument {
+  /** Multiple named, document-space export artboards (shared editable layer stack). */
+  artboards?: import('./artboards').Artboard[]
+  activeArtboardId?: string | null
   /** Editable rectangular slices and hotspots, persisted in .zproj.json. */
   webRegions?: import('./web-assets').WebRegion[]
   id: string
@@ -847,7 +850,7 @@ export interface ToolDef {
 
 // ---------- Dialogs ----------
 export type DialogType =
-  | 'help-guide' | 'new-doc' | 'image-size' | 'canvas-size' | 'export' | 'export-layers' | 'web-assets' | 'raw-batch-export' | 'photo-library' | 'duplicate-layer' | 'stroke-selection' | 'transform' | 'puppet-warp' | 'apply-image' | 'calculations' | 'proof-setup'
+  | 'help-guide' | 'new-doc' | 'image-size' | 'canvas-size' | 'export' | 'export-layers' | 'web-assets' | 'artboards' | 'raw-batch-export' | 'photo-library' | 'duplicate-layer' | 'stroke-selection' | 'transform' | 'puppet-warp' | 'apply-image' | 'calculations' | 'proof-setup'
   | 'curves' | 'levels' | 'brightness-contrast' | 'exposure' | 'vibrance'
   | 'hue-saturation' | 'color-balance' | 'black-white' | 'photo-filter'
   | 'channel-mixer' | 'selective-color' | 'gradient-map' | 'posterize'
