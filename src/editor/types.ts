@@ -660,6 +660,8 @@ export interface PsDocument {
   /** Multiple named, document-space export artboards (shared editable layer stack). */
   artboards?: import('./artboards').Artboard[]
   activeArtboardId?: string | null
+  /** Whether non-exporting artboard bounds appear over the main canvas. */
+  showArtboardOutlines?: boolean
   /** Editable rectangular slices and hotspots, persisted in .zproj.json. */
   webRegions?: import('./web-assets').WebRegion[]
   id: string
