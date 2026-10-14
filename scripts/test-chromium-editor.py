@@ -452,7 +452,11 @@ def main():
 
             def png_import_undo_redo():
                 _, page, errors = app_page(browser)
-                page.locator('input[type="file"]').first.set_input_files(
+                check(page.locator('input[data-file-purpose="document"]').count() >= 1,
+                      "Document file picker not mounted")
+                check(page.locator('input[data-file-purpose="layout"]').count() == 1,
+                      "Layout import picker not mounted independently")
+                page.locator('input[data-file-purpose="document"]').first.set_input_files(
                     {"name": "chromium-smoke.png", "mimeType": "image/png", "buffer": pixel_png()})
                 page.wait_for_function("() => !!window.__zphotoEngine.activeDoc && window.__zphotoEngine.activeDoc.width === 8", timeout=30000)
                 value = page.evaluate("""() => {
@@ -478,7 +482,7 @@ def main():
 
             def pdf_multi_page_import():
                 _, page, errors = app_page(browser)
-                page.locator('input[type="file"]').first.set_input_files(
+                page.locator('input[data-file-purpose="document"]').first.set_input_files(
                     {"name": "two-pages.pdf", "mimeType": "application/pdf", "buffer": pdf_fixture()})
                 dialog = page.get_by_role("dialog", name="Select PDF pages to import")
                 dialog.wait_for(state="visible", timeout=30000)
@@ -556,7 +560,7 @@ def main():
                                    added_resources + content[resource_len_at + 4:])
                     previous_doc_id = page.evaluate(
                         "() => window.__zphotoEngine.activeDoc?.id ?? null")
-                    page.locator('input[type="file"]').first.set_input_files(
+                    page.locator('input[data-file-purpose="document"]').first.set_input_files(
                         {"name": name, "mimeType": "image/vnd.adobe.photoshop", "buffer": content})
                     page.wait_for_function("""previousId => {
                       const doc = window.__zphotoEngine.activeDoc
