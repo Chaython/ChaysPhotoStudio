@@ -340,7 +340,12 @@ def main():
                     const s = window.__zphotoStore.getState()
                     s.setRightPanelTab('history')
                     s.toggleColorPanel()
-                    const before = s.savedLayouts.length
+                    s.setPhotoshopInspector({upperTab:'adjustments', lowerTab:'history', upperPercent:55, collapsed:true})
+                    s.saveNamedLayout('Inspector snapshot', 'panels')
+                    const exportedPanels = JSON.parse(s.exportNamedLayout('Inspector snapshot'))
+                    const inspectorExport = exportedPanels.panels.photoshopInspector.upperPercent === 55 &&
+                        exportedPanels.panels.photoshopInspector.collapsed === true
+                    const before = window.__zphotoStore.getState().savedLayouts.length
                     const imported = s.importNamedLayout(s.exportNamedLayout('Test tools'))
                     const duplicated = imported === 'Test tools (2)' &&
                         window.__zphotoStore.getState().savedLayouts.length === before + 1
@@ -349,7 +354,7 @@ def main():
                         version:1, name:'Invalid dimensions', kind:'panels',
                         panels:{ dockSide:{}, floating:{}, dockWidth:'bogus' }
                     })) } catch { rejected = true }
-                    return {duplicated, rejected}
+                    return {duplicated, rejected, inspectorExport}
                 }""")
                 check(all(safeguards.values()), f"Import safety failed: {safeguards}")
                 page.reload()
@@ -362,6 +367,14 @@ def main():
                       "reload forgot the active Photoshop panel tab")
                 check(store(page, "s.panels.colorPanelOpen") is False,
                       "reload forgot the color panel visibility")
+                check(store(page, "s.panels.photoshopInspector.upperPercent") == 55,
+                      "reload forgot the Photoshop inspector split")
+                check(store(page, "s.panels.photoshopInspector.upperTab") == "adjustments",
+                      "reload forgot the top inspector tab")
+                check(store(page, "s.panels.photoshopInspector.lowerTab") == "history",
+                      "reload forgot the bottom inspector tab")
+                check(store(page, "s.panels.photoshopInspector.collapsed") is True,
+                      "reload forgot inspector collapsed state")
                 check(store(page, "s.savedLayouts.some(x => x.name === 'Test tools (2)')") is True,
                       "reload lost a collision-safe imported layout")
                 page.evaluate("() => window.__zphotoStore.getState().setWorkspacePreset('classic')")
