@@ -13,6 +13,13 @@ export interface Artboard {
    * [] = empty artboard; an ID list = only those layers. This does not clone
    * editable layers or alter the document's global visibility flags. */
   visibleLayerIds?: string[]
+  /** Optional Photoshop Layer Comp snapshots used as page rollover states.
+   * Absent or stale ids gracefully fall back to the live document appearance. */
+  rollover?: {
+    normalCompId?: string
+    hoverCompId?: string
+    pressedCompId?: string
+  }
 }
 export const MAX_ARTBOARDS = 64
 
@@ -36,8 +43,11 @@ export function normalizeArtboards(input: unknown, width: number, height: number
     if (w < 1 || h < 1) continue
     seen.add(a.id)
     const visibleLayerIds = normalizeArtboardLayerIds(a.visibleLayerIds)
+    const rollover = normalizeArtboardRollover(a.rollover)
     out.push({ id: a.id, name: a.name.trim().slice(0, 120), x, y, width: w, height: h,
-      ...(visibleLayerIds === undefined ? {} : { visibleLayerIds }) })
+      ...(visibleLayerIds === undefined ? {} : { visibleLayerIds }),
+      ...(rollover === undefined ? {} : { rollover }),
+    })
   }
   return out
 }
@@ -127,4 +137,48 @@ export function layersForArtboard<T extends { id: string }>(
   if (artboard.visibleLayerIds === undefined) return Array.from(layers)
   const include = new Set(artboard.visibleLayerIds)
   return layers.filter(layer => include.has(layer.id))
+}
+
+
+export type RolloverSlot = 'normal' | 'hover' | 'pressed'
+export type ArtboardRollover = NonNullable<Artboard['rollover']>
+
+export function normalizeArtboardRollover(input: unknown): ArtboardRollover | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  const r = input as Record<string, unknown>
+  const id = (value: unknown) =>
+    typeof value === 'string' && value.length > 0 && value.length <= 100 ? value : undefined
+  const normalCompId = id(r.normalCompId), hoverCompId = id(r.hoverCompId), pressedCompId = id(r.pressedCompId)
+  return normalCompId || hoverCompId || pressedCompId ? {
+    ...(normalCompId ? { normalCompId } : {}),
+    ...(hoverCompId ? { hoverCompId } : {}),
+    ...(pressedCompId ? { pressedCompId } : {}),
+  } : undefined
+}
+
+/** Safe standalone CSS rollover preview. Each state file is a flattened page
+ * snapshot, not a Fireworks project or a runnable external JavaScript payload.
+ */
+export function buildArtboardRolloverHtml(
+  title: string, width: number, height: number,
+  images: { normal: string; hover?: string; pressed?: string },
+): string {
+  if (![width, height].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('Invalid artboard dimensions')
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+  const url = (s: string) => encodeURIComponent(s).replace(/'/g, '%27')
+  const lines = [
+    '<!doctype html>', '<html lang="en"><head><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>' + esc(title) + ' rollover preview</title>', '<style>',
+    '.rollover { display:block; width:' + width + 'px; height:' + height
+      + 'px; border:0; padding:0; cursor:pointer; background-position:center; background-repeat:no-repeat;'
+      + ' background-size:100% 100%; background-image:url("' + url(images.normal) + '"); }',
+    ...(images.hover ? ['.rollover:hover, .rollover:focus-visible { background-image:url("' + url(images.hover) + '"); }'] : []),
+    ...(images.pressed ? ['.rollover:active { background-image:url("' + url(images.pressed) + '"); }'] : []),
+    '</style></head><body>',
+    '<button class="rollover" type="button" aria-label="' + esc(title) + ' interactive states"></button>',
+    '</body></html>', '',
+  ]
+  return lines.join('\n')
 }
