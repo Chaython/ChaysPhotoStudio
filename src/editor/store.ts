@@ -128,7 +128,9 @@ function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: strin
   if (!enabled || !isDockablePanelId(tab)) return current
   if (current.upperTabs.includes(tab)) return { ...current, upperTab: tab, collapsed: false }
   if (current.lowerTabs.includes(tab)) return { ...current, lowerTab: tab, collapsed: false }
-  if (current.sideTabs.includes(tab)) return { ...current, sideTab: tab, sideOpen: true, collapsed: false }
+  // If the user explicitly hid column two, Window → Show Panel should reveal
+  // its tabs in the folded lower stack rather than reopening that column.
+  if (current.sideTabs.includes(tab)) return { ...current, sideTab: tab, collapsed: false }
   // Window → Show Panel, Add Panel and Dock Right can bring any registered
   // panel into Essentials. Persist the new tab in the lower stack; otherwise
   // it disappears when the user selects a different panel or reloads.
