@@ -23,6 +23,7 @@ A source-available, browser-first photo editor with layered editing, Photoshop-i
 | **Selections** | New/Add/Subtract/Intersect, Color Range, Select Subject, Focus Area, Grow/Similar, Select & Mask edge refinement, channels and luminosity selections, feather/smooth/contract/expand |
 | **Layers & masks** | Raster, native text/shape, adjustments, Smart Objects with Smart Filters, alpha/vector masks, clipping, blending, Layer Styles, alignment, layer duplication into another document, Layer Comps |
 | **History & automation** | Undo/redo, durable snapshots and snapshot notes, Actions recording/playback, Batch / Image Processor, scripting console and portable recovery snapshot exports |
+| **Web assets (Fireworks-inspired)** | File → Web Slices & Hotspots: draw/edit rectangular slices and clickable hotspots in a preview, preserve regions in native project saves, and export cropped images plus an HTML image map. Native Fireworks project and page/state parity are not provided. |
 | **Retouching** | Healing and Spot Healing, Patch, Content-Aware Move/Fill, Clone/Pattern Stamps and source transforms, Mixer/History Brushes, Dodge/Burn/Sponge, Blur/Sharpen/Smudge, red-eye correction |
 | **Transforms** | Free Transform, editable Transform/Split Warp, Puppet Warp, crop/perspective crop, smart guides and distance labels; Liquify |
 | **Color** | RGB/HSL/Lab and related adjustments, curves, gradient controls, HDR-aware operations where supported, proof-color preview and gamut warnings, PPI/rulers/guides/grid |
