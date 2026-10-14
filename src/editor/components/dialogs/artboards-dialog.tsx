@@ -31,6 +31,7 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
   const [quality, setQuality] = useState(90)
   const [exportChoice, setExportChoice] = useState<'all' | 'selected'>('all')
   const [busy, setBusy] = useState(false)
+  const [outlines, setOutlines] = useState(() => doc?.showArtboardOutlines !== false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const thumb = useMemo(() => {
@@ -213,7 +214,10 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
           <Button size="sm" variant="secondary" disabled={busy || boards.length >= MAX_ARTBOARDS} onClick={addFull}>Add canvas</Button>
           <Button size="sm" variant="secondary" disabled={busy || boards.length + 2 > MAX_ARTBOARDS} onClick={() => addGrid(2, 1)}>Split 2</Button>
           <Button size="sm" variant="secondary" disabled={busy || boards.length + 4 > MAX_ARTBOARDS} onClick={() => addGrid(2, 2)}>Grid 2×2</Button>
-          <span className="ml-auto text-muted-foreground">{boards.length}/{MAX_ARTBOARDS}</span>
+          <label className="flex items-center gap-1 text-[10px] ml-auto"><input type="checkbox" checked={outlines}
+            onChange={e => { if (!doc || engine.activeDoc?.id !== sourceId) return
+              setOutlines(e.target.checked); doc.showArtboardOutlines = e.target.checked; doc.dirty = true; engine.emitOverlay() }} />Show on canvas</label>
+          <span className="text-muted-foreground">{boards.length}/{MAX_ARTBOARDS}</span>
         </div>
         <div ref={previewRef} className="relative mx-auto touch-none select-none border border-border overflow-hidden" style={{ width: thumb.width, aspectRatio: doc.width + ' / ' + doc.height, maxWidth: '100%' }}>
           <canvas ref={canvasRef} width={thumb.width} height={thumb.height} className="absolute inset-0 w-full h-full" />
