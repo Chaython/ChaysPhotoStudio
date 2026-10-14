@@ -16,8 +16,11 @@ import type { DialogProps } from './generic-dialogs'
 type ImageFormat = 'png' | 'jpeg' | 'webp'
 
 export function WebAssetsDialog({ onClose }: DialogProps) {
-  const doc = engine.activeDoc
-  const docId = doc?.id
+  // Bind this dialog to the document active when it opened. A later tab switch
+  // must never apply its regions or export to a different document.
+  const sourceDocId = useRef(engine.activeDoc?.id ?? null)
+  const docId = sourceDocId.current
+  const doc = engine.docs.find(d => d.id === docId) ?? null
   const [regions, setRegions] = useState<WebRegion[]>(() =>
     doc ? normalizeWebRegions(doc.webRegions, doc.width, doc.height) : [])
   const [selected, setSelected] = useState<string | null>(null)
