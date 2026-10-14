@@ -7,7 +7,7 @@ import {
 import type { MenuItem } from '../../constants/menus'
 import { MENUS, PLUGINS_MENU_INDEX, getPluginsMenuItems } from '../../constants/menus'
 import { useEditorStore } from '../../store'
-import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2 } from 'lucide-react'
+import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2, Pencil, X } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -73,12 +73,15 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
   const saveNamedLayout = useEditorStore(s => s.saveNamedLayout)
   const applyNamedLayout = useEditorStore(s => s.applyNamedLayout)
   const deleteNamedLayout = useEditorStore(s => s.deleteNamedLayout)
+  const renameNamedLayout = useEditorStore(s => s.renameNamedLayout)
   const importNamedLayout = useEditorStore(s => s.importNamedLayout)
   const exportNamedLayout = useEditorStore(s => s.exportNamedLayout)
   const pushToast = useEditorStore(s => s.pushToast)
   const layoutFile = useRef<HTMLInputElement>(null)
   const [layoutName, setLayoutName] = useState('')
   const [layoutKind, setLayoutKind] = useState<'tools' | 'panels' | 'both'>('both')
+  const [renamingLayout, setRenamingLayout] = useState<string | null>(null)
+  const [pendingLayoutDelete, setPendingLayoutDelete] = useState<string | null>(null)
   const downloadLayout = (name: string) => {
     try {
       const blob = new Blob([exportNamedLayout(name)], { type: 'application/json' })
@@ -171,13 +174,24 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
                 <option value="both">Both</option><option value="tools">Tools</option><option value="panels">Panels</option>
               </select>
             </div>
+            {renamingLayout && <div className="flex items-center justify-between gap-1 px-2 text-[10px] text-muted-foreground">
+              <span className="truncate" title={renamingLayout}>Renaming: {renamingLayout}</span>
+              <button type="button" className="p-1 hover:text-foreground" aria-label="Cancel layout rename"
+                onClick={() => setRenamingLayout(null)}><X size={13}/></button>
+            </div>}
             <DropdownMenuItem disabled={!layoutName.trim()} onSelect={e => {
               e.preventDefault()
               try {
-                saveNamedLayout(layoutName, layoutKind)
-                pushToast('Layout ' + (savedLayouts.some(x => x.name === layoutName.trim()) ? 'updated' : 'saved'), 'success')
+                if (renamingLayout) {
+                  renameNamedLayout(renamingLayout, layoutName)
+                  setRenamingLayout(null)
+                  pushToast('Layout renamed', 'success')
+                } else {
+                  saveNamedLayout(layoutName, layoutKind)
+                  pushToast('Layout ' + (savedLayouts.some(x => x.name === layoutName.trim()) ? 'updated' : 'saved'), 'success')
+                }
               } catch (error) { pushToast(String(error), 'error') }
-            }} className="gap-2 text-xs"><Save size={13} /> {savedLayouts.some(x => x.name === layoutName.trim()) ? 'Update existing layout' : 'Save named layout'}</DropdownMenuItem>
+            }} className="gap-2 text-xs"><Save size={13} /> {renamingLayout ? 'Rename saved layout' : savedLayouts.some(x => x.name === layoutName.trim()) ? 'Update existing layout' : 'Save named layout'}</DropdownMenuItem>
             <div className="max-h-52 overflow-y-auto zphoto-scroll" role="group" aria-label="Saved layouts">
             {savedLayouts.map(layout => (
               <div key={layout.name} className="flex items-center px-1 hover:bg-accent">
@@ -186,10 +200,27 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
                   onClick={() => { applyNamedLayout(layout.name); pushToast('Applied ' + layout.name, 'success') }}>
                   {layout.name} <span className="text-muted-foreground">({layout.kind})</span>
                 </button>
-                <button type="button" className="p-1.5" aria-label={'Export ' + layout.name} title="Export JSON"
-                  onClick={() => downloadLayout(layout.name)}><Download size={12} /></button>
-                <button type="button" className="p-1.5" aria-label={'Delete ' + layout.name} title="Delete saved layout"
-                  onClick={() => deleteNamedLayout(layout.name)}><Trash2 size={12} /></button>
+                {pendingLayoutDelete === layout.name ? <>
+                  <button type="button" className="p-1.5 text-destructive font-semibold text-[10px]"
+                    aria-label={'Confirm delete ' + layout.name} title="Confirm permanent deletion"
+                    onClick={() => {
+                      try {
+                        deleteNamedLayout(layout.name)
+                        setPendingLayoutDelete(null)
+                        if (renamingLayout === layout.name) setRenamingLayout(null)
+                        pushToast('Layout deleted', 'success')
+                      } catch (error) { pushToast(String(error), 'error') }
+                    }}>Delete?</button>
+                  <button type="button" className="p-1.5" aria-label={'Cancel deleting ' + layout.name}
+                    onClick={() => setPendingLayoutDelete(null)}><X size={12}/></button>
+                </> : <>
+                  <button type="button" className="p-1.5" aria-label={'Rename ' + layout.name} title="Rename saved layout"
+                    onClick={() => { setRenamingLayout(layout.name); setLayoutName(layout.name); setPendingLayoutDelete(null) }}><Pencil size={12}/></button>
+                  <button type="button" className="p-1.5" aria-label={'Export ' + layout.name} title="Export JSON"
+                    onClick={() => downloadLayout(layout.name)}><Download size={12} /></button>
+                  <button type="button" className="p-1.5" aria-label={'Delete ' + layout.name} title="Delete saved layout"
+                    onClick={() => setPendingLayoutDelete(layout.name)}><Trash2 size={12} /></button>
+                </>}
               </div>
             ))}
             </div>
