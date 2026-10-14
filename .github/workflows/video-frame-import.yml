@@ -11,6 +11,7 @@ on:
       - 'scripts/validate-video-frame-picker.ts'
       - 'scripts/test-video-frame-chromium.py'
       - 'scripts/test-chromium-editor.py'
+      - 'scripts/video_fixture.py'
       - 'package.json'
       - '.github/workflows/video-frame-import.yml'
   pull_request:
@@ -22,6 +23,7 @@ on:
       - 'scripts/validate-video-frame-picker.ts'
       - 'scripts/test-video-frame-chromium.py'
       - 'scripts/test-chromium-editor.py'
+      - 'scripts/video_fixture.py'
       - 'package.json'
       - '.github/workflows/video-frame-import.yml'
   workflow_dispatch:
@@ -73,5 +75,6 @@ jobs:
         run: |
           python -m pip install 'playwright==1.57.0'
           command -v google-chrome || command -v chromium
+          command -v ffmpeg || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
       - name: Test real WebM seek and video frame capture in Chromium
         run: python scripts/test-video-frame-chromium.py
