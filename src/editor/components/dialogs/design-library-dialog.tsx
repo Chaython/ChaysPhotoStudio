@@ -88,7 +88,7 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
     store.pushToast('Editable design template saved locally', 'success')
   })
 
-  const useTemplate = (entry: TemplateEntry) => void execute(async () => {
+  const openTemplate = (entry: TemplateEntry) => void execute(async () => {
     // The project remains the template; a fresh editable document is created.
     const payload = parseTemplateFile({ format: 'chays-design-template', version: 1, entry })
     const project = JSON.parse(payload.projectJson)
@@ -203,7 +203,7 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
             <div className="font-medium truncate">{t.name}</div>
             <div className="text-muted-foreground">{t.category} · {t.width} × {t.height}</div>
             <div className="flex flex-wrap gap-1">
-              <Button size="sm" disabled={busy} onClick={() => useTemplate(t)}>Use template</Button>
+              <Button size="sm" disabled={busy} onClick={() => openTemplate(t)}>Use template</Button>
               <Button size="sm" variant="outline" disabled={busy} onClick={() => downloadJson({
                 format: 'chays-design-template', version: 1, entry: t,
               }, safeDesignFilename(t.name)+'.ztemplate.json')}>Export</Button>
