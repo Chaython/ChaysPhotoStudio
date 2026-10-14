@@ -343,7 +343,7 @@ def main():
                     const before = s.savedLayouts.length
                     const imported = s.importNamedLayout(s.exportNamedLayout('Test tools'))
                     const duplicated = imported === 'Test tools (2)' &&
-                        s.savedLayouts.length === before + 1
+                        window.__zphotoStore.getState().savedLayouts.length === before + 1
                     let rejected = false
                     try { s.importNamedLayout(JSON.stringify({
                         version:1, name:'Invalid dimensions', kind:'panels',
