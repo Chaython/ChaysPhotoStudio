@@ -53,6 +53,8 @@ export const TOOLS: Record<ToolId, Tool> = {
   'perspective-crop': perspectiveCropTool,
   'eyedropper': eyedropperTool,
   'color-sampler': colorSamplerTool,
+  'slice': sliceTool,
+  'hotspot': hotspotTool,
   'brush': brushTool,
   'pencil': pencilTool,
   'mixer-brush': mixerBrushTool,
