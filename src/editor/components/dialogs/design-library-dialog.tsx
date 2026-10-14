@@ -23,7 +23,8 @@ const emptyKit = (): BrandKit => ({
   swatches: [], fonts: [], logos: [],
 })
 function templateThumbnail(doc: import('../../types').PsDocument): string {
-  const out = createCanvas(240, Math.max(1, Math.round(240 * doc.height / doc.width)))
+  const scale = Math.min(240 / doc.width, 160 / doc.height, 1)
+  const out = createCanvas(Math.max(1, Math.round(doc.width * scale)), Math.max(1, Math.round(doc.height * scale)))
   const ctx = ctx2d(out)
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'medium'
