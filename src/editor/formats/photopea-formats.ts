@@ -62,6 +62,13 @@ export function isPhotopeaPublishedExtension(name: string): boolean {
   return publishedFormatKind(name) !== null
 }
 
+/** Video selection must be routed before generic image detection, including
+ * videos received by drag/drop with a MIME type but no filename extension. */
+export function isVideoImport(file: Pick<File, 'name' | 'type'> | { name?: string; type?: string }): boolean {
+  return publishedFormatKind(file.name ?? '') === 'video' ||
+    /^video\//i.test(file.type ?? '')
+}
+
 const ACCEPT_EXTENSIONS = Array.from(new Set([
   ...PHOTOPEA_COMPLEX_EXTENSIONS,
   ...PHOTOPEA_RASTER_EXTENSIONS,
