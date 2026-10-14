@@ -790,6 +790,26 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Globally hidden layers remain hidden even when listed on an artboard; newly created layers may need to be included in artboards with custom layer lists.",
       "Artboards cannot extend beyond the existing document. CSS rollover previews reuse Layer Comps; native Fireworks page/state/symbol objects, editable Illustrator AI round trips and independent page-layer trees remain unsupported."
     ]
+  },
+  {
+    "id": "design-library",
+    "title": "Design templates and brand kits",
+    "category": "Color & files",
+    "path": "File → Design Templates & Brand Kits…",
+    "summary": "Create new editable designs from saved local project templates, and reuse brand swatches, font families and logos without an account or cloud service.",
+    "steps": [
+      "Open an editable document, choose File → Design Templates & Brand Kits, and use Save active document as template. Name and categorize the template for later reuse.",
+      "Search local templates and choose Use template to open a separate editable document; the original template remains unchanged. Export a .ztemplate.json backup or import one on another Studio installation.",
+      "Switch to Brand kits and create a kit. Add named hex swatches, local font family names and PNG/JPEG/WebP logo images (up to 512 KiB each). Save the kit.",
+      "Click a brand swatch to set the foreground color and recolor an active editable shape or text layer. Click a brand font to update the selected text layer; a font must exist on the device.",
+      "Click Place on a logo to place it as a Smart Object in the active document. Export/import .zbrand.json files to transfer a kit, or duplicate kits to create variations."
+    ],
+    "tips": [
+      "Template projects are copies of native .zproj.json content (up to 32 MiB each); the thumbnail is only a preview. Huge documents should be saved as standalone projects instead of templates.",
+      "The design library uses browser/device IndexedDB storage. Clearing site/app data deletes local templates and brand kits; export backups before doing so.",
+      "Imported font family names do not install fonts. Brand kits currently are manually applied presets, not synchronized or linked design tokens that propagate automatically to other documents.",
+      "Templates and brand kits are user-created; this feature does not supply Canva stock assets, licensed design packs, network publishing or collaboration."
+    ]
   }
 ]
 
