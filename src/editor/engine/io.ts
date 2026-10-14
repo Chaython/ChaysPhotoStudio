@@ -13,6 +13,7 @@ import { chooseRawDevelopSettings, makeBatchSafeRawSettings, type RawDevelopSett
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
 import { normalizeWebRegions } from '../web-assets'
 import { normalizeArtboards } from '../artboards'
+import { normalizeLayerStyleReferences, normalizeLinkedDesignStyles } from '../linked-design-styles'
 
 // Source-embedded RAW Smart Objects deliberately cap project size. Large camera
 // files still open as ordinary rasters, with an explicit user-facing warning.
@@ -551,6 +552,7 @@ interface SerializedHistoryState {
   artboards?: import('../artboards').Artboard[]
   activeArtboardId?: string | null
   showArtboardOutlines?: boolean
+  linkedDesignStyles?: import('../linked-design-styles').LinkedDesignStyle[]
 }
 
 interface SerializedHistorySnapshot {
@@ -599,6 +601,7 @@ export interface SerializedProject {
     artboards?: import('../artboards').Artboard[]
     activeArtboardId?: string | null
     showArtboardOutlines?: boolean
+    linkedDesignStyles?: import('../linked-design-styles').LinkedDesignStyle[]
     activeLayerCompId?: string | null
     historyBrushSnapshotId?: string | null
     historySnapshotAutoPolicy?: 'inherit' | 'always' | 'never'
@@ -659,6 +662,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       blendMode: l.blendMode, locked: l.locked, clipped: l.clipped, maskEnabled: l.maskEnabled,
       transform: l.transform, smartFilters: l.smartFilters,
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
+      linkedDesignStyles: normalizeLayerStyleReferences(l.linkedDesignStyles),
       vectorMask: cloneVectorMask(l.vectorMask),
       psdAdditionalInfo: Array.isArray(l.psdAdditionalInfo) ? [...l.psdAdditionalInfo] : undefined,
       psdBlendingRanges: l.psdBlendingRanges,
@@ -697,6 +701,7 @@ function serializeHistoryState(st: HistoryState, toDataURL: (c: HTMLCanvasElemen
     artboards: normalizeArtboards(st.artboards, st.width, st.height),
     activeArtboardId: st.activeArtboardId ?? null,
     showArtboardOutlines: st.showArtboardOutlines !== false,
+    linkedDesignStyles: normalizeLinkedDesignStyles(st.linkedDesignStyles),
   }
 }
 
@@ -737,6 +742,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       artboards: normalizeArtboards(doc.artboards, doc.width, doc.height),
       activeArtboardId: doc.artboards?.some(a => a.id === doc.activeArtboardId) ? doc.activeArtboardId : null,
       showArtboardOutlines: doc.showArtboardOutlines !== false,
+      linkedDesignStyles: normalizeLinkedDesignStyles(doc.linkedDesignStyles),
       activeLayerCompId: doc.activeLayerCompId ?? null,
       historyBrushSnapshotId: doc.historyBrushSnapshotId ?? null,
       historySnapshotAutoPolicy: doc.historySnapshotAutoPolicy ?? 'inherit',
@@ -827,6 +833,7 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     smartFilters: sl.props.smartFilters ?? [],
     adjustment: sl.props.adjustment ?? null,
     text: sl.props.text ?? null, shape: sl.props.shape ? { sides: 5, starInset: 45, ...sl.props.shape } : null,
+    linkedDesignStyles: normalizeLayerStyleReferences(sl.props.linkedDesignStyles),
     blendIf: sl.props.blendIf ?? null,
     fx: sl.props.fx ?? null,
     vectorMask: normalizeVectorMask(sl.props.vectorMask),
@@ -922,6 +929,7 @@ async function deserializeHistoryState(st: SerializedHistoryState): Promise<Hist
       normalizeArtboards(st.artboards, width, height).some(a => a.id === st.activeArtboardId)
       ? st.activeArtboardId : null,
     showArtboardOutlines: st.showArtboardOutlines !== false,
+    linkedDesignStyles: normalizeLinkedDesignStyles(st.linkedDesignStyles),
   }
 }
 
@@ -996,6 +1004,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
     activeArtboardId: normalizeArtboards(project.doc.artboards, width, height).some(a => a.id === project.doc.activeArtboardId)
       ? project.doc.activeArtboardId : null,
     showArtboardOutlines: project.doc.showArtboardOutlines !== false,
+    linkedDesignStyles: normalizeLinkedDesignStyles(project.doc.linkedDesignStyles),
     colorSamplers: Array.isArray(project.doc.colorSamplers)
       ? project.doc.colorSamplers
           .filter(s => s && Number.isFinite(s.x) && Number.isFinite(s.y))
@@ -1063,6 +1072,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
       smartFilters: sl.props.smartFilters ?? [],
       adjustment: sl.props.adjustment ?? null,
       text: sl.props.text ?? null, shape: sl.props.shape ? { sides: 5, starInset: 45, ...sl.props.shape } : null,
+    linkedDesignStyles: normalizeLayerStyleReferences(sl.props.linkedDesignStyles),
       blendIf: sl.props.blendIf ?? null,
       fx: sl.props.fx ?? null,
       vectorMask: normalizeVectorMask(sl.props.vectorMask),
