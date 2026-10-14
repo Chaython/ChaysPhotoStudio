@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { MAX_ARTBOARDS, artboardCrop, gridArtboards, layersForArtboard, normalizeArtboardLayerIds, normalizeArtboards, scaleArtboards, translateArtboards } from '../src/editor/artboards'
+import { MAX_ARTBOARDS, artboardCrop, buildArtboardRolloverHtml, gridArtboards, layersForArtboard, normalizeArtboardLayerIds, normalizeArtboardRollover, normalizeArtboards, scaleArtboards, translateArtboards } from '../src/editor/artboards'
 
 const first = { id: 'a', name: ' Page A ', x: 1, y: 2, width: 20, height: 10 }
 assert.deepEqual(normalizeArtboards([first], 100, 80), [{ ...first, name: 'Page A' }])
@@ -58,4 +58,29 @@ assert.deepEqual(scoped[0].visibleLayerIds, ['top','middle'])
 assert.deepEqual(scaleArtboards(scoped, 100, 80, 200, 160)[0].visibleLayerIds, ['top','middle'])
 assert.deepEqual(translateArtboards(scoped, 100, 80, 2, 1, 105, 85)[0].visibleLayerIds, ['top','middle'])
 
-console.log('Artboard geometry, grids, per-artboard layers and crop safety validated')
+assert.deepEqual(normalizeArtboardRollover({
+  normalCompId: 'normal', hoverCompId: 'hover', pressedCompId: 4,
+}), { normalCompId: 'normal', hoverCompId: 'hover' })
+assert.equal(normalizeArtboardRollover({ hoverCompId: ' ' .repeat(101) }), undefined)
+const withRollover = normalizeArtboards([{ ...first, rollover: { hoverCompId: 'hover' } }], 100, 80)
+assert.deepEqual(withRollover[0].rollover, { hoverCompId: 'hover' })
+assert.deepEqual(scaleArtboards(withRollover, 100, 80, 200, 160)[0].rollover, { hoverCompId: 'hover' })
+const html = buildArtboardRolloverHtml('Press <this> & "that"', 40, 20, {
+  normal: 'default image.png', hover: 'hover & image.png', pressed: 'pressed.png',
+})
+assert.match(html, /<button class="rollover" type="button"/)
+assert.match(html, /aria-label="Press &lt;this&gt; &amp; &quot;that&quot; interactive states"/)
+assert.match(html, /background-image:url\("default%20image.png"\)/)
+assert.match(html, /background-image:url\("hover%20%26%20image.png"\)/)
+assert.match(html, /\.rollover:hover, \.rollover:focus-visible/)
+assert.match(html, /\.rollover:active/)
+assert.doesNotMatch(html, /<script/i)
+const injected = buildArtboardRolloverHtml('<script>alert(1)</script>', 8, 8, {
+  normal: '</style><script>alert(1)</script>.png',
+})
+assert.doesNotMatch(injected, /<script/i)
+assert.doesNotMatch(injected, /<\/style><script/i)
+assert.doesNotMatch(injected, /\.rollover:hover/)
+assert.throws(() => buildArtboardRolloverHtml('bad', 0, 3, { normal: 'a.png' }), /Invalid artboard dimensions/)
+
+console.log('Artboard geometry, independent layers, rollover HTML safety and crop bounds validated')
