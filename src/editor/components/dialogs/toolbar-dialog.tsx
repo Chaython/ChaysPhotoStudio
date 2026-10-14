@@ -58,10 +58,26 @@ export function ToolbarCustomizeDialog({ onClose }: DialogProps) {
   const overrides = useEditorStore(s => s.shortcutOverrides)
 
   const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const toolsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].tools)
+  const setWorkspaceLayoutLock = useEditorStore(s => s.setWorkspaceLayoutLock)
   const sections = useMemo(() => layout ?? defaultToolbarLayout(workspacePreset), [layout, workspacePreset])
 
   const [drag, setDrag] = useState<ToolId | null>(null)
   const [dropHint, setDropHint] = useState<string | null>(null)
+
+  if (toolsLocked) return (
+    <>
+      <DialogHeader><DialogTitle>Toolbar layout locked</DialogTitle></DialogHeader>
+      <div className="rounded-md border p-3 text-sm text-muted-foreground">
+        The {workspacePreset === 'photoshop' ? 'Photoshop-style' : 'Classic'} workspace protects its tool order and groups.
+        Tool selection still works normally. Unlock the tool layout to customize it.
+      </div>
+      <DialogFooter className="gap-2">
+        <Button size="sm" variant="outline" onClick={() => setWorkspaceLayoutLock('tools', false)}>Unlock tool layout</Button>
+        <Button size="sm" onClick={onClose}>Done</Button>
+      </DialogFooter>
+    </>
+  )
 
   const apply = (next: Sections) => { if (next !== sections) setToolbarLayout(next) }
   const keyOf = (id: ToolId) => (overrides?.[`tool:${id}`] || TOOL_MAP[id].shortcut || '?').toLowerCase()

@@ -57,6 +57,15 @@ jobs:
       - name: Validate multi-artboard geometry, grid coverage and crop bounds
         run: bun run artboards:validate
 
+      - name: Validate local design templates and brand kits
+        run: bun run design-library:validate
+
+      - name: Validate CSV-driven design merge and source isolation
+        run: bun run design-merge:validate
+
+      - name: Validate document-linked brand styles
+        run: bun run linked-styles:validate
+
       - name: Validate ruler calibration and persistent-tool overlays
         run: bun scripts/validate-measure.ts
 
@@ -75,7 +84,10 @@ jobs:
       - name: Validate camera, HDR, scientific and multi-page formats
         run: bun run formats:validate
 
-      - name: Validate PDF page selection, native text/vector objects and memory budgets
+      - name: Validate interactive video-frame picker and import routing
+        run: bun run video-frame:validate
+
+      - name: Validate PDF page selection, memory budgets and error handling
         run: bun run pdf:validate
 
       - name: Validate independent PSD/PSB binary fixtures
@@ -231,6 +243,7 @@ jobs:
             if curl -fsS http://127.0.0.1:8765/ >/dev/null; then break; fi
             sleep 0.25
           done
+          command -v ffmpeg || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
           python scripts/test-chromium-editor.py
 
       - name: Upload Chromium E2E diagnostics

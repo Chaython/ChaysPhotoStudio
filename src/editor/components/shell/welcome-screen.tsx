@@ -258,6 +258,7 @@ export function WelcomeScreen() {
         <input
           ref={fileRef}
           type="file"
+          data-file-purpose="document"
           accept={`${IMPORT_ACCEPT},.zproj.json`}
           multiple
           className="hidden"

@@ -1,0 +1,80 @@
+name: Video Frame Import Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/editor/formats/video-frame-picker.ts'
+      - 'src/editor/formats/photopea-formats.ts'
+      - 'src/editor/formats/index.ts'
+      - 'src/editor/engine/io.ts'
+      - 'scripts/validate-video-frame-picker.ts'
+      - 'scripts/test-video-frame-chromium.py'
+      - 'scripts/test-chromium-editor.py'
+      - 'scripts/video_fixture.py'
+      - 'package.json'
+      - '.github/workflows/video-frame-import.yml'
+  pull_request:
+    paths:
+      - 'src/editor/formats/video-frame-picker.ts'
+      - 'src/editor/formats/photopea-formats.ts'
+      - 'src/editor/formats/index.ts'
+      - 'src/editor/engine/io.ts'
+      - 'scripts/validate-video-frame-picker.ts'
+      - 'scripts/test-video-frame-chromium.py'
+      - 'scripts/test-chromium-editor.py'
+      - 'scripts/video_fixture.py'
+      - 'package.json'
+      - '.github/workflows/video-frame-import.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-frame-import-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          NEXT_TELEMETRY_DISABLED: 1
+        run: bun install --frozen-lockfile
+      - name: Generate Prisma client
+        run: bun run db:generate
+      - name: Exercise interactive video selection and decode routing
+        run: bun run video-frame:validate
+      - name: Typecheck entire editor
+        run: bunx tsc --noEmit
+      - name: Lint import and video-picker modules
+        run: bunx eslint src/editor/formats/video-frame-picker.ts src/editor/formats/photopea-formats.ts src/editor/formats/index.ts src/editor/engine/io.ts
+      - name: Compile real-browser picker harness
+        run: |
+          mkdir -p build
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const ts = require('typescript')
+          const source = fs.readFileSync('src/editor/formats/video-frame-picker.ts', 'utf8')
+          if (!source.includes('export function pickVideoFrame')) throw Error('Missing picker export')
+          const standalone = source.replace('export function pickVideoFrame', 'function pickVideoFrame')
+          const javascript = ts.transpileModule(standalone, {
+            compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+          }).outputText
+          fs.writeFileSync('build/video-frame-picker-standalone.js',
+            javascript + '\nwindow.__pickVideoFrame = pickVideoFrame;\n')
+          NODE
+      - name: Install Playwright for real Chromium media test
+        run: |
+          python -m pip install 'playwright==1.57.0'
+          command -v google-chrome || command -v chromium
+          command -v ffmpeg || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
+      - name: Test real WebM seek and video frame capture in Chromium
+        run: python scripts/test-video-frame-chromium.py

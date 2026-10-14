@@ -63,6 +63,7 @@ export function DocumentTabs({ embedded = false }: { embedded?: boolean }) {
       <input
         ref={fileInputRef}
         type="file"
+        data-file-purpose="document"
         accept={`${IMPORT_ACCEPT},.zproj.json`}
         multiple
         className="hidden"

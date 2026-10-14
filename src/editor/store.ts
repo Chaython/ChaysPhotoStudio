@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import type { DialogInstance, DialogType, ToolId, PsAction, ChannelView, ToolbarSection } from './types'
 import { TOOL_DEFS, TOOL_MAP } from './constants/tools'
+import { DOCKABLE_PANEL_IDS, isDockablePanelId } from './constants/panel-ids'
 import { engine } from './engine/engine'
 
 export interface LayerMeta {
@@ -44,26 +45,98 @@ export interface PanelRect {
 }
 
 /** Inspector grouping is part of the panel layout, not an unexportable UI preference. */
+export const PHOTOSHOP_INSPECTOR_UPPER_TABS = ['color', 'adjustments', 'properties', 'navigator', 'histogram'] as const
+export const PHOTOSHOP_INSPECTOR_LOWER_TABS = ['layers', 'channels', 'paths', 'history', 'actions'] as const
+
 export interface PhotoshopInspectorLayout {
   upperTab: string
   lowerTab: string
+  upperTabs: string[]
+  lowerTabs: string[]
+  /** Optional second vertical inspector column, kept in the panel layout. */
+  sideTabs: string[]
+  sideTab: string
+  sideOpen: boolean
+  sideWidth: number
   upperPercent: number
   collapsed: boolean
 }
 function defaultPhotoshopInspector(): PhotoshopInspectorLayout {
-  return { upperTab: 'color', lowerTab: 'layers', upperPercent: 40, collapsed: false }
+  return {
+    upperTab: 'color', lowerTab: 'layers',
+    upperTabs: [...PHOTOSHOP_INSPECTOR_UPPER_TABS],
+    lowerTabs: [...PHOTOSHOP_INSPECTOR_LOWER_TABS],
+    sideTabs: [], sideTab: '', sideOpen: false, sideWidth: 280,
+    upperPercent: 40, collapsed: false,
+  }
 }
+
+/** The two tab groups are user layouts: no tabs may be duplicated or lost.
+ * Legacy layouts with only upperTab/lowerTab gain the original tab ordering. */
 function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
   const fallback = defaultPhotoshopInspector()
   if (!input || typeof input !== 'object' || Array.isArray(input)) return fallback
   const data = input as Partial<PhotoshopInspectorLayout>
+  const allowed = new Set<string>(DOCKABLE_PANEL_IDS)
+  const seen = new Set<string>()
+  const clean = (candidate: unknown): string[] => {
+    if (!Array.isArray(candidate)) return []
+    const result: string[] = []
+    for (const id of candidate.slice(0, 64)) {
+      if (typeof id !== 'string' || !allowed.has(id) || seen.has(id)) continue
+      result.push(id)
+      seen.add(id)
+    }
+    return result
+  }
+  // Read the secondary column first: tabs intentionally moved there must not
+  // get reintroduced into the original Photoshop template stacks on load.
+  const sideTabs = clean(data.sideTabs ?? fallback.sideTabs)
+  const upperTabs = clean(data.upperTabs ?? fallback.upperTabs)
+  const lowerTabs = clean(data.lowerTabs ?? fallback.lowerTabs)
+  for (const id of PHOTOSHOP_INSPECTOR_UPPER_TABS) if (!seen.has(id)) { upperTabs.push(id); seen.add(id) }
+  for (const id of PHOTOSHOP_INSPECTOR_LOWER_TABS) if (!seen.has(id)) { lowerTabs.push(id); seen.add(id) }
+  // Keep both primary stacks navigable even for malformed imported layouts.
+  if (!upperTabs.length) {
+    const id = lowerTabs.length > 1 ? lowerTabs.shift() : sideTabs.shift()
+    if (id) upperTabs.push(id)
+  }
+  if (!lowerTabs.length) {
+    const id = upperTabs.length > 1 ? upperTabs.pop() : sideTabs.shift()
+    if (id) lowerTabs.push(id)
+  }
   return {
-    upperTab: typeof data.upperTab === 'string' && data.upperTab.length < 100 ? data.upperTab : fallback.upperTab,
-    lowerTab: typeof data.lowerTab === 'string' && data.lowerTab.length < 100 ? data.lowerTab : fallback.lowerTab,
+    upperTabs, lowerTabs, sideTabs,
+    sideTab: typeof data.sideTab === 'string' && sideTabs.includes(data.sideTab)
+      ? data.sideTab : sideTabs[0] ?? '',
+    sideOpen: data.sideOpen === true,
+    sideWidth: typeof data.sideWidth === 'number' && Number.isFinite(data.sideWidth)
+      ? clampNum(Math.round(data.sideWidth), 220, 420) : fallback.sideWidth,
+    upperTab: typeof data.upperTab === 'string' && upperTabs.includes(data.upperTab)
+      ? data.upperTab : upperTabs[0] ?? fallback.upperTab,
+    lowerTab: typeof data.lowerTab === 'string' && lowerTabs.includes(data.lowerTab)
+      ? data.lowerTab : lowerTabs[0] ?? fallback.lowerTab,
     upperPercent: typeof data.upperPercent === 'number' && Number.isFinite(data.upperPercent)
       ? clampNum(Math.round(data.upperPercent), 22, 70) : fallback.upperPercent,
     collapsed: data.collapsed === true,
   }
+}
+
+/** Dock actions and Window-menu navigation must update the same tab selections
+ * that the Photoshop inspector persists, even after a tab was moved between stacks. */
+function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: string, enabled: boolean): PhotoshopInspectorLayout {
+  if (!enabled || !isDockablePanelId(tab)) return current
+  if (current.upperTabs.includes(tab)) return { ...current, upperTab: tab, collapsed: false }
+  if (current.lowerTabs.includes(tab)) return { ...current, lowerTab: tab, collapsed: false }
+  // If the user explicitly hid column two, Window → Show Panel should reveal
+  // its tabs in the folded lower stack rather than reopening that column.
+  if (current.sideTabs.includes(tab)) return { ...current, sideTab: tab, collapsed: false }
+  // Window → Show Panel, Add Panel and Dock Right can bring any registered
+  // panel into Essentials. Persist the new tab in the lower stack; otherwise
+  // it disappears when the user selects a different panel or reloads.
+  return normalizePhotoshopInspector({
+    ...current, lowerTabs: [...current.lowerTabs, tab], lowerTab: tab, collapsed: false,
+  })
 }
 
 // ---- floating panel layout persistence ---------------------------------------
@@ -71,6 +144,23 @@ const PANEL_LAYOUT_KEY = 'zphoto-panel-layout'
 const WORKSPACE_PRESET_KEY = 'zphoto-workspace-preset'
 const WORKSPACE_LAYOUTS_KEY = 'zphoto-workspace-layouts-v1'
 const SAVED_LAYOUTS_KEY = 'zphoto-saved-layouts-v1'
+const WORKSPACE_LOCKS_KEY = 'zphoto-workspace-layout-locks-v1'
+export type WorkspaceLayoutLockKind = 'tools' | 'panels'
+export type WorkspaceLayoutLocks = Record<WorkspacePreset, Record<WorkspaceLayoutLockKind, boolean>>
+function readWorkspaceLocks(): WorkspaceLayoutLocks {
+  const defaults: WorkspaceLayoutLocks = { classic: { tools: false, panels: false }, photoshop: { tools: false, panels: false } }
+  try {
+    const saved = JSON.parse(localStorage.getItem(WORKSPACE_LOCKS_KEY) || '{}')
+    for (const preset of ['classic', 'photoshop'] as const) {
+      for (const kind of ['tools', 'panels'] as const) defaults[preset][kind] = saved?.[preset]?.[kind] === true
+    }
+  } catch { /* old clients/private browsing start with unlocked layouts */ }
+  return defaults
+}
+function persistWorkspaceLocks(locks: WorkspaceLayoutLocks) {
+  try { localStorage.setItem(WORKSPACE_LOCKS_KEY, JSON.stringify(locks)) }
+  catch { throw Error('Cannot save workspace lock settings. Check browser storage permissions.') }
+}
 const LEGACY_CLASSIC_BACKUP_KEY = 'zphoto-classic-layout-backup'
 export type WorkspacePreset = 'classic' | 'photoshop'
 
@@ -419,7 +509,11 @@ function readSavedLayouts(): SavedWorkspaceLayout[] {
   } catch { return [] }
 }
 function saveNamedLayouts(layouts: SavedWorkspaceLayout[]) {
-  try { localStorage.setItem(SAVED_LAYOUTS_KEY, JSON.stringify(layouts)) } catch { /* storage unavailable */ }
+  // A save/export manager must never tell the user an operation succeeded if
+  // private browsing, quota limits, or disabled storage rejected the write.
+  if (layouts.length > 100) throw Error('Maximum 100 saved layouts; remove an unused layout before adding another')
+  try { localStorage.setItem(SAVED_LAYOUTS_KEY, JSON.stringify(layouts)) }
+  catch { throw Error('Unable to save layouts to browser storage. Check available space and storage permissions, or export a backup.') }
 }
 function clonePanelLayout(panels: EditorStore['panels']): EditorStore['panels'] {
   return { ...panels, floating: { ...panels.floating }, dockSide: { ...panels.dockSide },
@@ -486,9 +580,14 @@ function photoshopPanelState(current: EditorStore['panels']): EditorStore['panel
 interface EditorStore {
   workspacePreset: WorkspacePreset
   setWorkspacePreset(preset: WorkspacePreset): void
+  workspaceLayoutLocks: WorkspaceLayoutLocks
+  setWorkspaceLayoutLock(kind: WorkspaceLayoutLockKind, locked: boolean): void
+  /** Reapply this workspace's original panel and tool templates without touching saved profiles. */
+  resetWorkspaceLayout(): void
   savedLayouts: SavedWorkspaceLayout[]
   saveNamedLayout(name: string, kind: SavedLayoutKind): void
   applyNamedLayout(name: string): void
+  renameNamedLayout(oldName: string, newName: string): void
   deleteNamedLayout(name: string): void
   importNamedLayout(json: string): string
   exportNamedLayout(name: string): string
@@ -579,6 +678,7 @@ interface EditorStore {
   setProgress(p: { active: boolean; label: string; value: number } | null): void
   setRightPanelTab(tab: string): void
   setPhotoshopInspector(patch: Partial<PhotoshopInspectorLayout>): void
+  movePhotoshopInspectorTab(id: string, target: 'upper' | 'lower' | 'side', beforeId?: string): void
   setLeftPanelTab(tab: string): void
   setLeftDockOpen(open: boolean): void
   toggleColorPanel(): void
@@ -634,6 +734,17 @@ let toastSeq = 1
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
   workspacePreset: loadWorkspacePreset(),
+  workspaceLayoutLocks: readWorkspaceLocks(),
+  setWorkspaceLayoutLock: (kind, locked) => set(s => {
+    const preset = s.workspacePreset
+    if (s.workspaceLayoutLocks[preset][kind] === locked) return {}
+    const workspaceLayoutLocks = {
+      ...s.workspaceLayoutLocks,
+      [preset]: { ...s.workspaceLayoutLocks[preset], [kind]: locked },
+    }
+    persistWorkspaceLocks(workspaceLayoutLocks)
+    return { workspaceLayoutLocks }
+  }),
   activeTool: 'move',
   toolOptions: defaultOptions(),
   fgColor: '#ffffff',
@@ -661,7 +772,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   timelineActiveFrame: 0,
   timelineLoop: true,
   timelineFrames: [],
-  panels: { ...defaultPanelState(), ...(loadPanelLayout() ?? readWorkspaceRecord(loadWorkspacePreset())?.panels ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
+  // Workspace-specific records are authoritative; the legacy global key is a
+  // migration fallback only and must never silently overwrite an edited workspace.
+  panels: { ...defaultPanelState(), ...(readWorkspaceRecord(loadWorkspacePreset())?.panels ?? loadPanelLayout() ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
   view: {
     // rulers ON by default for fresh users; anyone with persisted prefs
     // keeps their saved choice (the loader merges over these defaults)
@@ -699,6 +812,18 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     persistToolbarLayout(toolbarLayout)
     return { workspacePreset: preset, panels, toolbarLayout }
   }),
+  resetWorkspaceLayout: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels || s.workspaceLayoutLocks[s.workspacePreset].tools) return {}
+    // Explicit reset is the only action that discards this workspace's edited
+    // toolbar and panel layout. Switching templates never implicitly resets it.
+    const panels = s.workspacePreset === 'photoshop'
+      ? photoshopPanelState(defaultPanelState()) : defaultPanelState()
+    const toolbarLayout = null
+    persistPanelLayout(panels)
+    persistToolbarLayout(toolbarLayout)
+    saveWorkspaceRecord(s.workspacePreset, panels, toolbarLayout)
+    return { panels, toolbarLayout }
+  }),
   saveNamedLayout: (name, kind) => set(s => {
     const cleanName = name.trim()
     if (!cleanName || cleanName.length > 100) throw Error('Layout name must be 1–100 characters')
@@ -712,6 +837,17 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     saveNamedLayouts(savedLayouts)
     return { savedLayouts }
   }),
+  renameNamedLayout: (oldName, newName) => set(s => {
+    const cleanName = newName.trim()
+    if (!cleanName || cleanName.length > 100) throw Error('Layout name must be 1–100 characters')
+    const current = s.savedLayouts.find(x => x.name === oldName)
+    if (!current) throw Error('Layout not found')
+    if (cleanName === oldName) return {}
+    if (s.savedLayouts.some(x => x.name === cleanName)) throw Error('A layout already uses that name')
+    const savedLayouts = s.savedLayouts.map(x => x.name === oldName ? { ...x, name: cleanName } : x)
+    saveNamedLayouts(savedLayouts)
+    return { savedLayouts }
+  }),
   deleteNamedLayout: (name) => set(s => {
     const savedLayouts = s.savedLayouts.filter(x => x.name !== name)
     saveNamedLayouts(savedLayouts)
@@ -720,6 +856,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   applyNamedLayout: (name) => set(s => {
     const saved = s.savedLayouts.find(x => x.name === name)
     if (!saved) return {}
+    const locks = s.workspaceLayoutLocks[s.workspacePreset]
+    if ((saved.kind !== 'tools' && locks.panels) || (saved.kind !== 'panels' && locks.tools))
+      throw Error('Unlock the corresponding workspace tool/panel layout before applying this preset.')
     const panels = saved.panels ? clonePanelLayout(saved.panels) : s.panels
     const toolbarLayout = saved.kind === 'panels' ? s.toolbarLayout : saved.toolbar ?? null
     persistPanelLayout(panels)
@@ -823,17 +962,52 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   bump: () => set(s => ({ renderTick: s.renderTick + 1 })),
   setProgress: (p) => set({ progress: p }),
   setRightPanelTab: (tab) => set(s => {
-    const panels = { ...s.panels, rightTab: tab, photoshopInspector: {
-      ...s.panels.photoshopInspector,
-      collapsed: s.workspacePreset === 'photoshop' ? false : s.panels.photoshopInspector.collapsed,
-    } }
+    if (s.workspacePreset === 'photoshop' && s.workspaceLayoutLocks.photoshop.panels &&
+        ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
+          ...s.panels.photoshopInspector.sideTabs].includes(tab)) return {}
+    const panels = { ...s.panels, rightTab: tab, photoshopInspector:
+      withPhotoshopInspectorTab(s.panels.photoshopInspector, tab, s.workspacePreset === 'photoshop') }
     persistPanelLayout(panels)
     return { panels }
   }),
   setPhotoshopInspector: (patch) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels && [
+      'upperTabs', 'lowerTabs', 'sideTabs', 'upperPercent', 'sideWidth', 'sideOpen',
+    ].some(key => Object.prototype.hasOwnProperty.call(patch, key))) return {}
     const next = normalizePhotoshopInspector({ ...s.panels.photoshopInspector, ...patch })
     if (JSON.stringify(next) === JSON.stringify(s.panels.photoshopInspector)) return {}
     const panels = { ...s.panels, photoshopInspector: next }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+  movePhotoshopInspectorTab: (id, target, beforeId) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
+    const current = s.panels.photoshopInspector
+    const group = current.upperTabs.includes(id) ? 'upper'
+      : current.lowerTabs.includes(id) ? 'lower'
+      : current.sideTabs.includes(id) ? 'side' : null
+    if (!group) return {}
+    const source = group === 'upper' ? current.upperTabs
+      : group === 'lower' ? current.lowerTabs : current.sideTabs
+    // Never strand the primary two-stack inspector without any usable tabs.
+    if (group !== target && group !== 'side' && source.length <= 1) return {}
+    const upperTabs = current.upperTabs.filter(tab => tab !== id)
+    const lowerTabs = current.lowerTabs.filter(tab => tab !== id)
+    const sideTabs = current.sideTabs.filter(tab => tab !== id)
+    const dest = target === 'upper' ? upperTabs : target === 'lower' ? lowerTabs : sideTabs
+    const insertIndex = beforeId ? dest.indexOf(beforeId) : -1
+    dest.splice(insertIndex >= 0 ? insertIndex : dest.length, 0, id)
+    if (upperTabs.join('|') === current.upperTabs.join('|') &&
+        lowerTabs.join('|') === current.lowerTabs.join('|') &&
+        sideTabs.join('|') === current.sideTabs.join('|')) return {}
+    const next = normalizePhotoshopInspector({
+      ...current, upperTabs, lowerTabs, sideTabs,
+      upperTab: target === 'upper' ? id : current.upperTab,
+      lowerTab: target === 'lower' ? id : current.lowerTab,
+      sideTab: target === 'side' ? id : current.sideTab,
+      sideOpen: target === 'side' ? true : current.sideOpen,
+    })
+    const panels = { ...s.panels, photoshopInspector: next, rightTab: id }
     persistPanelLayout(panels)
     return { panels }
   }),
@@ -847,6 +1021,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   toggleColorPanel: () => set(s => ({ panels: { ...s.panels, colorPanelOpen: !s.panels.colorPanelOpen } })),
 
   floatPanel: (id, rect) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800
     const prev = s.panels.floating[id]
@@ -869,6 +1044,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   dockPanel: (id, side) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) {
+      // Selecting existing tabs is still editing/navigation, not rearrangement.
+      const target = side ?? s.panels.dockSide[id] ?? 'right'
+      if (s.panels.floating[id] || target !== (s.panels.dockSide[id] ?? 'right')) return {}
+      if (s.workspacePreset === 'photoshop' && target === 'right' &&
+          ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
+            ...s.panels.photoshopInspector.sideTabs].includes(id)) return {}
+      return target === 'right' ? { panels: { ...s.panels, rightTab: id,
+        photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop') } } : {}
+    }
     // Every registered panel is treated identically. Explicit side wins;
     // otherwise a floating panel returns to its last dock, defaulting right.
     const eff: DockSide = side ?? s.panels.dockSide[id] ?? 'right'
@@ -876,6 +1061,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const panels = {
         ...s.panels,
         rightTab: eff === 'right' ? id : s.panels.rightTab,
+        photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop' && eff === 'right'),
         leftTab: eff === 'left' ? id : s.panels.leftTab,
         leftOpen: eff === 'left' ? true : s.panels.leftOpen,
         topOrder: eff === 'top' && !s.panels.topOrder.includes(id)
@@ -892,6 +1078,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       floating,
       dockSide: { ...s.panels.dockSide, [id]: eff },
       rightTab: eff === 'right' ? id : s.panels.rightTab,
+      photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop' && eff === 'right'),
       leftTab: eff === 'left' ? id : s.panels.leftTab,
       leftOpen: eff === 'left' ? true : s.panels.leftOpen,
       topOrder: eff === 'top'
@@ -903,6 +1090,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   homePanel: (id) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const floating = { ...s.panels.floating }
     delete floating[id]
     const dockSide = { ...s.panels.dockSide }
@@ -918,6 +1106,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   revealPanel: (id) => set(s => {
+    if (s.workspacePreset === 'photoshop' && s.workspaceLayoutLocks.photoshop.panels &&
+        ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
+          ...s.panels.photoshopInspector.sideTabs].includes(id) &&
+        (s.panels.dockSide[id] ?? 'right') === 'right') return {}
     if (s.panels.floating[id]) {
       const r = s.panels.floating[id]
       if (r.z === s.panels.zTop) return {}
@@ -934,6 +1126,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const panels = {
       ...s.panels,
       rightTab: side === 'right' ? id : s.panels.rightTab,
+      photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop' && side === 'right'),
       leftTab: side === 'left' ? id : s.panels.leftTab,
       leftOpen: side === 'left' ? true : s.panels.leftOpen,
     }
@@ -942,6 +1135,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   movePanel: (id, x, y) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const r = s.panels.floating[id]
     if (!r) return {}
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
@@ -958,6 +1152,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resizePanel: (id, w, h) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const r = s.panels.floating[id]
     if (!r) return {}
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
@@ -974,6 +1169,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setPanelRect: (id, next) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const r = s.panels.floating[id]
     if (!r) return {}
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
@@ -1008,6 +1204,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setDockWidth: (px) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const dockWidth = clampNum(Math.round(px), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX)
     if (dockWidth === s.panels.dockWidth && s.panels.dockWidthManual) return {}
     const panels = { ...s.panels, dockWidth, dockWidthManual: true }
@@ -1016,6 +1213,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setLeftDockWidth: (px) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const leftWidth = clampNum(Math.round(px), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX)
     if (leftWidth === s.panels.leftWidth && s.panels.leftWidthManual) return {}
     const panels = { ...s.panels, leftWidth, leftWidthManual: true }
@@ -1024,6 +1222,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetDockWidthAuto: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     if (!s.panels.dockWidthManual) return {}
     const panels = { ...s.panels, dockWidthManual: false }
     persistPanelLayout(panels)
@@ -1031,6 +1230,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetLeftDockWidthAuto: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     if (!s.panels.leftWidthManual) return {}
     const panels = { ...s.panels, leftWidthManual: false }
     persistPanelLayout(panels)
@@ -1040,6 +1240,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   // Size overrides are tied to a specific strip. Resizing top-left should
   // never force top-right or the center dock to consume the same height.
   setHorizontalDockHeight: (side, px) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     if (!HORIZONTAL_DOCKS.includes(side) || !Number.isFinite(px)) return {}
     const height = clampNum(Math.round(px), TOP_HEIGHT_MIN, TOP_HEIGHT_MAX)
     if (s.panels.dockHeights[side] === height) return {}
@@ -1049,6 +1250,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetHorizontalDockHeight: (side) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     if (s.panels.dockHeights[side] === undefined) return {}
     const dockHeights = { ...s.panels.dockHeights }
     delete dockHeights[side]
@@ -1058,6 +1260,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetPanelLayout: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
     const panels = s.workspacePreset === 'photoshop'
       ? photoshopPanelState(defaultPanelState())
       : defaultPanelState()
@@ -1092,6 +1295,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setToolbarLayout: (sections) => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].tools) return {}
     const clean = sections ? sanitizeToolbarLayout(sections) : null
     const toolbarLayout = clean && clean.length ? clean : null
     persistToolbarLayout(toolbarLayout)
@@ -1100,6 +1304,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   resetToolbarLayout: () => set(s => {
+    if (s.workspaceLayoutLocks[s.workspacePreset].tools) return {}
     try { localStorage.removeItem(TOOLBAR_KEY) } catch { /* noop */ }
     saveWorkspaceRecord(s.workspacePreset, s.panels, null)
     return { toolbarLayout: null }

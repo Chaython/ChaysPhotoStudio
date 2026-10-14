@@ -44,6 +44,7 @@ export function PanelContextMenu({
     }
     afterContextMenuClose(closeMenu, action)
   }
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
   const dockSide = useEditorStore(s => s.panels.dockSide)
   const floatingRect = useEditorStore(s => s.panels.floating[id])
   const def = PANEL_MAP[id]
@@ -72,9 +73,10 @@ export function PanelContextMenu({
           if (event.key === 'Enter' || event.key === ' ') openingSecondaryRelease.current = false
         }}
       >
+        {panelsLocked && <div className="px-2 py-1 text-[10px] text-muted-foreground">Panel positions locked in this workspace</div>}
         {def.home && (
           <>
-            <ContextMenuItem className="gap-2 text-xs" onSelect={event => choose(event, () => useEditorStore.getState().homePanel(id))}>
+            <ContextMenuItem disabled={panelsLocked} className="gap-2 text-xs" onSelect={event => choose(event, () => useEditorStore.getState().homePanel(id))}>
               <Home size={13} />
               <span className="flex-1">Return to default position</span>
               {current === 'home' && <Check size={12} className="text-primary" />}
@@ -96,7 +98,7 @@ export function PanelContextMenu({
           </>
         ) : (
           <>
-            <ContextMenuItem
+            <ContextMenuItem disabled={panelsLocked}
               className="gap-2 text-xs"
               onSelect={event => choose(event, () => useEditorStore.getState().floatPanel(id, def.defaultFloat))}
             >
@@ -107,11 +109,11 @@ export function PanelContextMenu({
           </>
         )}
 
-        <DockItem id={id} label="Dock left" side="left" current={current} onSelect={event => move(event, 'left')} />
-        <DockItem id={id} label="Dock right" side="right" current={current} onSelect={event => move(event, 'right')} />
-        <DockItem id={id} label="Dock top" side="top" current={current} onSelect={event => move(event, 'top')} />
+        <DockItem id={id} label="Dock left" side="left" current={current} disabled={panelsLocked} onSelect={event => move(event, 'left')} />
+        <DockItem id={id} label="Dock right" side="right" current={current} disabled={panelsLocked} onSelect={event => move(event, 'right')} />
+        <DockItem id={id} label="Dock top" side="top" current={current} disabled={panelsLocked} onSelect={event => move(event, 'top')} />
         {(['bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map(side => (
-          <DockItem key={side} id={id} label={`Dock ${side.replaceAll('-', ' ')}`} side={side} current={current} onSelect={event => move(event, side)} />
+          <DockItem key={side} id={id} label={`Dock ${side.replaceAll('-', ' ')}`} side={side} current={current} disabled={panelsLocked} onSelect={event => move(event, side)} />
         ))}
       </ContextMenuContent>
     </ContextMenu>
@@ -124,16 +126,19 @@ function DockItem({
   side,
   current,
   onSelect,
+  disabled = false,
 }: {
   id: string
   label: string
   side: DockSide
   current: DockSide | 'floating' | 'home'
   onSelect: (event: Event) => void
+  disabled?: boolean
 }) {
   const Icon = side === 'left' ? PanelLeft : side === 'right' ? PanelRight : ArrowUp
   return (
     <ContextMenuItem
+      disabled={disabled}
       className="gap-2 text-xs"
       onSelect={onSelect}
       aria-label={`${label}: ${PANEL_MAP[id]?.label ?? id}`}

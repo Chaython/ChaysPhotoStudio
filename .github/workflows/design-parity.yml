@@ -1,0 +1,72 @@
+name: Design Library and Bulk Create
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/editor/library/design-library.ts'
+      - 'src/editor/library/design-merge.ts'
+      - 'src/editor/linked-design-styles.ts'
+      - 'src/editor/engine/io.ts'
+      - 'src/editor/engine/engine.ts'
+      - 'src/editor/components/dialogs/design-library-dialog.tsx'
+      - 'src/editor/components/dialogs/bulk-design-dialog.tsx'
+      - 'src/editor/constants/menus.ts'
+      - 'src/editor/components/dialogs/dialog-registry.ts'
+      - 'src/editor/components/dialogs/dialog-manager.tsx'
+      - 'src/editor/types.ts'
+      - 'scripts/validate-design-library.ts'
+      - 'scripts/validate-design-merge.ts'
+      - 'scripts/validate-linked-design-styles.ts'
+      - '.github/workflows/design-parity.yml'
+  pull_request:
+    paths:
+      - 'src/editor/library/design-library.ts'
+      - 'src/editor/library/design-merge.ts'
+      - 'src/editor/linked-design-styles.ts'
+      - 'src/editor/engine/io.ts'
+      - 'src/editor/engine/engine.ts'
+      - 'src/editor/components/dialogs/design-library-dialog.tsx'
+      - 'src/editor/components/dialogs/bulk-design-dialog.tsx'
+      - 'src/editor/constants/menus.ts'
+      - 'src/editor/components/dialogs/dialog-registry.ts'
+      - 'src/editor/components/dialogs/dialog-manager.tsx'
+      - 'src/editor/types.ts'
+      - 'scripts/validate-design-library.ts'
+      - 'scripts/validate-design-merge.ts'
+      - 'scripts/validate-linked-design-styles.ts'
+      - '.github/workflows/design-parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: design-parity-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          NEXT_TELEMETRY_DISABLED: 1
+        run: bun install --frozen-lockfile
+      - name: Generate Prisma client
+        run: bun run db:generate
+      - name: Validate design template and brand kit formats
+        run: bun run design-library:validate
+      - name: Validate CSV text merge, row limits and source isolation
+        run: bun run design-merge:validate
+      - name: Validate linked brand style assignment and propagation
+        run: bun run linked-styles:validate
+      - name: Check editor TypeScript
+        run: bunx tsc --noEmit
+      - name: Lint new design modules
+        run: bunx eslint src/editor/library/design-library.ts src/editor/library/design-merge.ts src/editor/linked-design-styles.ts src/editor/components/dialogs/design-library-dialog.tsx src/editor/components/dialogs/bulk-design-dialog.tsx

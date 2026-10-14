@@ -2,7 +2,7 @@
 
 **Audit baseline:** Chay's Photo Studio **main** (14 October 2026). This is a source-code/documentation audit, **not** a guarantee of runtime parity or an automated end-to-end comparison. It complements the [52-tool Photoshop-oriented audit](../TOOL_PARITY.md) and the [format-specific limitations](FEATURES_AND_FORMATS.md).
 
-**Compared products:** Adobe Photoshop (desktop), **GIMP 3.2**, **Adobe Fireworks CS6** (legacy/discontinued), Adobe Illustrator (desktop), and **PhotoCraft** (the `storytold/photocraft` open-source Photoshop-targeting editor). Fireworks is compared against CS6, not a current Adobe release. Competitor columns identify whether each product has that *kind* of workflow; they do **not** imply compatible file formats or identical semantics.
+**Compared products:** Adobe Photoshop (desktop), **GIMP 3.2**, **Adobe Fireworks CS6** (legacy/discontinued), Adobe Illustrator (desktop), and **PhotoCraft** (the `storytold/photocraft` open-source Photoshop-targeting editor). See the [companion comparison of Canva, Adobe Express, Figma, Affinity, Photopea, Pixlr, Krita, Inkscape and Clip Studio Paint](CREATIVE_SUITE_PARITY.md) for template, publishing, UI-design and drawing workflows. Fireworks is compared against CS6, not a current Adobe release. Competitor columns identify whether each product has that *kind* of workflow; they do **not** imply compatible file formats or identical semantics.
 
 ## Legend
 
@@ -11,6 +11,10 @@
 - **—** = no corresponding native workflow identified, or not a primary capability.
 - The **Studio** column rates current behavior; **a feature name, recognized file extension, dialog or optional bridge does not by itself earn ✓**. External installed programs, downloads and optional ComfyUI workflows are not treated as built-in parity.
 - The **Other products** columns are reference capability checks, not exhaustive compatibility tests.
+
+## Additional popular and adjacent editors
+
+The [Canva and creative-suite companion chart](CREATIVE_SUITE_PARITY.md) scores **nine additional competitors** separately so this Photoshop/Fireworks-focused matrix remains readable. Its highest-impact *missing* Studio workflows are **editable design templates, brand kits, component instances, responsive auto-layout and true independent page models**. It also distinguishes Canva/Adobe Express **cloud publishing and collaboration** from local-first image editing, and compares painting/animation gaps with Krita and Clip Studio Paint. No new editor features are implied by this documentation update.
 
 ## Missing-first implementation backlog
 
@@ -36,7 +40,7 @@ The following workflows are still **absent** rather than merely incomplete; prio
 | Workflow / gap | Studio | PhotoCraft | Action to reach parity |
 |---|:---:|:---:|---|
 | Photoshop-like desktop workspace, tool rail, menus, document tabs | ◐ | ◐ | **Studio:** interactive Essentials inspector and dense toolbar; **still not pixel-identical** to current Photoshop. Verify placements, scaling, keyboard and docking on real desktop displays. |
-| Flexible panels: float, dock, tab groups and layout persistence | ◐ | ◐ | **Studio:** eight dock locations, individual floating panels, content-fit sizing and persisted layouts; Photoshop preset has two inspector stacks and collapsible icon rail. **Missing:** full drag-and-merge arbitrary panel tab groups, dedicated workspace locking, configurable multiple inspector columns. |
+| Flexible panels: float, dock, tab groups and layout persistence | ◐ | ◐ | **Studio:** eight dock locations, individual floating panels, content-fit sizing and persisted layouts; Photoshop preset has two inspector stacks plus an optional independently sized and persisted second inspector column, with cross-column tab dragging and a collapsible icon rail. **Studio now offers separate per-workspace panel and tool layout locks** without blocking normal editing. **Missing:** unrestricted arbitrary multi-column/tab-group docking. |
 | Color, adjustments, properties, layers and history inspector stacks | ✓ | ◐ | Studio renders real panels in a two-stack Photoshop layout, not placeholders. PhotoCraft documents incomplete Color panel and floating-panel grouping; neither is a Photoshop-equivalent guarantee. |
 | Brush responsiveness / pen pressure and feel | ◐ | ◐ | Studio should run large brush pressure/tilt, spacing and latency benchmarks; PhotoCraft also documents brush lag and feel gaps. |
 | PSD/PSB deep, editable interchange with Photoshop | ◐ | ◐ | Both can open/edit meaningful PSD structures but **neither establishes universal Photoshop round trips**. Add a shared oracle corpus with Photoshop-authored fixtures, Smart Objects, type, CMYK, adjustment and complex masks; never conflate file opening with object fidelity. |

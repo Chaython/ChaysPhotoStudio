@@ -322,6 +322,8 @@ export interface LayerFX {
 }
 
 export interface Layer {
+  /** Document-scoped reusable color / text-style references. */
+  linkedDesignStyles?: import('./linked-design-styles').LayerStyleReferences
   id: string
   name: string
   kind: LayerKind
@@ -491,6 +493,7 @@ export interface HistoryState {
   artboards?: import('./artboards').Artboard[]
   activeArtboardId?: string | null
   showArtboardOutlines?: boolean
+  linkedDesignStyles?: import('./linked-design-styles').LinkedDesignStyle[]
 }
 
 /** Named, durable copy of a history state. Unlike the rolling History list,
@@ -661,6 +664,8 @@ export interface AnimFrame {
 }
 
 export interface PsDocument {
+  /** Offline embedded design tokens; kit updates propagate to linked layers. */
+  linkedDesignStyles?: import('./linked-design-styles').LinkedDesignStyle[]
   /** Multiple named, document-space export artboards (shared editable layer stack). */
   artboards?: import('./artboards').Artboard[]
   activeArtboardId?: string | null
@@ -856,7 +861,7 @@ export interface ToolDef {
 
 // ---------- Dialogs ----------
 export type DialogType =
-  | 'help-guide' | 'new-doc' | 'image-size' | 'canvas-size' | 'export' | 'export-layers' | 'web-assets' | 'artboards' | 'raw-batch-export' | 'photo-library' | 'duplicate-layer' | 'stroke-selection' | 'transform' | 'puppet-warp' | 'apply-image' | 'calculations' | 'proof-setup'
+  | 'help-guide' | 'new-doc' | 'image-size' | 'canvas-size' | 'export' | 'export-layers' | 'web-assets' | 'artboards' | 'raw-batch-export' | 'photo-library' | 'design-library' | 'bulk-design' | 'duplicate-layer' | 'stroke-selection' | 'transform' | 'puppet-warp' | 'apply-image' | 'calculations' | 'proof-setup'
   | 'curves' | 'levels' | 'brightness-contrast' | 'exposure' | 'vibrance'
   | 'hue-saturation' | 'color-balance' | 'black-white' | 'photo-filter'
   | 'channel-mixer' | 'selective-color' | 'gradient-map' | 'posterize'

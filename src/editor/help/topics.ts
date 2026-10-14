@@ -43,7 +43,8 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Choose Window → Layers, History, Channels, Metadata or other panels to reveal them.",
       "Rearrange panels to match your workflow.",
       "On desktop, dock panels left/right/top, group tabs or float windows; reveal hidden panels from Window.",
-      "Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.",
+      "Choose the Photoshop-style or Classic workspace from the top-right workspace selector; each workspace remembers independent tool and panel layouts. In that menu you can independently **Lock panels layout** or **Lock tools layout** for the active workspace; these guards preserve positions, grouping and sizing while still allowing you to select tools and existing panels. Unlock before restoring a workspace template or applying a saved preset that changes a locked layout. Locks are stored per workspace, not embedded in exported presets.",
+      "In Photoshop-style, drag inspector tabs within or between the upper and lower stacks; Alt+Left/Right reorders and Alt+Up/Down moves a tab between stacks. Use Window → Show Panel or the + menu to add another panel (such as Metadata or Timeline) to the lower inspector stack; move it between stacks like any other tab. On wide screens, Show second inspector column adds a separately resizable column: drag tabs into it or press Alt+Shift+Right on a tab; Alt+Shift+Left returns it to the lower stack. On narrower screens, those tabs appear in the lower stack without changing the saved layout. The collapsed icon rail follows your custom grouping. The reset icon restores the default tab groups and closes the secondary column without removing named layouts.",
       "Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.",
       "Choose Settings → Reset panel layout if a panel is difficult to locate.",
       "On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right. Docks fit their contents by default; drag the dock divider for a fixed size or double-click it to return to automatic sizing."
@@ -589,11 +590,12 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     "summary": "Choose import paths for raster, layered and media files.",
     "steps": [
       "Open a file as a new document, Open as Layer… to add to the current image, or Place… as a Smart Object.",
-      "Open MP4/WebM/MKV to scrub a local preview, choose a timestamp and Import frame.",
+      "Open MP4/WebM/MKV to scrub a local preview, choose a timestamp, or use the estimated frame-step buttons with a selected FPS (24, 25, 30 or 60), then choose Import frame.",
       "Consult the feature/format reference to distinguish native codecs from previews and fallback extractors."
     ],
     "tips": [
       "File extension recognition does not guarantee decoding.",
+      "Browser video support depends on installed codecs; MKV and some MP4 variants may not decode. Frame stepping advances by an assumed 1/FPS interval, not an exact source-frame index. Import is blocked until asynchronous seek completes; Cancel leaves the document unchanged.",
       "RAW development supports editable settings, curves, HSL adjustments and manual local masks, but decoder coverage, lens corrections and non-destructive compatibility vary by camera and file format.",
       "HEIC, JPEG XL and JPEG 2000 depend on operating-system/WebView codecs."
     ]
@@ -789,6 +791,46 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Artboards share the original editable layer stack and canvas. Layer inclusion changes artboard exports without changing document-wide layer visibility or deleting source layers.",
       "Globally hidden layers remain hidden even when listed on an artboard; newly created layers may need to be included in artboards with custom layer lists.",
       "Artboards cannot extend beyond the existing document. CSS rollover previews reuse Layer Comps; native Fireworks page/state/symbol objects, editable Illustrator AI round trips and independent page-layer trees remain unsupported."
+    ]
+  },
+  {
+    "id": "design-library",
+    "title": "Design templates and brand kits",
+    "category": "Color & files",
+    "path": "File → Design Templates & Brand Kits…",
+    "summary": "Create new editable designs from saved local project templates, and reuse brand swatches, font families and logos without an account or cloud service.",
+    "steps": [
+      "Open an editable document, choose File → Design Templates & Brand Kits, and use Save active document as template. Name and categorize the template for later reuse.",
+      "Search local templates and choose Use template to open a separate editable document; the original template remains unchanged. Export a .ztemplate.json backup or import one on another Studio installation.",
+      "Switch to Brand kits and create a kit. Add named hex swatches, local font family names and PNG/JPEG/WebP logo images (up to 512 KiB each). Save the kit.",
+      "Choose Apply on a swatch/font for a one-time change. Choose Link to give the selected editable text/shape layer a persistent brand-style reference; linked colors/fonts remain editable and save with the project.",
+      "Edit an existing swatch color/name or font family in the kit without deleting its identity; choose Save brand kit & update links to propagate changes to linked layers across open documents with Undo/Redo. Choose Unlink selected layer to keep its current appearance without future propagation."
+    ],
+    "tips": [
+      "Template projects are copies of native .zproj.json content (up to 32 MiB each); the thumbnail is only a preview. Huge documents should be saved as standalone projects instead of templates.",
+      "The design library uses browser/device IndexedDB storage. Clearing site/app data deletes local templates and brand kits; export backups before doing so.",
+      "Imported font names do not install fonts. Linked brand styles are embedded per project and update across currently open documents when their matching local brand kit is saved or explicitly synced. Closed documents preserve their last saved colors until reopened and synced.",
+      "Deleted kit colors/fonts do not erase artwork: linked layers retain their last embedded values, and you can unlink them. This is local brand-token propagation, not Canva's stock-asset marketplace, multi-user permissions, network publishing or real-time collaboration."
+    ]
+  },
+  {
+    "id": "bulk-design",
+    "title": "Bulk Create designs from CSV",
+    "category": "Color & files",
+    "path": "File → Bulk Create from CSV…",
+    "summary": "Create multiple flattened designs by replacing text-layer placeholders with literal values from an imported CSV, without changing the source design.",
+    "steps": [
+      "Add editable text layers to a document using exact {{Column Name}} placeholders, such as {{Name}} and {{Job}}.",
+      "Choose File → Bulk Create from CSV and load a UTF-8 CSV file. The first row defines column names; commas, quoted strings and newlines are supported.",
+      "Check the columns against detected text placeholders. Every placeholder must match a CSV heading exactly before export. Choose a filename column and PNG, JPEG or WebP.",
+      "Click Export designs, choose an output directory when supported and review the images. Each CSV row creates a separate flattened design using detached text-layer copies.",
+      "Stop after the current design if needed. The source document, text layers and editing History are left unchanged."
+    ],
+    "tips": [
+      "CSV imports are local-only, limited to 1 MiB, 64 columns and 100 data rows. Individual CSV fields are limited to 2,000 characters.",
+      "Text placeholders are literal substitutions, not script execution or rich formatting. This first version does not merge images, modify shapes/colors from CSV, or produce new layered documents per row.",
+      "For browsers lacking a folder-picker API, downloading more than 20 images at once is disabled to avoid blocked/missing browser downloads.",
+      "Missing CSV columns block export rather than producing accidentally unfilled placeholders. Text with matched placeholders retains its existing layer styling."
     ]
   }
 ]
