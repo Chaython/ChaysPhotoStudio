@@ -140,7 +140,8 @@
     "@discourse/heic": "1.0.0",
     "@discourse/jxr": "1.0.0",
     "@team-charls/charls-wasm": "0.10.0",
-    "jpeg2000": "1.1.1"
+    "jpeg2000": "1.1.1",
+    "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
