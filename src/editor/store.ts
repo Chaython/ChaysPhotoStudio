@@ -115,6 +115,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
   leftOpen: boolean
   leftTab: string
   rightTab: string
+  colorPanelOpen: boolean
   dockSide: Record<string, DockSide>
   topOrder: string[]
   topHeight: number
@@ -135,6 +136,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
       leftOpen?: boolean
       leftTab?: string
       rightTab?: string
+      colorPanelOpen?: boolean
       dockSide?: Record<string, string>
       topOrder?: unknown
       topHeight?: number
@@ -168,6 +170,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
     const rightTabRaw = typeof data.rightTab === 'string' ? data.rightTab : 'layers'
     return {
       rightTab: rightTabRaw,
+      colorPanelOpen: data.colorPanelOpen !== false,
       floating,
       zTop: typeof data.zTop === 'number' ? data.zTop : Object.values(floating).reduce((m, r) => Math.max(m, r.z), 0),
       dockWidth: clampNum(Math.round(data.dockWidth ?? DOCK_WIDTH_DEFAULT), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX),
@@ -200,6 +203,7 @@ function persistPanelLayout(panels: EditorStore['panels']) {
       leftOpen: panels.leftOpen,
       leftTab: panels.leftTab,
       rightTab: panels.rightTab,
+      colorPanelOpen: panels.colorPanelOpen,
       dockSide: panels.dockSide,
       topOrder: panels.topOrder,
       topHeight: panels.topHeight,
@@ -1148,6 +1152,18 @@ function scheduleTimelineStep() {
     scheduleTimelineStep()
   }, delay)
 }
+
+// Keep the active workspace's saved template-derived layout current after EVERY
+// panel mutation, including simple tab selections, floating-window movement and
+// color-panel toggles. Existing per-action legacy persistence remains intact for
+// migration; this avoids a stale workspace snapshot after reload or a crash.
+useEditorStore.subscribe((next, previous) => {
+  if (next.workspacePreset !== previous.workspacePreset ||
+      next.panels !== previous.panels ||
+      next.toolbarLayout !== previous.toolbarLayout) {
+    saveWorkspaceRecord(next.workspacePreset, next.panels, next.toolbarLayout)
+  }
+})
 
 /** convenience hook: get tool options for the active tool */
 export function useToolOptions(tool: ToolId): Record<string, any> {
