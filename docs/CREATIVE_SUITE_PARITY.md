@@ -24,7 +24,7 @@ This companion to the [Photoshop/GIMP/Fireworks/Illustrator/PhotoCraft matrix](C
 | Timeline-based *video* editing | — | ✓ | ✓ | ◐ | Studio can import **one still frame** from video and has a **GIF/APNG frame-animation** timeline; it is not a video editor |
 | Website building and *hosting/publishing* | — | ✓ | ✓ | ✓ | Studio's exported HTML hotspot/rollover assets are not a page builder or hosting backend |
 | Simultaneous remote editing/comments | — | ✓ | ✓ | ✓ | No networked multiplayer document engine; local workspace persistence is unrelated |
-| Spreadsheet/CSV-driven mass template generation | ◐ | ✓ | ◐ | ◐ | Actions and image batch jobs exist; no field-bound text/image repeatable design template workflow |
+| Spreadsheet/CSV-driven mass template generation | ◐ | ✓ | ◐ | ◐ | **Studio now supports CSV-driven editable text placeholder substitution** and up to 100 flattened design exports without mutating source layers. Missing image/style mappings, automatic page variants, layered output and Canva connector publishing. |
 | Direct social-media scheduling/publishing | — | ✓ | ✓ | — | External account integration, background scheduling and upload API are not part of Studio |
 | Bundled generative design tools | ◐ | ✓ | ✓ | ◐ | Studio exposes optional/local/external AI workflows, not every competitor's cloud models or credit system |
 | Independent local/offline photo editing | ✓ | ◐ | ◐ | ◐ | Studio prioritizes local processing; web/cloud products generally require accounts or connectivity for significant features |
@@ -86,7 +86,7 @@ These **are development targets, not implemented features**. Rank by usefulness 
 | **High** | **True component symbols and instances** | Figma, Canva, Illustrator, Fireworks | Link reusable components across multiple artboards; update original without flattening, scoped instance overrides, Undo, persistence and cycle checks |
 | **High** | **Responsive frames and auto-layout** | Figma, Canva (adaptive layout) | Parent constraints, padding/gap/alignment/wrap, intrinsic text measurement and non-destructive reflow when width changes; benchmark complex nested frames |
 | **High** | **Editable page models** | Canva, Affinity, Clip Studio EX | Page-local layer trees and independent page size/background, duplication/reorder, export selected/all while preserving the current canvas legacy path |
-| **Medium** | **CSV/data-merged design variants** | Canva Bulk Create, Adobe Express | Map fields to text/image placeholders in a template; deterministic batch export with row validation, error report and filename protection |
+| **Medium** | **Advanced CSV Bulk Create** — partial | Canva Bulk Create, Adobe Express | Basic CSV text placeholders and detached PNG/JPEG/WebP exports now exist. Extend to image slots, smart-object replacements, conditional text, scalable job queues and new-layered-document output with fixture tests. |
 | **Medium** | **Comics and line-art productivity** | Clip Studio, Krita | Editable panels/balloons/screentones, gaps-aware fill and assistants integrated into existing layer/undo model |
 | **Medium** | **Pro vector construction** | Affinity, Inkscape, Figma | Boolean editing of separate editable objects, native SVG fixtures, linked symbols and vector trace-to-path instead of raster-only guide |
 | **Medium** | **Professional print layouts** | Affinity Layout | Editable page masters, margins/bleed and color-managed PDF/X proof/export with ICC regression corpus |
