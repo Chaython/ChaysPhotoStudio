@@ -1075,7 +1075,7 @@ def main():
                 page.wait_for_function("""() => {
                     const d = window.__zphotoEngine?.activeDoc
                     return !!d && d.name.includes('two-pages') &&
-                      d.width === 400 && d.height === 240 && d.layers?.length === 2
+                      d.width === 400 && d.height === 240 && d.layers?.length >= 2
                 }""", timeout=45000)
                 data = page.evaluate("""() => {
                   const d = window.__zphotoEngine.activeDoc
@@ -1089,14 +1089,15 @@ def main():
                   }
                 }""")
                 print("  PDF import:", data, flush=True)
-                check({l["name"] for l in data["layers"]} ==
-                      {"PDF Page 1", "PDF Page 2"}, "PDF pages not imported distinctly")
-                reds = [l for l in data["layers"] if l["name"] == "PDF Page 1"]
-                blues = [l for l in data["layers"] if l["name"] == "PDF Page 2"]
+                check({l["name"] for l in data["layers"] if "Visual reference" in l["name"]} ==
+                      {"PDF Page 1 · Visual reference", "PDF Page 2 · Visual reference"}, "PDF page references not imported distinctly")
+                reds = [l for l in data["layers"] if l["name"] == "PDF Page 1 · Visual reference"]
+                blues = [l for l in data["layers"] if l["name"] == "PDF Page 2 · Visual reference"]
                 check(len(reds) == 1 and reds[0]["pixel"][0] > 210 and reds[0]["pixel"][2] < 80,
                       "PDF.js must render page 1 red vector rectangle")
                 check(len(blues) == 1 and blues[0]["pixel"][2] > 210 and blues[0]["pixel"][0] < 80,
                       "PDF.js must render page 2 blue vector rectangle")
+                check(len(data["layers"]) > 2, "PDF native vector extraction should expose editable shapes")
                 check(bool(reds[0]["visible"]) and not bool(blues[0]["visible"]),
                       "first PDF page should be visible and second hidden")
                 check(not errors, f"PDF import threw JavaScript errors: {errors[:3]}")
