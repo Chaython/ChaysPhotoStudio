@@ -231,6 +231,9 @@ function commitSession(cancel: boolean) {
   setDockDrop(false)
   releaseChrome(s)
   const store = useEditorStore.getState()
+  // Pointer-up may be the first event after another control locks the layout.
+  // Never leave the directly mutated DOM at an unsaved position.
+  if (store.workspaceLayoutLocks[store.workspacePreset].panels) cancel = true
 
   if (cancel) {
     if (s.originHome) {
