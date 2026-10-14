@@ -631,6 +631,16 @@ export class Engine {
       )
       return copy
     })
+    // Artboards share the duplicated document's newly identified editable layers,
+    // never dangling references to layers belonging to the source document.
+    const artboardIds = new Map<string, string>()
+    const artboards = src.artboards?.map(board => {
+      const id = uid()
+      artboardIds.set(board.id, id)
+      return { ...board, id,
+        visibleLayerIds: board.visibleLayerIds?.map(old => layerIds.get(old))
+          .filter((layerId): layerId is string => !!layerId) }
+    })
     const frames = src.frames?.map(frame => ({
       ...structuredClone(frame),
       id: uid(),
@@ -670,6 +680,10 @@ export class Engine {
       colorSamplers: src.colorSamplers?.map(sampler => ({ ...sampler, id: uid() })),
       measurements: src.measurements?.map(measurement => ({ ...structuredClone(measurement), id: uid() })),
       frames,
+      artboards,
+      activeArtboardId: src.activeArtboardId ? artboardIds.get(src.activeArtboardId) ?? null : null,
+      showArtboardOutlines: src.showArtboardOutlines !== false,
+      webRegions: src.webRegions?.map(region => ({ ...region, id: uid() })),
       layerComps,
       activeLayerCompId: src.activeLayerCompId ? compIds.get(src.activeLayerCompId) ?? null : null,
       lastLayerCompState: null,
