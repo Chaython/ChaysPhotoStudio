@@ -487,6 +487,10 @@ export interface HistoryState {
   colorSamplers?: PsDocument['colorSamplers']
   measurements?: SavedMeasurement[]
   frames?: AnimFrame[]
+  /** Snapshot of editable artboard regions for geometry Undo/Redo. */
+  artboards?: import('./artboards').Artboard[]
+  activeArtboardId?: string | null
+  showArtboardOutlines?: boolean
 }
 
 /** Named, durable copy of a history state. Unlike the rolling History list,
