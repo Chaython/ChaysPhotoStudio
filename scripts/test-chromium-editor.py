@@ -8,7 +8,6 @@ No external web services, third-party models, or native plugins are used.
 from __future__ import annotations
 
 import os
-import base64
 import re
 import shutil
 import struct
@@ -20,6 +19,7 @@ import zlib
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+from video_fixture import video_fixture
 
 APP_URL = os.getenv("CHAYS_E2E_URL", "http://127.0.0.1:8765/")
 ARTIFACTS = Path(os.getenv("CHAYS_E2E_ARTIFACTS", "build/chromium-e2e"))
@@ -57,12 +57,6 @@ def pixel_png(width=8, height=8) -> bytes:
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
-
-# 80x60, two-second VP8/WebM fixture with first second red and second blue.
-# Generated from two lavfi color sources; embedded so browser CI needs no ffmpeg.
-VIDEO_TWO_TONE_WEBM = base64.b64decode(
-    "GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAOxEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHWTbuMU6uEElTDZ1OsggEjTbuMU6uEHFO7a1OsggOJ7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsCrXsYMPQkBNgIxMYXZmNjEuNy4xMDNXQYxMYXZmNjEuNy4xMDNEiYhAn0AAAAAAABZUrmvIrgEAAAAAAAA/14EBc8WIWpiZnpyE6/OcgQAitZyDdW5kiIEAhoVWX1ZQOIOBASPjg4QHc1lA4JCwgVC6gTyagQJVsIRVuYEBElTDZ/tzc59jwIBnyJlFo4dFTkNPREVSRIeMTGF2ZjYxLjcuMTAzc3PWY8CLY8WIWpiZnpyE6/NnyKFFo4dFTkNPREVSRIeUTGF2YzYxLjE5LjEwMSBsaWJ2cHhnyKFFo4hEVVJBVElPTkSHkzAwOjAwOjAyLjAwMDAwMDAwMAAfQ7Z1QeDngQCjxYEAAIDwAwCdASpQADwAAEcIhYWIhYSIAgICdaoD+AP6Agb/skyZMmTJkyZLwP79bvP/45k3MMT/jm3/8WE8DijI//FhRAKOWgQB9ANEBAAEQEAAYABhYL/QACIhgAKOWgQD6ANEBAAEQEAAYABhYL/QACIhgAKOWgQF3ANEBAAEQEAAYABhYL/QACIhgAKOWgQH0ANEBAAEQEAAYABhYL/QACIhgAKOWgQJxANEBAAEQEAAYABhYL/QACIhgAKOWgQLuANEBAAEQEAAYABhYL/QACIhgAKOWgQNrANEBAAEQEBRgAGFgv9AAIiGAAKPEgQPogLADAJ0BKlAAPAAARwiFhYiFhIgCAgJ1qgP4AgbOMkyZMmTJkyZLwP7/TRL//FhX8WFfxYV/8WFf/PzO7cX85gCjloEEZQDRAQABEBAAGAAYWC/0AAiIYACjloEE4gDRAQABEBAAGAAYWC/0AAiIYACjloEFXwDRAQABEBAAGAAYWC/0AAiIYACjloEF3ADRAQABEBAAGAAYWC/0AAiIYACjloEGWQDRAQABEBAAGAAYWC/0AAiIYACjloEG1gDRAQABEBAAGAAYWC/0AAiIYACjloEHUwDRAQABEBAUYABhYL/QACIhgAAcU7tro7uPs4EAt4r3gQHxggGj8IEDu5CzggPot4r3gQHxggGj8IHy"
-)
 
 def pdf_fixture() -> bytes:
     """Minimal, valid two-page vector PDF with distinct solid page colors."""
@@ -703,7 +697,7 @@ def main():
             def video_frame_picker():
                 _, page, errors = app_page(browser)
                 upload = {"name": "two-tone.webm", "mimeType": "video/webm",
-                          "buffer": VIDEO_TWO_TONE_WEBM}
+                          "buffer": video_fixture()}
                 file_input = page.locator('input[data-file-purpose="document"]').first
                 initial_count = page.evaluate("() => window.__zphotoEngine.docs.length")
                 file_input.set_input_files(upload)
