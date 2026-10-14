@@ -1283,6 +1283,8 @@ def main():
                 page.keyboard.press("Enter")
                 check(page.get_by_role("dialog").get_by_text("Web Slices & Hotspots").count() == 1,
                       "Enter failed to open editable Web Assets details")
+                check(page.get_by_role("dialog").get_by_role("textbox", name="Region name").input_value().startswith("Hotspot"),
+                      "Web Assets details did not focus the selected hotspot")
                 page.get_by_role("dialog").get_by_role("button", name="Close").click()
                 # Create a second document; a region selected in another tab
                 # must never be deleted or modified by a keyboard shortcut.
