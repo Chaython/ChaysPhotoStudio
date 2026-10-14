@@ -369,16 +369,24 @@ function PhotoshopRightDock() {
               }}
               onKeyDown={e => {
                 if (!e.altKey) return
+                // React may reparent the tab when changing stacks; keep the
+                // keyboard user's focus on the same tab after its move.
+                const restoreFocus = () => requestAnimationFrame(() => {
+                  document.querySelector<HTMLButtonElement>(`[data-inspector-tab="${id}"]`)?.focus()
+                })
                 if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                   e.preventDefault()
                   const destination = e.key === 'ArrowUp' ? 'upper' : 'lower'
                   moveInspectorTab(id, destination)
+                  restoreFocus()
                 } else if (e.key === 'ArrowLeft' && index > 0) {
                   e.preventDefault()
                   moveInspectorTab(id, group, ids[index - 1])
+                  restoreFocus()
                 } else if (e.key === 'ArrowRight' && index < ids.length - 1) {
                   e.preventDefault()
                   moveInspectorTab(id, group, ids[index + 2])
+                  restoreFocus()
                 }
               }}>
               <Icon size={12} aria-hidden /><span>{def.label}</span>
