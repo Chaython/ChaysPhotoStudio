@@ -63,6 +63,9 @@ jobs:
       - name: Validate CSV-driven design merge and source isolation
         run: bun run design-merge:validate
 
+      - name: Validate document-linked brand styles
+        run: bun run linked-styles:validate
+
       - name: Validate ruler calibration and persistent-tool overlays
         run: bun scripts/validate-measure.ts
 

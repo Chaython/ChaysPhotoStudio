@@ -6,6 +6,9 @@ on:
     paths:
       - 'src/editor/library/design-library.ts'
       - 'src/editor/library/design-merge.ts'
+      - 'src/editor/linked-design-styles.ts'
+      - 'src/editor/engine/io.ts'
+      - 'src/editor/engine/engine.ts'
       - 'src/editor/components/dialogs/design-library-dialog.tsx'
       - 'src/editor/components/dialogs/bulk-design-dialog.tsx'
       - 'src/editor/constants/menus.ts'
@@ -14,11 +17,15 @@ on:
       - 'src/editor/types.ts'
       - 'scripts/validate-design-library.ts'
       - 'scripts/validate-design-merge.ts'
+      - 'scripts/validate-linked-design-styles.ts'
       - '.github/workflows/design-parity.yml'
   pull_request:
     paths:
       - 'src/editor/library/design-library.ts'
       - 'src/editor/library/design-merge.ts'
+      - 'src/editor/linked-design-styles.ts'
+      - 'src/editor/engine/io.ts'
+      - 'src/editor/engine/engine.ts'
       - 'src/editor/components/dialogs/design-library-dialog.tsx'
       - 'src/editor/components/dialogs/bulk-design-dialog.tsx'
       - 'src/editor/constants/menus.ts'
@@ -27,6 +34,7 @@ on:
       - 'src/editor/types.ts'
       - 'scripts/validate-design-library.ts'
       - 'scripts/validate-design-merge.ts'
+      - 'scripts/validate-linked-design-styles.ts'
       - '.github/workflows/design-parity.yml'
   workflow_dispatch:
 
@@ -56,7 +64,9 @@ jobs:
         run: bun run design-library:validate
       - name: Validate CSV text merge, row limits and source isolation
         run: bun run design-merge:validate
+      - name: Validate linked brand style assignment and propagation
+        run: bun run linked-styles:validate
       - name: Check editor TypeScript
         run: bunx tsc --noEmit
       - name: Lint new design modules
-        run: bunx eslint src/editor/library/design-library.ts src/editor/library/design-merge.ts src/editor/components/dialogs/design-library-dialog.tsx src/editor/components/dialogs/bulk-design-dialog.tsx scripts/validate-design-library.ts scripts/validate-design-merge.ts
+        run: bunx eslint src/editor/library/design-library.ts src/editor/library/design-merge.ts src/editor/linked-design-styles.ts src/editor/components/dialogs/design-library-dialog.tsx src/editor/components/dialogs/bulk-design-dialog.tsx

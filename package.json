@@ -41,6 +41,7 @@
     "artboards:validate": "bun scripts/validate-artboards.ts",
     "design-library:validate": "bun scripts/validate-design-library.ts",
     "design-merge:validate": "bun scripts/validate-design-merge.ts",
+    "linked-styles:validate": "bun scripts/validate-linked-design-styles.ts",
     "dock-sizing:validate": "bun scripts/validate-dock-sizing.ts",
     "gimp:validate": "bun scripts/validate-gimp-compatibility.ts",
     "retouch-safety:validate": "bun scripts/validate-retouch-safety.ts",
