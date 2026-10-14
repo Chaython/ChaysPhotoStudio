@@ -1,4 +1,5 @@
 'use client'
+import { useRef, useState } from 'react'
 import {
   MenubarMenu, MenubarTrigger, MenubarContent, MenubarItem, MenubarSeparator, Menubar,
   MenubarSub, MenubarSubTrigger, MenubarSubContent,
@@ -6,7 +7,7 @@ import {
 import type { MenuItem } from '../../constants/menus'
 import { MENUS, PLUGINS_MENU_INDEX, getPluginsMenuItems } from '../../constants/menus'
 import { useEditorStore } from '../../store'
-import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone } from 'lucide-react'
+import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2 } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -67,6 +68,35 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
   const resetLayout = useEditorStore(s => s.resetPanelLayout)
   const workspacePreset = useEditorStore(s => s.workspacePreset)
   const setWorkspacePreset = useEditorStore(s => s.setWorkspacePreset)
+  const savedLayouts = useEditorStore(s => s.savedLayouts)
+  const saveNamedLayout = useEditorStore(s => s.saveNamedLayout)
+  const applyNamedLayout = useEditorStore(s => s.applyNamedLayout)
+  const deleteNamedLayout = useEditorStore(s => s.deleteNamedLayout)
+  const importNamedLayout = useEditorStore(s => s.importNamedLayout)
+  const exportNamedLayout = useEditorStore(s => s.exportNamedLayout)
+  const pushToast = useEditorStore(s => s.pushToast)
+  const layoutFile = useRef<HTMLInputElement>(null)
+  const [layoutName, setLayoutName] = useState('')
+  const [layoutKind, setLayoutKind] = useState<'tools' | 'panels' | 'both'>('both')
+  const downloadLayout = (name: string) => {
+    try {
+      const blob = new Blob([exportNamedLayout(name)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${name.replace(/[^a-z0-9_-]+/gi, '-').slice(0, 60) || 'layout'}.zlayout.json`
+      anchor.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) { pushToast(String(error), 'error') }
+  }
+  const loadLayoutFile = async (file?: File) => {
+    if (!file) return
+    try {
+      if (file.size > 250_000) throw Error('Layout file exceeds 250 KB')
+      const name = importNamedLayout(await file.text())
+      pushToast(`Imported layout: ${name}`, 'success')
+    } catch (error) { pushToast(`Import failed: ${String(error)}`, 'error') }
+  }
   void menus // plugin installs/imports also bump renderTick → the dynamic Plugins menu stays fresh
   void scTick
 
@@ -87,6 +117,8 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
         </MenubarMenu>
       ))}
 
+      <input ref={layoutFile} type="file" accept=".json,.zlayout.json,application/json" className="hidden" aria-label="Import layout file"
+        onChange={e => { void loadLayoutFile(e.target.files?.[0]); e.target.value = '' }} />
       <div className="ml-auto flex h-full items-center gap-0.5 pr-2 pl-2 border-l border-border/60">
         <button
           className="flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-primary/15 border border-primary/40 text-primary text-[11px] font-medium hover:bg-primary/25 active:scale-95 transition-all"
@@ -123,6 +155,38 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace template</div>
             <DropdownMenuItem onClick={() => setWorkspacePreset('photoshop')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Photoshop-style</span>{workspacePreset === 'photoshop' && <Check size={13} />}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => setWorkspacePreset('classic')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Classic / custom</span>{workspacePreset === 'classic' && <Check size={13} />}</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Saved layouts (independent from workspace)</div>
+            <div className="flex gap-1 px-2 py-1" onKeyDown={e => e.stopPropagation()}>
+              <input aria-label="Layout name" placeholder="Layout name" value={layoutName}
+                onChange={e => setLayoutName(e.target.value)}
+                className="min-w-0 flex-1 h-7 rounded border bg-background px-2 text-xs" maxLength={100} />
+              <select aria-label="Layout contents" value={layoutKind} onChange={e => setLayoutKind(e.target.value as 'tools' | 'panels' | 'both')}
+                className="w-21 h-7 rounded border bg-background text-[11px]">
+                <option value="both">Both</option><option value="tools">Tools</option><option value="panels">Panels</option>
+              </select>
+            </div>
+            <DropdownMenuItem disabled={!layoutName.trim()} onSelect={e => {
+              e.preventDefault()
+              try { saveNamedLayout(layoutName, layoutKind); pushToast('Layout saved', 'success') }
+              catch (error) { pushToast(String(error), 'error') }
+            }} className="gap-2 text-xs"><Save size={13} /> Save named layout</DropdownMenuItem>
+            {savedLayouts.map(layout => (
+              <div key={layout.name} className="flex items-center px-1 hover:bg-accent">
+                <button type="button" className="min-w-0 flex-1 truncate text-left px-2 py-1.5 text-xs"
+                  title={'Apply ' + layout.name + ' (' + layout.kind + ')'}
+                  onClick={() => { applyNamedLayout(layout.name); pushToast('Applied ' + layout.name, 'success') }}>
+                  {layout.name} <span className="text-muted-foreground">({layout.kind})</span>
+                </button>
+                <button type="button" className="p-1.5" aria-label={'Export ' + layout.name} title="Export JSON"
+                  onClick={() => downloadLayout(layout.name)}><Download size={12} /></button>
+                <button type="button" className="p-1.5" aria-label={'Delete ' + layout.name} title="Delete saved layout"
+                  onClick={() => deleteNamedLayout(layout.name)}><Trash2 size={12} /></button>
+              </div>
+            ))}
+            <DropdownMenuItem onSelect={e => { e.preventDefault(); layoutFile.current?.click() }}
+              className="gap-2 text-xs"><Upload size={13}/> Import layout JSON</DropdownMenuItem>
+
           </DropdownMenuContent>
         </DropdownMenu>}
         <DropdownMenu>
