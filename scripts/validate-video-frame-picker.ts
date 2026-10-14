@@ -158,8 +158,13 @@ try {
   assert.equal(timeline.value, '12.25', 'media events cannot snap the slider back')
   timeline.value = '14.75'
   timeline.dispatch('input')
+  // Simulate a delayed seeked callback for the previous 12.25s target.
+  currentVideo().currentTime = 12.25
+  currentVideo().seeking = false
   currentVideo().dispatch('seeked')
-  assert.equal(importButton.disabled, true, 'stale seeked before final seek cannot unlock import')
+  assert.equal(importButton.disabled, true, 'stale seeked at an older timestamp cannot unlock import')
+  assert.equal(timeline.value, '14.75', 'stale seeked must retain the requested target')
+  currentVideo().currentTime = 14.75
   currentVideo().completeSeek()
   assert.equal(importButton.disabled, false, 'selected frame ready for capture')
   controls.get('[data-video-fps]')!.value = '25'
@@ -210,6 +215,22 @@ try {
   assert.equal(frame.width, 640)
   assert.equal(frame.height, 360)
   assert.equal(revokedUrls.length, 3)
+
+  // A codec error can race with a late metadata event. Controls must stay
+  // disabled rather than accepting a broken/stale frame.
+  const failedImport = pickVideoFrame(movie)
+  currentVideo().dispatch('error')
+  const failedControls = ['play', 'timeline', 'time', 'import', 'prev', 'next']
+  for (const name of failedControls)
+    assert.equal(controls.get('[data-video-' + name + ']')!.disabled, true)
+  currentVideo().dispatch('loadedmetadata')
+  currentVideo().dispatch('loadeddata')
+  for (const name of failedControls)
+    assert.equal(controls.get('[data-video-' + name + ']')!.disabled, true,
+      'media controls cannot revive after decoding failed: ' + name)
+  controls.get('[data-video-cancel]')!.dispatch('click')
+  await assert.rejects(failedImport, (error: unknown) => error instanceof Error && error.name === 'AbortError')
+  assert.equal(revokedUrls.length, 4)
 } finally {
   URL.createObjectURL = realCreate
   URL.revokeObjectURL = realRevoke
