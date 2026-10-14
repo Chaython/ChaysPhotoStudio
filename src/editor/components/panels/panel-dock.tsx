@@ -29,6 +29,7 @@ interface PullDrag {
 }
 
 export function useDockDrop(side: DockTabSide, mobile: boolean): boolean {
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
   const [active, setActive] = useState(false)
   useEffect(() => {
     const onDropEvt = (e: Event) => {
@@ -38,7 +39,7 @@ export function useDockDrop(side: DockTabSide, mobile: boolean): boolean {
     window.addEventListener(DOCK_DROP_EVENT, onDropEvt as EventListener)
     return () => window.removeEventListener(DOCK_DROP_EVENT, onDropEvt as EventListener)
   }, [side])
-  return active && !mobile
+  return active && !mobile && !panelsLocked
 }
 
 /** Move any panel to this dock. The badge always reflects its actual location. */
