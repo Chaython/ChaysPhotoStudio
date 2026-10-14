@@ -17,6 +17,7 @@ The current tool registry has **52 tools** across Move, Selection, Sampling, Cro
 | Layout and transform | Free Transform, Warp/Split Warp, Puppet Warp, crop/perspective crop, Smart Guides, rulers, canvas/layer alignment and distribution | 32-bit geometry and compound layer interactions have conservative safety restrictions |
 | Color | Histogram/info readouts, adjustment and channel workflows, proof colors/gamut warnings, supported high-depth/HDR operations, resolution metadata | HDR operation support depends on working-pixel representation; ICC/CMYK proofing is approximate |
 | File Info | Searchable EXIF/IPTC/XMP/ICC metadata with supported editable descriptive fields, metadata-conscious exports/sidecars | Not all vendor-specific tags are editable or round-tripped |
+| Web assets | File → Web Slices & Hotspots offers editable rectangular regions in a preview, native project persistence, cropped PNG/JPEG/WebP assets and a standalone clickable HTML image map | No native Fireworks layered PNG, polygon hotspots, or web page/state prototypes; regions are not yet edited on the main document canvas |
 
 ### Layer, selection and adjustment workflow
 
