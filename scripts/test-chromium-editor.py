@@ -673,7 +673,9 @@ def main():
                     const s = window.__zphotoStore.getState()
                     const before = JSON.stringify({panels:s.panels, toolbar:s.toolbarLayout})
                     s.movePhotoshopInspectorTab('history', 'side')
-                    s.setPhotoshopInspector({upperPercent:65, sideWidth:410})
+                    s.setPhotoshopInspector({upperPercent:65, sideWidth:410, sideOpen:true})
+                    s.setRightPanelTab('metadata') // cannot silently append an unlisted panel while locked
+                    s.revealPanel('metadata')
                     s.floatPanel('history')
                     s.dockPanel('color', 'left')
                     s.setDockWidth(420)
