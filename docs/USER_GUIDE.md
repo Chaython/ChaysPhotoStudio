@@ -103,10 +103,11 @@ Find tools and customize the appearance of the studio.
 1. Choose Window → Layers, History, Channels, Metadata or other panels to reveal them.
 2. Rearrange panels to match your workflow.
 3. On desktop, dock panels left/right/top, group tabs or float windows; reveal hidden panels from Window.
-4. Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.
-5. Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.
-6. Choose Settings → Reset panel layout if a panel is difficult to locate.
-7. On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right. Docks fit their contents by default; drag the dock divider for a fixed size or double-click it to return to automatic sizing.
+4. Choose the Photoshop-style or Classic workspace from the top-right workspace selector; each workspace remembers independent tool and panel layouts.
+5. In Photoshop-style, drag inspector tabs within or between the upper and lower stacks; Alt+Left/Right reorders and Alt+Up/Down moves a tab between stacks. The reset icon restores the default tab groups without removing saved layouts.
+6. Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.
+7. Choose Settings → Reset panel layout if a panel is difficult to locate.
+8. On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right. Docks fit their contents by default; drag the dock divider for a fixed size or double-click it to return to automatic sizing.
 
 **Notes and tips:**
 
