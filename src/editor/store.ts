@@ -43,6 +43,29 @@ export interface PanelRect {
   collapsed: boolean
 }
 
+/** Inspector grouping is part of the panel layout, not an unexportable UI preference. */
+export interface PhotoshopInspectorLayout {
+  upperTab: string
+  lowerTab: string
+  upperPercent: number
+  collapsed: boolean
+}
+function defaultPhotoshopInspector(): PhotoshopInspectorLayout {
+  return { upperTab: 'color', lowerTab: 'layers', upperPercent: 40, collapsed: false }
+}
+function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
+  const fallback = defaultPhotoshopInspector()
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return fallback
+  const data = input as Partial<PhotoshopInspectorLayout>
+  return {
+    upperTab: typeof data.upperTab === 'string' && data.upperTab.length < 100 ? data.upperTab : fallback.upperTab,
+    lowerTab: typeof data.lowerTab === 'string' && data.lowerTab.length < 100 ? data.lowerTab : fallback.lowerTab,
+    upperPercent: typeof data.upperPercent === 'number' && Number.isFinite(data.upperPercent)
+      ? clampNum(Math.round(data.upperPercent), 22, 70) : fallback.upperPercent,
+    collapsed: data.collapsed === true,
+  }
+}
+
 // ---- floating panel layout persistence ---------------------------------------
 const PANEL_LAYOUT_KEY = 'zphoto-panel-layout'
 const WORKSPACE_PRESET_KEY = 'zphoto-workspace-preset'
@@ -116,6 +139,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
   leftTab: string
   rightTab: string
   colorPanelOpen: boolean
+  photoshopInspector: PhotoshopInspectorLayout
   dockSide: Record<string, DockSide>
   topOrder: string[]
   topHeight: number
@@ -137,6 +161,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
       leftTab?: string
       rightTab?: string
       colorPanelOpen?: boolean
+      photoshopInspector?: Partial<PhotoshopInspectorLayout>
       dockSide?: Record<string, string>
       topOrder?: unknown
       topHeight?: number
@@ -171,6 +196,11 @@ function loadPanelLayout(rawOverride: string | null = null): {
     return {
       rightTab: rightTabRaw,
       colorPanelOpen: data.colorPanelOpen !== false,
+      photoshopInspector: normalizePhotoshopInspector(data.photoshopInspector ?? (() => {
+        // Compatibility with split preference from the original Essentials dock.
+        try { return { upperPercent: Number(localStorage.getItem('zphoto-photoshop-inspector-split')) || 40 } }
+        catch { return {} }
+      })()),
       floating,
       zTop: typeof data.zTop === 'number' ? data.zTop : Object.values(floating).reduce((m, r) => Math.max(m, r.z), 0),
       dockWidth: clampNum(Math.round(data.dockWidth ?? DOCK_WIDTH_DEFAULT), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX),
@@ -204,6 +234,7 @@ function persistPanelLayout(panels: EditorStore['panels']) {
       leftTab: panels.leftTab,
       rightTab: panels.rightTab,
       colorPanelOpen: panels.colorPanelOpen,
+      photoshopInspector: panels.photoshopInspector,
       dockSide: panels.dockSide,
       topOrder: panels.topOrder,
       topHeight: panels.topHeight,
@@ -392,7 +423,8 @@ function saveNamedLayouts(layouts: SavedWorkspaceLayout[]) {
 }
 function clonePanelLayout(panels: EditorStore['panels']): EditorStore['panels'] {
   return { ...panels, floating: { ...panels.floating }, dockSide: { ...panels.dockSide },
-    topOrder: [...panels.topOrder], dockHeights: { ...panels.dockHeights } }
+    topOrder: [...panels.topOrder], dockHeights: { ...panels.dockHeights },
+    photoshopInspector: { ...panels.photoshopInspector } }
 }
 function validateLayoutImport(value: unknown): SavedWorkspaceLayout {
   if (!value || typeof value !== 'object') throw Error('Not a workspace layout')
@@ -434,7 +466,7 @@ function defaultPanelState(): EditorStore['panels'] {
   return {
     rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
     leftWidthManual: false, dockWidthManual: false,
-    colorPanelOpen: true, floating: {}, dockSide: {}, topOrder: [],
+    colorPanelOpen: true, photoshopInspector: defaultPhotoshopInspector(), floating: {}, dockSide: {}, topOrder: [],
     topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
     dockHeights: {}, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
   }
@@ -446,7 +478,7 @@ function photoshopPanelState(current: EditorStore['panels']): EditorStore['panel
     ...current,
     rightTab: 'layers', leftTab: '', leftOpen: false,
     floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
-    dockHeights: {},
+    dockHeights: {}, photoshopInspector: defaultPhotoshopInspector(),
     dockWidth: 318, dockWidthManual: false, leftWidthManual: false,
   }
 }
@@ -503,6 +535,7 @@ interface EditorStore {
     leftWidthManual: boolean
     dockWidthManual: boolean
     colorPanelOpen: boolean
+    photoshopInspector: PhotoshopInspectorLayout
     /** floating panel windows by panel id — presence = floating */
     floating: Record<string, PanelRect>
     /** last dock side per panel id — where a floating window docks back to */
@@ -545,6 +578,7 @@ interface EditorStore {
   bump(): void
   setProgress(p: { active: boolean; label: string; value: number } | null): void
   setRightPanelTab(tab: string): void
+  setPhotoshopInspector(patch: Partial<PhotoshopInspectorLayout>): void
   setLeftPanelTab(tab: string): void
   setLeftDockOpen(open: boolean): void
   toggleColorPanel(): void
@@ -788,7 +822,21 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   dismissToast: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
   bump: () => set(s => ({ renderTick: s.renderTick + 1 })),
   setProgress: (p) => set({ progress: p }),
-  setRightPanelTab: (tab) => set(s => ({ panels: { ...s.panels, rightTab: tab } })),
+  setRightPanelTab: (tab) => set(s => {
+    const panels = { ...s.panels, rightTab: tab, photoshopInspector: {
+      ...s.panels.photoshopInspector,
+      collapsed: s.workspacePreset === 'photoshop' ? false : s.panels.photoshopInspector.collapsed,
+    } }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+  setPhotoshopInspector: (patch) => set(s => {
+    const next = normalizePhotoshopInspector({ ...s.panels.photoshopInspector, ...patch })
+    if (JSON.stringify(next) === JSON.stringify(s.panels.photoshopInspector)) return {}
+    const panels = { ...s.panels, photoshopInspector: next }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
   setLeftPanelTab: (tab) => set(s => ({ panels: { ...s.panels, leftTab: tab } })),
   setLeftDockOpen: (open) => set(s => {
     if (s.panels.leftOpen === open) return {}
