@@ -1,5 +1,7 @@
 # Tool parity audit
 
+For a side-by-side comparison of **Photoshop, GIMP 3.2, Fireworks CS6 and Illustrator**, including partially implemented and missing features, see the [cross-application feature parity matrix](docs/COMPETITOR_PARITY.md). This document remains the detailed **Photoshop-style tool implementation audit**.
+
 This document tracks the editor tool surface against common Adobe Photoshop workflows.
 "Parity" here means the interaction and editing model is reasonably familiar, not binary-compatible reproduction of Adobe internals. This audit describes implemented functionality on the current `main` branch; the level of fidelity varies by tool, layer kind, document depth and runtime. The [Feature & Format Reference](docs/FEATURES_AND_FORMATS.md) covers import/export limits and channel-specific availability.
 

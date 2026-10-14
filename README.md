@@ -2,7 +2,7 @@
 
 A source-available, browser-first photo editor with layered editing, Photoshop-inspired workflows, a WebGL2-accelerated compositor, and desktop/browser distributions. It aims for useful **Photoshop / GIMP / Photopea workflow compatibility**, not full feature-for-feature or plugin-binary equivalence.
 
-[**Open the live editor**](https://chaython.github.io/ChaysPhotoStudio/) · [**Download builds**](https://github.com/Chaython/ChaysPhotoStudio/releases) · [**User guide**](docs/USER_GUIDE.md) · [**Feature & format reference**](docs/FEATURES_AND_FORMATS.md) · [**Tool parity audit**](TOOL_PARITY.md) · [**Report an issue**](https://github.com/Chaython/ChaysPhotoStudio/issues)
+[**Open the live editor**](https://chaython.github.io/ChaysPhotoStudio/) · [**Download builds**](https://github.com/Chaython/ChaysPhotoStudio/releases) · [**User guide**](docs/USER_GUIDE.md) · [**Feature & format reference**](docs/FEATURES_AND_FORMATS.md) · [**Tool parity audit**](TOOL_PARITY.md) · [**Cross-app parity chart**](docs/COMPETITOR_PARITY.md) · [**Report an issue**](https://github.com/Chaython/ChaysPhotoStudio/issues)
 
 ![Chay's Photo Studio icon](public/icon.svg)
 
@@ -116,7 +116,8 @@ bun run dist:all         # Shared icons, web build, Electron & extensions (not T
 | `scripts/` · `.github/workflows/` | Build, distribution, regression tests and CI |
 | [**User Guide**](docs/USER_GUIDE.md) | Tutorials and troubleshooting, mirrored in the app |
 | [**Feature & Format Reference**](docs/FEATURES_AND_FORMATS.md) | Formats, bit depth, runtime limitations and feature overview |
-| [**Tool Parity Audit**](TOOL_PARITY.md) | Detailed implementation status and remaining parity work |
+| [**Tool Parity Audit**](TOOL_PARITY.md) | Photoshop-style tool audit and remaining tool work |
+| [**Cross-app Parity Matrix**](docs/COMPETITOR_PARITY.md) | Status against Photoshop, GIMP, Fireworks CS6 and Illustrator, with prioritized gaps and import/round-trip distinctions |
 | [**Distribution Guide**](DISTRIBUTION.md) | Native builds, release artifacts, optional configuration and packaging |
 | [**Development & Testing**](docs/DEVELOPMENT_AND_TESTING.md) | Source-of-truth files, validation scripts, CI and release smoke tests |
 | [**Changelog**](CHANGELOG.md) | Historical changes; upcoming PRs are not treated as released |
