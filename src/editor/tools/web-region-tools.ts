@@ -116,7 +116,7 @@ function keydown(e: KeyboardEvent): boolean {
   if (!doc || !id || e.ctrlKey || e.metaKey) return false
   if (e.key === 'Escape') { selected = null; engine.pokeOverlay(); return true }
   if (e.key === 'Delete' || e.key === 'Backspace') { remove(id); return true }
-  if (e.key === 'Enter') { useEditorStore.getState().openDialog('web-assets'); return true }
+  if (e.key === 'Enter') { useEditorStore.getState().openDialog('web-assets', { regionId: id }); return true }
   const delta: Record<string, [number, number]> = {
     ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
   }
@@ -182,7 +182,9 @@ function tool(id: 'slice' | 'hotspot'): Tool {
     onPointerUp: finish,
     onDeactivate() { drag = null; engine.pokeOverlay() },
     onKeyDown: keydown,
-    onDoubleClick() { if (engine.activeDoc) useEditorStore.getState().openDialog('web-assets') },
+    onDoubleClick() {
+      if (engine.activeDoc) useEditorStore.getState().openDialog('web-assets', { regionId: selectedId() })
+    },
     renderOverlay: (ctx, view, w, h, mouse) => overlay(ctx, view, w, h, mouse, id),
   }
 }
