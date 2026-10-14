@@ -109,8 +109,9 @@ const documentFake = {
   createElement(tag: string) {
     if (tag === 'div') {
       controls = new Map()
-      for (const name of ['name', 'close', 'play', 'timeline', 'clock', 'time', 'status', 'cancel', 'import']) {
-        const element = name === 'timeline' || name === 'time' ? new FakeNode('input') : new FakeNode('button')
+      for (const name of ['name', 'close', 'play', 'timeline', 'clock', 'time', 'status', 'cancel', 'import', 'prev', 'next', 'fps']) {
+        const element = name === 'timeline' || name === 'time' ? new FakeNode('input') : new FakeNode(name === 'fps' ? 'select' : 'button')
+        if (name === 'fps') element.value = '30'
         controls.set('[data-video-' + name + ']', element)
       }
       const video = new FakeVideo()
@@ -147,6 +148,8 @@ try {
   const timeline = controls.get('[data-video-timeline]')!
   const importButton = controls.get('[data-video-import]')!
   assert.equal(timeline.disabled, false, 'timeline enabled when metadata loads')
+  assert.equal(controls.get('[data-video-prev]')!.disabled, false)
+  assert.equal(controls.get('[data-video-next]')!.disabled, false)
   timeline.value = '12.25'
   timeline.dispatch('input')
   assert.equal(importButton.disabled, true, 'cannot capture a stale frame while seeking')
@@ -159,9 +162,20 @@ try {
   assert.equal(importButton.disabled, true, 'stale seeked before final seek cannot unlock import')
   currentVideo().completeSeek()
   assert.equal(importButton.disabled, false, 'selected frame ready for capture')
+  controls.get('[data-video-fps]')!.value = '25'
+  controls.get('[data-video-next]')!.dispatch('click')
+  assert.equal(currentVideo().currentTime, 14.79, 'step forward uses the selected assumed FPS')
+  assert.equal(importButton.disabled, true, 'stepping also waits for decoded frame')
+  controls.get('[data-video-next]')!.dispatch('click')
+  assert.equal(currentVideo().currentTime, 14.83, 'repeated stepping accumulates requested timestamps')
+  currentVideo().completeSeek()
+  controls.get('[data-video-prev]')!.dispatch('click')
+  assert.equal(currentVideo().currentTime, 14.79, 'step backward uses the selected rate')
+  currentVideo().completeSeek()
+  assert.equal(importButton.disabled, false, 'final selected frame ready for capture')
   importButton.dispatch('click')
   const selected = await direct as unknown as FakeCanvas
-  assert.equal(selected.selectedTime, 14.75)
+  assert.equal(selected.selectedTime, 14.79)
   assert.equal(selected.width, 640)
   assert.equal(selected.height, 360)
   assert.equal(currentOverlay().removed, true)
