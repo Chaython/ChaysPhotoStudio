@@ -47,7 +47,7 @@ function multiply(a: PdfMatrix, b: PdfMatrix): PdfMatrix {
     a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5],
   ]
 }
-function finiteMatrix(a: unknown): a is number[] {
+function finiteMatrix(a: unknown): a is PdfMatrix {
   if (!(Array.isArray(a) || ArrayBuffer.isView(a))) return false
   const matrix = a as ArrayLike<number>
   return matrix.length >= 6 && Array.from({ length: 6 }, (_, i) => matrix[i]).every(Number.isFinite)
