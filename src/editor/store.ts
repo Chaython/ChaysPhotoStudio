@@ -45,36 +45,69 @@ export interface PanelRect {
 
 /** Inspector grouping is part of the panel layout, not an unexportable UI preference. */
 export const PHOTOSHOP_INSPECTOR_UPPER_TABS = ['color', 'adjustments', 'properties', 'navigator', 'histogram'] as const
+export const PHOTOSHOP_INSPECTOR_LOWER_TABS = ['layers', 'channels', 'paths', 'history', 'actions'] as const
 
 export interface PhotoshopInspectorLayout {
   upperTab: string
   lowerTab: string
+  upperTabs: string[]
+  lowerTabs: string[]
   upperPercent: number
   collapsed: boolean
 }
 function defaultPhotoshopInspector(): PhotoshopInspectorLayout {
-  return { upperTab: 'color', lowerTab: 'layers', upperPercent: 40, collapsed: false }
+  return {
+    upperTab: 'color', lowerTab: 'layers',
+    upperTabs: [...PHOTOSHOP_INSPECTOR_UPPER_TABS],
+    lowerTabs: [...PHOTOSHOP_INSPECTOR_LOWER_TABS],
+    upperPercent: 40, collapsed: false,
+  }
 }
 
-/** Dock actions and Window-menu navigation must update the same tab selections
- *  saved by the inspector UI, otherwise returning to a stack reverts its tab. */
-function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: string, enabled: boolean): PhotoshopInspectorLayout {
-  if (!enabled || !tab) return current
-  return PHOTOSHOP_INSPECTOR_UPPER_TABS.some(id => id === tab)
-    ? { ...current, upperTab: tab, collapsed: false }
-    : { ...current, lowerTab: tab, collapsed: false }
-}
+/** The two tab groups are user layouts: no tabs may be duplicated or lost.
+ * Legacy layouts with only upperTab/lowerTab gain the original tab ordering. */
 function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
   const fallback = defaultPhotoshopInspector()
   if (!input || typeof input !== 'object' || Array.isArray(input)) return fallback
   const data = input as Partial<PhotoshopInspectorLayout>
+  const allowed = new Set<string>([...PHOTOSHOP_INSPECTOR_UPPER_TABS, ...PHOTOSHOP_INSPECTOR_LOWER_TABS])
+  const seen = new Set<string>()
+  const clean = (candidate: unknown): string[] => {
+    if (!Array.isArray(candidate)) return []
+    const result: string[] = []
+    for (const id of candidate.slice(0, 64)) {
+      if (typeof id !== 'string' || !allowed.has(id) || seen.has(id)) continue
+      result.push(id)
+      seen.add(id)
+    }
+    return result
+  }
+  const upperTabs = clean(data.upperTabs ?? fallback.upperTabs)
+  const lowerTabs = clean(data.lowerTabs ?? fallback.lowerTabs)
+  for (const id of PHOTOSHOP_INSPECTOR_UPPER_TABS) if (!seen.has(id)) { upperTabs.push(id); seen.add(id) }
+  for (const id of PHOTOSHOP_INSPECTOR_LOWER_TABS) if (!seen.has(id)) { lowerTabs.push(id); seen.add(id) }
+  // Keep a usable stack even if an imported layout left one empty.
+  if (!upperTabs.length && lowerTabs.length > 1) upperTabs.push(lowerTabs.shift()!)
+  if (!lowerTabs.length && upperTabs.length > 1) lowerTabs.push(upperTabs.pop()!)
   return {
-    upperTab: typeof data.upperTab === 'string' && data.upperTab.length < 100 ? data.upperTab : fallback.upperTab,
-    lowerTab: typeof data.lowerTab === 'string' && data.lowerTab.length < 100 ? data.lowerTab : fallback.lowerTab,
+    upperTabs, lowerTabs,
+    upperTab: typeof data.upperTab === 'string' && upperTabs.includes(data.upperTab)
+      ? data.upperTab : upperTabs[0] ?? fallback.upperTab,
+    lowerTab: typeof data.lowerTab === 'string' && lowerTabs.includes(data.lowerTab)
+      ? data.lowerTab : lowerTabs[0] ?? fallback.lowerTab,
     upperPercent: typeof data.upperPercent === 'number' && Number.isFinite(data.upperPercent)
       ? clampNum(Math.round(data.upperPercent), 22, 70) : fallback.upperPercent,
     collapsed: data.collapsed === true,
   }
+}
+
+/** Dock actions and Window-menu navigation must update the same tab selections
+ * that the Photoshop inspector persists, even after a tab was moved between stacks. */
+function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: string, enabled: boolean): PhotoshopInspectorLayout {
+  if (!enabled || !tab) return current
+  return current.upperTabs.includes(tab)
+    ? { ...current, upperTab: tab, collapsed: false }
+    : { ...current, lowerTab: tab, collapsed: false }
 }
 
 // ---- floating panel layout persistence ---------------------------------------
@@ -597,6 +630,7 @@ interface EditorStore {
   setProgress(p: { active: boolean; label: string; value: number } | null): void
   setRightPanelTab(tab: string): void
   setPhotoshopInspector(patch: Partial<PhotoshopInspectorLayout>): void
+  movePhotoshopInspectorTab(id: string, target: 'upper' | 'lower', beforeId?: string): void
   setLeftPanelTab(tab: string): void
   setLeftDockOpen(open: boolean): void
   toggleColorPanel(): void
@@ -874,6 +908,28 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const next = normalizePhotoshopInspector({ ...s.panels.photoshopInspector, ...patch })
     if (JSON.stringify(next) === JSON.stringify(s.panels.photoshopInspector)) return {}
     const panels = { ...s.panels, photoshopInspector: next }
+    persistPanelLayout(panels)
+    return { panels }
+  }),
+  movePhotoshopInspectorTab: (id, target, beforeId) => set(s => {
+    const current = s.panels.photoshopInspector
+    const group = current.upperTabs.includes(id) ? 'upper' : current.lowerTabs.includes(id) ? 'lower' : null
+    if (!group) return {}
+    const source = group === 'upper' ? current.upperTabs : current.lowerTabs
+    if (group !== target && source.length <= 1) return {}
+    const upperTabs = current.upperTabs.filter(tab => tab !== id)
+    const lowerTabs = current.lowerTabs.filter(tab => tab !== id)
+    const dest = target === 'upper' ? upperTabs : lowerTabs
+    const insertIndex = beforeId ? dest.indexOf(beforeId) : -1
+    dest.splice(insertIndex >= 0 ? insertIndex : dest.length, 0, id)
+    if (upperTabs.join('|') === current.upperTabs.join('|') &&
+        lowerTabs.join('|') === current.lowerTabs.join('|')) return {}
+    const next = normalizePhotoshopInspector({
+      ...current, upperTabs, lowerTabs,
+      upperTab: target === 'upper' ? id : current.upperTab,
+      lowerTab: target === 'lower' ? id : current.lowerTab,
+    })
+    const panels = { ...s.panels, photoshopInspector: next, rightTab: id }
     persistPanelLayout(panels)
     return { panels }
   }),
