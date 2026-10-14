@@ -962,6 +962,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   bump: () => set(s => ({ renderTick: s.renderTick + 1 })),
   setProgress: (p) => set({ progress: p }),
   setRightPanelTab: (tab) => set(s => {
+    if (s.workspacePreset === 'photoshop' && s.workspaceLayoutLocks.photoshop.panels &&
+        ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
+          ...s.panels.photoshopInspector.sideTabs].includes(tab)) return {}
     const panels = { ...s.panels, rightTab: tab, photoshopInspector:
       withPhotoshopInspectorTab(s.panels.photoshopInspector, tab, s.workspacePreset === 'photoshop') }
     persistPanelLayout(panels)
@@ -969,7 +972,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
   setPhotoshopInspector: (patch) => set(s => {
     if (s.workspaceLayoutLocks[s.workspacePreset].panels && [
-      'upperTabs', 'lowerTabs', 'sideTabs', 'upperPercent', 'sideWidth',
+      'upperTabs', 'lowerTabs', 'sideTabs', 'upperPercent', 'sideWidth', 'sideOpen',
     ].some(key => Object.prototype.hasOwnProperty.call(patch, key))) return {}
     const next = normalizePhotoshopInspector({ ...s.panels.photoshopInspector, ...patch })
     if (JSON.stringify(next) === JSON.stringify(s.panels.photoshopInspector)) return {}
@@ -1045,6 +1048,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       // Selecting existing tabs is still editing/navigation, not rearrangement.
       const target = side ?? s.panels.dockSide[id] ?? 'right'
       if (s.panels.floating[id] || target !== (s.panels.dockSide[id] ?? 'right')) return {}
+      if (s.workspacePreset === 'photoshop' && target === 'right' &&
+          ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
+            ...s.panels.photoshopInspector.sideTabs].includes(id)) return {}
       return target === 'right' ? { panels: { ...s.panels, rightTab: id,
         photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop') } } : {}
     }
@@ -1100,6 +1106,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   revealPanel: (id) => set(s => {
+    if (s.workspacePreset === 'photoshop' && s.workspaceLayoutLocks.photoshop.panels &&
+        ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
+          ...s.panels.photoshopInspector.sideTabs].includes(id) &&
+        (s.panels.dockSide[id] ?? 'right') === 'right') return {}
     if (s.panels.floating[id]) {
       const r = s.panels.floating[id]
       if (r.z === s.panels.zTop) return {}
