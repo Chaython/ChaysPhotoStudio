@@ -770,6 +770,25 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Canvas Float16 read/write is native half-float precision, not the 32-bit Float32 HDR backing store; the display result may be rounded to representable half-float values.",
       "Selections, transparency and document/layer targeting remain in effect for supported high-bit-depth retouching."
     ]
+  },
+  {
+    "id": "artboards-pages",
+    "title": "Artboards, page layers and export",
+    "category": "Color & files",
+    "path": "File → Artboards / Pages…",
+    "summary": "Define multiple named artboards in one editable document and export artboard-specific compositions.",
+    "steps": [
+      "Open a document, then choose File → Artboards / Pages… to open the artboard editor.",
+      "Drag over the artwork to create a named rectangle, or use Add canvas, Split 2, and Grid 2×2. Click an artboard to edit its name and bounds.",
+      "For the selected artboard, use Layers on this artboard to choose the subset of document layers included in that artboard's preview and raster export. All layers uses the original document stack; Hide all exports an empty region.",
+      "Choose All artboards or Selected artboard and PNG, WebP, or JPEG, then click Export Artboards. Compatible browsers save into a selected folder; other browsers download files individually.",
+      "Choose Show on canvas to toggle non-exporting artboard outlines. Save Project retains artboards and their layer-inclusion lists; History restores edits."
+    ],
+    "tips": [
+      "Artboards share the original editable layer stack and canvas. Layer inclusion changes artboard exports without changing document-wide layer visibility or deleting source layers.",
+      "Globally hidden layers remain hidden even when listed on an artboard; newly created layers may need to be included in artboards with custom layer lists.",
+      "Artboards cannot extend beyond the existing document. Native Illustrator AI/Fireworks layered PNG interoperability and independent page-layer trees remain unsupported."
+    ]
   }
 ]
 
