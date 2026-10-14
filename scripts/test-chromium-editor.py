@@ -562,6 +562,15 @@ def main():
                       "History tab was not rendered in the second inspector column")
                 check(store(page, "s.panels.photoshopInspector.sideWidth") == 335,
                       "Second inspector column lost its configured width")
+                # Real drag-and-drop works across column boundaries.
+                page.locator('[data-inspector-column="primary"] [data-inspector-tab="properties"]').drag_to(
+                    page.locator('[data-inspector-column="secondary"] [data-inspector-tab="history"]'))
+                check(store(page, "s.panels.photoshopInspector.sideTabs.includes('properties')"),
+                      "Dragging a tab into the second column failed")
+                page.locator('[data-inspector-column="secondary"] [data-inspector-tab="properties"]').focus()
+                page.keyboard.press('Alt+ArrowUp')
+                check(store(page, "s.panels.photoshopInspector.upperTabs.includes('properties')"),
+                      "Alt+Up failed to return the dragged tab to the primary upper stack")
                 # Real keyboard navigation can move a panel into and out of column 2.
                 page.locator('[data-inspector-column="primary"] [data-inspector-tab="histogram"]').focus()
                 page.keyboard.press('Alt+Shift+ArrowRight')
@@ -571,6 +580,20 @@ def main():
                 page.keyboard.press('Alt+Shift+ArrowLeft')
                 check(store(page, "s.panels.photoshopInspector.lowerTabs.includes('histogram')"),
                       "Alt+Shift+Left failed to move tab into lower stack")
+                hidden = page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setPhotoshopInspector({sideOpen:false})
+                    s.setRightPanelTab('history')
+                    const i = window.__zphotoStore.getState().panels.photoshopInspector
+                    return {closed: !i.sideOpen, selected:i.sideTab === 'history'}
+                }""")
+                check(all(hidden.values()), f"Hidden second inspector unexpectedly reopened: {hidden}")
+                check(page.locator('[data-inspector-column="secondary"]').count() == 0,
+                      "Hidden second inspector column is still visible")
+                check(page.locator('[data-photoshop-stack="lower"] [data-inspector-tab="history"]').count() == 1,
+                      "Hidden column panel was not accessible in the lower stack")
+                page.evaluate("""() => window.__zphotoStore.getState().setPhotoshopInspector({sideOpen:true})""")
+                page.wait_for_selector('[data-inspector-column="secondary"]')
                 page.evaluate("""() => {
                     const s = window.__zphotoStore.getState()
                     s.saveNamedLayout('Two-column inspector', 'panels')
@@ -602,6 +625,15 @@ def main():
                 page.wait_for_selector('[data-inspector-column="secondary"]')
                 check(store(page, "s.panels.photoshopInspector.sideWidth") == 335,
                       "Responsive fallback changed the persistent column width")
+                page.get_by_role("button", name="Reset Photoshop inspector tab groups").click()
+                check(store(page, "s.panels.photoshopInspector.sideTabs") == [],
+                      "Inspector group reset left an orphaned secondary column tab")
+                check(store(page, "s.panels.photoshopInspector.sideOpen") is False,
+                      "Inspector group reset didn't close the secondary column")
+                check(store(page, "s.panels.rightTab") == "layers",
+                      "Inspector group reset left a hidden panel selected")
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Two-column inspector')"),
+                      "Inspector group reset deleted the saved two-column preset")
                 check(not errors, f"secondary inspector caused JavaScript errors: {errors[:3]}")
 
             def named_layout_manager_safety():
