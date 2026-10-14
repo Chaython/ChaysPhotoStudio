@@ -84,6 +84,9 @@ jobs:
       - name: Validate camera, HDR, scientific and multi-page formats
         run: bun run formats:validate
 
+      - name: Validate interactive video-frame picker and import routing
+        run: bun run video-frame:validate
+
       - name: Validate PDF page selection, memory budgets and error handling
         run: bun run pdf:validate
 
