@@ -37,6 +37,7 @@ import {
   validateWarpMesh, warpCanvasToMesh, warpCanvasToQuad, warpMeshDestinationPoints,
 } from '../image-ops/transform'
 import { mapVectorMask, type VectorMaskOp } from './vector-mask'
+import { scaleArtboards, translateArtboards } from '../artboards'
 import { embedRasterMetadata } from '../formats/metadata-write'
 import { affineHdrPixels, cropHdrPixels, flipHdrPixels, resampleHdrPixels, rotateHdrPixels } from '../image-ops/hdr-geometry'
 import { splitHdrSelectionPixels } from '../image-ops/selection-pixels'
@@ -4862,6 +4863,10 @@ export class Engine {
       }))
     }
 
+    if (doc.artboards?.length) {
+      doc.artboards = scaleArtboards(doc.artboards, doc.width, doc.height, w, h)
+      if (!doc.artboards.some(a => a.id === doc.activeArtboardId)) doc.activeArtboardId = doc.artboards[0]?.id ?? null
+    }
     doc.width = w
     doc.height = h
     doc._epoch++
@@ -5091,6 +5096,10 @@ export class Engine {
       }))
     }
 
+    if (doc.artboards?.length) {
+      doc.artboards = translateArtboards(doc.artboards, doc.width, doc.height, -x, -y, w, h)
+      if (!doc.artboards.some(a => a.id === doc.activeArtboardId)) doc.activeArtboardId = doc.artboards[0]?.id ?? null
+    }
     doc.width = w
     doc.height = h
     doc._epoch++
@@ -5263,6 +5272,10 @@ export class Engine {
         .map(s => ({ ...s, x: s.x + dx, y: s.y + dy }))
         .filter(s => s.x >= 0 && s.y >= 0 && s.x < w && s.y < h)
     }
+    if (doc.artboards?.length) {
+      doc.artboards = translateArtboards(doc.artboards, doc.width, doc.height, dx, dy, w, h)
+      if (!doc.artboards.some(a => a.id === doc.activeArtboardId)) doc.activeArtboardId = doc.artboards[0]?.id ?? null
+    }
     doc.width = w; doc.height = h
     doc._epoch++
     invalidateFlat(doc)
@@ -5374,6 +5387,10 @@ export class Engine {
     }
     if (doc.colorSamplers?.length) {
       doc.colorSamplers = doc.colorSamplers.map(s => ({ ...s, x: s.x * sx, y: s.y * sy }))
+    }
+    if (doc.artboards?.length) {
+      doc.artboards = scaleArtboards(doc.artboards, doc.width, doc.height, w, h)
+      if (!doc.artboards.some(a => a.id === doc.activeArtboardId)) doc.activeArtboardId = doc.artboards[0]?.id ?? null
     }
     doc.width = w; doc.height = h
     doc._epoch++
