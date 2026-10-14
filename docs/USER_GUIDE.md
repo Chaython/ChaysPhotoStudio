@@ -803,9 +803,10 @@ Define multiple named artboards in one editable document and export artboard-spe
 3. For the selected artboard, use Layers on this artboard to choose the subset of document layers included in that artboard's preview and raster export. All layers uses the original document stack; Hide all exports an empty region.
 4. Choose All artboards or Selected artboard and PNG, WebP, or JPEG, then click Export Artboards. Compatible browsers save into a selected folder; other browsers download files individually.
 5. Choose Show on canvas to toggle non-exporting artboard outlines. Save Project retains artboards and their layer-inclusion lists; History restores edits.
+6. For basic Fireworks-style rollovers, select an artboard and link Normal, Hover and Pressed states to existing Layer Comps, or use Capture to create a new snapshot of the current layer appearance. Export Artboards writes state images and a CSS-only HTML rollover prototype when Hover or Pressed is configured.
 
 **Notes and tips:**
 
 - Artboards share the original editable layer stack and canvas. Layer inclusion changes artboard exports without changing document-wide layer visibility or deleting source layers.
 - Globally hidden layers remain hidden even when listed on an artboard; newly created layers may need to be included in artboards with custom layer lists.
-- Artboards cannot extend beyond the existing document. Native Illustrator AI/Fireworks layered PNG interoperability and independent page-layer trees remain unsupported.
+- Artboards cannot extend beyond the existing document. CSS rollover previews reuse Layer Comps; native Fireworks page/state/symbol objects, editable Illustrator AI round trips and independent page-layer trees remain unsupported.
