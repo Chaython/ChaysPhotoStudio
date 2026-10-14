@@ -1,0 +1,52 @@
+name: Video Frame Import Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/editor/formats/video-frame-picker.ts'
+      - 'src/editor/formats/photopea-formats.ts'
+      - 'src/editor/formats/index.ts'
+      - 'src/editor/engine/io.ts'
+      - 'scripts/validate-video-frame-picker.ts'
+      - 'package.json'
+      - '.github/workflows/video-frame-import.yml'
+  pull_request:
+    paths:
+      - 'src/editor/formats/video-frame-picker.ts'
+      - 'src/editor/formats/photopea-formats.ts'
+      - 'src/editor/formats/index.ts'
+      - 'src/editor/engine/io.ts'
+      - 'scripts/validate-video-frame-picker.ts'
+      - 'package.json'
+      - '.github/workflows/video-frame-import.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-frame-import-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          NEXT_TELEMETRY_DISABLED: 1
+        run: bun install --frozen-lockfile
+      - name: Generate Prisma client
+        run: bun run db:generate
+      - name: Exercise interactive video selection and decode routing
+        run: bun run video-frame:validate
+      - name: Typecheck entire editor
+        run: bunx tsc --noEmit
+      - name: Lint import and video-picker modules
+        run: bunx eslint src/editor/formats/video-frame-picker.ts src/editor/formats/photopea-formats.ts src/editor/formats/index.ts src/editor/engine/io.ts
