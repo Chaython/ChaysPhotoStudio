@@ -312,7 +312,12 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
           <div className="flex flex-wrap gap-2">
             {editingKit.swatches.map(s => <div key={s.id} className="flex items-center gap-1 border rounded p-1">
               <button title={'Apply '+s.name} aria-label={'Apply '+s.name} type="button" onClick={() => applySwatch(s.color)} className="w-6 h-6 border rounded" style={{background:s.color}}/>
-              <span title={s.color}>{s.name}</span>
+              <Input aria-label={'Brand color name '+s.name} className="h-7 w-24 text-xs"
+                value={s.name} onChange={e => edit({ swatches: editingKit.swatches.map(v =>
+                  v.id === s.id ? { ...v, name: e.target.value } : v) })} />
+              <input type="color" aria-label={'Edit brand color '+s.name} value={s.color}
+                onChange={e => edit({ swatches: editingKit.swatches.map(v =>
+                  v.id === s.id ? { ...v, color: e.target.value.toUpperCase() } : v) })} />
               <Button size="sm" variant="secondary" title="Link active layer to this brand swatch" disabled={!chosenKit || busy} onClick={() => linkSwatch(s.id)}>Link</Button>
               <button title="Remove swatch" type="button" className="text-destructive px-1" onClick={() => edit({ swatches: editingKit.swatches.filter(x => x.id !== s.id) })}>×</button>
             </div>)}
@@ -328,7 +333,13 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
           <Label>Fonts ({editingKit.fonts.length}/16)</Label>
           <div className="flex gap-1 flex-wrap">
             {editingKit.fonts.map(f => <div key={f.id} className="flex items-center gap-1 border rounded p-1">
-              <button type="button" title={f.family} onClick={() => applyFont(f.family)}>{f.name}</button>
+              <Input aria-label={'Font style name '+f.name} className="h-7 w-20 text-xs"
+                value={f.name} onChange={e => edit({ fonts: editingKit.fonts.map(v =>
+                  v.id === f.id ? { ...v, name: e.target.value } : v) })} />
+              <Input aria-label={'Font family '+f.name} className="h-7 w-28 text-xs" title={f.family}
+                value={f.family} onChange={e => edit({ fonts: editingKit.fonts.map(v =>
+                  v.id === f.id ? { ...v, family: e.target.value } : v) })} />
+              <Button size="sm" variant="secondary" onClick={() => applyFont(f.family)}>Apply</Button>
               <Button size="sm" variant="secondary" title="Link selected text layer to this font" disabled={!chosenKit || busy} onClick={() => linkFont(f.id)}>Link</Button>
               <button type="button" title="Remove font" className="text-destructive px-1" onClick={() => edit({ fonts: editingKit.fonts.filter(x => x.id !== f.id) })}>×</button>
             </div>)}
