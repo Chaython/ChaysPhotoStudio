@@ -663,7 +663,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   timelineActiveFrame: 0,
   timelineLoop: true,
   timelineFrames: [],
-  panels: { ...defaultPanelState(), ...(loadPanelLayout() ?? readWorkspaceRecord(loadWorkspacePreset())?.panels ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
+  // Workspace-specific records are authoritative; the legacy global key is a
+  // migration fallback only and must never silently overwrite an edited workspace.
+  panels: { ...defaultPanelState(), ...(readWorkspaceRecord(loadWorkspacePreset())?.panels ?? loadPanelLayout() ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
   view: {
     // rulers ON by default for fresh users; anyone with persisted prefs
     // keeps their saved choice (the loader merges over these defaults)
