@@ -634,6 +634,21 @@ def main():
                       "Inspector group reset left a hidden panel selected")
                 check(store(page, "s.savedLayouts.some(x => x.name === 'Two-column inspector')"),
                       "Inspector group reset deleted the saved two-column preset")
+                legacy = page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    const old = JSON.parse(s.exportNamedLayout('Two-column inspector'))
+                    old.name = 'Legacy one-column profile'
+                    delete old.panels.photoshopInspector.sideTabs
+                    delete old.panels.photoshopInspector.sideTab
+                    delete old.panels.photoshopInspector.sideOpen
+                    delete old.panels.photoshopInspector.sideWidth
+                    const name = s.importNamedLayout(JSON.stringify(old))
+                    s.applyNamedLayout(name)
+                    const i = window.__zphotoStore.getState().panels.photoshopInspector
+                    return {empty:i.sideTabs.length === 0, hidden:!i.sideOpen,
+                        defaultWidth:i.sideWidth === 280, primaryTabs:i.upperTabs.length > 0 && i.lowerTabs.length > 0}
+                }""")
+                check(all(legacy.values()), f"Legacy single-column layout migration failed: {legacy}")
                 check(not errors, f"secondary inspector caused JavaScript errors: {errors[:3]}")
 
             def named_layout_manager_safety():
