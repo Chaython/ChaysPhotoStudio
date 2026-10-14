@@ -43,7 +43,8 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Choose Window → Layers, History, Channels, Metadata or other panels to reveal them.",
       "Rearrange panels to match your workflow.",
       "On desktop, dock panels left/right/top, group tabs or float windows; reveal hidden panels from Window.",
-      "Choose the Photoshop-style or Classic workspace from the top-right workspace selector; the Classic arrangement can be restored later.",
+      "Choose the Photoshop-style or Classic workspace from the top-right workspace selector; each workspace remembers independent tool and panel layouts.",
+      "In Photoshop-style, drag inspector tabs within or between the upper and lower stacks; Alt+Left/Right reorders and Alt+Up/Down moves a tab between stacks. The reset icon restores the default tab groups without removing saved layouts.",
       "Use the theme menu for Dark, Light, OLED black or Photoshop-inspired colors; Settings also offers Touch / mobile mode.",
       "Choose Settings → Reset panel layout if a panel is difficult to locate.",
       "On desktop, use eight dock destinations: Left, Right, Top, Bottom, Top Left, Top Right, Bottom Left and Bottom Right. Docks fit their contents by default; drag the dock divider for a fixed size or double-click it to return to automatic sizing."
