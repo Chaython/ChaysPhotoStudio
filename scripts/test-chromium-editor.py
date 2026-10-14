@@ -763,9 +763,8 @@ def main():
                 check(store(page, "s.panels.floating.history.x") == 320 and
                       store(page, "s.panels.floating.history.y") == 170,
                       "Locked floating window committed moved geometry")
-                check(frame.locator('[aria-label="Resize floating panel"]').count() == 0 or
-                      frame.locator('[class*="resize"]').count() == 0,
-                      "Locked floating panel still offers visible resize handles")
+                check(frame.locator('div[aria-hidden][class*="cursor-"][class*="resize"]').count() == 0,
+                      "Locked floating panel still offers resize handles")
                 check(not errors, f"floating panel lock caused JavaScript errors: {errors[:3]}")
 
             def named_layout_manager_safety():
