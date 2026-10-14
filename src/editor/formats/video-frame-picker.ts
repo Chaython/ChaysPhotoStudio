@@ -83,7 +83,7 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     const canCapture = () => !finished && !failed && !pendingSeek && !!video.videoWidth &&
       !!video.videoHeight && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !video.seeking
     const update = () => {
-      if (finished) return
+      if (finished || failed) return
       const seconds = pendingSeek && requestedTime !== null ? requestedTime
         : Number.isFinite(video.currentTime) ? video.currentTime : 0
       // Preserve the requested slider position while asynchronous decoding is
@@ -146,7 +146,7 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     }
 
     video.addEventListener('loadedmetadata', () => {
-      if (finished) return
+      if (finished || failed) return
       if (!Number.isFinite(video.duration) || video.duration <= 0) {
         fail('This video does not expose a seekable duration')
         return
@@ -162,6 +162,7 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
       update()
     })
     video.addEventListener('loadeddata', () => {
+      if (finished || failed) return
       if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null }
       update()
     })
@@ -171,7 +172,12 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     })
     video.addEventListener('seeked', () => {
       // A newer range-input seek may have superseded this event.
-      if (finished || video.seeking) return
+      if (finished || failed || video.seeking) return
+      // In rapid scrubbing, an older seeked event can arrive before the last
+      // user-requested position. Keep the picker locked until that final
+      // target has been reached (including sub-frame stepping).
+      if (pendingSeek && requestedTime !== null &&
+          Math.abs(video.currentTime - requestedTime) > 0.002) return
       pendingSeek = false
       requestedTime = null
       update()
