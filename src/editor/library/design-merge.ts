@@ -75,3 +75,17 @@ export function mergeFieldNames(textLayers: readonly string[]): string[] {
   }
   return [...found]
 }
+
+
+/** Detached copies of text layers with changed content; no canvas cloning,
+ * no source mutations, and a version bump to invalidate renderer caches. */
+export function mergeEditableLayers<T extends {
+  kind: string; text?: { content: string } | null; _v: number
+}>(layers: readonly T[], row: MergeRow): T[] {
+  return layers.map(layer => {
+    if (layer.kind !== 'text' || !layer.text || !layer.text.content.includes('{{')) return layer
+    const content = mergeText(layer.text.content, row)
+    if (content === layer.text.content) return layer
+    return { ...layer, text: { ...layer.text, content }, _v: layer._v + 1 }
+  })
+}
