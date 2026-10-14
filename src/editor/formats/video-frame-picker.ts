@@ -53,7 +53,8 @@ export function pickVideoFrame(file: File | Blob): Promise<HTMLCanvasElement> {
     get<HTMLElement>('[data-video-name]').textContent = (file as File).name || 'Video'
     video.muted = true
     video.playsInline = true
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const previousFocus = typeof HTMLElement !== 'undefined' && document.activeElement instanceof HTMLElement
+      ? document.activeElement : null
     let finished = false
     let failed = false
     let duration = 0
