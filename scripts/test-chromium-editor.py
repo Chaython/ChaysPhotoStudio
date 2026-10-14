@@ -669,6 +669,12 @@ def main():
                       "Locked Photoshop tabs are still draggable")
                 check(page.get_by_role("separator", name="Resize Photoshop inspector groups").get_attribute("aria-disabled") == "true",
                       "Locked inspector splitter is still enabled")
+                check(page.get_by_role("button", name="Arrange panels for the right dock").is_disabled(),
+                      "Locked inspector still offers the Add Panel rearrangement menu")
+                page.locator('[data-inspector-tab="color"]').click(button="right")
+                check(page.get_by_role("menuitem", name="Float panel").is_disabled(),
+                      "Context menu still allows floating a panel when layout is locked")
+                page.keyboard.press("Escape")
                 blocked = page.evaluate("""() => {
                     const s = window.__zphotoStore.getState()
                     const before = JSON.stringify({panels:s.panels, toolbar:s.toolbarLayout})
