@@ -595,6 +595,7 @@ export interface SerializedProject {
     webRegions?: import('../web-assets').WebRegion[]
     artboards?: import('../artboards').Artboard[]
     activeArtboardId?: string | null
+    showArtboardOutlines?: boolean
     activeLayerCompId?: string | null
     historyBrushSnapshotId?: string | null
     historySnapshotAutoPolicy?: 'inherit' | 'always' | 'never'
@@ -729,6 +730,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       webRegions: normalizeWebRegions(doc.webRegions, doc.width, doc.height),
       artboards: normalizeArtboards(doc.artboards, doc.width, doc.height),
       activeArtboardId: doc.artboards?.some(a => a.id === doc.activeArtboardId) ? doc.activeArtboardId : null,
+      showArtboardOutlines: doc.showArtboardOutlines !== false,
       activeLayerCompId: doc.activeLayerCompId ?? null,
       historyBrushSnapshotId: doc.historyBrushSnapshotId ?? null,
       historySnapshotAutoPolicy: doc.historySnapshotAutoPolicy ?? 'inherit',
@@ -982,6 +984,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
     artboards: normalizeArtboards(project.doc.artboards, width, height),
     activeArtboardId: normalizeArtboards(project.doc.artboards, width, height).some(a => a.id === project.doc.activeArtboardId)
       ? project.doc.activeArtboardId : null,
+    showArtboardOutlines: project.doc.showArtboardOutlines !== false,
     colorSamplers: Array.isArray(project.doc.colorSamplers)
       ? project.doc.colorSamplers
           .filter(s => s && Number.isFinite(s.x) && Number.isFinite(s.y))
