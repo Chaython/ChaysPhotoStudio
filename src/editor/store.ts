@@ -48,6 +48,7 @@ const PANEL_LAYOUT_KEY = 'zphoto-panel-layout'
 const WORKSPACE_PRESET_KEY = 'zphoto-workspace-preset'
 const WORKSPACE_LAYOUTS_KEY = 'zphoto-workspace-layouts-v1'
 const SAVED_LAYOUTS_KEY = 'zphoto-saved-layouts-v1'
+const LEGACY_CLASSIC_BACKUP_KEY = 'zphoto-classic-layout-backup'
 export type WorkspacePreset = 'classic' | 'photoshop'
 
 function loadWorkspacePreset(): WorkspacePreset {
@@ -265,12 +266,13 @@ export function sanitizeToolbarLayout(sections: ToolbarSection[]): ToolbarSectio
   const seen = new Set<ToolId>()
   const out: ToolbarSection[] = []
   for (const sec of sections) {
+    if (!sec || typeof sec !== 'object') continue
     if (sec.kind === 'single') {
       if (seen.has(sec.tool) || !TOOL_MAP[sec.tool]) continue
       seen.add(sec.tool)
       out.push({ kind: 'single', tool: sec.tool })
-    } else {
-      const tools = sec.tools.filter(t => !seen.has(t) && TOOL_MAP[t])
+    } else if (sec.kind === 'group' && Array.isArray(sec.tools)) {
+      const tools = sec.tools.filter((t: ToolId) => typeof t === 'string' && !seen.has(t) && TOOL_MAP[t])
       tools.forEach(t => seen.add(t))
       if (tools.length) out.push({ kind: 'group', tools })
     }
@@ -317,7 +319,16 @@ function readWorkspaceRecord(preset: WorkspacePreset): { panels: ReturnType<type
   try {
     const all = JSON.parse(localStorage.getItem(WORKSPACE_LAYOUTS_KEY) || '{}')
     const data = all?.[preset]
-    if (!data || typeof data !== 'object') return null
+    if (!data || typeof data !== 'object') {
+      // Prior builds only saved the Classic arrangement when Photoshop was
+      // selected. Preserve that backup when migrating from the old system.
+      if (preset === 'classic') {
+        const legacy = localStorage.getItem(LEGACY_CLASSIC_BACKUP_KEY)
+        const panels = legacy ? loadPanelLayout(legacy) : null
+        if (panels) return { panels, toolbar: loadToolbarLayout() }
+      }
+      return null
+    }
     return {
       panels: typeof data.panels === 'object' && data.panels !== null
         ? loadPanelLayout(JSON.stringify(data.panels)) : null,
@@ -335,7 +346,12 @@ function saveWorkspaceRecord(preset: WorkspacePreset, panels: EditorStore['panel
 function readSavedLayouts(): SavedWorkspaceLayout[] {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVED_LAYOUTS_KEY) || '[]')
-    return Array.isArray(saved) ? saved.filter((x: any) => x?.version === 1 && typeof x.name === 'string') : []
+    if (!Array.isArray(saved)) return []
+    const validated: SavedWorkspaceLayout[] = []
+    for (const item of saved.slice(0, 100)) {
+      try { validated.push(validateLayoutImport(item)) } catch { /* ignore corrupt entries */ }
+    }
+    return validated
   } catch { return [] }
 }
 function saveNamedLayouts(layouts: SavedWorkspaceLayout[]) {
@@ -352,6 +368,10 @@ function validateLayoutImport(value: unknown): SavedWorkspaceLayout {
       !['tools', 'panels', 'both'].includes(raw.kind)) throw Error('Unsupported layout format')
   if (raw.kind !== 'tools' && (!raw.panels || typeof raw.panels !== 'object' || Array.isArray(raw.panels)))
     throw Error('Missing panel layout')
+  if (raw.kind !== 'tools' && (!raw.panels.dockSide || typeof raw.panels.dockSide !== 'object' ||
+      Array.isArray(raw.panels.dockSide) || !raw.panels.floating ||
+      typeof raw.panels.floating !== 'object' || Array.isArray(raw.panels.floating)))
+    throw Error('Invalid panel layout structure')
   if (raw.kind !== 'panels' && raw.toolbar !== null && !Array.isArray(raw.toolbar))
     throw Error('Invalid tool layout')
   const panels = raw.kind === 'tools' ? undefined : loadPanelLayout(JSON.stringify(raw.panels))
