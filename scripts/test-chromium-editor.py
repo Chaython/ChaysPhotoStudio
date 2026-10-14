@@ -1240,7 +1240,7 @@ def main():
                 }""")
                 page.wait_for_function("""() => window.__zphotoEngine.activeDoc?.width === 160 &&
                     window.__zphotoStore.getState().activeTool === 'slice'""")
-                canvas = page.locator('canvas').filter(visible=True).first
+                page.wait_for_function("() => !!window.__zphotoViewport?.canvas")
                 # Match the viewport conversion used by the real input router.
                 def pt(x, y):
                     return page.evaluate("""([x, y]) => {
@@ -1265,6 +1265,7 @@ def main():
                 # The second tool adds an actual clickable hotspot, not a fake
                 # toolbar-only option, and keeps the first slice intact.
                 page.evaluate("() => window.__zphotoStore.getState().setTool('hotspot')")
+                page.wait_for_function("() => window.__zphotoStore.getState().activeTool === 'hotspot'")
                 drag_region((95, 30), (135, 60))
                 regions = page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions")
                 check(len(regions) == 2 and regions[1]["kind"] == "hotspot",
