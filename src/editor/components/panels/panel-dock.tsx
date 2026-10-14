@@ -297,30 +297,13 @@ function DropOverlay({ side }: { side: 'left' | 'right' }) {
  */
 const PHOTOSHOP_UPPER_TABS = ['color', 'adjustments', 'properties', 'navigator', 'histogram']
 const PHOTOSHOP_LOWER_TABS = ['layers', 'channels', 'paths', 'history', 'actions']
-const PHOTOSHOP_SPLIT_KEY = 'zphoto-photoshop-inspector-split'
 const clampInspectorSplit = (value: number) => Math.max(22, Math.min(70, value))
 
 function PhotoshopRightDock() {
-  const [upperSelection, setUpperSelection] = useState('color')
-  const [lowerSelection, setLowerSelection] = useState('layers')
-  const [collapsed, setCollapsed] = useState(false)
-  const [upperPercent, setUpperPercent] = useState(() => {
-    if (typeof window === 'undefined') return 40
-    try {
-      const stored = Number(window.localStorage.getItem(PHOTOSHOP_SPLIT_KEY))
-      return Number.isFinite(stored) && stored > 0 ? clampInspectorSplit(stored) : 40
-    } catch { return 40 }
-  })
+  const inspector = useEditorStore(s => s.panels.photoshopInspector)
+  const setInspector = useEditorStore(s => s.setPhotoshopInspector)
+  const { upperTab: upperSelection, lowerTab: lowerSelection, upperPercent, collapsed } = inspector
   const resizing = useRef(false)
-  useEffect(() => {
-    try { window.localStorage.setItem(PHOTOSHOP_SPLIT_KEY, String(upperPercent)) } catch { /* storage unavailable */ }
-  }, [upperPercent])
-  // Window → Show Panel and contextual panel actions can select a tab outside
-  // this component. A newly revealed panel must expand a collapsed inspector.
-  useEffect(() => useEditorStore.subscribe((next, previous) => {
-    if (next.panels.rightTab !== previous.panels.rightTab) setCollapsed(false)
-  }), [])
-
   const rightTab = useEditorStore(s => s.panels.rightTab)
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
@@ -339,8 +322,8 @@ function PhotoshopRightDock() {
   const lowerTabs = PHOTOSHOP_LOWER_TABS.includes(lower)
     ? PHOTOSHOP_LOWER_TABS
     : [...PHOTOSHOP_LOWER_TABS, lower]
-  const selectUpper = (id: string) => { setUpperSelection(id); useEditorStore.getState().setRightPanelTab(id) }
-  const selectLower = (id: string) => { setLowerSelection(id); useEditorStore.getState().setRightPanelTab(id) }
+  const selectUpper = (id: string) => { setInspector({ upperTab: id, collapsed: false }); useEditorStore.getState().setRightPanelTab(id) }
+  const selectLower = (id: string) => { setInspector({ lowerTab: id, collapsed: false }); useEditorStore.getState().setRightPanelTab(id) }
 
   const tabs = (ids: string[], active: string, choose: (id: string) => void, label: string) => (
     <div className="flex h-8 shrink-0 overflow-x-auto border-b border-border/70 bg-panel zphoto-scroll"
@@ -385,7 +368,7 @@ function PhotoshopRightDock() {
       className="relative hidden md:flex w-9 shrink-0 flex-col items-center gap-1 border-l bg-panel py-1 panel-dock-drop"
       aria-label="Collapsed Photoshop inspector">
       <button type="button" className="h-8 w-8 flex items-center justify-center hover:bg-accent"
-        title="Expand inspector" aria-label="Expand Photoshop inspector" onClick={() => setCollapsed(false)}>
+        title="Expand inspector" aria-label="Expand Photoshop inspector" onClick={() => setInspector({ collapsed: false })}>
         <PanelRightOpen size={16} />
       </button>
       {[...PHOTOSHOP_UPPER_TABS, ...PHOTOSHOP_LOWER_TABS].map(id => {
@@ -394,7 +377,7 @@ function PhotoshopRightDock() {
         const Icon = def.icon
         return <button type="button" key={id} className="h-8 w-8 flex items-center justify-center hover:bg-accent text-muted-foreground hover:text-foreground"
           title={def.label} aria-label={'Show ' + def.label + ' panel'}
-          onClick={() => { if (PHOTOSHOP_UPPER_TABS.includes(id)) selectUpper(id); else selectLower(id); setCollapsed(false) }}>
+          onClick={() => { if (PHOTOSHOP_UPPER_TABS.includes(id)) selectUpper(id); else selectLower(id); setInspector({ collapsed: false }) }}>
           <Icon size={15} />
         </button>
       })}
@@ -413,7 +396,7 @@ function PhotoshopRightDock() {
     const bounds = e.currentTarget.parentElement?.getBoundingClientRect()
     if (!bounds) return
     const available = Math.max(1, bounds.height - 28)
-    setUpperPercent(clampInspectorSplit(Math.round(100 * (e.clientY - bounds.top - 28) / available)))
+    setInspector({ upperPercent: clampInspectorSplit(Math.round(100 * (e.clientY - bounds.top - 28) / available)) })
   }
   const onSplitPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     resizing.current = false
@@ -430,7 +413,7 @@ function PhotoshopRightDock() {
           <AddPanelMenu side="right" mobile={false} />
           <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
             title="Collapse inspector to icons" aria-label="Collapse Photoshop inspector"
-            onClick={() => setCollapsed(true)}><PanelRightClose size={13} /></button>
+            onClick={() => setInspector({ collapsed: true })}><PanelRightClose size={13} /></button>
         </div>
       </div>
       <section data-photoshop-stack="upper" className="flex min-h-0 flex-col"
@@ -444,13 +427,13 @@ function PhotoshopRightDock() {
         className="h-2 shrink-0 flex items-center cursor-row-resize touch-none border-y border-border/60 bg-panel hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
         onPointerDown={onSplitPointerDown} onPointerMove={onSplitPointerMove}
         onPointerUp={onSplitPointerUp} onPointerCancel={onSplitPointerUp}
-        onDoubleClick={() => setUpperPercent(40)}
+        onDoubleClick={() => setInspector({ upperPercent: 40 })}
         onKeyDown={e => {
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault()
-            setUpperPercent(v => clampInspectorSplit(v + (e.key === 'ArrowDown' ? 5 : -5)))
-          } else if (e.key === 'Home') { e.preventDefault(); setUpperPercent(22) }
-          else if (e.key === 'End') { e.preventDefault(); setUpperPercent(70) }
+            setInspector({ upperPercent: clampInspectorSplit(upperPercent + (e.key === 'ArrowDown' ? 5 : -5)) })
+          } else if (e.key === 'Home') { e.preventDefault(); setInspector({ upperPercent: 22 }) }
+          else if (e.key === 'End') { e.preventDefault(); setInspector({ upperPercent: 70 }) }
         }}>
         <span aria-hidden className="mx-auto h-px w-9 bg-muted-foreground/60" />
       </div>
