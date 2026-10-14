@@ -382,6 +382,21 @@ def main():
                       "switching after reload lost Classic's panel width")
                 check(store(page, "s.toolbarLayout?.[0]?.tool") == "brush",
                       "switching after reload lost Classic's toolbar")
+                # Reset applies the active workspace's initial template only;
+                # named presets and the other workspace must remain intact.
+                page.get_by_role("button", name="Workspace template").click()
+                page.get_by_role("menuitem", name="Restore Classic template").click()
+                check(store(page, "s.toolbarLayout") is None,
+                      "factory reset did not restore Classic toolbar")
+                check(store(page, "s.panels.dockWidth") == 264,
+                      "factory reset did not restore Classic dock width")
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Inspector snapshot')") is True,
+                      "factory reset unexpectedly deleted a named layout")
+                page.evaluate("() => window.__zphotoStore.getState().setWorkspacePreset('photoshop')")
+                check(store(page, "s.panels.photoshopInspector.upperPercent") == 55,
+                      "Classic reset incorrectly changed Photoshop inspector")
+                check(store(page, "s.panels.photoshopInspector.collapsed") is True,
+                      "Classic reset incorrectly expanded Photoshop inspector")
                 check(not errors, f"workspace layout profiles threw exceptions: {errors[:3]}")
 
             def editable_layer_context_menu():
