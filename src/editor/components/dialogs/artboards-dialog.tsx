@@ -12,25 +12,46 @@ import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob, uid } from '../../utils/canvas'
 import { encodeCanvas } from '../../formats'
 import { fileStem } from '../../web-assets'
-import { artboardCrop, gridArtboards, layersForArtboard, MAX_ARTBOARDS, normalizeArtboards, type Artboard } from '../../artboards'
+import { artboardCrop, buildArtboardRolloverHtml, gridArtboards, layersForArtboard, MAX_ARTBOARDS, normalizeArtboards, type Artboard, type RolloverSlot } from '../../artboards'
 import type { DialogProps } from './generic-dialogs'
 
 type ImageFormat = 'png' | 'jpeg' | 'webp'
 
-/** Detached page composite. Never toggle layer.visible on the source document:
- * other artboards, open dialogs, Undo state, and async workers retain the source.
- * Pending previews, live drags and channel-only views are not exported. */
-function previewArtboard(doc: import('../../types').PsDocument, board: Artboard): HTMLCanvasElement {
-  if (board.visibleLayerIds === undefined) return getFlatComposite(doc)
+/** Render an artboard or its linked Layer Comp as a detached composite.
+ * The source document's live layer properties and History are never mutated. */
+function previewArtboard(
+  doc: import('../../types').PsDocument, board: Artboard, slot: RolloverSlot = 'normal',
+): HTMLCanvasElement {
+  const rollover = board.rollover
+  const id = slot === 'hover' ? rollover?.hoverCompId : slot === 'pressed' ? rollover?.pressedCompId : rollover?.normalCompId
+  const defaultId = rollover?.normalCompId
+  const comp = doc.layerComps?.find(item => item.id === (id ?? defaultId))
+  if (board.visibleLayerIds === undefined && !comp) return getFlatComposite(doc)
+
+  const selected = layersForArtboard(doc.layers, board)
+  const layers = !comp ? selected : selected.map(layer => {
+    const st = comp.layers[layer.id]
+    if (!st) return layer
+    const next: typeof layer = { ...layer, _v: layer._v + 1 }
+    if (comp.options.visibility && typeof st.visible === 'boolean') next.visible = st.visible
+    if (comp.options.position) {
+      if (typeof st.offsetX === 'number' && Number.isFinite(st.offsetX)) next.offsetX = st.offsetX
+      if (typeof st.offsetY === 'number' && Number.isFinite(st.offsetY)) next.offsetY = st.offsetY
+      if ('transform' in st) next.transform = st.transform ? structuredClone(st.transform) : null
+    }
+    if (comp.options.appearance) {
+      if (typeof st.opacity === 'number' && Number.isFinite(st.opacity)) next.opacity = Math.max(0, Math.min(100, st.opacity))
+      if (st.blendMode) next.blendMode = st.blendMode
+      if (typeof st.clipped === 'boolean') next.clipped = st.clipped
+      if (typeof st.maskEnabled === 'boolean') next.maskEnabled = st.maskEnabled
+      if ('blendIf' in st) next.blendIf = st.blendIf ? structuredClone(st.blendIf) : null
+      if ('fx' in st) next.fx = st.fx ? structuredClone(st.fx) : null
+    }
+    return next
+  })
   return compositeDocument({
-    ...doc,
-    layers: layersForArtboard(doc.layers, board),
-    _liveDrag: null,
-    previewFilter: null,
-    previewAdjustment: null,
-    _stroke: null,
-    _strokeLayerId: null,
-    channelView: 'rgb',
+    ...doc, layers, _liveDrag: null, previewFilter: null, previewAdjustment: null,
+    _stroke: null, _strokeLayerId: null, channelView: 'rgb',
   })
 }
 
@@ -49,6 +70,7 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
   const [exportChoice, setExportChoice] = useState<'all' | 'selected'>('all')
   const [busy, setBusy] = useState(false)
   const [outlines, setOutlines] = useState(() => doc?.showArtboardOutlines !== false)
+  const [previewSlot, setPreviewSlot] = useState<RolloverSlot>('normal')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const thumb = useMemo(() => {
@@ -64,13 +86,13 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
       if (ctx) {
         ctx.clearRect(0, 0, thumb.width, thumb.height)
         const selected = boards.find(board => board.id === selectedId)
-        const composite = selected ? previewArtboard(doc, selected) : getFlatComposite(doc)
+        const composite = selected ? previewArtboard(doc, selected, previewSlot) : getFlatComposite(doc)
         ctx.drawImage(composite, 0, 0, thumb.width, thumb.height)
       }
     } catch (error) {
       useEditorStore.getState().pushToast('Artboard preview unavailable: ' + String(error), 'error')
     }
-  }, [doc, thumb, boards, selectedId])
+  }, [doc, thumb, boards, selectedId, previewSlot])
 
   const active = boards.find(b => b.id === selectedId) ?? null
   const select = (id: string | null) => {
@@ -86,7 +108,7 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
     const nextFocus = focus && valid.some(a => a.id === focus) ? focus : valid[0]?.id ?? null
     setBoards(valid)
     setSelectedId(nextFocus)
-    doc.artboards = valid.map(a => ({ ...a, visibleLayerIds: a.visibleLayerIds?.slice() }))
+    doc.artboards = valid.map(a => structuredClone(a))
     doc.activeArtboardId = nextFocus
     // Commit document layout edits to History just like other editable geometry.
     engine.pushHistory('Edit Artboards', doc)
