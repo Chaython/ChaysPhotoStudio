@@ -325,7 +325,7 @@ function PhotoshopRightDock() {
   const selectUpper = (id: string) => { setInspector({ upperTab: id, collapsed: false }); useEditorStore.getState().setRightPanelTab(id) }
   const selectLower = (id: string) => { setInspector({ lowerTab: id, collapsed: false }); useEditorStore.getState().setRightPanelTab(id) }
 
-  const tabs = (ids: string[], active: string, choose: (id: string) => void, label: string) => (
+  const tabs = (ids: readonly string[], active: string, choose: (id: string) => void, label: string) => (
     <div className="flex h-8 shrink-0 overflow-x-auto border-b border-border/70 bg-panel zphoto-scroll"
       role="tablist" aria-label={label}>
       {ids.map(id => {
