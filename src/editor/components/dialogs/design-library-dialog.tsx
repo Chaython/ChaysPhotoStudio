@@ -71,7 +71,11 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
   const saveDesign = () => void execute(async () => {
     const doc = engine.activeDoc
     if (!doc) throw Error('Open a document to save a design template')
-    const data = JSON.stringify(serializeProject(doc))
+    const project = serializeProject(doc)
+    // Templates describe editable *designs*, not old user recovery/history data.
+    project.historySnapshots = []
+    project.doc.historyBrushSnapshotId = null
+    const data = JSON.stringify(project)
     if (new TextEncoder().encode(data).length > MAX_TEMPLATE_BYTES) throw Error('Project is too large for the 32 MiB template limit')
     const entry: TemplateEntry = {
       id: makeId(), name: (designName || doc.name).trim(), category: category || 'General',
