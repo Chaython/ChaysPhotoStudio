@@ -386,3 +386,17 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
 .zphoto-photoshop-workspace [data-native-module="tool-options"] { min-height: 36px; }
 .zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"][aria-selected="true"] { box-shadow: inset 0 -1px var(--primary); }
 .zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"]:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* Photoshop Essentials workspace: flat, dense application chrome. Applied only
+   to the Photoshop preset, never to Classic/Light/OLED themes. */
+.zphoto-photoshop-workspace [role="menubar"] { min-height: 30px; }
+.zphoto-photoshop-workspace [data-native-module="documents"] [role="tablist"] { height: 31px; }
+.zphoto-photoshop-workspace [data-native-module="documents"] [role="tab"][aria-selected="true"] { border-top-color: transparent; background: var(--workspace); }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] { width: 43px; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] > div { margin-bottom: 0; border-bottom: 0; padding: 1px; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] button { width: 38px; height: 34px; }
+.zphoto-photoshop-workspace [data-native-module="tool-options"] [role="group"] { min-height: 34px; padding-block: 4px; column-gap: 9px; }
+.zphoto-photoshop-workspace [data-photoshop-dock] { font-size: 11px; }
+.zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"] { min-height: 30px; }
+.zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"][aria-selected="true"] { background: var(--background); }
+.zphoto-photoshop-workspace [data-photoshop-dock] [role="separator"]:hover { background: var(--accent); }
