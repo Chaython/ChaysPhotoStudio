@@ -4,7 +4,7 @@
 // chrome: tabs, actions, dragging, sizing and persistence are shared.
 import { useEffect, useRef, useState } from 'react'
 import { PanelLeft, PanelLeftClose, PanelRightClose, PanelRightOpen, Plus, RotateCcw } from 'lucide-react'
-import { useEditorStore } from '../../store'
+import { useEditorStore, PHOTOSHOP_INSPECTOR_UPPER_TABS } from '../../store'
 import { PANEL_MAP, PANELS } from './panel-registry'
 import { autoSideDockWidth } from './auto-dock-sizing'
 import { PanelContextMenu } from './panel-actions-menu'
@@ -295,7 +295,7 @@ function DropOverlay({ side }: { side: 'left' | 'right' }) {
  * The upper/lower stacks are independently selectable and resize with a
  * keyboard-accessible splitter; floating/dock moves still use the shared store.
  */
-const PHOTOSHOP_UPPER_TABS = ['color', 'adjustments', 'properties', 'navigator', 'histogram']
+const PHOTOSHOP_UPPER_TABS: readonly string[] = PHOTOSHOP_INSPECTOR_UPPER_TABS
 const PHOTOSHOP_LOWER_TABS = ['layers', 'channels', 'paths', 'history', 'actions']
 const clampInspectorSplit = (value: number) => Math.max(22, Math.min(70, value))
 
