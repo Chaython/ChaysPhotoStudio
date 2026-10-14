@@ -31,11 +31,11 @@ function currentRegions(): WebRegion[] {
   const doc = engine.activeDoc
   return doc ? normalizeWebRegions(doc.webRegions, doc.width, doc.height) : []
 }
-function writeRegions(next: WebRegion[], expectedDocId: string) {
+function writeRegions(next: WebRegion[], expectedDocId: string, historyLabel = 'Edit Web Region') {
   const doc = engine.activeDoc
   if (!doc || doc.id !== expectedDocId) return
   doc.webRegions = normalizeWebRegions(next, doc.width, doc.height)
-  doc.dirty = true
+  engine.pushHistory(historyLabel, doc)
   engine.emit()
   engine.pokeOverlay()
 }
@@ -44,7 +44,7 @@ function remove(id: string) {
   if (!doc) return
   const before = currentRegions()
   if (!before.some(r => r.id === id)) return
-  writeRegions(before.filter(r => r.id !== id), doc.id)
+  writeRegions(before.filter(r => r.id !== id), doc.id, 'Delete Web Region')
   if (selectedId() === id) selected = null
 }
 function atPointer(p: PointerInfo): RegionPoint | null {
@@ -101,10 +101,11 @@ function finish(p: PointerInfo) {
     writeRegions([...regions, {
       id, kind: d.kind, name: (d.kind === 'slice' ? 'Slice ' : 'Hotspot ') + count,
       ...draft, href: '', alt: '', target: '_self',
-    }], doc.id)
+    }], doc.id, d.kind === 'slice' ? 'Create Web Slice' : 'Create Web Hotspot')
     selected = { docId: doc.id, id }
   } else if (d.original && d.id && rectChanged(d.original, draft)) {
-    writeRegions(regions.map(r => r.id === d.id ? { ...r, ...draft } : r), doc.id)
+    writeRegions(regions.map(r => r.id === d.id ? { ...r, ...draft } : r), doc.id,
+      d.mode === 'move' ? 'Move Web Region' : 'Resize Web Region')
   }
   engine.pokeOverlay()
 }
@@ -125,7 +126,7 @@ function keydown(e: KeyboardEvent): boolean {
   if (!r) return false
   const step = e.shiftKey ? 10 : 1
   const next = moveRegionRect(r, dir[0] * step, dir[1] * step, doc.width, doc.height)
-  if (rectChanged(r, next)) writeRegions(regs.map(x => x.id === id ? { ...x, ...next } : x), doc.id)
+  if (rectChanged(r, next)) writeRegions(regs.map(x => x.id === id ? { ...x, ...next } : x), doc.id, 'Nudge Web Region')
   return true
 }
 function overlay(ctx: CanvasRenderingContext2D, view: { zoom: number; panX: number; panY: number },
