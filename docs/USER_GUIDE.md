@@ -790,9 +790,3 @@ Use native Float16 Dodge, Burn, and Sponge on supported 16-bit sRGB raster layer
 - 32-bit Smudge Sample All Layers and 32-bit retouch New Layer output remain guarded against lossy compositing.
 - Canvas Float16 read/write is native half-float precision, not the 32-bit Float32 HDR backing store; the display result may be rounded to representable half-float values.
 - Selections, transparency and document/layer targeting remain in effect for supported high-bit-depth retouching.
-
-### Editable PDF text and vectors
-
-PDF import creates a full-fidelity raster reference for each page and separate, initially **hidden**, native Text and Shape layers for recoverable PDF objects. In the Layers panel, show a recovered Text or Vector layer, edit it using the standard Type/Shape/Path tools, and hide the corresponding PDF visual-reference layer to avoid seeing the old content behind your edits. Objects on different imported pages are separate; only the first reference page is visible by default. **The imported raster reference is never overwritten by native edits.**
-
-This deliberately does not promise 1:1 source object editing: subset fonts can be substituted, text orientation/complex shaping is not reconstructable, and clipped/transparent/pattern/gradient/compound vector operations and embedded images still render in the visual reference. PDF export, annotations, forms, original object IDs and editable PDF round-trip are not supported by this importer.
