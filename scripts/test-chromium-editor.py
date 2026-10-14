@@ -1281,11 +1281,17 @@ def main():
                 moved = page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions[1].x")
                 check(moved > 95, "Keyboard arrow did not nudge selected hotspot")
                 page.keyboard.press("Enter")
-                check(page.get_by_role("dialog").get_by_text("Web Slices & Hotspots").count() == 1,
-                      "Enter failed to open editable Web Assets details")
-                check(page.get_by_role("dialog").get_by_role("textbox", name="Region name").input_value().startswith("Hotspot"),
+                # Web Assets is lazy-loaded. Confirm the key was handled by the
+                # store first, then wait for the modal component to render.
+                page.wait_for_function("""() => window.__zphotoStore.getState().dialogs
+                    .some(d => d.type === 'web-assets')""", timeout=10000)
+                dialog = page.get_by_role("dialog")
+                dialog.get_by_text("Web Slices & Hotspots").wait_for(state="visible", timeout=15000)
+                name_input = dialog.get_by_role("textbox", name="Region name")
+                name_input.wait_for(state="visible", timeout=10000)
+                check(name_input.input_value().startswith("Hotspot"),
                       "Web Assets details did not focus the selected hotspot")
-                page.get_by_role("dialog").get_by_role("button", name="Close").click()
+                dialog.get_by_role("button", name="Close").click()
                 # Create a second document; a region selected in another tab
                 # must never be deleted or modified by a keyboard shortcut.
                 page.evaluate("""() => window.__zphotoEngine.newDocument({
