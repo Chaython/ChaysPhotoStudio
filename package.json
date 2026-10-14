@@ -65,7 +65,7 @@
     "fill-coverage:validate": "bun scripts/validate-fill-coverage.ts",
     "heritage-formats:validate": "bun scripts/validate-heritage-raster.ts",
     "formats:validate": "bun scripts/validate-heritage-raster.ts && bun scripts/validate-new-formats.ts && bun scripts/validate-psd-roundtrip.ts",
-    "pdf:validate": "bun scripts/validate-pdf-import.ts",
+    "pdf:validate": "bun scripts/validate-pdf-import.ts && bun scripts/validate-pdf-native.ts",
     "psd:validate": "bun scripts/validate-psd-roundtrip.ts",
     "psd:real-validate": "PSD_REAL_CORPUS=1 bun scripts/validate-psd-roundtrip.ts",
     "raw-corpus:validate": "bun scripts/validate-camera-raw-corpus.ts",
