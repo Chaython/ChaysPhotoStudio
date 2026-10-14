@@ -57,7 +57,7 @@ class FakeNode {
   focus() { documentFake.activeElement = this }
   remove() { this.removed = true; this.isConnected = false }
   querySelector(selector: string): FakeNode | null { return controls.get(selector) ?? null }
-  querySelectorAll(_selector: string): FakeNode[] { return [...controls.values()] }
+  querySelectorAll(_selector: string): FakeNode[] { return [...controls.values()].filter(node => (node.tag === 'button' || node.tag === 'input' || node.tag === 'select') && !node.disabled) }
 }
 
 class FakeVideo extends FakeNode {
@@ -192,12 +192,12 @@ try {
   // Frame-rate selects must participate in the modal keyboard focus cycle.
   const keyboardImport = pickVideoFrame(movie)
   const keyboardOverlay = currentOverlay()
-  const focusables = [...controls.values()]
+  const focusables = keyboardOverlay.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')
   const fpsControl = controls.get('[data-video-fps]')!
   assert.ok(focusables.includes(fpsControl))
   fpsControl.focus()
   keyboardOverlay.dispatch('keydown', { key: 'Tab', shiftKey: true })
-  assert.notEqual(documentFake.activeElement, previousFocus, 'Tab must not escape the picker')
+  assert.equal(documentFake.activeElement, fpsControl, 'Tab from a select must remain available to normal navigation')
   focusables[focusables.length - 1].focus()
   keyboardOverlay.dispatch('keydown', { key: 'Tab', shiftKey: false })
   assert.equal(documentFake.activeElement, focusables[0], 'forward Tab wraps to first control')
