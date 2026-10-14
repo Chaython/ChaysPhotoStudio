@@ -354,6 +354,7 @@ export const TOOL_CYCLES: ToolId[][] = [
   ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
   ['object-select', 'quick-select', 'magic-wand'],
   ['crop', 'perspective-crop'],
+  ['measure', 'slice', 'hotspot'],
   ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
   ['history-brush', 'art-history-brush'],
   ['eraser', 'background-eraser', 'magic-eraser'],
