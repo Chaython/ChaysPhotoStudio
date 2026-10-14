@@ -37,6 +37,7 @@ class FakeNode {
   className = ''
   src = ''
   removed = false
+  isConnected = true
   constructor(readonly tag: string) {}
   addEventListener(name: string, listener: Listener) {
     const entries = this.listeners.get(name) ?? []
@@ -52,7 +53,7 @@ class FakeNode {
   setAttribute(_name: string, _value: string) {}
   removeAttribute(name: string) { if (name === 'src') this.src = '' }
   focus() { documentFake.activeElement = this }
-  remove() { this.removed = true }
+  remove() { this.removed = true; this.isConnected = false }
   querySelector(selector: string): FakeNode | null { return controls.get(selector) ?? null }
   querySelectorAll(_selector: string): FakeNode[] { return [...controls.values()] }
 }
@@ -97,12 +98,13 @@ class FakeCanvas extends FakeNode {
 }
 
 let controls = new Map<string, FakeNode>()
+const previousFocus = new FakeNode('button')
 let overlay: FakeNode | null = null
 let activeVideo: FakeVideo | null = null
 let lastCanvas: FakeCanvas | null = null
 let revokedUrls: string[] = []
 const documentFake = {
-  activeElement: null as FakeNode | null,
+  activeElement: previousFocus as FakeNode | null,
   body: { appendChild(node: FakeNode) { overlay = node } },
   createElement(tag: string) {
     if (tag === 'div') {
@@ -131,6 +133,7 @@ const currentVideo = (): FakeVideo => {
 Object.assign(globalThis, {
   document: documentFake,
   HTMLMediaElement: { HAVE_CURRENT_DATA: 2 },
+  HTMLElement: FakeNode,
 })
 const realCreate = URL.createObjectURL, realRevoke = URL.revokeObjectURL
 URL.createObjectURL = () => 'blob:local-video-test'
@@ -148,14 +151,21 @@ try {
   timeline.dispatch('input')
   assert.equal(importButton.disabled, true, 'cannot capture a stale frame while seeking')
   assert.equal(currentVideo().currentTime, 12.25)
+  currentVideo().dispatch('timeupdate')
+  assert.equal(timeline.value, '12.25', 'media events cannot snap the slider back')
+  timeline.value = '14.75'
+  timeline.dispatch('input')
+  currentVideo().dispatch('seeked')
+  assert.equal(importButton.disabled, true, 'stale seeked before final seek cannot unlock import')
   currentVideo().completeSeek()
   assert.equal(importButton.disabled, false, 'selected frame ready for capture')
   importButton.dispatch('click')
   const selected = await direct as unknown as FakeCanvas
-  assert.equal(selected.selectedTime, 12.25)
+  assert.equal(selected.selectedTime, 14.75)
   assert.equal(selected.width, 640)
   assert.equal(selected.height, 360)
   assert.equal(currentOverlay().removed, true)
+  assert.equal(documentFake.activeElement, previousFocus, 'original keyboard focus must be restored')
   assert.equal(revokedUrls.length, 1)
 
   // The legacy decoder must also open the picker, not pick a timestamp itself.
