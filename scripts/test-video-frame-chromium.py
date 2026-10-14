@@ -5,28 +5,12 @@ The fixture is the deterministic two-tone WebM embedded in the full editor E2E
 suite. Compiled picker script is injected without building the entire Next app,
 so seeking and canvas capture are verified on every relevant commit.
 """
-import ast
 import base64
-import os
 import shutil
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
-
-def fixture_base64() -> str:
-    text = Path("scripts/test-chromium-editor.py").read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "VIDEO_TWO_TONE_WEBM"
-            for target in node.targets
-        ):
-            if isinstance(node.value, ast.Call) and node.value.args and isinstance(node.value.args[0], ast.Constant):
-                data = node.value.args[0].value
-                assert isinstance(data, str)
-                assert base64.b64decode(data).startswith(b"\x1a\x45\xdf\xa3")
-                return data
-    raise AssertionError("Deterministic WebM fixture was not found in editor Chromium test")
+from video_fixture import video_fixture
 
 def main() -> None:
     executable = shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium")
@@ -45,7 +29,7 @@ def main() -> None:
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.goto("about:blank")
             page.add_script_tag(path=str(js_path))
-            fixture = fixture_base64()
+            fixture = base64.b64encode(video_fixture()).decode('ascii')
             page.evaluate("""fixture => {
               window.__videoInput = new File(
                 [Uint8Array.from(atob(fixture), c => c.charCodeAt(0))],
