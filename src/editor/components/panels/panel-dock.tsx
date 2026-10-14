@@ -377,8 +377,10 @@ function PhotoshopRightDock() {
                 if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                   e.preventDefault()
                   const destination = e.key === 'ArrowUp' ? 'upper' : 'lower'
-                  moveInspectorTab(id, destination)
-                  restoreFocus()
+                  if (destination !== group) {
+                    moveInspectorTab(id, destination)
+                    restoreFocus()
+                  }
                 } else if (e.key === 'ArrowLeft' && index > 0) {
                   e.preventDefault()
                   moveInspectorTab(id, group, ids[index - 1])
