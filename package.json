@@ -65,6 +65,7 @@
     "fill-coverage:validate": "bun scripts/validate-fill-coverage.ts",
     "heritage-formats:validate": "bun scripts/validate-heritage-raster.ts",
     "formats:validate": "bun scripts/validate-heritage-raster.ts && bun scripts/validate-new-formats.ts && bun scripts/validate-psd-roundtrip.ts",
+    "pdf:validate": "bun scripts/validate-pdf-import.ts",
     "psd:validate": "bun scripts/validate-psd-roundtrip.ts",
     "psd:real-validate": "PSD_REAL_CORPUS=1 bun scripts/validate-psd-roundtrip.ts",
     "raw-corpus:validate": "bun scripts/validate-camera-raw-corpus.ts",
@@ -141,7 +142,8 @@
     "@discourse/heic": "1.0.0",
     "@discourse/jxr": "1.0.0",
     "@team-charls/charls-wasm": "0.10.0",
-    "jpeg2000": "1.1.1"
+    "jpeg2000": "1.1.1",
+    "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

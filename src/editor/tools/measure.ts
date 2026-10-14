@@ -82,6 +82,9 @@ function clearMeasurement(): void {
   engine.pokeOverlay()
 }
 
+/** Update the live status bar when measurement unit or scale changes. */
+export function refreshMeasurementReadout(): void { publish() }
+
 export function clearCurrentMeasurement(): void { clearMeasurement() }
 
 export function saveCurrentMeasurement(name?: string): string | null {

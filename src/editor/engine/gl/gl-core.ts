@@ -131,6 +131,19 @@ export function glInfo(): GLInfo {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
         float16Fbo = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE
+        // A complete RGBA16F framebuffer can still fail real rendering or
+        // floating-point readback on some drivers. Probe actual pixels.
+        if (float16Fbo) {
+          gl.clearColor(0.25, 0.5, 0.75, 1)
+          gl.clear(gl.COLOR_BUFFER_BIT)
+          const pixel = new Float32Array(4)
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, pixel)
+          float16Fbo = gl.getError() === gl.NO_ERROR &&
+            pixel.every(Number.isFinite) &&
+            Math.abs(pixel[0] - 0.25) < 0.01 &&
+            Math.abs(pixel[1] - 0.5) < 0.01 &&
+            Math.abs(pixel[2] - 0.75) < 0.01
+        }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
         gl.bindTexture(gl.TEXTURE_2D, null)
         gl.deleteFramebuffer(fb)

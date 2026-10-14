@@ -57,6 +57,32 @@ def pixel_png(width=8, height=8) -> bytes:
             + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
+def pdf_fixture() -> bytes:
+    """Minimal, valid two-page vector PDF with distinct solid page colors."""
+    one = b"1 0 0 rg 0 0 200 120 re f\n0 0 0 rg BT /F1 16 Tf 15 60 Td (First page) Tj ET\n"
+    two = b"0 0 1 rg 0 0 200 120 re f\n1 1 1 rg BT /F1 16 Tf 15 60 Td (Second page) Tj ET\n"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 120] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 120] /Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(one)).encode() + b" >>\nstream\n" + one + b"endstream",
+        b"<< /Length " + str(len(two)).encode() + b" >>\nstream\n" + two + b"endstream",
+    ]
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = [0]
+    for i, obj in enumerate(objects, 1):
+        offsets.append(len(out))
+        out.extend(f"{i} 0 obj\n".encode() + obj + b"\nendobj\n")
+    xref = len(out)
+    out.extend(f"xref\n0 {len(offsets)}\n0000000000 65535 f \n".encode())
+    for at in offsets[1:]:
+        out.extend(f"{at:010d} 00000 n \n".encode())
+    out.extend(f"trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode())
+    return bytes(out)
+
+
 def app_page(browser, size=(1440, 900), track_workers=False):
     global ACTIVE_PAGE
     context = browser.new_context(viewport={"width": size[0], "height": size[1]},
@@ -373,6 +399,43 @@ def main():
                 check(value["afterRedo"] == value["added"], "redo did not restore added layer")
                 check(not errors, f"image import/history threw uncaught errors: {errors[:3]}")
 
+            def pdf_multi_page_import():
+                _, page, errors = app_page(browser)
+                page.locator('input[type="file"]').first.set_input_files(
+                    {"name": "two-pages.pdf", "mimeType": "application/pdf", "buffer": pdf_fixture()})
+                dialog = page.get_by_role("dialog", name="Select PDF pages to import")
+                dialog.wait_for(state="visible", timeout=30000)
+                dialog.get_by_role("combobox", name="PDF page import mode").select_option("all")
+                dialog.get_by_role("button", name="Import").click()
+                page.wait_for_function("""() => {
+                    const d = window.__zphotoEngine?.activeDoc
+                    return !!d && d.name.includes('two-pages') &&
+                      d.width === 400 && d.height === 240 && d.layers?.length === 2
+                }""", timeout=45000)
+                data = page.evaluate("""() => {
+                  const d = window.__zphotoEngine.activeDoc
+                  return {
+                    name: d.name, width: d.width, height: d.height,
+                    layers: d.layers.map(l => ({
+                      name: l.name, visible: l.visible, width: l.canvas?.width,
+                      pixel: l.canvas ? Array.from(l.canvas.getContext('2d').getImageData(
+                        200, 170, 1, 1).data) : null,
+                    }))
+                  }
+                }""")
+                print("  PDF import:", data, flush=True)
+                check({l["name"] for l in data["layers"]} ==
+                      {"PDF Page 1", "PDF Page 2"}, "PDF pages not imported distinctly")
+                reds = [l for l in data["layers"] if l["name"] == "PDF Page 1"]
+                blues = [l for l in data["layers"] if l["name"] == "PDF Page 2"]
+                check(len(reds) == 1 and reds[0]["pixel"][0] > 210 and reds[0]["pixel"][2] < 80,
+                      "PDF.js must render page 1 red vector rectangle")
+                check(len(blues) == 1 and blues[0]["pixel"][2] > 210 and blues[0]["pixel"][0] < 80,
+                      "PDF.js must render page 2 blue vector rectangle")
+                check(bool(reds[0]["visible"]) and not bool(blues[0]["visible"]),
+                      "first PDF page should be visible and second hidden")
+                check(not errors, f"PDF import threw JavaScript errors: {errors[:3]}")
+
             def real_psd_browser_import():
                 _, page, errors = app_page(browser)
                 upstream = "b58704c1c9c9b2459f961560b1e368dfb102b513"
@@ -565,6 +628,7 @@ def main():
                 ("color_sampler_info_panel", color_sampler_info_panel),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
                 ("real_psd_chromium_import", real_psd_browser_import),
+                ("pdf_two_page_vector_render", pdf_multi_page_import),
                 ("gimp_lazy_interpreters", gimp_lazy_interpreters),
                 ("mobile_editor_startup", mobile_start),
             ]:
