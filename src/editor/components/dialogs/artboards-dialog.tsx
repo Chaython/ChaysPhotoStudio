@@ -7,15 +7,32 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { engine } from '../../engine/engine'
-import { getFlatComposite } from '../../engine/document'
+import { compositeDocument, getFlatComposite } from '../../engine/document'
 import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob, uid } from '../../utils/canvas'
 import { encodeCanvas } from '../../formats'
 import { fileStem } from '../../web-assets'
-import { artboardCrop, gridArtboards, MAX_ARTBOARDS, normalizeArtboards, type Artboard } from '../../artboards'
+import { artboardCrop, gridArtboards, layersForArtboard, MAX_ARTBOARDS, normalizeArtboards, type Artboard } from '../../artboards'
 import type { DialogProps } from './generic-dialogs'
 
 type ImageFormat = 'png' | 'jpeg' | 'webp'
+
+/** Detached page composite. Never toggle layer.visible on the source document:
+ * other artboards, open dialogs, Undo state, and async workers retain the source.
+ * Pending previews, live drags and channel-only views are not exported. */
+function previewArtboard(doc: import('../../types').PsDocument, board: Artboard): HTMLCanvasElement {
+  if (board.visibleLayerIds === undefined) return getFlatComposite(doc)
+  return compositeDocument({
+    ...doc,
+    layers: layersForArtboard(doc.layers, board),
+    _liveDrag: null,
+    previewFilter: null,
+    previewAdjustment: null,
+    _stroke: null,
+    _strokeLayerId: null,
+    channelView: 'rgb',
+  })
+}
 
 export function ArtboardsDialog({ onClose }: DialogProps) {
   // The dialog cannot accidentally modify another document after a tab switch.
@@ -46,12 +63,14 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
       const ctx = canvasRef.current.getContext('2d')
       if (ctx) {
         ctx.clearRect(0, 0, thumb.width, thumb.height)
-        ctx.drawImage(getFlatComposite(doc), 0, 0, thumb.width, thumb.height)
+        const selected = boards.find(board => board.id === selectedId)
+        const composite = selected ? previewArtboard(doc, selected) : getFlatComposite(doc)
+        ctx.drawImage(composite, 0, 0, thumb.width, thumb.height)
       }
     } catch (error) {
       useEditorStore.getState().pushToast('Artboard preview unavailable: ' + String(error), 'error')
     }
-  }, [doc, thumb])
+  }, [doc, thumb, boards, selectedId])
 
   const active = boards.find(b => b.id === selectedId) ?? null
   const select = (id: string | null) => {
@@ -67,7 +86,7 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
     const nextFocus = focus && valid.some(a => a.id === focus) ? focus : valid[0]?.id ?? null
     setBoards(valid)
     setSelectedId(nextFocus)
-    doc.artboards = valid.map(a => ({ ...a }))
+    doc.artboards = valid.map(a => ({ ...a, visibleLayerIds: a.visibleLayerIds?.slice() }))
     doc.activeArtboardId = nextFocus
     // Commit document layout edits to History just like other editable geometry.
     engine.pushHistory('Edit Artboards', doc)
@@ -147,7 +166,6 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
       }
       // User may have changed tabs while approving the directory picker.
       if (engine.activeDoc?.id !== sourceId) throw new Error('Active document changed')
-      const composite = getFlatComposite(doc)
       const extension = format === 'jpeg' ? 'jpg' : format
       const prefix = fileStem(doc.name)
       for (let i = 0; i < output.length; i++) {
@@ -157,7 +175,7 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
         store.setProgress({ active: true, label: 'Exporting artboard ' + (i + 1) + '/' + output.length,
           value: i / output.length })
         const cropped = createCanvas(rect.sw, rect.sh)
-        ctx2d(cropped).drawImage(composite, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, rect.sw, rect.sh)
+        ctx2d(cropped).drawImage(previewArtboard(doc, board), rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, rect.sw, rect.sh)
         const blob = await encodeCanvas(cropped, format, { quality, background: '#ffffff',
           includeMetadata: false, resolutionPpi: doc.resolutionPpi ?? 72 })
         const filename = prefix + '-artboard-' + String(i + 1).padStart(2, '0')
@@ -248,6 +266,36 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
             <Button size="sm" variant="destructive" disabled={busy} onClick={() => save(boards.filter(b => b.id !== active.id), null)}>Delete</Button>
           </div>
           <div className="grid grid-cols-4 gap-2">{(['x', 'y', 'width', 'height'] as const).map(field)}</div>
+          <div className="space-y-1 border-t border-border/60 pt-2">
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <Label className="text-[11px]">Layers on this artboard</Label>
+              <span className="text-[10px] text-muted-foreground">
+                {active.visibleLayerIds === undefined ? 'All document layers' : active.visibleLayerIds.length + ' assigned'}
+              </span>
+              <Button size="sm" variant="secondary" disabled={busy || active.visibleLayerIds === undefined}
+                onClick={() => modify({ visibleLayerIds: undefined })}>All layers</Button>
+              <Button size="sm" variant="secondary" disabled={busy}
+                onClick={() => modify({ visibleLayerIds: [] })}>Hide all</Button>
+            </div>
+            <div className="max-h-32 overflow-y-auto space-y-1 rounded border border-border/60 p-1.5">
+              {[...doc.layers].reverse().map(layer => <label key={layer.id}
+                className="flex items-center gap-2 text-[11px] cursor-pointer">
+                <input type="checkbox" disabled={busy}
+                  checked={active.visibleLayerIds === undefined || active.visibleLayerIds.includes(layer.id)}
+                  onChange={event => {
+                    const ids = active.visibleLayerIds ?? doc.layers.map(l => l.id)
+                    const next = new Set(ids)
+                    if (event.target.checked) next.add(layer.id)
+                    else next.delete(layer.id)
+                    modify({ visibleLayerIds: [...next] })
+                  }} />
+                <span className={layer.visible ? '' : 'text-muted-foreground'}>{layer.name}</span>
+                {!layer.visible && <span className="text-[9px] text-muted-foreground">(hidden in document)</span>}
+              </label>)}
+              {!doc.layers.length && <div className="text-muted-foreground">No editable layers.</div>}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Artboard-only layer inclusion affects its preview and export; it does not remove layers from the main canvas or change their global visibility. Hidden document layers remain hidden.</p>
+          </div>
         </div>}
         <div className="flex flex-wrap items-center gap-2">
           <Label>Export</Label>
@@ -263,7 +311,7 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
             <input aria-label="Artboard image quality" type="range" min={1} max={100} value={quality}
               onChange={e => setQuality(Number(e.target.value))}/></label>}
         </div>
-        <p className="text-[10px] text-muted-foreground">Artboards are editable document-space rectangles, saved in .zproj.json. They currently share one layer stack; there is no per-artboard layer isolation, off-canvas page expansion, independent page undo, native AI export or Fireworks project interchange. Output is a flattened crop at the current display precision.</p>
+        <p className="text-[10px] text-muted-foreground">Artboards are editable document-space rectangles saved in .zproj.json. Each can include its own subset of existing editable layers for preview and export, without mutating other artboards. They still share a single editing layer stack and canvas: there is no separate per-page layer tree, off-canvas expansion, native AI/Fireworks interchange or independent page history. Exports are flattened at display precision.</p>
       </div>
     )}
     <DialogFooter>
