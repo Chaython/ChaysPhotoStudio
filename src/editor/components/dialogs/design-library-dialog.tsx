@@ -16,6 +16,7 @@ import {
   parseTemplateFile, parseBrandKitFile, normalizeHex, safeDesignFilename,
 } from '../../library/design-library'
 import type { DialogProps } from './generic-dialogs'
+import { linkBrandStyle, synchronizeLinkedBrandKit, unlinkLayerStyle } from '../../linked-design-styles'
 
 const makeId = () => uid()
 const emptyKit = (): BrandKit => ({
@@ -118,21 +119,81 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
 
   const edit = (update: Partial<BrandKit>) =>
     setEditingKit(current => ({ ...current, ...update, updatedAt: Date.now() }))
+  const syncKit = (kit: BrandKit) => {
+    let documents = 0, tokens = 0
+    for (const doc of engine.docs) {
+      const updated = synchronizeLinkedBrandKit(doc, kit)
+      if (updated) {
+        engine.pushHistory('Update Linked Brand Styles', doc)
+        documents++
+        tokens += updated
+      }
+    }
+    if (documents) engine.emit()
+    return { documents, tokens }
+  }
   const saveKit = () => void execute(async () => {
     await putBrandKit(editingKit)
     setChosenKit(editingKit.id)
+    const result = syncKit(editingKit)
     await refresh()
-    store.pushToast('Brand kit saved on this device', 'success')
+    store.pushToast('Brand kit saved' + (result.documents ? '; updated ' + result.tokens +
+      ' linked styles in ' + result.documents + ' open documents' : ''), 'success')
   })
   const selectKit = (kit: BrandKit) => { setChosenKit(kit.id); setEditingKit(structuredClone(kit)) }
 
+  const linkSwatch = (swatchId: string) => {
+    const doc = engine.activeDoc, layer = engine.activeLayer
+    if (!chosenKit || chosenKit !== editingKit.id) {
+      store.pushToast('Save the brand kit first to create persistent style links', 'error')
+      return
+    }
+    if (!doc || !layer || !['text', 'shape'].includes(layer.kind)) {
+      store.pushToast('Select an editable text or shape layer to link its color', 'info')
+      return
+    }
+    if (linkBrandStyle(doc, layer, editingKit, 'color', swatchId)) {
+      engine.pushHistory('Link Brand Color', doc)
+      engine.emit()
+      store.pushToast('Linked layer color to brand swatch', 'success')
+    }
+  }
+  const linkFont = (fontId: string) => {
+    const doc = engine.activeDoc, layer = engine.activeLayer
+    if (!chosenKit || chosenKit !== editingKit.id) {
+      store.pushToast('Save the brand kit first to create persistent style links', 'error')
+      return
+    }
+    if (!doc || !layer?.text) {
+      store.pushToast('Select an editable text layer to link its font', 'info')
+      return
+    }
+    if (linkBrandStyle(doc, layer, editingKit, 'font', fontId)) {
+      engine.pushHistory('Link Brand Font', doc)
+      engine.emit()
+      store.pushToast('Linked text font to brand style', 'success')
+    }
+  }
+  const unlinkSelected = () => {
+    const doc = engine.activeDoc, layer = engine.activeLayer
+    if (!doc || !layer) return
+    const changed = (['fill', 'textColor', 'fontFamily'] as const)
+      .map(slot => unlinkLayerStyle(layer, slot)).some(Boolean)
+    if (changed) {
+      engine.pushHistory('Unlink Brand Styles', doc)
+      engine.emit()
+      store.pushToast('Unlinked layer; current appearance preserved', 'success')
+    }
+  }
   const applySwatch = (color: string) => {
     store.setFgColor(color)
     const doc = engine.activeDoc, layer = engine.activeLayer
     if (!doc || !layer) { store.pushToast('Foreground color updated', 'info'); return }
     if (layer.kind === 'shape' && layer.shape) {
+      unlinkLayerStyle(layer, 'fill')
       layer.shape = { ...layer.shape, fill: color }
     } else if (layer.kind === 'text' && layer.text) {
+      unlinkLayerStyle(layer, 'textColor')
       layer.text = { ...layer.text, color }
     } else {
       store.pushToast('Foreground color updated; select a shape/text layer to recolor it', 'info')
@@ -147,6 +208,7 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
   const applyFont = (family: string) => {
     const doc = engine.activeDoc, layer = engine.activeLayer
     if (!doc || !layer?.text) { store.pushToast('Select an editable text layer first', 'info'); return }
+    unlinkLayerStyle(layer, 'fontFamily')
     layer.text = { ...layer.text, fontFamily: family }
     layer._v++
     engine.pushHistory('Apply Brand Font', doc)
@@ -216,7 +278,7 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
           {!filtered.length && <div className="text-muted-foreground">No matching saved design templates yet.</div>}
         </div>
       </> : <>
-        <p className="text-muted-foreground">Keep brand colors, preferred fonts and logos in a local kit. Save changes to persist them. Fonts need to be installed locally; importing a kit does not download font files.</p>
+        <p className="text-muted-foreground">Store palettes, font names and logos locally. Apply changes directly or **Link** an editable text/shape layer to a saved kit. Saving kit updates propagates to linked layers in open documents, with undoable history. Fonts must be installed on this device.</p>
         <div className="flex items-center gap-2 flex-wrap">
           <select aria-label="Choose brand kit" className="flex-1 min-w-0 rounded border bg-background p-1"
             value={chosenKit ?? ''} onChange={e => {
@@ -234,12 +296,24 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
           }}>Delete</Button>
         </div>
         <div><Label>Brand name</Label><Input className="h-7 text-xs" value={editingKit.name} onChange={e => edit({ name: e.target.value })}/></div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <Button size="sm" variant="secondary" disabled={busy || !chosenKit}
+            onClick={() => {
+              const result = syncKit(editingKit)
+              store.pushToast(result.documents ? 'Updated linked styles in ' + result.documents + ' open documents' :
+                'All linked brand styles are up to date', 'info')
+            }}>Sync linked styles</Button>
+          <Button size="sm" variant="secondary" disabled={!engine.activeLayer?.linkedDesignStyles}
+            onClick={unlinkSelected}>Unlink selected layer</Button>
+          <span className="text-muted-foreground">Links are embedded in each project, so artwork remains editable offline.</span>
+        </div>
         <div className="space-y-1">
           <Label>Color palette ({editingKit.swatches.length}/32)</Label>
           <div className="flex flex-wrap gap-2">
             {editingKit.swatches.map(s => <div key={s.id} className="flex items-center gap-1 border rounded p-1">
               <button title={'Apply '+s.name} aria-label={'Apply '+s.name} type="button" onClick={() => applySwatch(s.color)} className="w-6 h-6 border rounded" style={{background:s.color}}/>
               <span title={s.color}>{s.name}</span>
+              <Button size="sm" variant="secondary" title="Link active layer to this brand swatch" disabled={!chosenKit || busy} onClick={() => linkSwatch(s.id)}>Link</Button>
               <button title="Remove swatch" type="button" className="text-destructive px-1" onClick={() => edit({ swatches: editingKit.swatches.filter(x => x.id !== s.id) })}>×</button>
             </div>)}
           </div>
@@ -255,6 +329,7 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
           <div className="flex gap-1 flex-wrap">
             {editingKit.fonts.map(f => <div key={f.id} className="flex items-center gap-1 border rounded p-1">
               <button type="button" title={f.family} onClick={() => applyFont(f.family)}>{f.name}</button>
+              <Button size="sm" variant="secondary" title="Link selected text layer to this font" disabled={!chosenKit || busy} onClick={() => linkFont(f.id)}>Link</Button>
               <button type="button" title="Remove font" className="text-destructive px-1" onClick={() => edit({ fonts: editingKit.fonts.filter(x => x.id !== f.id) })}>×</button>
             </div>)}
           </div>
@@ -281,7 +356,7 @@ export function DesignLibraryDialog({ onClose }: DialogProps) {
           }}/>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" disabled={busy || !editingKit.name.trim()} onClick={saveKit}>Save brand kit</Button>
+          <Button size="sm" disabled={busy || !editingKit.name.trim()} onClick={saveKit}>Save brand kit & update links</Button>
           <Button size="sm" variant="outline" onClick={() => downloadJson({
             format:'chays-brand-kit',version:1,kit:editingKit,
           },safeDesignFilename(editingKit.name)+'.zbrand.json')}>Export kit</Button>
