@@ -357,6 +357,20 @@ def main():
                     return {duplicated, rejected, inspectorExport}
                 }""")
                 check(all(safeguards.values()), f"Import safety failed: {safeguards}")
+                # Test the actual file-picker UI path, not just the store import
+                # method. Importing a saved layout must not auto-apply it.
+                ui_import = page.evaluate("""() => window.__zphotoStore.getState()
+                    .exportNamedLayout('Test tools').replace('"Test tools"', '"Browser JSON layout"')""")
+                toolbar_before_file = store(page, "JSON.stringify(s.toolbarLayout)")
+                page.locator('input[data-file-purpose="layout"]').set_input_files({
+                    "name": "browser-layout.zlayout.json",
+                    "mimeType": "application/json",
+                    "buffer": ui_import.encode("utf-8"),
+                })
+                page.wait_for_function("""() => window.__zphotoStore.getState()
+                    .savedLayouts.some(x => x.name === 'Browser JSON layout')""", timeout=15000)
+                check(store(page, "JSON.stringify(s.toolbarLayout)") == toolbar_before_file,
+                      "Importing a named layout unexpectedly changed the active toolbar")
                 page.reload()
                 page.wait_for_function("() => !!window.__zphotoStore")
                 check(store(page, "s.workspacePreset") == "photoshop",
@@ -382,6 +396,21 @@ def main():
                       "switching after reload lost Classic's panel width")
                 check(store(page, "s.toolbarLayout?.[0]?.tool") == "brush",
                       "switching after reload lost Classic's toolbar")
+                # Reset applies the active workspace's initial template only;
+                # named presets and the other workspace must remain intact.
+                page.get_by_role("button", name="Workspace template").click()
+                page.get_by_role("menuitem", name="Restore Classic template").click()
+                check(store(page, "s.toolbarLayout") is None,
+                      "factory reset did not restore Classic toolbar")
+                check(store(page, "s.panels.dockWidth") == 264,
+                      "factory reset did not restore Classic dock width")
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Inspector snapshot')") is True,
+                      "factory reset unexpectedly deleted a named layout")
+                page.evaluate("() => window.__zphotoStore.getState().setWorkspacePreset('photoshop')")
+                check(store(page, "s.panels.photoshopInspector.upperPercent") == 55,
+                      "Classic reset incorrectly changed Photoshop inspector")
+                check(store(page, "s.panels.photoshopInspector.collapsed") is True,
+                      "Classic reset incorrectly expanded Photoshop inspector")
                 check(not errors, f"workspace layout profiles threw exceptions: {errors[:3]}")
 
             def editable_layer_context_menu():
@@ -452,7 +481,11 @@ def main():
 
             def png_import_undo_redo():
                 _, page, errors = app_page(browser)
-                page.locator('input[type="file"]').first.set_input_files(
+                check(page.locator('input[data-file-purpose="document"]').count() >= 1,
+                      "Document file picker not mounted")
+                check(page.locator('input[data-file-purpose="layout"]').count() == 1,
+                      "Layout import picker not mounted independently")
+                page.locator('input[data-file-purpose="document"]').first.set_input_files(
                     {"name": "chromium-smoke.png", "mimeType": "image/png", "buffer": pixel_png()})
                 page.wait_for_function("() => !!window.__zphotoEngine.activeDoc && window.__zphotoEngine.activeDoc.width === 8", timeout=30000)
                 value = page.evaluate("""() => {
@@ -478,7 +511,7 @@ def main():
 
             def pdf_multi_page_import():
                 _, page, errors = app_page(browser)
-                page.locator('input[type="file"]').first.set_input_files(
+                page.locator('input[data-file-purpose="document"]').first.set_input_files(
                     {"name": "two-pages.pdf", "mimeType": "application/pdf", "buffer": pdf_fixture()})
                 dialog = page.get_by_role("dialog", name="Select PDF pages to import")
                 dialog.wait_for(state="visible", timeout=30000)
@@ -556,7 +589,7 @@ def main():
                                    added_resources + content[resource_len_at + 4:])
                     previous_doc_id = page.evaluate(
                         "() => window.__zphotoEngine.activeDoc?.id ?? null")
-                    page.locator('input[type="file"]').first.set_input_files(
+                    page.locator('input[data-file-purpose="document"]').first.set_input_files(
                         {"name": name, "mimeType": "image/vnd.adobe.photoshop", "buffer": content})
                     page.wait_for_function("""previousId => {
                       const doc = window.__zphotoEngine.activeDoc

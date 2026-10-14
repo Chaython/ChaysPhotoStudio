@@ -486,6 +486,8 @@ function photoshopPanelState(current: EditorStore['panels']): EditorStore['panel
 interface EditorStore {
   workspacePreset: WorkspacePreset
   setWorkspacePreset(preset: WorkspacePreset): void
+  /** Reapply this workspace's original panel and tool templates without touching saved profiles. */
+  resetWorkspaceLayout(): void
   savedLayouts: SavedWorkspaceLayout[]
   saveNamedLayout(name: string, kind: SavedLayoutKind): void
   applyNamedLayout(name: string): void
@@ -698,6 +700,17 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     persistPanelLayout(panels)
     persistToolbarLayout(toolbarLayout)
     return { workspacePreset: preset, panels, toolbarLayout }
+  }),
+  resetWorkspaceLayout: () => set(s => {
+    // Explicit reset is the only action that discards this workspace's edited
+    // toolbar and panel layout. Switching templates never implicitly resets it.
+    const panels = s.workspacePreset === 'photoshop'
+      ? photoshopPanelState(defaultPanelState()) : defaultPanelState()
+    const toolbarLayout = null
+    persistPanelLayout(panels)
+    persistToolbarLayout(toolbarLayout)
+    saveWorkspaceRecord(s.workspacePreset, panels, toolbarLayout)
+    return { panels, toolbarLayout }
   }),
   saveNamedLayout: (name, kind) => set(s => {
     const cleanName = name.trim()
