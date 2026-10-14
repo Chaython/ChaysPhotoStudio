@@ -652,6 +652,83 @@ def main():
                 check(all(legacy.values()), f"Legacy single-column layout migration failed: {legacy}")
                 check(not errors, f"secondary inspector caused JavaScript errors: {errors[:3]}")
 
+            def photoshop_secondary_split_groups():
+                _, page, errors = app_page(browser)
+                page.set_viewport_size({"width": 1440, "height": 900})
+                page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setWorkspacePreset('photoshop')
+                    s.resetWorkspaceLayout()
+                    s.setPhotoshopInspector({sideOpen:true, sideWidth:310})
+                    s.movePhotoshopInspectorTab('history','side')
+                }""")
+                page.wait_for_selector('[data-inspector-column="secondary"]')
+                check(page.locator('[data-photoshop-stack="side-lower"]').count() == 0,
+                      "Legacy single-group inspector unexpectedly started split")
+                page.get_by_role("button", name="Split secondary inspector", exact=True).click()
+                check(store(page, "s.panels.photoshopInspector.sideSplit") is True,
+                      "Split command did not update persistent inspector state")
+                check(page.locator('[data-photoshop-stack="side-lower"]').count() == 1,
+                      "Secondary lower drop zone was not rendered")
+                # Pointer drag from primary upper group to secondary lower group.
+                page.locator('[data-inspector-column="primary"] [data-inspector-tab="navigator"]').drag_to(
+                    page.locator('[data-photoshop-stack="side-lower"]'))
+                check(store(page, "s.panels.photoshopInspector.sideLowerTabs") == ["navigator"],
+                      "HTML5 drag failed to create independent secondary lower tab group")
+                # Keyboard transfers must keep panel identity, focus and group order.
+                page.locator('[data-photoshop-stack="side-lower"] [data-inspector-tab="navigator"]').focus()
+                page.keyboard.press('Alt+Shift+ArrowUp')
+                check(store(page, "s.panels.photoshopInspector.sideTabs.includes('navigator')"),
+                      "Alt+Shift+Up did not move tab to secondary upper group")
+                page.locator('[data-photoshop-stack="side-upper"] [data-inspector-tab="navigator"]').focus()
+                page.keyboard.press('Alt+Shift+ArrowDown')
+                check(store(page, "s.panels.photoshopInspector.sideLowerTabs") == ["navigator"],
+                      "Alt+Shift+Down did not restore secondary lower tab")
+                split = page.locator('[aria-label="Resize secondary inspector groups"]')
+                split.focus()
+                page.keyboard.press('ArrowDown')
+                check(store(page, "s.panels.photoshopInspector.sideUpperPercent") == 55,
+                      "Keyboard resize did not persist secondary group height")
+                # Split and group membership must survive workspace change and export.
+                page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.saveNamedLayout('Four inspector groups', 'panels')
+                    s.setWorkspacePreset('classic')
+                    s.setWorkspacePreset('photoshop')
+                }""")
+                check(store(page, "s.panels.photoshopInspector.sideLowerTabs") == ["navigator"],
+                      "Workspace switching discarded the secondary lower group")
+                check(store(page, "s.panels.photoshopInspector.sideUpperPercent") == 55,
+                      "Workspace switching discarded the secondary split position")
+                exported = store(page, "JSON.parse(s.exportNamedLayout('Four inspector groups')).panels.photoshopInspector")
+                check(exported["sideSplit"] and exported["sideTabs"] == ["history"] and
+                      exported["sideLowerTabs"] == ["navigator"] and exported["sideUpperPercent"] == 55,
+                      "Export omitted split-secondary group state")
+                page.reload()
+                page.wait_for_function("() => !!window.__zphotoStore")
+                page.wait_for_selector('[data-photoshop-stack="side-lower"]')
+                check(store(page, "s.panels.photoshopInspector.sideLowerTabs") == ["navigator"],
+                      "Reload discarded second-column lower group")
+                page.set_viewport_size({"width": 900, "height": 700})
+                page.wait_for_function("""() => document.querySelector('[data-photoshop-dock]')
+                    ?.getAttribute('data-secondary-visible') === 'false'""")
+                check(page.locator('[data-photoshop-stack="lower"] [data-inspector-tab="history"]').count() == 1 and
+                      page.locator('[data-photoshop-stack="lower"] [data-inspector-tab="navigator"]').count() == 1,
+                      "Narrow viewport stranded one of the secondary inspector groups")
+                page.set_viewport_size({"width": 1440, "height": 900})
+                page.wait_for_selector('[data-photoshop-stack="side-lower"]')
+                page.get_by_role("button", name="Combine secondary inspector groups").click()
+                check(store(page, "s.panels.photoshopInspector.sideTabs") == ["history", "navigator"],
+                      "Combining split inspector lost or reordered its panels")
+                check(store(page, "s.panels.photoshopInspector.sideLowerTabs") == [] and
+                      store(page, "s.panels.photoshopInspector.sideSplit") is False,
+                      "Combined inspector did not restore single-group layout")
+                check(page.locator('[data-photoshop-stack="side-lower"]').count() == 0,
+                      "Combined inspector left an empty lower group")
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Four inspector groups')"),
+                      "Combining inspector deleted saved layout")
+                check(not errors, f"secondary split generated uncaught JavaScript errors: {errors[:3]}")
+
             def workspace_layout_lock_isolation():
                 _, page, errors = app_page(browser)
                 page.evaluate("""() => {
@@ -1217,6 +1294,7 @@ def main():
                 ("photoshop_inspector_tab_group_layout", photoshop_inspector_tab_group_layout),
                 ("photoshop_inspector_extra_panels_and_collapsed_routing", photoshop_inspector_extra_panels_and_collapsed_routing),
                 ("photoshop_secondary_inspector_column", photoshop_secondary_inspector_column),
+                ("photoshop_secondary_split_groups", photoshop_secondary_split_groups),
                 ("workspace_layout_lock_isolation", workspace_layout_lock_isolation),
                 ("floating_window_layout_lock_during_drag", floating_window_layout_lock_during_drag),
                 ("named_layout_manager_safety", named_layout_manager_safety),
