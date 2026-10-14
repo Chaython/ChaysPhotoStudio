@@ -132,6 +132,25 @@ export function PathsPanel() {
         </button>
       </div>
 
+      <div className="grid grid-cols-4 gap-1" role="group" aria-label="Convert path to pixel selection">
+        {([
+          ['new', 'Replace', 'Replace the pixel selection with this path'],
+          ['add', 'Add', 'Add this path to the pixel selection'],
+          ['subtract', 'Subtract', 'Subtract this path from the pixel selection'],
+          ['intersect', 'Intersect', 'Keep only the pixel selection overlapping this path'],
+        ] as const).map(([mode, label, title]) => (
+          <button
+            key={mode}
+            className="rounded border border-border px-1 py-1 text-[9px] hover:bg-accent disabled:opacity-40"
+            disabled={!selected}
+            onClick={() => selected && engine.savedPathToSelection(selected.id, mode)}
+            title={title}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-5 gap-1">
         {([
           ['replace', 'Replace', 'Replace the active layer vector mask with this path'],
@@ -178,7 +197,7 @@ export function PathsPanel() {
       </div>
 
       <div className="text-[9px] leading-relaxed text-muted-foreground">
-        Double-click a path to edit it. Saved paths persist in project files. Vector masks support compound Add, Subtract, Intersect and Exclude operations without rasterizing the paths.
+        Double-click a path to edit it. Saved paths persist in project files. Pixel selections support Replace, Add, Subtract and Intersect. Vector masks also support Exclude without rasterizing the paths.
       </div>
     </div>
   )
