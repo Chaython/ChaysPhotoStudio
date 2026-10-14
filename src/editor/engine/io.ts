@@ -11,6 +11,7 @@ import { metadataResolutionPpi, readImageMetadata } from '../formats/metadata'
 import { chooseImagePages } from '../formats/page-select'
 import { chooseRawDevelopSettings, makeBatchSafeRawSettings, type RawDevelopSettings } from '../formats/raw-develop'
 import { cloneVectorMask, normalizeVectorMask } from './vector-mask'
+import { normalizeWebRegions } from '../web-assets'
 
 // Source-embedded RAW Smart Objects deliberately cap project size. Large camera
 // files still open as ordinary rasters, with an explicit user-facing warning.
@@ -590,6 +591,7 @@ export interface SerializedProject {
     measurements?: import('../types').SavedMeasurement[]
     savedPaths?: import('../types').SavedPath[]
     layerComps?: import('../types').LayerComp[]
+    webRegions?: import('../web-assets').WebRegion[]
     activeLayerCompId?: string | null
     historyBrushSnapshotId?: string | null
     historySnapshotAutoPolicy?: 'inherit' | 'always' | 'never'
@@ -721,6 +723,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       })),
       savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
       layerComps: (doc.layerComps ?? []).map(comp => structuredClone(comp)),
+      webRegions: normalizeWebRegions(doc.webRegions, doc.width, doc.height),
       activeLayerCompId: doc.activeLayerCompId ?? null,
       historyBrushSnapshotId: doc.historyBrushSnapshotId ?? null,
       historySnapshotAutoPolicy: doc.historySnapshotAutoPolicy ?? 'inherit',
@@ -970,6 +973,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
           .map(c => structuredClone(c))
       : [],
     activeLayerCompId: typeof project.doc.activeLayerCompId === 'string' ? project.doc.activeLayerCompId : null,
+    webRegions: normalizeWebRegions(project.doc.webRegions, width, height),
     colorSamplers: Array.isArray(project.doc.colorSamplers)
       ? project.doc.colorSamplers
           .filter(s => s && Number.isFinite(s.x) && Number.isFinite(s.y))
