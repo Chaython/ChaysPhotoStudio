@@ -43,6 +43,7 @@ export function useDockDrop(side: DockTabSide, mobile: boolean): boolean {
 
 /** Move any panel to this dock. The badge always reflects its actual location. */
 export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: boolean }) {
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
   if (mobile) return null
@@ -54,8 +55,9 @@ export function AddPanelMenu({ side, mobile }: { side: DockTabSide; mobile: bool
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0"
-          title={`Arrange panels — move panels into the ${side.includes('top') || side.includes('bottom') ? side.replaceAll('-', ' ') + ' strip' : side + ' dock'}`}
+          disabled={panelsLocked}
+          className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          title={panelsLocked ? 'Unlock panel layout to rearrange panels' : `Arrange panels — move panels into the ${side.includes('top') || side.includes('bottom') ? side.replaceAll('-', ' ') + ' strip' : side + ' dock'}`}
           aria-label={`Arrange panels for the ${side === 'top' ? 'top strip' : side + ' dock'}`}
         >
           <Plus size={13} />
@@ -116,6 +118,7 @@ function DockTabs({ side, mobile, extra }: {
 }) {
   const floating = useEditorStore(s => s.panels.floating)
   const dockSide = useEditorStore(s => s.panels.dockSide)
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
   const activeTab = useEditorStore(s => side === 'left' ? s.panels.leftTab : s.panels.rightTab)
   const setTabLeft = useEditorStore(s => s.setLeftPanelTab)
   const setTabRight = useEditorStore(s => s.setRightPanelTab)
@@ -131,14 +134,14 @@ function DockTabs({ side, mobile, extra }: {
   const suppressClick = useRef(false)
 
   const onPullDown = (id: string) => (e: React.PointerEvent<HTMLElement>) => {
-    if (mobile || e.button !== 0 || (e.buttons & 1) === 0) { pullDrag.current = null; return }
+    if (mobile || panelsLocked || e.button !== 0 || (e.buttons & 1) === 0) { pullDrag.current = null; return }
     suppressClick.current = false
     pullDrag.current = { id, x: e.clientX, y: e.clientY, handedOff: false }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   const onPullMove = (e: React.PointerEvent<HTMLElement>) => {
-    if ((e.buttons & 1) === 0) { pullDrag.current = null; return }
+    if (panelsLocked || (e.buttons & 1) === 0) { pullDrag.current = null; return }
     const d = pullDrag.current
     if (!d || d.handedOff) return
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > PULL_THRESHOLD) {
@@ -167,7 +170,7 @@ function DockTabs({ side, mobile, extra }: {
             className={cn(
               'flex-1 min-w-8 h-8 flex items-center justify-center relative',
               activeTab === t.id ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
-              !mobile && 'cursor-grab active:cursor-grabbing',
+              !mobile && (panelsLocked ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'),
             )}
             onClick={() => {
               if (suppressClick.current) {
@@ -176,7 +179,7 @@ function DockTabs({ side, mobile, extra }: {
               }
               setTab(t.id)
             }}
-            onDoubleClick={() => !mobile && useEditorStore.getState().floatPanel(t.id, t.defaultFloat)}
+            onDoubleClick={() => !mobile && !panelsLocked && useEditorStore.getState().floatPanel(t.id, t.defaultFloat)}
             onPointerDown={onPullDown(t.id)}
             onPointerMove={onPullMove}
             onPointerUp={onPullUp}
