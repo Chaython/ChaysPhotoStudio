@@ -61,6 +61,14 @@ def main() -> None:
               return !!video && Math.abs(video.currentTime - 1.5) < .1 &&
                 !video.seeking && !!button && !button.disabled
             }""", timeout=15000)
+            dialog.locator("[data-video-fps]").select_option("25")
+            dialog.locator("[data-video-next]").click()
+            page.wait_for_function("""() => {
+              const video = document.querySelector('[data-video-preview]')
+              const button = document.querySelector('[data-video-import]')
+              return !!video && Math.abs(video.currentTime - 1.54) < .012 &&
+                !video.seeking && !!button && !button.disabled
+            }""", timeout=15000)
             current = dialog.locator("video").evaluate("""video => {
               const c = document.createElement('canvas')
               c.width = 80; c.height = 60
