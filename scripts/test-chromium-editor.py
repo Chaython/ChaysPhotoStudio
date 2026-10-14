@@ -307,6 +307,41 @@ def main():
                 check(page.get_by_role("list", name="Available tools").get_by_role("listitem").count() >= 10,
                       "All Tools dialog did not render its registered tools")
 
+            def workspace_layout_profiles():
+                _, page, errors = app_page(browser)
+                result = page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setWorkspacePreset('classic')
+                    s.setToolbarLayout([{kind:'single', tool:'brush'}])
+                    s.setDockWidth(340)
+                    s.saveNamedLayout('Test tools', 'tools')
+                    s.saveNamedLayout('Test panels', 'panels')
+                    const exported = s.exportNamedLayout('Test tools')
+                    s.setWorkspacePreset('photoshop')
+                    const first = window.__zphotoStore.getState()
+                    const isolated = first.toolbarLayout === null && first.panels.dockWidth !== 340
+                    first.setToolbarLayout([{kind:'single', tool:'eraser'}])
+                    first.setWorkspacePreset('classic')
+                    const restored = window.__zphotoStore.getState()
+                    const classic = restored.toolbarLayout?.[0]?.tool === 'brush' && restored.panels.dockWidth === 340
+                    restored.setWorkspacePreset('photoshop')
+                    const photoshop = window.__zphotoStore.getState().toolbarLayout?.[0]?.tool === 'eraser'
+                    const importedName = window.__zphotoStore.getState().importNamedLayout(
+                        exported.replace('"Test tools"', '"Imported tools"'))
+                    window.__zphotoStore.getState().applyNamedLayout(importedName)
+                    const applied = window.__zphotoStore.getState().toolbarLayout?.[0]?.tool === 'brush'
+                    const untouched = window.__zphotoStore.getState().panels.dockWidth !== 340
+                    return {isolated, classic, photoshop, applied, untouched}
+                }""")
+                check(all(result.values()), f"Workspace layout isolation failed: {result}")
+                page.reload()
+                page.wait_for_function("() => !!window.__zphotoStore")
+                check(store(page, "s.workspacePreset") == "photoshop",
+                      "reload forgot workspace selection")
+                check(store(page, "s.toolbarLayout?.[0]?.tool") == "brush",
+                      "reload forgot imported tool layout")
+                check(not errors, f"workspace layout profiles threw exceptions: {errors[:3]}")
+
             def editable_layer_context_menu():
                 _, page, errors = app_page(browser)
                 page.evaluate("""() => {
@@ -624,6 +659,7 @@ def main():
                 ("dock_resize_reset_persistence", resize_reset),
                 ("dock_context_move_float", context_float),
                 ("workspace_all_tools_dialog", workspace_and_dialog),
+                ("workspace_layout_profiles", workspace_layout_profiles),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("color_sampler_info_panel", color_sampler_info_panel),
                 ("png_import_layer_undo_redo", png_import_undo_redo),

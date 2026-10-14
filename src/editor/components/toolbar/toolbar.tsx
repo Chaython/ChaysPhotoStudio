@@ -36,9 +36,10 @@ function ToolIcon({ icon, size = 16 }: { icon: string; size?: number }) {
 /** effective toolbar sections: the user's custom layout, else the factory default */
 function useToolbarSections(): ToolbarSection[] {
   const layout = useEditorStore(s => s.toolbarLayout)
+  const preset = useEditorStore(s => s.workspacePreset)
   return useMemo(
-    () => layout ?? defaultToolbarLayout(),
-    [layout]
+    () => layout ?? defaultToolbarLayout(preset),
+    [layout, preset]
   )
 }
 

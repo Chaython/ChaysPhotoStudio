@@ -57,7 +57,8 @@ export function ToolbarCustomizeDialog({ onClose }: DialogProps) {
   const pushToast = useEditorStore(s => s.pushToast)
   const overrides = useEditorStore(s => s.shortcutOverrides)
 
-  const sections = useMemo(() => layout ?? defaultToolbarLayout(), [layout])
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const sections = useMemo(() => layout ?? defaultToolbarLayout(workspacePreset), [layout, workspacePreset])
 
   const [drag, setDrag] = useState<ToolId | null>(null)
   const [dropHint, setDropHint] = useState<string | null>(null)
