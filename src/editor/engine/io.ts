@@ -548,6 +548,9 @@ interface SerializedHistoryState {
   selection?: { bounds: any; mask: string } | null
   savedChannels?: { id: string; name: string; mask: string }[]
   savedPaths?: import('../types').SavedPath[]
+  artboards?: import('../artboards').Artboard[]
+  activeArtboardId?: string | null
+  showArtboardOutlines?: boolean
 }
 
 interface SerializedHistorySnapshot {
@@ -691,6 +694,9 @@ function serializeHistoryState(st: HistoryState, toDataURL: (c: HTMLCanvasElemen
     selection: st.selection ? { bounds: { ...st.selection.bounds }, mask: toDataURL(st.selection.mask) } : null,
     savedChannels: st.savedChannels.map(ch => ({ id: ch.id, name: ch.name, mask: toDataURL(ch.mask) })),
     savedPaths: (st.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
+    artboards: normalizeArtboards(st.artboards, st.width, st.height),
+    activeArtboardId: st.activeArtboardId ?? null,
+    showArtboardOutlines: st.showArtboardOutlines !== false,
   }
 }
 
@@ -911,6 +917,11 @@ async function deserializeHistoryState(st: SerializedHistoryState): Promise<Hist
     savedPaths: Array.isArray(st.savedPaths)
       ? st.savedPaths.map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) }))
       : [],
+    artboards: normalizeArtboards(st.artboards, width, height),
+    activeArtboardId: typeof st.activeArtboardId === 'string' &&
+      normalizeArtboards(st.artboards, width, height).some(a => a.id === st.activeArtboardId)
+      ? st.activeArtboardId : null,
+    showArtboardOutlines: st.showArtboardOutlines !== false,
   }
 }
 
