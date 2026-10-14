@@ -69,7 +69,8 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
     setSelectedId(nextFocus)
     doc.artboards = valid.map(a => ({ ...a }))
     doc.activeArtboardId = nextFocus
-    doc.dirty = true
+    // Commit document layout edits to History just like other editable geometry.
+    engine.pushHistory('Edit Artboards', doc)
     engine.emit()
   }
   const modify = (props: Partial<Artboard>) => {
