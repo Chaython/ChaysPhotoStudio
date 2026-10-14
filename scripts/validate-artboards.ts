@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { MAX_ARTBOARDS, artboardCrop, gridArtboards, normalizeArtboards } from '../src/editor/artboards'
+import { MAX_ARTBOARDS, artboardCrop, gridArtboards, normalizeArtboards, scaleArtboards, translateArtboards } from '../src/editor/artboards'
 
 const first = { id: 'a', name: ' Page A ', x: 1, y: 2, width: 20, height: 10 }
 assert.deepEqual(normalizeArtboards([first], 100, 80), [{ ...first, name: 'Page A' }])
@@ -28,5 +28,16 @@ assert.equal(gridArtboards(1, 10, 2, 1, () => 'x').length, 0)
 assert.equal(gridArtboards(100, 100, 9, 8, () => 'x').length, 0)
 assert.equal(normalizeArtboards(Array.from({ length: MAX_ARTBOARDS + 8 }, (_, i) => ({ ...first, id: String(i) })), 100, 80).length, MAX_ARTBOARDS)
 assert.equal(normalizeArtboards([{ ...first, x: NaN }], 100, 80).length, 0)
+
+
+const moved = translateArtboards([first], 100, 80, 4, 7, 110, 90)
+assert.deepEqual([moved[0].x, moved[0].y, moved[0].width, moved[0].height], [5, 9, 20, 10])
+const cropped = translateArtboards([first], 100, 80, -10, -8, 80, 60)
+assert.deepEqual([cropped[0]?.x, cropped[0]?.y, cropped[0]?.width, cropped[0]?.height], [0, 0, 11, 4])
+const removed = translateArtboards([first], 100, 80, -80, 0, 20, 80)
+assert.equal(removed.length, 0)
+const resized = scaleArtboards(gridArtboards(101, 71, 2, 1, (() => { let i=0;return () => String(++i) })()), 101, 71, 202, 142)
+assert.deepEqual(resized.map(a => [a.x, a.width, a.height]), [[0, 100, 142], [100, 102, 142]])
+assert.equal(scaleArtboards([first], 100, 80, 0, 40).length, 0)
 
 console.log('Artboard geometry, grids, project normalization and crop safety validated')
