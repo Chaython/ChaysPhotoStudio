@@ -16,6 +16,7 @@ import { renderPersistentMeasurementOverlay } from '../tools/measure'
 import { engine } from './engine'
 import { RULER_W, drawRulers, drawGuides, drawGrid, drawPixelGrid, hitGuide } from './guides'
 import { useEditorStore } from '../store'
+import { normalizeArtboards } from '../artboards'
 
 export interface VirtualInputState {
   shift: boolean
@@ -394,6 +395,39 @@ export class Viewport {
       ctx.scale(v.zoom, v.zoom)
       drawAnts(ctx, doc.selection, v.zoom, this.antsOffset)
       ctx.restore()
+    }
+    // Artboards are document-space export regions, not separate layers.
+    // Draw on the overlay only, never on the composited image or exports.
+    // Bounds are normalized so old projects remain safe after canvas resizing.
+    if (doc.showArtboardOutlines !== false) {
+      const boards = normalizeArtboards(doc.artboards, doc.width, doc.height)
+      if (boards.length) {
+        ctx.save()
+        ctx.font = '10px ui-sans-serif, system-ui, sans-serif'
+        ctx.lineWidth = 1.5
+        for (const board of boards) {
+          const x = v.panX + board.x * v.zoom
+          const y = v.panY + board.y * v.zoom
+          const bw = board.width * v.zoom
+          const bh = board.height * v.zoom
+          if (x + bw < 0 || y + bh < 0 || x >= w || y >= h || bw <= 0 || bh <= 0) continue
+          const selected = board.id === doc.activeArtboardId
+          ctx.strokeStyle = selected ? 'rgba(251,191,36,.95)' : 'rgba(56,189,248,.85)'
+          ctx.setLineDash(selected ? [] : [6, 4])
+          ctx.strokeRect(Math.round(x) + .5, Math.round(y) + .5, bw, bh)
+          ctx.setLineDash([])
+          const label = board.name.length > 32 ? board.name.slice(0, 31) + '…' : board.name
+          const labelWidth = Math.min(Math.max(16, ctx.measureText(label).width + 10), Math.max(0, w - Math.max(0, x)))
+          const labelY = Math.max(0, y - 17)
+          if (labelWidth <= 15 || labelY >= h) continue
+          ctx.fillStyle = selected ? 'rgba(146,95,12,.95)' : 'rgba(10,69,93,.90)'
+          ctx.fillRect(Math.max(0, x), labelY, labelWidth, 16)
+          ctx.fillStyle = '#ffffff'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(label, Math.max(0, x) + 5, labelY + 8, labelWidth - 8)
+        }
+        ctx.restore()
+      }
     }
     // persistent named paths remain visible independently of the active tool.
     for (const path of doc.savedPaths ?? []) drawSavedPathOverlay(ctx, path, v)
