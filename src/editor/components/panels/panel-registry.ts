@@ -43,10 +43,8 @@ const PatternsPanel = deferredPanel(() => import('./patterns-panel').then(m => (
 const ToolPresetsPanel = deferredPanel(() => import('./tool-presets-panel').then(m => ({ default: m.ToolPresetsPanel })))
 const LayerCompsPanel = deferredPanel(() => import('./layer-comps-panel').then(m => ({ default: m.LayerCompsPanel })))
 
-export type PanelId =
-  | 'color' | 'layers' | 'channels' | 'history' | 'actions'
-  | 'adjustments' | 'properties' | 'metadata' | 'navigator' | 'histogram' | 'timeline' | 'clone-source' | 'info' | 'paths' | 'patterns' | 'tool-presets' | 'layer-comps'
-  | 'tools' | 'tool-options' | 'documents'
+import type { PanelId } from '../../constants/panel-ids'
+export type { PanelId } from '../../constants/panel-ids'
 
 export interface PanelDef {
   id: PanelId
