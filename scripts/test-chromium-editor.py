@@ -334,12 +334,54 @@ def main():
                     return {isolated, classic, photoshop, applied, untouched}
                 }""")
                 check(all(result.values()), f"Workspace layout isolation failed: {result}")
+                # Simple tab/color preference changes must be part of the workspace
+                # profile and survive reload, not just drag/dock operations.
+                safeguards = page.evaluate("""() => {
+                    const s = window.__zphotoStore.getState()
+                    s.setRightPanelTab('history')
+                    s.toggleColorPanel()
+                    s.setPhotoshopInspector({upperTab:'adjustments', lowerTab:'history', upperPercent:55, collapsed:true})
+                    s.saveNamedLayout('Inspector snapshot', 'panels')
+                    const exportedPanels = JSON.parse(s.exportNamedLayout('Inspector snapshot'))
+                    const inspectorExport = exportedPanels.panels.photoshopInspector.upperPercent === 55 &&
+                        exportedPanels.panels.photoshopInspector.collapsed === true
+                    const before = window.__zphotoStore.getState().savedLayouts.length
+                    const imported = s.importNamedLayout(s.exportNamedLayout('Test tools'))
+                    const duplicated = imported === 'Test tools (2)' &&
+                        window.__zphotoStore.getState().savedLayouts.length === before + 1
+                    let rejected = false
+                    try { s.importNamedLayout(JSON.stringify({
+                        version:1, name:'Invalid dimensions', kind:'panels',
+                        panels:{ dockSide:{}, floating:{}, dockWidth:'bogus' }
+                    })) } catch { rejected = true }
+                    return {duplicated, rejected, inspectorExport}
+                }""")
+                check(all(safeguards.values()), f"Import safety failed: {safeguards}")
                 page.reload()
                 page.wait_for_function("() => !!window.__zphotoStore")
                 check(store(page, "s.workspacePreset") == "photoshop",
                       "reload forgot workspace selection")
                 check(store(page, "s.toolbarLayout?.[0]?.tool") == "brush",
                       "reload forgot imported tool layout")
+                check(store(page, "s.panels.rightTab") == "history",
+                      "reload forgot the active Photoshop panel tab")
+                check(store(page, "s.panels.colorPanelOpen") is False,
+                      "reload forgot the color panel visibility")
+                check(store(page, "s.panels.photoshopInspector.upperPercent") == 55,
+                      "reload forgot the Photoshop inspector split")
+                check(store(page, "s.panels.photoshopInspector.upperTab") == "adjustments",
+                      "reload forgot the top inspector tab")
+                check(store(page, "s.panels.photoshopInspector.lowerTab") == "history",
+                      "reload forgot the bottom inspector tab")
+                check(store(page, "s.panels.photoshopInspector.collapsed") is True,
+                      "reload forgot inspector collapsed state")
+                check(store(page, "s.savedLayouts.some(x => x.name === 'Test tools (2)')") is True,
+                      "reload lost a collision-safe imported layout")
+                page.evaluate("() => window.__zphotoStore.getState().setWorkspacePreset('classic')")
+                check(store(page, "s.panels.dockWidth") == 340,
+                      "switching after reload lost Classic's panel width")
+                check(store(page, "s.toolbarLayout?.[0]?.tool") == "brush",
+                      "switching after reload lost Classic's toolbar")
                 check(not errors, f"workspace layout profiles threw exceptions: {errors[:3]}")
 
             def editable_layer_context_menu():
