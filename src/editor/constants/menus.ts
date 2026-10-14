@@ -292,6 +292,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'file-export', label: 'Export As…', shortcut: sc('export'), run: () => openDlg('export') },
     { id: 'file-batch-raw-export', label: 'Batch Export RAW Photos…', run: () => openDlg('raw-batch-export') },
     { id: 'file-export-layers', label: 'Export Layers to Files…', enabled: () => !!engine.activeDoc?.layers.some(layer => layer.kind !== 'adjustment'), run: () => openDlg('export-layers') },
+    { id: 'file-web-assets', label: 'Web Slices & Hotspots…', enabled: () => !!engine.activeDoc, run: () => openDlg('web-assets') },
     { id: 'file-quick-export', label: 'Quick Export PNG', run: async () => {
       const doc = engine.activeDoc
       if (doc) await engine.exportActive({ format: 'png', quality: 100, scale: 1, fileName: exportBaseName(doc.name) })
