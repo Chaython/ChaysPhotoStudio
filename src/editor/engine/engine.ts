@@ -639,7 +639,13 @@ export class Engine {
       artboardIds.set(board.id, id)
       return { ...board, id,
         visibleLayerIds: board.visibleLayerIds?.map(old => layerIds.get(old))
-          .filter((layerId): layerId is string => !!layerId) }
+          .filter((layerId): layerId is string => !!layerId),
+        rollover: board.rollover ? {
+          normalCompId: board.rollover.normalCompId ? compIds.get(board.rollover.normalCompId) : undefined,
+          hoverCompId: board.rollover.hoverCompId ? compIds.get(board.rollover.hoverCompId) : undefined,
+          pressedCompId: board.rollover.pressedCompId ? compIds.get(board.rollover.pressedCompId) : undefined,
+        } : undefined,
+      }
     })
     const frames = src.frames?.map(frame => ({
       ...structuredClone(frame),
@@ -819,7 +825,7 @@ export class Engine {
       colorSamplers: doc.colorSamplers?.map(sampler => ({ ...sampler })),
       measurements: doc.measurements?.map(measurement => structuredClone(measurement)),
       frames: doc.frames?.map(frame => structuredClone(frame)),
-      artboards: doc.artboards?.map(a => ({ ...a })),
+      artboards: doc.artboards?.map(a => structuredClone(a)),
       activeArtboardId: doc.activeArtboardId ?? null,
       showArtboardOutlines: doc.showArtboardOutlines !== false,
     }
@@ -844,7 +850,7 @@ export class Engine {
     if ('colorSamplers' in st) doc.colorSamplers = st.colorSamplers?.map(sampler => ({ ...sampler }))
     if ('measurements' in st) doc.measurements = st.measurements?.map(measurement => structuredClone(measurement))
     if ('frames' in st) doc.frames = st.frames?.map(frame => structuredClone(frame))
-    if ('artboards' in st) doc.artboards = st.artboards?.map(a => ({ ...a }))
+    if ('artboards' in st) doc.artboards = st.artboards?.map(a => structuredClone(a)),
     if ('activeArtboardId' in st) doc.activeArtboardId = st.activeArtboardId ?? null
     if ('showArtboardOutlines' in st) doc.showArtboardOutlines = st.showArtboardOutlines !== false
     doc._stroke = null; doc._strokeLayerId = null; doc._strokeBlendMode = 'normal'; doc._strokeBbox = null
