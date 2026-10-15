@@ -16,7 +16,7 @@ export function normalizeCountMarkers(input: unknown, width: number, height: num
     if(typeof v.x!=='number'||typeof v.y!=='number'||!Number.isFinite(v.x)||!Number.isFinite(v.y))continue
     if(v.x<0||v.y<0||v.x>=width||v.y>=height)continue
     const group=typeof v.group==='string'&&/^[A-Za-z0-9 -]{1,30}$/.test(v.group)?v.group:'1'
-    out.push({id:v.id,x:Math.round(v.x),y:Math.round(v.y),group})
+    out.push({id:v.id,x:Math.min(width-1,Math.round(v.x)),y:Math.min(height-1,Math.round(v.y)),group})
     seen.add(v.id)
   }
   return out
