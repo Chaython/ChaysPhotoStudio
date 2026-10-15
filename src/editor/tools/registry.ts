@@ -33,6 +33,8 @@ import { textTool, shapeTool } from './text-shapes'
 import { cropTool, eyedropperTool, handTool, zoomTool } from './crop'
 import { perspectiveCropTool } from './perspective-crop'
 import { colorSamplerTool } from './color-sampler'
+import { artboardTool } from './artboard-tool'
+import { countTool } from './count'
 
 export const TOOLS: Record<ToolId, Tool> = {
   'move': moveTool,
@@ -52,6 +54,8 @@ export const TOOLS: Record<ToolId, Tool> = {
   'perspective-crop': perspectiveCropTool,
   'eyedropper': eyedropperTool,
   'color-sampler': colorSamplerTool,
+  'artboard': artboardTool,
+  'count': countTool,
   'brush': brushTool,
   'pencil': pencilTool,
   'mixer-brush': mixerBrushTool,
