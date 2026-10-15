@@ -403,9 +403,16 @@ function PhotoshopRightDock() {
                 if (panelsLocked || !e.altKey) return
                 // React may reparent the tab when changing stacks; keep the
                 // keyboard user's focus on the same tab after its move.
-                const restoreFocus = () => requestAnimationFrame(() => {
-                  document.querySelector<HTMLButtonElement>(`[data-inspector-tab="${id}"]`)?.focus()
-                })
+                const restoreFocus = () => {
+                  const origin = document.activeElement
+                  requestAnimationFrame(() => {
+                    // A later keyboard/mouse focus choice takes precedence over
+                    // this async restoration from an earlier tab reparent.
+                    if (document.activeElement === document.body || document.activeElement === origin) {
+                      document.querySelector<HTMLButtonElement>(`[data-inspector-tab="${id}"]`)?.focus()
+                    }
+                  })
+                }
                 if (e.shiftKey && ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
                   e.preventDefault()
                   const destination = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 'side'
