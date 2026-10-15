@@ -15,7 +15,7 @@ export type BlendMode =
 // ---------- Tools ----------
 export type ToolId =
   | 'move' | 'marquee-rect' | 'marquee-ellipse' | 'marquee-row' | 'marquee-column' | 'lasso' | 'polygon-lasso' | 'magnetic-lasso' | 'selection-brush'
-  | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'perspective-crop' | 'eyedropper' | 'color-sampler' | 'measure' | 'slice' | 'hotspot'
+  | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'perspective-crop' | 'eyedropper' | 'color-sampler' | 'measure' | 'artboard' | 'count' | 'slice' | 'hotspot'
   | 'brush' | 'pencil' | 'mixer-brush' | 'color-replacement' | 'history-brush' | 'art-history-brush' | 'clone-stamp' | 'pattern-stamp' | 'healing-brush' | 'spot-healing' | 'patch' | 'content-aware-move' | 'red-eye'
   | 'eraser' | 'background-eraser' | 'magic-eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
   | 'dodge' | 'burn' | 'sponge' | 'text' | 'type-mask-horizontal' | 'type-mask-vertical' | 'shape' | 'pen' | 'pen-freeform' | 'pen-curvature' | 'path-select' | 'direct-select' | 'hand' | 'zoom'
@@ -491,7 +491,7 @@ export interface HistoryState {
   frames?: AnimFrame[]
   /** Snapshot of editable artboard regions for geometry Undo/Redo. */
   artboards?: import('./artboards').Artboard[]
-  /** Editable Slice/Hotspot annotations in History and durable Snapshots. */
+  countMarkers?: import('./count-markers').CountMarker[]
   webRegions?: import('./web-assets').WebRegion[]
   activeArtboardId?: string | null
   showArtboardOutlines?: boolean
@@ -670,6 +670,8 @@ export interface PsDocument {
   linkedDesignStyles?: import('./linked-design-styles').LinkedDesignStyle[]
   /** Multiple named, document-space export artboards (shared editable layer stack). */
   artboards?: import('./artboards').Artboard[]
+  /** Editable Count Tool annotations kept outside document pixels. */
+  countMarkers?: import('./count-markers').CountMarker[]
   activeArtboardId?: string | null
   /** Whether non-exporting artboard bounds appear over the main canvas. */
   showArtboardOutlines?: boolean

@@ -50,11 +50,11 @@ function CompatibilityNote() {
     <div className="flex items-start gap-2 rounded border border-border bg-panel/60 px-3 py-2">
       <CircleAlert size={13} className="mt-0.5 text-primary flex-shrink-0" />
       <p className="text-[10px] leading-snug text-muted-foreground">
-        <span className="text-foreground font-medium">What can import:</span> GIMP brushes
+        <span className="text-foreground font-medium">What can import:</span> Chay JS plugins, Photoshop UXP manifests, GIMP Script-Fu/Python scripts, and G’MIC/GEGL compatibility clues all get classified for review; GIMP brushes
         (<span className="font-mono">.gbr</span>), patterns (<span className="font-mono">.pat</span>), palettes (<span className="font-mono">.gpl</span>) and gradients (<span className="font-mono">.ggr</span>) parse
-        natively, and Chay's Photo JS plugins run in a sandboxed worker.
-        <span className="text-foreground font-medium"> Desktop bridges:</span> Electron can run installed G’MIC and GEGL filters through a sandboxed IPC bridge.{' '}
-        <span className="text-foreground font-medium"> Legacy limits:</span> Photoshop <span className="font-mono">.8bf</span> and full GIMP PDB/Script-Fu require native compatibility runtimes and are reported rather than falsely claimed as drop-in compatible. Plugins are arbitrary JavaScript with pixel access:{' '}
+        natively as assets, while Chay JS and UXP plugins run in the sandboxed worker when executable.
+        <span className="text-foreground font-medium">Desktop bridges:</span> Electron can run installed G’MIC/GEGL filters and invoke installed GIMP 3 procedures or trusted Python/Script-Fu source on demand. GIMP runs with your OS account permissions; results return as a new 8-bit PNG layer.{' '}
+        <span className="text-foreground font-medium"> Legacy limits:</span> Photoshop <span className="font-mono">.8bf</span> still requires Photoshop’s native host; browser builds cannot launch native runtimes. Plugins are arbitrary JavaScript with pixel access:{' '}
         <span className="text-foreground">run only plugins you trust.</span>
       </p>
     </div>
@@ -134,7 +134,7 @@ function CheatSheet() {
 function pickPluginFile(onPick: (file: File) => void): void {
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = '.zpplugin.json,.js'
+  input.accept = '.zpplugin.json,.js,.mjs,.ts,.scm,.py,.gmic,.gegl,.json'
   input.onchange = () => { if (input.files?.[0]) onPick(input.files[0]) }
   input.click()
 }

@@ -14,7 +14,17 @@ export type PluginPermission =
   | 'network'
   | 'native.process'
 
-export type PluginSourceFormat = 'zphoto' | 'uxp' | 'gimp' | 'legacy'
+export type PluginSourceFormat =
+  | 'zphoto'
+  | 'uxp'
+  | 'photoshop'
+  | 'photoshop-uxp'
+  | 'gimp'
+  | 'script-fu'
+  | 'python'
+  | 'gmic'
+  | 'gegl'
+  | 'legacy'
 
 export interface PluginManifest {
   id: string
@@ -31,7 +41,7 @@ export interface PluginCommand {
 }
 
 export interface PluginCompatibilityReport {
-  ecosystem: 'native' | 'photoshop-uxp' | 'gimp' | 'gegl' | 'gmic'
+  ecosystem: 'native' | 'photoshop' | 'photoshop-uxp' | 'gimp' | 'gegl' | 'gmic'
   /** API feature coverage estimate. This is diagnostic, not a promise that the plugin runs. */
   coverage: number
   supported: string[]

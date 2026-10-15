@@ -691,6 +691,7 @@ export class Engine {
       activeArtboardId: src.activeArtboardId ? artboardIds.get(src.activeArtboardId) ?? null : null,
       showArtboardOutlines: src.showArtboardOutlines !== false,
       webRegions: src.webRegions?.map(region => ({ ...region, id: uid() })),
+      countMarkers: src.countMarkers?.map(marker => ({ ...marker, id: uid() })),
       layerComps,
       activeLayerCompId: src.activeLayerCompId ? compIds.get(src.activeLayerCompId) ?? null : null,
       lastLayerCompState: null,
@@ -828,6 +829,7 @@ export class Engine {
       measurements: doc.measurements?.map(measurement => structuredClone(measurement)),
       frames: doc.frames?.map(frame => structuredClone(frame)),
       artboards: doc.artboards?.map(a => structuredClone(a)),
+      countMarkers: doc.countMarkers?.map(m => ({ ...m })),
       webRegions: doc.webRegions?.map(r => ({ ...r })),
       activeArtboardId: doc.activeArtboardId ?? null,
       showArtboardOutlines: doc.showArtboardOutlines !== false,
@@ -855,6 +857,7 @@ export class Engine {
     if ('measurements' in st) doc.measurements = st.measurements?.map(measurement => structuredClone(measurement))
     if ('frames' in st) doc.frames = st.frames?.map(frame => structuredClone(frame))
     if ('artboards' in st) doc.artboards = st.artboards?.map(a => structuredClone(a))
+    if ('countMarkers' in st) doc.countMarkers = st.countMarkers?.map(m => ({ ...m }))
     if ('webRegions' in st) doc.webRegions = st.webRegions?.map(r => ({ ...r }))
     if ('activeArtboardId' in st) doc.activeArtboardId = st.activeArtboardId ?? null
     if ('showArtboardOutlines' in st) doc.showArtboardOutlines = st.showArtboardOutlines !== false

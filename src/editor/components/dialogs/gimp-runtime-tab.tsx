@@ -102,7 +102,7 @@ export function GimpRuntimeTab() {
     </div>}
     {name && <div className="rounded border border-border p-2 space-y-2">
       <p className="font-medium">Selected procedure: <span className="font-mono">{name}</span></p>
-      <p className="text-[10px] text-muted-foreground">Image/drawable and noninteractive mode are supplied automatically. Empty fields retain GIMP defaults. Not every plugin supports headless operation.</p>
+      <p className="text-[10px] text-muted-foreground">Image, selected drawable(s) and noninteractive mode are supplied automatically. Empty fields retain GIMP defaults. Not every plugin supports headless operation.</p>
       {argumentsList.filter(arg => !isAuto(arg.name)).map(arg => <label key={arg.name} className="flex items-center gap-2">
         <span className="w-36 shrink-0 truncate" title={arg.name}>{arg.name} <span className="text-muted-foreground">({arg.type})</span></span>
         {isBoolean(arg.type) ? <input type="checkbox" checked={values[arg.name] === true} onChange={e => setValues(v => ({ ...v, [arg.name]: e.target.checked }))}/> :

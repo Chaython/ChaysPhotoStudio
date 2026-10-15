@@ -1,5 +1,6 @@
 // File IO: open images, place layers, project save/load, export
 import { engine } from './engine'
+import { normalizeCountMarkers } from '../count-markers'
 import { useEditorStore } from '../store'
 import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
 import { newLayer } from './document'
@@ -614,6 +615,7 @@ export interface SerializedProject {
     savedPaths?: import('../types').SavedPath[]
     layerComps?: import('../types').LayerComp[]
     webRegions?: import('../web-assets').WebRegion[]
+    countMarkers?: import('../count-markers').CountMarker[]
     artboards?: import('../artboards').Artboard[]
     activeArtboardId?: string | null
     showArtboardOutlines?: boolean
@@ -755,6 +757,7 @@ export function serializeProject(doc: PsDocument): SerializedProject {
       savedPaths: (doc.savedPaths ?? []).map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) })),
       layerComps: (doc.layerComps ?? []).map(comp => structuredClone(comp)),
       webRegions: normalizeWebRegions(doc.webRegions, doc.width, doc.height),
+      countMarkers: normalizeCountMarkers(doc.countMarkers, doc.width, doc.height),
       artboards: normalizeArtboards(doc.artboards, doc.width, doc.height),
       activeArtboardId: doc.artboards?.some(a => a.id === doc.activeArtboardId) ? doc.activeArtboardId : null,
       showArtboardOutlines: doc.showArtboardOutlines !== false,
@@ -1016,6 +1019,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
       : [],
     activeLayerCompId: typeof project.doc.activeLayerCompId === 'string' ? project.doc.activeLayerCompId : null,
     webRegions: normalizeWebRegions(project.doc.webRegions, width, height),
+    countMarkers: normalizeCountMarkers(project.doc.countMarkers, width, height),
     artboards: normalizeArtboards(project.doc.artboards, width, height),
     activeArtboardId: normalizeArtboards(project.doc.artboards, width, height).some(a => a.id === project.doc.activeArtboardId)
       ? project.doc.activeArtboardId : null,
