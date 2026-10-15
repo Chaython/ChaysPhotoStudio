@@ -97,6 +97,26 @@ const inheritedPaint = pdfEditableVectors({
 }, ops, viewport, 400, 240, 1)
 check(inheritedPaint[0]?.shape?.fill === '#000000', 'PDF save/restore must restore paint state')
 
+// The native path model must not silently fill unclosed PDF contours.
+const unclosed = new Float32Array([0, 0, 0, 1, 20, 0, 1, 20, 20])
+const openFill = pdfEditableVectors({
+  fnArray: [91], argsArray: [[22, [unclosed], [0, 0, 20, 20]]],
+}, ops, viewport, 400, 240, 1)
+check(openFill.length === 0, 'filled open PDF contours must stay in raster reference')
+const openStroke = pdfEditableVectors({
+  fnArray: [91], argsArray: [[20, [unclosed], [0, 0, 20, 20]]],
+}, ops, viewport, 400, 240, 1)
+check(openStroke.length === 1 && openStroke[0].shape?.pathClosed === false,
+  'an open stroked PDF contour must remain editable')
+const unmatchedRestore = pdfEditableVectors({
+  fnArray: [11, 91], argsArray: [[], [22, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(unmatchedRestore.length === 0, 'unbalanced PDF graphics restore must not create shapes')
+const unknownGroup = pdfEditableVectors({
+  fnArray: [77, 91], argsArray: [[], [22, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(unknownGroup.length === 0, 'unbalanced transparency group must not create shapes')
+
 const complex = pdfEditableVectors({
   fnArray: [29, 91], argsArray: [[], [22, [rect], [0, 0, 200, 120]]],
 }, ops, viewport, 400, 240, 1)
