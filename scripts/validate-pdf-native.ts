@@ -196,7 +196,7 @@ check(packedRectangle.length === 1 && packedRectangle[0].shape?.pathAnchors?.len
 
 const legacyPaintedRectangle = pdfEditableVectors({
   fnArray: [59, 91],
-  argsArray: [[1, 0, 0], [22, [new Float32Array([0, 0, 1, 200, 0, 1, 200, 120, 1, 0, 120, 4])], [0, 0, 200, 120]]],
+  argsArray: [[1, 0, 0], [22, [new Float32Array([0, 0, 0, 1, 200, 0, 1, 200, 120, 1, 0, 120, 4])], [0, 0, 200, 120]]],
 }, ops, viewport, 400, 240, 1)
 check(legacyPaintedRectangle.length === 1,
   'existing compact painted constructPath remains editable alongside new PDF.js path forms')
