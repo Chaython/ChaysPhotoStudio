@@ -1,0 +1,36 @@
+name: Native webview build check
+on:
+  pull_request:
+    paths:
+      - 'webview/src-tauri/**'
+      - 'src/app/native-bridges.tsx'
+      - 'src/editor/components/shell/editor-app.tsx'
+      - 'scripts/validate-desktop-file-associations.mjs'
+      - 'electron-builder.yml'
+      - '.github/workflows/native-webview-check.yml'
+  workflow_dispatch:
+
+jobs:
+  tauri-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux
+          - os: windows-latest
+            target: windows
+          - os: macos-latest
+            target: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux webview build libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Verify native Tauri Rust code
+        working-directory: webview/src-tauri
+        run: cargo check
