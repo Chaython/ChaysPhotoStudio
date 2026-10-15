@@ -17,6 +17,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 # Restore native window size/position/maximized state across launches.
 tauri-plugin-window-state = "2"
+# Forward Windows/Linux file association launches to the existing window.
+tauri-plugin-single-instance = "2"
 
 [profile.release]
 codegen-units = 1
