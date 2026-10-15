@@ -73,6 +73,30 @@ const invalidStroke = pdfEditableVectors({
 }, ops, viewport, 400, 240, 1)
 check(invalidStroke.length === 0, 'invalid PDF stroke color must not become an editable shape')
 
+// Malformed PDF graphics states must never become misleading native shapes.
+for (const malformed of [null, '1', Number.NaN, Infinity]) {
+  const badColor = pdfEditableVectors({
+    fnArray: [59, 91],
+    argsArray: [[malformed, 0, 0], [22, [rect], [0, 0, 200, 120]]],
+  }, ops, viewport, 400, 240, 1)
+  check(badColor.length === 0, 'invalid channel must stay in the visual reference')
+}
+const badLineWidth = pdfEditableVectors({
+  fnArray: [2, 91],
+  argsArray: [[Infinity], [20, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(badLineWidth.length === 0, 'invalid PDF line width must not become a shape')
+const overflowTransform = pdfEditableVectors({
+  fnArray: [12, 91],
+  argsArray: [[1e308, 0, 0, 1e308, 0, 0], [22, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(overflowTransform.length === 0, 'overflowing PDF transforms must not become shapes')
+const inheritedPaint = pdfEditableVectors({
+  fnArray: [10, 59, 11, 91],
+  argsArray: [[], [1, 0, 0], [], [22, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(inheritedPaint[0]?.shape?.fill === '#000000', 'PDF save/restore must restore paint state')
+
 const complex = pdfEditableVectors({
   fnArray: [29, 91], argsArray: [[], [22, [rect], [0, 0, 200, 120]]],
 }, ops, viewport, 400, 240, 1)
