@@ -18,6 +18,10 @@ check(text[0].text?.fontSize === 32, 'font size follows page zoom')
 check(Math.abs((text[0].text?.x ?? -1) - 24) < .01, 'text X placement')
 check(text[0].visible === false, 'visual-reference appearance preserved')
 check(text[0].metadata?.pageNumber === 2, 'page provenance retained')
+check(text[0].metadata?.sourceTextIndex === 0 && text[0].metadata?.sourceText === 'Editable PDF text',
+  'PDF text keeps its source item index and original value')
+check(JSON.stringify(text[0].metadata?.sourceTextTransform) === JSON.stringify([16, 0, 0, 16, 12, 44]),
+  'PDF text keeps its original transform')
 
 const ops: PdfOps = {
   save: 10, restore: 11, transform: 12,
@@ -39,6 +43,8 @@ check(shape?.fill === '#ff0000' && shape?.stroke === null, 'PDF RGB fill preserv
 check(shape?.pathAnchors?.[0].x === 0 && shape.pathAnchors[0].y === 240, 'PDF coordinates mapped from bottom-left')
 check(shape?.pathAnchors?.[2].x === 400 && shape.pathAnchors[2].y === 0, 'vector scaled to page pixels')
 check(vector[0].visible === false, 'original raster remains visual authority')
+check(vector[0].metadata?.sourceOperatorIndex === 1 && vector[0].metadata?.sourcePaintOperator === 22,
+  'PDF path keeps its operator location and original paint opcode')
 
 // Packed PDF.js RGB channels must remain byte-valued even when a channel is 1.
 const nearBlack = pdfEditableVectors({
