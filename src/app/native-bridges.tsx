@@ -54,12 +54,13 @@ export function AppBridges() {
         for (const [name, data] of files) {
           if (!Array.isArray(data) || data.length === 0) continue
           const bytes = new Uint8Array(data)
-          const file = new File([bytes], name, { type: 'application/octet-stream' })
+          const file = new File([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], name, { type: 'application/octet-stream' })
           // The editor registers its file listener during hydration.
+          let attempts = 0
           const deliver = () => {
             if ((window as unknown as { __zphotoEngine?: unknown }).__zphotoEngine) {
               window.dispatchEvent(new CustomEvent('chays:open-file', { detail: file }))
-            } else window.setTimeout(deliver, 100)
+            } else if (++attempts < 300) window.setTimeout(deliver, 100)
           }
           deliver()
         }
