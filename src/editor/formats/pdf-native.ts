@@ -287,3 +287,63 @@ export function pdfEditableVectors(
   }
   return result
 }
+
+
+/** Conservative PDF text-widget recovery. Original rendered widget stays visible;
+ * editable values are hidden until explicitly enabled in the Layers panel. */
+export interface PdfTextWidget {
+  subtype?: string
+  fieldType?: string
+  fieldName?: string
+  fieldValue?: unknown
+  rect?: number[]
+  id?: string
+  hidden?: boolean
+  noView?: boolean
+  readOnly?: boolean
+  password?: boolean
+  multiLine?: boolean
+}
+export function pdfEditableTextWidgets(
+  annotations: readonly PdfTextWidget[], viewport: PdfMatrix,
+  width: number, height: number, pageNumber: number,
+): ParsedDocumentLayer[] {
+  const layers: ParsedDocumentLayer[] = []
+  for (const [index, annotation] of annotations.slice(0, 2000).entries()) {
+    if (layers.length >= 100) break
+    if (annotation.subtype !== 'Widget' || annotation.fieldType !== 'Tx' ||
+        annotation.password || annotation.hidden || annotation.noView ||
+        typeof annotation.fieldValue !== 'string' ||
+        annotation.fieldValue.length === 0 || annotation.fieldValue.length > 2000 ||
+        !Array.isArray(annotation.rect) || annotation.rect.length !== 4 ||
+        !annotation.rect.every(v => typeof v === 'number' && Number.isFinite(v))) continue
+    const [x0, y0, x1, y1] = annotation.rect
+    if (x1 <= x0 || y1 <= y0) continue
+    // Rotated/sheared widgets are not safely representable by TextSpec.
+    if (Math.abs(viewport[1]) > 0.0001 || Math.abs(viewport[2]) > 0.0001) continue
+    const a = pt(viewport, x0, y0), b = pt(viewport, x1, y1)
+    const left = Math.min(a.x, b.x), top = Math.min(a.y, b.y)
+    const boxHeight = Math.abs(b.y - a.y)
+    if (!bounded(left, top, width, height) || !Number.isFinite(boxHeight) || boxHeight < 3) continue
+    const fontSize = Math.max(4, Math.min(96, boxHeight * (annotation.multiLine ? 0.55 : 0.7)))
+    const value = annotation.fieldValue
+    layers.push({
+      kind: 'text',
+      name: `PDF P${pageNumber} · Field: ${(annotation.fieldName || 'Text').slice(0, 50)}`,
+      visible: false,
+      text: {
+        content: value, x: left + 2, y: top + 2, fontSize, fontFamily: 'Arial',
+        color: '#000000', bold: false, italic: false, align: 'left',
+        lineHeight: 1.2, tracking: 0,
+      },
+      metadata: {
+        sourceFormat: 'pdf', pageNumber, editableObject: 'formText',
+        sourceObjectKey: `pdf:p${pageNumber}:widget:${index}`,
+        sourceWidgetIndex: index, sourceWidgetId: annotation.id ?? '',
+        sourceFieldName: annotation.fieldName ?? '', sourceText: value,
+        readOnlyField: annotation.readOnly === true, approximateAppearance: true,
+      },
+    })
+  }
+  return layers
+}
