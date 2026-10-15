@@ -226,7 +226,7 @@ function pdfRectanglePath(args: unknown): Float32Array | null {
 
 export function pdfEditableVectors(
   list: PdfOperatorList, ops: PdfOps, viewport: PdfMatrix,
-  width: number, height: number, pageNumber: number,
+  width: number, height: number, pageNumber: number, debug = false,
 ): ParsedDocumentLayer[] {
   const result: ParsedDocumentLayer[] = []
   const stack: PdfPaintState[] = []
@@ -236,6 +236,7 @@ export function pdfEditableVectors(
   for (let i = 0; i < length && result.length < MAX_VECTOR; i++) {
     const op = list.fnArray[i]
     const args = list.argsArray[i]
+    if (debug && i < 80) console.info('PDF_VECTOR_STATE', pageNumber, i, op, state.complex, state.fill)
     if (op === ops.save) { if (stack.length >= 128) { state.complex = true; continue }; stack.push({ ...state }); continue }
     if (op === ops.restore) {
       // An unmatched restore is malformed; never assume following paths are safe.
