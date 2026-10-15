@@ -178,3 +178,11 @@ check(choiceWidgets[0].metadata?.checked === true && choiceWidgets[1].metadata?.
   'PDF choice field values and checked states remain available')
 check(choiceWidgets[0].metadata?.sourceObjectKey === 'pdf:p3:widget:0',
   'PDF choice widget source identity is preserved')
+
+const realPdfRect = pdfEditableVectors({
+  fnArray: [59, 91, 22],
+  argsArray: [[1, 0, 0], [[19], new Float32Array([0, 0, 200, 120]), new Float32Array([0, 0, 200, 120])], []],
+}, ops, viewport, 400, 240, 1)
+check(realPdfRect.length === 1 && realPdfRect[0].shape?.fill === '#ff0000' &&
+  realPdfRect[0].shape?.pathAnchors?.length === 4,
+  'separate real PDF.js rectangle and fill operators recover editable vector')
