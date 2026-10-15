@@ -769,7 +769,7 @@ Edit export artboards on the canvas and mark counted subjects without changing s
 
 - Artboards remain regions of the shared document/layer tree, not independent Photoshop or Illustrator document canvases.
 - Counts stay in the native project and History snapshots, and never change raster pixels or appear in ordinary image export.
-- The current Count tool supports up to 2,000 markers. Group totals are displayed beside markers when enabled.
+- The current Count tool supports up to 2,000 markers. Group totals are displayed beside markers when enabled. Export Count CSV in Tool Options saves group, index and X/Y coordinates.
 - Both tools record real edits in Undo/Redo; moving or resizing with a drag is one History step.
 
 ## Ruler measurements and persistent color sampler points
