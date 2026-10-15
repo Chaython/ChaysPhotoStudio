@@ -24,7 +24,8 @@
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
@@ -43,6 +44,49 @@
     ],
     "category": "GraphicsAndDesign",
     "shortDescription": "Photoshop-class image editor",
-    "longDescription": "Chay's Photo Studio \u2014 a Photoshop-class raster image editor that runs in a native system webview. Free for consumer and education use; commercial licensing: chaython@live.ca."
+    "longDescription": "Chay's Photo Studio — a Photoshop-class raster image editor that runs in a native system webview. Free for consumer and education use; commercial licensing: chaython@live.ca.",
+    "fileAssociations": [
+      {
+        "ext": [
+          "png",
+          "jpg",
+          "jpeg",
+          "webp",
+          "gif",
+          "bmp",
+          "tif",
+          "tiff",
+          "avif",
+          "psd",
+          "psb",
+          "pdf",
+          "svg",
+          "ora",
+          "xcf",
+          "dng",
+          "cr2",
+          "cr3",
+          "nef",
+          "arw",
+          "raf",
+          "rw2",
+          "orf",
+          "heic",
+          "heif",
+          "jxl",
+          "jp2",
+          "exr",
+          "hdr",
+          "fits",
+          "dcm",
+          "mp4",
+          "webm",
+          "mkv"
+        ],
+        "name": "Chays Photo Studio document",
+        "role": "Editor",
+        "description": "Open in Chays Photo Studio"
+      }
+    ]
   }
 }
