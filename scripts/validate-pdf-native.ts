@@ -117,6 +117,17 @@ const unknownGroup = pdfEditableVectors({
 }, ops, viewport, 400, 240, 1)
 check(unknownGroup.length === 0, 'unbalanced transparency group must not create shapes')
 
+// Control points outside the path endpoints must expand its editable bounds.
+const longHandles = new Float32Array([
+  0, 10, 10, 2, 100, 10, 120, 10, 20, 20, 4,
+])
+const handledShape = pdfEditableVectors({
+  fnArray: [91],
+  argsArray: [[22, [longHandles], [10, 10, 120, 20]]],
+}, ops, viewport, 400, 240, 1)
+check(handledShape.length === 1 && (handledShape[0].shape?.w ?? 0) > 200,
+  'PDF Bezier handles outside endpoints must contribute to shape bounds')
+
 const complex = pdfEditableVectors({
   fnArray: [29, 91], argsArray: [[], [22, [rect], [0, 0, 200, 120]]],
 }, ops, viewport, 400, 240, 1)
