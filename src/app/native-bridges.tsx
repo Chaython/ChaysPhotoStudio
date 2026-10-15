@@ -45,6 +45,27 @@ export function AppBridges() {
       else window.addEventListener('load', register, { once: true })
     }
 
+    // ---- Tauri system-webview file association launches ----
+    const tauri = (window as unknown as {
+      __TAURI__?: { core?: { invoke?: (name: string) => Promise<[string, number[]][]> } }
+    }).__TAURI__
+    if (typeof tauri?.core?.invoke === 'function') {
+      void tauri.core.invoke('take_associated_files').then(files => {
+        for (const [name, data] of files) {
+          if (!Array.isArray(data) || data.length === 0) continue
+          const bytes = new Uint8Array(data)
+          const file = new File([bytes], name, { type: 'application/octet-stream' })
+          // The editor registers its file listener during hydration.
+          const deliver = () => {
+            if ((window as unknown as { __zphotoEngine?: unknown }).__zphotoEngine) {
+              window.dispatchEvent(new CustomEvent('chays:open-file', { detail: file }))
+            } else window.setTimeout(deliver, 100)
+          }
+          deliver()
+        }
+      }).catch(error => console.warn('Unable to open associated files:', error))
+    }
+
     // ---- 2. Electron open-file bridge ----
     if (typeof api?.onOpenFile === 'function') {
       try {
