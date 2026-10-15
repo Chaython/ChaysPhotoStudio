@@ -186,3 +186,10 @@ const realPdfRect = pdfEditableVectors({
 check(realPdfRect.length === 1 && realPdfRect[0].shape?.fill === '#ff0000' &&
   realPdfRect[0].shape?.pathAnchors?.length === 4,
   'separate real PDF.js rectangle and fill operators recover editable vector')
+
+const packedRectangle = pdfEditableVectors({
+  fnArray: [59, 91],
+  argsArray: [[1, 0, 0], [22, [new Float32Array([5, 0, 0, 200, 120])], new Float32Array([0, 0, 200, 120])]],
+}, ops, viewport, 400, 240, 1)
+check(packedRectangle.length === 1 && packedRectangle[0].shape?.pathAnchors?.length === 4,
+  'packed PDF.js rectangle opcode is recovered as four editable anchors')
