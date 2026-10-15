@@ -1098,6 +1098,45 @@ def main():
                 check(len(blues) == 1 and blues[0]["pixel"][2] > 210 and blues[0]["pixel"][0] < 80,
                       "PDF.js must render page 2 blue vector rectangle")
                 check(len(data["layers"]) > 2, "PDF native vector extraction should expose editable shapes")
+                edited = page.evaluate("""() => {
+                  const e = window.__zphotoEngine, d = e.activeDoc
+                  const text = d.layers.find(l => l.kind === 'text' && l.text)
+                  const path = d.layers.find(l => l.kind === 'shape' && l.shape)
+                  const ref = d.layers.find(l => l.kind === 'raster' && l.pdfSource?.visualReference)
+                  if (!text || !ref) return { missing: true }
+                  const ctx = ref.canvas.getContext('2d')
+                  const originalPixel = Array.from(ctx.getImageData(50, 50, 1, 1).data)
+                  e.setLayerProps(text.id, {
+                    text: { ...text.text, content: 'PDF edited in Studio' }, visible: true,
+                  })
+                  if (path) e.setLayerProps(path.id, {
+                    shape: { ...path.shape, fill: '#12ab34' }, visible: true,
+                  })
+                  e.setLayerProps(ref.id, { visible: false })
+                  const editedText = d.layers.find(l => l.id === text.id)
+                  const editedShape = path ? d.layers.find(l => l.id === path.id) : null
+                  const textPixels = e.layerCanvas(text.id)
+                  const shapePixels = path ? e.layerCanvas(path.id) : null
+                  return {
+                    missing: false,
+                    text: editedText?.text?.content,
+                    shapeFill: editedShape?.shape?.fill,
+                    hadVector: !!path,
+                    originalPixel,
+                    after: Array.from(ctx.getImageData(50, 50, 1, 1).data),
+                    referenceHidden: !d.layers.find(l => l.id === ref.id)?.visible,
+                    textRendered: !!textPixels?.width,
+                    shapeRendered: !!shapePixels?.width,
+                  }
+                }""")
+                check(not edited.get("missing"), "PDF text and original reference should import")
+                check(edited["text"] == "PDF edited in Studio" and edited["referenceHidden"],
+                      "PDF native text must support independent editing")
+                if edited["hadVector"]:
+                    check(edited["shapeFill"] == "#12ab34" and edited["shapeRendered"],
+                          "recovered PDF vector must support editing")
+                check(edited["originalPixel"] == edited["after"] and edited["textRendered"],
+                      "native PDF edits must not modify the source raster and must render")
                 check(bool(reds[0]["visible"]) and not bool(blues[0]["visible"]),
                       "first PDF page should be visible and second hidden")
                 check(not errors, f"PDF import threw JavaScript errors: {errors[:3]}")
