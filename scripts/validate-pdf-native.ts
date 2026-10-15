@@ -119,7 +119,7 @@ check(unknownGroup.length === 0, 'unbalanced transparency group must not create 
 
 // Control points outside the path endpoints must expand its editable bounds.
 const longHandles = new Float32Array([
-  0, 10, 10, 2, 100, 10, 120, 10, 20, 20, 4,
+  0, 10, 10, 2, 100, 10, 120, 10, 20, 20, 1, 30, 30, 4,
 ])
 const handledShape = pdfEditableVectors({
   fnArray: [91],
