@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import * as gradientPresets from '../../plugins/gradient-presets'
 import { cleanMixerBrush, loadMixerBrushFromForeground } from '../../tools/mixer-brush'
 import { saveCurrentMeasurement, clearCurrentMeasurement } from '../../tools/measure'
+import { exportCountMarkersCsv } from '../../tools/count'
 
 /** fixed-height vertical divider — shadcn Separator stretches h-full which
  *  breaks in a wrapping flex row, so the options bar uses plain divs */
@@ -444,6 +445,13 @@ export function ControlRenderer({ control, value, onChange, compact = true }: {
             </button>
           </div>
         )
+      }
+      if (control.customId === 'count-actions') {
+        return <button type="button"
+          className="h-6 shrink-0 rounded border border-border px-2 text-[10px] hover:bg-accent"
+          onClick={() => exportCountMarkersCsv()} title="Export document Count Tool markers by group as CSV">
+          Export Count CSV
+        </button>
       }
       if (control.customId === 'measure-actions') {
         return (
