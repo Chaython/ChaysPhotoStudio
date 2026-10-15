@@ -286,6 +286,7 @@ const DEFAULT_SHAPE: ShapeSpec = {
 function layerFromParsed(parsed: ParsedDocumentLayer, width: number, height: number): Layer | null {
   const kind = parsed.kind
   const layer = newLayer(kind, parsed.name || 'Layer', width, height)
+  if (parsed.metadata?.sourceFormat === 'pdf') layer.pdfSource = structuredClone(parsed.metadata)
   layer.visible = parsed.visible !== false
   layer.opacity = Math.max(0, Math.min(100, Math.round(Number(parsed.opacity ?? 100))))
   layer.blendMode = (parsed.blendMode || 'normal') as Layer['blendMode']
@@ -677,6 +678,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
   return {
     props: {
       id: l.id, name: l.name, kind: l.kind, visible: l.visible, opacity: l.opacity,
+      pdfSource: l.pdfSource ? structuredClone(l.pdfSource) : undefined,
       blendMode: l.blendMode, locked: l.locked, clipped: l.clipped, maskEnabled: l.maskEnabled,
       transform: l.transform, smartFilters: l.smartFilters,
       adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
@@ -853,6 +855,11 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     adjustment: sl.props.adjustment ?? null,
     text: sl.props.text ?? null, shape: sl.props.shape ? { sides: 5, starInset: 45, ...sl.props.shape } : null,
     linkedDesignStyles: normalizeLayerStyleReferences(sl.props.linkedDesignStyles),
+    pdfSource: sl.props.pdfSource?.sourceFormat === 'pdf' &&
+      typeof sl.props.pdfSource?.pageNumber === 'number' &&
+      Number.isSafeInteger(sl.props.pdfSource.pageNumber) && sl.props.pdfSource.pageNumber > 0 &&
+      JSON.stringify(sl.props.pdfSource).length < 8192
+      ? structuredClone(sl.props.pdfSource) : undefined,
     blendIf: sl.props.blendIf ?? null,
     fx: sl.props.fx ?? null,
     vectorMask: normalizeVectorMask(sl.props.vectorMask),
