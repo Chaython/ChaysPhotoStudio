@@ -113,6 +113,19 @@ export const TOOL_DEFS: ToolDef[] = [
 
   { id: 'measure', label: 'Measure', group: 3, shortcut: 'K', icon: 'Ruler', cursor: 'crosshair', defaults: { angleSnap: 45, showDelta: true, persist: true, chain: false, unit: 'px', useDocResolution: true, pixelsPerUnit: 1 }, options: [{ key: 'chain', label: 'Multi-segment', type: 'toggle', hint: 'Each new drag continues from the previous endpoint and reports total length' }, { key: 'angleSnap', label: 'Shift Angle', type: 'select', options: [{ label: '15°', value: 15 }, { label: '30°', value: 30 }, { label: '45°', value: 45 }, { label: '90°', value: 90 }] }, { key: 'unit', label: 'Units', type: 'select', options: [{ label: 'Pixels', value: 'px' }, { label: 'Millimeters', value: 'mm' }, { label: 'Centimeters', value: 'cm' }, { label: 'Inches', value: 'in' }] }, { key: 'useDocResolution', label: 'Use Document Resolution', type: 'toggle', hint: 'Calibrate physical units from the document PPI metadata' }, { key: 'pixelsPerUnit', label: 'Custom px / unit', type: 'number', min: 0.001, max: 100000, step: 0.01, hint: 'Used when Document Resolution is off' }, { key: 'showDelta', label: 'Show ΔX / ΔY', type: 'toggle' }, { key: 'persist', label: 'Keep Measurement', type: 'toggle', hint: 'Keep the ruler visible after switching tools' }, { key: 'measureActions', label: 'Ruler Actions', type: 'custom', customId: 'measure-actions', hint: 'Save the ruler to Info or clear it' }] },
 
+  { id: 'artboard', label: 'Artboard', group: 3, shortcut: 'V', icon: 'PanelsTopLeft', cursor: 'crosshair',
+    defaults: {}, options: [] },
+  { id: 'count', label: 'Count', group: 3, shortcut: 'K', icon: 'ListOrdered', cursor: 'crosshair',
+    defaults: { group: '1', markerSize: 10, showLabels: true },
+    options: [
+      { key:'group', label:'Count group', type:'select', options:[
+        {label:'Group 1',value:'1'}, {label:'Group 2',value:'2'}, {label:'Group 3',value:'3'},
+        {label:'Group 4',value:'4'}, {label:'Group 5',value:'5'}] },
+      { key:'markerSize', label:'Marker Size', type:'slider', min:5, max:32, step:1, unit:'px' },
+      { key:'showLabels', label:'Group Totals', type:'toggle' },
+    ],
+  },
+
   // group 2 — color picker (standalone button — always visible in the toolbar)
 
   // group 3 — crop / measure
@@ -338,6 +351,7 @@ export const TOOL_MAP: Record<ToolId, ToolDef> = Object.fromEntries(
 // tools that cycle with repeated shortcut presses
 export const TOOL_CYCLES: ToolId[][] = [
   ['path-select', 'direct-select'],
+  ['move', 'artboard'],
   ['pen', 'pen-freeform', 'pen-curvature'],
   ['text', 'type-mask-horizontal', 'type-mask-vertical'],
   ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
