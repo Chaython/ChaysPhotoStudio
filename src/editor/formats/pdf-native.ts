@@ -64,8 +64,9 @@ function colorFrom(args: unknown, mode: 'rgb' | 'gray' | 'cmyk'): string | null 
   // PDF.js has historically emitted separate channels and packed Uint8 arrays.
   const values = raw.length === 1 && (Array.isArray(raw[0]) || ArrayBuffer.isView(raw[0]))
     ? Array.from(raw[0] as ArrayLike<number>) : raw
-  const number = values.map(Number)
-  if (!number.every(Number.isFinite)) return null
+  // Reject malformed components instead of coercing null/strings into colors.
+  if (!values.every(v => typeof v === 'number' && Number.isFinite(v))) return null
+  const number = values as number[]
   const n = mode === 'gray' ? 1 : mode === 'rgb' ? 3 : 4
   if (number.length < n) return null
   // Packed Uint8 colors are byte values, including channel value 1. Treating
@@ -209,14 +210,23 @@ export function pdfEditableVectors(
   for (let i = 0; i < length && result.length < MAX_VECTOR; i++) {
     const op = list.fnArray[i]
     const args = list.argsArray[i]
-    if (op === ops.save) { stack.push({ ...state }); continue }
+    if (op === ops.save) { if (stack.length >= 128) { state.complex = true; continue }; stack.push({ ...state }); continue }
     if (op === ops.restore) { state = stack.pop() ?? baseState(); continue }
     if (op === ops.transform) {
-      if (finiteMatrix(args)) state.matrix = multiply(state.matrix, args as PdfMatrix)
+      if (finiteMatrix(args)) {
+        const composed = multiply(state.matrix, args as PdfMatrix)
+        if (composed.every(Number.isFinite)) state.matrix = composed
+        else state.complex = true
+      }
       else state.complex = true
       continue
     }
-    if (op === ops.setLineWidth) { state.width = Math.max(0, Number(args?.[0]) || 0); continue }
+    if (op === ops.setLineWidth) {
+      const value = args?.[0]
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) state.complex = true
+      else state.width = value
+      continue
+    }
     if (op === ops.setFillRGBColor || op === ops.setFillGray || op === ops.setFillCMYKColor) {
       state.fill = colorFrom(args, op === ops.setFillGray ? 'gray' : op === ops.setFillCMYKColor ? 'cmyk' : 'rgb')
       continue
