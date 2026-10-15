@@ -1,18 +1,54 @@
-//! Chay's Photo Studio — system-webview shell.
-//!
-//! This crate is intentionally minimal: it opens one window that hosts
-//! the Chay's Photo Studio web app (devUrl / frontendDist from
-//! tauri.conf.json — override with scripts/webview-config.mjs for
-//! release builds). No custom IPC commands: the editor
-//! runs inside the webview using the browser platform it already
-//! targets (WebGL2, File System Access, IndexedDB persistence).
+//! Native file-association delivery for the system webview.
+use std::{path::PathBuf, sync::Mutex};
+use tauri::{Manager, State};
+
+struct LaunchFiles(Mutex<Vec<PathBuf>>);
+
+fn queue_files(store: &LaunchFiles, paths: impl IntoIterator<Item = PathBuf>) {
+    if let Ok(mut queue) = store.0.lock() {
+        for path in paths {
+            if queue.len() >= 16 { break; }
+            if path.is_file() && !queue.contains(&path) { queue.push(path); }
+        }
+    }
+}
+
+#[tauri::command]
+fn take_associated_files(state: State<'_, LaunchFiles>) -> Vec<(String, Vec<u8>)> {
+    let Ok(mut guard) = state.0.lock() else { return Vec::new() };
+    let paths = std::mem::take(&mut *guard);
+    drop(guard);
+    paths.into_iter().filter_map(|path| {
+        let name = path.file_name()?.to_str()?.to_string();
+        let metadata = std::fs::metadata(&path).ok()?;
+        if !metadata.is_file() || metadata.len() > 100 * 1024 * 1024 { return None; }
+        let bytes = std::fs::read(&path).ok()?;
+        Some((name, bytes))
+    }).collect()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        // Desktop-only automatic persistence: state remains in Tauri's local
-        // app-data directory and does not require frontend JS capabilities.
-        .plugin(tauri_plugin_window_state::Builder::default().build())
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    let launch_files = std::env::args_os().skip(1)
+        .map(PathBuf::from).filter(|path| path.is_file())
+        .take(16).collect::<Vec<_>>();
+    let builder = tauri::Builder::default()
+        .manage(LaunchFiles(Mutex::new(launch_files)))
+        .invoke_handler(tauri::generate_handler![take_associated_files])
+        .plugin(tauri_plugin_window_state::Builder::default().build());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        queue_files(&app.state::<LaunchFiles>(), args.into_iter().skip(1).map(PathBuf::from));
+        if let Some(window) = app.get_webview_window("main") { let _ = window.set_focus(); }
+    }));
+    builder.build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = event {
+                queue_files(&app.state::<LaunchFiles>(), urls.into_iter().filter_map(|u| u.to_file_path().ok()));
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

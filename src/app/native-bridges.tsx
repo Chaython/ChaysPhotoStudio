@@ -45,6 +45,45 @@ export function AppBridges() {
       else window.addEventListener('load', register, { once: true })
     }
 
+    let tauriPollCleanup: (() => void) | undefined
+    // ---- Tauri system-webview file association launches ----
+    const tauri = (window as unknown as {
+      __TAURI__?: { core?: { invoke?: (name: string) => Promise<[string, number[]][]> } }
+    }).__TAURI__
+    if (typeof tauri?.core?.invoke === 'function') {
+      void tauri.core.invoke('take_associated_files').then(files => {
+        for (const [name, data] of files) {
+          if (!Array.isArray(data) || data.length === 0) continue
+          const bytes = new Uint8Array(data)
+          const file = new File([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], name, { type: 'application/octet-stream' })
+          // The editor registers its file listener during hydration.
+          let attempts = 0
+          const deliver = () => {
+            if ((window as unknown as { __chaysOpenFileReady?: boolean }).__chaysOpenFileReady) {
+              window.dispatchEvent(new CustomEvent('chays:open-file', { detail: file }))
+            } else if (++attempts < 300) window.setTimeout(deliver, 100)
+          }
+          deliver()
+        }
+      }).catch(error => console.warn('Unable to open associated files:', error))
+      // Also collect launches forwarded after startup by the single-instance
+      // plugin (Windows/Linux) or RunEvent::Opened (macOS).
+      const poll = window.setInterval(() => {
+        if (!(window as unknown as { __chaysOpenFileReady?: boolean }).__chaysOpenFileReady) return
+        void tauri.core!.invoke!('take_associated_files').then(files => {
+          for (const [name, data] of files) {
+            if (!Array.isArray(data) || !data.length) continue
+            const bytes = new Uint8Array(data)
+            const file = new File([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer],
+              name, { type: 'application/octet-stream' })
+            window.dispatchEvent(new CustomEvent('chays:open-file', { detail: file }))
+          }
+        }).catch(() => {})
+      }, 1500)
+      // Cleanup registered with this React effect below.
+      tauriPollCleanup = () => window.clearInterval(poll)
+    }
+
     // ---- 2. Electron open-file bridge ----
     if (typeof api?.onOpenFile === 'function') {
       try {
@@ -80,6 +119,7 @@ export function AppBridges() {
         // ignore
       }
     }
+    return () => tauriPollCleanup?.()
   }, [])
 
   return null

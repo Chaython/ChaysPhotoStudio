@@ -24,7 +24,8 @@
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
@@ -43,6 +44,157 @@
     ],
     "category": "GraphicsAndDesign",
     "shortDescription": "Photoshop-class image editor",
-    "longDescription": "Chay's Photo Studio \u2014 a Photoshop-class raster image editor that runs in a native system webview. Free for consumer and education use; commercial licensing: chaython@live.ca."
+    "longDescription": "Chay's Photo Studio — a Photoshop-class raster image editor that runs in a native system webview. Free for consumer and education use; commercial licensing: chaython@live.ca.",
+    "fileAssociations": [
+      {
+        "ext": [
+          "psd",
+          "psb",
+          "ai",
+          "indd",
+          "xcf",
+          "sketch",
+          "xd",
+          "fig",
+          "kri",
+          "kra",
+          "ora",
+          "clip",
+          "sai",
+          "pxd",
+          "pxz",
+          "cdr",
+          "ufo",
+          "afphoto",
+          "gvdesign",
+          "svg",
+          "eps",
+          "pdf",
+          "pdn",
+          "wmf",
+          "emf"
+        ],
+        "name": "Layered documents",
+        "role": "Editor",
+        "description": "Open with Chays Photo Studio"
+      },
+      {
+        "ext": [
+          "png",
+          "apng",
+          "jpg",
+          "jpeg",
+          "jfif",
+          "gif",
+          "webp",
+          "ico",
+          "icns",
+          "bmp",
+          "avif",
+          "heic",
+          "heif",
+          "hif",
+          "jxl",
+          "ppm",
+          "pgm",
+          "pbm",
+          "pam",
+          "tif",
+          "tiff",
+          "dds",
+          "iff",
+          "ilbm",
+          "lbm",
+          "exr",
+          "hdr",
+          "rgbe",
+          "anim",
+          "tga",
+          "icb",
+          "vda",
+          "vst",
+          "qoi",
+          "pcx",
+          "dcx",
+          "pfm",
+          "jp2",
+          "j2k",
+          "j2c",
+          "sgi",
+          "rgb",
+          "rgba",
+          "bw",
+          "ras",
+          "sun",
+          "cur",
+          "jls",
+          "jxr",
+          "wdp",
+          "hdp",
+          "bpg"
+        ],
+        "name": "Raster images",
+        "role": "Editor",
+        "description": "Open with Chays Photo Studio"
+      },
+      {
+        "ext": [
+          "dng",
+          "nef",
+          "nrw",
+          "cr2",
+          "cr3",
+          "crw",
+          "arw",
+          "srf",
+          "sr2",
+          "rw2",
+          "raf",
+          "orf",
+          "gpr",
+          "3fr",
+          "fff",
+          "pef",
+          "ptx",
+          "srw",
+          "x3f",
+          "iiq",
+          "mos",
+          "mef",
+          "mrw",
+          "k25",
+          "kdc",
+          "dcr",
+          "erf",
+          "bay",
+          "rwl"
+        ],
+        "name": "Camera RAW",
+        "role": "Editor",
+        "description": "Open with Chays Photo Studio"
+      },
+      {
+        "ext": [
+          "fits",
+          "fit",
+          "fts",
+          "dcm",
+          "dicom"
+        ],
+        "name": "Scientific images",
+        "role": "Editor",
+        "description": "Open with Chays Photo Studio"
+      },
+      {
+        "ext": [
+          "mp4",
+          "webm",
+          "mkv"
+        ],
+        "name": "Video frames",
+        "role": "Editor",
+        "description": "Open with Chays Photo Studio"
+      }
+    ]
   }
 }
