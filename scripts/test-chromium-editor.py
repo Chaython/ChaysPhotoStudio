@@ -1291,7 +1291,7 @@ def main():
                 name_input.wait_for(state="visible", timeout=10000)
                 check(name_input.input_value().startswith("Hotspot"),
                       "Web Assets details did not focus the selected hotspot")
-                dialog.get_by_role("button", name="Close").click()
+                dialog.get_by_role("button", name="Close", exact=True).first.click()
                 # Create a second document; a region selected in another tab
                 # must never be deleted or modified by a keyboard shortcut.
                 page.evaluate("""() => window.__zphotoEngine.newDocument({
