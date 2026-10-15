@@ -232,6 +232,9 @@ export function pdfEditableVectors(
     const fill = [22, 23, 24, 25, 26, 27].includes(paintOp)
     const stroke = [20, 21, 24, 25, 26, 27].includes(paintOp)
     if (!fill && !stroke) continue
+    // Unknown/invalid paint cannot be represented faithfully. Do not create
+    // transparent or incorrectly colored editable shapes in its place.
+    if ((fill && state.fill === null) || (stroke && state.stroke === null)) continue
     const path = readPath(pathData?.[0], multiply(viewport, state.matrix), width, height)
     if (!path) continue
     const xs = path.anchors.map(a => a.x), ys = path.anchors.map(a => a.y)
