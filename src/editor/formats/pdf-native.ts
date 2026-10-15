@@ -98,7 +98,7 @@ function readPath(input: unknown, matrix: PdfMatrix, width: number, height: numb
   { anchors: PathAnchor[]; closed: boolean } | null {
   if (!input || typeof input !== 'object' || !('length' in input)) return null
   const raw = input as ArrayLike<number>
-  if (raw.length < 6 || raw.length > MAX_PATH_NUMBERS) return null
+  if (raw.length < 5 || raw.length > MAX_PATH_NUMBERS) return null
   const anchors: PathAnchor[] = []
   let i = 0, closed = false, subpaths = 0
   let last = { x: 0, y: 0 }
