@@ -1755,6 +1755,7 @@ export function AboutDialog({ onClose }: DialogProps) {
             </div>
             <a
               href="https://github.com/sponsors/Chaython"
+              onClick={(event) => { event.preventDefault(); openSponsorsPage() }}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-primary/15 border border-primary/40 text-primary text-[10px] font-medium hover:bg-primary/25 active:scale-95 transition-all"
@@ -1776,6 +1777,7 @@ export function AboutDialog({ onClose }: DialogProps) {
             loss. Donations keep the studio free for everyone:{' '}
             <a
               href="https://github.com/sponsors/Chaython"
+              onClick={(event) => { event.preventDefault(); openSponsorsPage() }}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline font-mono"
