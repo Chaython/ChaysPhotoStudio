@@ -194,6 +194,7 @@ export function pdfEditableText(
       },
       metadata: { sourceFormat: 'pdf', pageNumber, editableObject: 'text', 
         originalFontName: item.fontName ?? '', sourceTextIndex: itemIndex,
+        sourceObjectKey: `pdf:p${pageNumber}:text:${itemIndex}`,
         sourceTextTransform: [...item.transform!], sourceText: item.str, approximateAppearance: true },
     })
   }
@@ -280,6 +281,7 @@ export function pdfEditableVectors(
       },
       metadata: { sourceFormat: 'pdf', pageNumber, editableObject: 'vector',
         sourceOperatorIndex: i, sourcePaintOperator: paintOp,
+        sourceObjectKey: `pdf:p${pageNumber}:path:${i}`,
         sourceTransform: [...state.matrix], approximateAppearance: true },
     })
   }
