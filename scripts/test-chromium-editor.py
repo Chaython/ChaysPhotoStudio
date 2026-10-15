@@ -1068,6 +1068,7 @@ def main():
                 _, page, errors = app_page(browser)
                 page.locator('input[data-file-purpose="document"]').first.set_input_files(
                     {"name": "two-pages.pdf", "mimeType": "application/pdf", "buffer": pdf_fixture()})
+                page.on('console', lambda message: print('  PDF OP:', message.text[:3500], flush=True) if 'PDF_VECTOR_DIAGNOSTIC' in message.text else None)
                 dialog = page.get_by_role("dialog", name="Select PDF pages to import")
                 dialog.wait_for(state="visible", timeout=30000)
                 dialog.get_by_role("combobox", name="PDF page import mode").select_option("all")
