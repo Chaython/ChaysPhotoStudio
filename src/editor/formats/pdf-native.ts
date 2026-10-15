@@ -71,7 +71,7 @@ function colorFrom(args: unknown, mode: 'rgb' | 'gray' | 'cmyk'): string | null 
   // Packed Uint8 colors are byte values, including channel value 1. Treating
   // 1 as normalized white turned near-black PDF fills into full intensity.
   // PDF.js float channel arguments are instead normalized to [0, 1].
-  const packedBytes = raw.length === 1 && raw[0] instanceof Uint8Array
+  const packedBytes = raw.length === 1 && (raw[0] instanceof Uint8Array || raw[0] instanceof Uint8ClampedArray)
   const normalized = number.slice(0, n).map(v =>
     Math.max(0, Math.min(1, packedBytes ? v / 255 : v > 1 ? v / 255 : v)))
   const channels = mode === 'gray' ? [normalized[0], normalized[0], normalized[0]]
