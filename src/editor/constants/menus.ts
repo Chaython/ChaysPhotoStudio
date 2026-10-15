@@ -308,6 +308,10 @@ export const MENUS: MenuItem[][] = [
       const doc = engine.activeDoc
       if (doc) await engine.exportActive({ format: 'jpeg', quality: 92, scale: 1, fileName: exportBaseName(doc.name) })
     } },
+    { id: 'file-quick-export-pdf', label: 'Export Flattened PDF…', run: async () => {
+      const doc = engine.activeDoc
+      if (doc) await engine.exportActive({ format: 'pdf', quality: 92, scale: 1, fileName: exportBaseName(doc.name) })
+    } },
     S(),
     { id: 'file-close', label: 'Close', run: () => { const d = engine.activeDoc; if (d) engine.closeDocument(d.id) } },
   ],
