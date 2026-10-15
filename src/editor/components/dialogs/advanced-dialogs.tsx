@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { openSponsorsPage } from '../../utils/open-sponsors'
 import { IMPORT_ACCEPT, encodeCanvas } from '../../formats'
 import { metadataResolutionPpi, readImageMetadata } from '../../formats/metadata'
 import { engine } from '../../engine/engine'
@@ -1754,6 +1755,7 @@ export function AboutDialog({ onClose }: DialogProps) {
             </div>
             <a
               href="https://github.com/sponsors/Chaython"
+              onClick={(event) => { event.preventDefault(); openSponsorsPage() }}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-primary/15 border border-primary/40 text-primary text-[10px] font-medium hover:bg-primary/25 active:scale-95 transition-all"
@@ -1775,6 +1777,7 @@ export function AboutDialog({ onClose }: DialogProps) {
             loss. Donations keep the studio free for everyone:{' '}
             <a
               href="https://github.com/sponsors/Chaython"
+              onClick={(event) => { event.preventDefault(); openSponsorsPage() }}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline font-mono"
@@ -1789,7 +1792,7 @@ export function AboutDialog({ onClose }: DialogProps) {
           size="sm"
           variant="outline"
           className="gap-1.5"
-          onClick={() => window.open('https://github.com/sponsors/Chaython', '_blank', 'noopener')}
+          onClick={openSponsorsPage}
         >
           <Heart size={12} className="text-primary" />
           Donate

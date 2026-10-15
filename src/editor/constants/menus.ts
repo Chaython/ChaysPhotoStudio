@@ -10,6 +10,7 @@ import { importPatternFile } from '../tools/patterns'
 import type { AdjustmentType, FilterType } from '../types'
 import { commandCombo, formatCombo, type CommandId } from '../shortcuts'
 import { IMPORT_ACCEPT } from '../formats'
+import { openSponsorsPage } from '../utils/open-sponsors'
 
 export interface MenuItem {
   id: string
@@ -670,7 +671,7 @@ export const MENUS: MenuItem[][] = [
     {
       id: 'help-donate',
       label: 'Support the Project (Donate)…',
-      run: () => window.open('https://github.com/sponsors/Chaython', '_blank', 'noopener'),
+      run: openSponsorsPage,
     },
     { id: 'help-shortcuts', label: 'Keyboard Shortcuts', run: () => openDlg('shortcuts') },
     { id: 'help-all-tools', label: 'All Tools / Tool Search', run: () => openDlg('all-tools') },
