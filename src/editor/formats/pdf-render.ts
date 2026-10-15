@@ -2,7 +2,7 @@ import type { ParsedDocument, ParsedDocumentLayer } from './document-parser-type
 import { createCanvas, ctx2d } from '../utils/canvas'
 import { choosePdfPages } from './pdf-page-picker'
 import { MAX_PDF_BYTES, MAX_PDF_TOTAL_PIXELS, pdfRenderSize, selectedPdfPages, checkPdfPixelBudget } from './pdf-import-plan'
-import { pdfEditableText, pdfEditableVectors } from './pdf-native'
+import { pdfEditableText, pdfEditableVectors, pdfEditableTextWidgets } from './pdf-native'
 
 /**
  * Rasterize the actual visual PDF pages via bundled PDF.js. This replaces the
@@ -79,6 +79,18 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
           // A page's raster is still valid when semantic extraction fails.
         }
         if (recoveredText + recoveredVectors < 512) try {
+          const widgets = await page.getAnnotations({ intent: 'display' })
+          const recovered = pdfEditableTextWidgets(widgets, viewport.transform as
+            [number, number, number, number, number, number], canvas.width, canvas.height, index + 1)
+          const budget = Math.max(0, 512 - (recoveredText + recoveredVectors))
+          const included = recovered.slice(0, budget)
+          recoveredText += included.length
+          if (included.length < recovered.length) truncatedObjects = true
+          layers.push(...included)
+        } catch {
+          // Unsupported PDF form appearances remain safely in the visual reference.
+        }
+        if (recoveredText + recoveredVectors < 512) try {
           const operatorList = await page.getOperatorList()
           const recovered = pdfEditableVectors(operatorList, pdfjs.OPS,
             viewport.transform as [number, number, number, number, number, number],
@@ -106,7 +118,7 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
       name: fileName, width, height, composite, layers,
       sourceBitDepth: 8, resolutionPpi: Math.round(firstScale * 72),
       warnings: [
-        `Recovered ${recoveredText} editable text runs and ${recoveredVectors} editable vector paths. Hidden native layers can be revealed in Layers; hide the PDF visual reference to replace its contents.`,
+        `Recovered ${recoveredText} editable text runs/fields and ${recoveredVectors} editable vector paths. Hidden native layers can be revealed in Layers; hide the PDF visual reference to replace its contents.`,
         'Original PDF page renderings remain the authoritative visible reference. Native text uses substitute fonts where necessary; complex PDF effects, clipping, images and shapes may remain raster-only.',
         ...(truncatedObjects ? ['Editable PDF extraction exceeded the 512-object document limit. Remaining content stays in the original page reference.'] : []),
         ...(pdf.numPages > 1 ? [`Imported ${indices.length} of ${pdf.numPages} PDF pages. Only the first visual reference is initially visible.`] : []),
