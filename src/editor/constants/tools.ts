@@ -123,6 +123,7 @@ export const TOOL_DEFS: ToolDef[] = [
         {label:'Group 4',value:'4'}, {label:'Group 5',value:'5'}] },
       { key:'markerSize', label:'Marker Size', type:'slider', min:5, max:32, step:1, unit:'px' },
       { key:'showLabels', label:'Group Totals', type:'toggle' },
+      { key:'countActions', label:'Export counts', type:'custom', customId:'count-actions' },
     ],
   },
 
