@@ -27,6 +27,31 @@ fn take_associated_files(state: State<'_, LaunchFiles>) -> Vec<(String, Vec<u8>)
     }).collect()
 }
 
+// Only the fixed GitHub Sponsors destination is exposed, not an arbitrary URL.
+#[tauri::command]
+fn open_sponsors_page() -> Result<(), String> {
+    const URL: &str = "https://github.com/sponsors/Chaython";
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut cmd = std::process::Command::new("rundll32.exe");
+        cmd.args(["url.dll,FileProtocolHandler", URL]);
+        cmd
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut cmd = std::process::Command::new("open");
+        cmd.arg(URL);
+        cmd
+    };
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let mut command = {
+        let mut cmd = std::process::Command::new("xdg-open");
+        cmd.arg(URL);
+        cmd
+    };
+    command.spawn().map(|_| ()).map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let launch_files = std::env::args_os().skip(1)
@@ -34,7 +59,7 @@ pub fn run() {
         .take(16).collect::<Vec<_>>();
     let builder = tauri::Builder::default()
         .manage(LaunchFiles(Mutex::new(launch_files)))
-        .invoke_handler(tauri::generate_handler![take_associated_files])
+        .invoke_handler(tauri::generate_handler![take_associated_files, open_sponsors_page])
         .plugin(tauri_plugin_window_state::Builder::default().build());
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
