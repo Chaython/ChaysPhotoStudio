@@ -69,7 +69,7 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
         try {
           const { items, styles } = await page.getTextContent({ disableNormalization: false })
           const recovered = pdfEditableText({ items, styles }, viewport.transform as
-            [number, number, number, number, number, number], width, height, index + 1)
+            [number, number, number, number, number, number], canvas.width, canvas.height, index + 1)
           const budget = Math.max(0, 512 - (recoveredText + recoveredVectors))
           const included = recovered.slice(0, budget)
           recoveredText += included.length
@@ -82,7 +82,7 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
           const operatorList = await page.getOperatorList()
           const recovered = pdfEditableVectors(operatorList, pdfjs.OPS,
             viewport.transform as [number, number, number, number, number, number],
-            width, height, index + 1)
+            canvas.width, canvas.height, index + 1)
           const budget = Math.max(0, 512 - (recoveredText + recoveredVectors))
           const included = recovered.slice(0, budget)
           recoveredVectors += included.length
