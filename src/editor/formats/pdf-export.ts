@@ -8,8 +8,18 @@ export async function canvasToPdf(canvas: HTMLCanvasElement, ppi = 72, quality =
   if (!canvas.width || !canvas.height || canvas.width * canvas.height > 100_000_000) {
     throw new Error('PDF image dimensions are invalid or exceed the safe export limit')
   }
+  // JPEG cannot represent transparency. Flatten explicitly against white,
+  // matching PDF viewers' default page background instead of black artifacts.
+  const opaque = document.createElement('canvas')
+  opaque.width = canvas.width
+  opaque.height = canvas.height
+  const ctx = opaque.getContext('2d')
+  if (!ctx) throw new Error('PDF export canvas unavailable')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, opaque.width, opaque.height)
+  ctx.drawImage(canvas, 0, 0)
   const image = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('JPEG encoding failed')), 'image/jpeg', quality)
+    opaque.toBlob(blob => blob ? resolve(blob) : reject(new Error('JPEG encoding failed')), 'image/jpeg', quality)
   })
   if (image.type !== 'image/jpeg') throw new Error('Canvas did not produce JPEG data')
   const jpeg = new Uint8Array(await image.arrayBuffer())
