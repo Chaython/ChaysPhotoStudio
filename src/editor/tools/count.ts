@@ -4,7 +4,7 @@ import type { PointerInfo, Tool } from '../types'
 import { engine } from '../engine/engine'
 import { useEditorStore } from '../store'
 import { getOptions, drawCross } from './shared'
-import { uid } from '../utils/canvas'
+import { uid, downloadBlob } from '../utils/canvas'
 import { MAX_COUNT_MARKERS, normalizeCountMarkers, countByGroup, type CountMarker } from '../count-markers'
 
 let selected: { docId:string; id:string } | null=null
@@ -31,6 +31,22 @@ function commit(docId:string, next:CountMarker[], label:string){
 }
 function currentId():string|null{
   return selected&&selected.docId===engine.activeDoc?.id?selected.id:null
+}
+export function exportCountMarkersCsv(): boolean {
+  const d=engine.activeDoc
+  if(!d)return false
+  const markers=normalizeCountMarkers(d.countMarkers,d.width,d.height)
+  if(!markers.length){useEditorStore.getState().pushToast('No count markers to export','info');return false}
+  const indexes:Record<string,number>=Object.create(null)
+  const csv=['Group,Index,X,Y']
+  for(const m of markers){
+    indexes[m.group]=(indexes[m.group]??0)+1
+    csv.push([m.group,indexes[m.group],m.x,m.y].join(','))
+  }
+  // Annotation groups are validated, so no spreadsheet-formula payload is possible.
+  const name=(d.name||'Document').replace(/[^A-Za-z0-9_-]+/g,'-').slice(0,60)||'Document'
+  downloadBlob(new Blob([csv.join('\r\n')+'\r\n'],{type:'text/csv;charset=utf-8'}),name+'-count-markers.csv')
+  return true
 }
 export const countTool:Tool={
   id:'count',cursor:'crosshair',
