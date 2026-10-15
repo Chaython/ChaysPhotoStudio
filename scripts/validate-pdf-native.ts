@@ -1,4 +1,4 @@
-import { pdfEditableText, pdfEditableVectors, pdfEditableTextWidgets, type PdfOps } from '../src/editor/formats/pdf-native'
+import { pdfEditableText, pdfEditableVectors, pdfEditableTextWidgets, pdfEditableButtonWidgets, type PdfOps } from '../src/editor/formats/pdf-native'
 
 function check(ok: unknown, message: string) {
   if (!ok) throw new Error('PDF native editable-object validation: ' + message)
@@ -160,3 +160,21 @@ check(textWidgets[0].visible === false && textWidgets[0].text?.content === 'Alic
   'PDF widget value is preserved without changing its visual reference')
 check(textWidgets[0].metadata?.sourceObjectKey === 'pdf:p1:widget:0',
   'PDF widget source index and page must remain traceable')
+
+const choiceWidgets = pdfEditableButtonWidgets([
+  { subtype: 'Widget', fieldType: 'Btn', checkBox: true, fieldValue: 'Yes',
+    fieldName: 'Subscribe', rect: [10, 10, 30, 30], id: 'cb-1' },
+  { subtype: 'Widget', fieldType: 'Btn', radioButton: true, fieldValue: 'Off',
+    fieldName: 'Preference', rect: [40, 10, 60, 30], id: 'rb-1' },
+  { subtype: 'Widget', fieldType: 'Btn', fieldValue: 'Push',
+    rect: [70, 10, 90, 30] },
+  { subtype: 'Widget', fieldType: 'Btn', checkBox: true, fieldValue: 'Yes',
+    rect: [10, 10, 30, 30], hidden: true },
+], [1, 0, 0, -1, 0, 240], 400, 240, 3)
+check(choiceWidgets.length === 2, 'checkbox/radio widgets recover; push and hidden buttons do not')
+check(choiceWidgets[0].shape?.shape === 'rect' && choiceWidgets[1].shape?.shape === 'ellipse',
+  'button widget geometry matches checkbox and radio categories')
+check(choiceWidgets[0].metadata?.checked === true && choiceWidgets[1].metadata?.checked === false,
+  'PDF choice field values and checked states remain available')
+check(choiceWidgets[0].metadata?.sourceObjectKey === 'pdf:p3:widget:0',
+  'PDF choice widget source identity is preserved')
