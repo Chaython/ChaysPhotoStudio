@@ -143,7 +143,7 @@ function readPath(input: unknown, matrix: PdfMatrix, width: number, height: numb
       const c2 = { x: x + 2 / 3 * (qx - x), y: y + 2 / 3 * (qy - y) }
       if (!out(c1.x, c1.y) || !push(x, y, c2)) return null
       last = { x, y }
-    } else if (op === 5) { // DrawOPS.rectangle in PDF.js packed paths
+    } else if (op === 5 || op === 19) { // Rectangle encodings from PDF.js evaluator paths
       if (subpaths || i + 3 >= raw.length) return null
       const x = raw[i++], y = raw[i++], w = raw[i++], h = raw[i++]
       if (!Number.isFinite(w) || !Number.isFinite(h) || w === 0 || h === 0) return null
