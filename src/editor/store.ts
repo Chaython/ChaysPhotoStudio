@@ -386,12 +386,12 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
     // Photoshop Essentials-style flyouts. Every registered editor tool stays
     // accessible, with new tools appended automatically by the sanitizer.
     const groups: ToolId[][] = [
-      ['move'],
+      ['move', 'artboard'],
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
       ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
       ['object-select', 'quick-select', 'magic-wand'],
       ['crop', 'perspective-crop'],
-      ['eyedropper', 'color-sampler', 'measure'],
+      ['eyedropper', 'color-sampler', 'measure', 'count'],
       ['spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
       ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
       ['clone-stamp', 'pattern-stamp'],
