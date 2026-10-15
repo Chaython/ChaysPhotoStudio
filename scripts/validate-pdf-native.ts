@@ -1,4 +1,4 @@
-import { pdfEditableText, pdfEditableVectors, type PdfOps } from '../src/editor/formats/pdf-native'
+import { pdfEditableText, pdfEditableVectors, pdfEditableTextWidgets, type PdfOps } from '../src/editor/formats/pdf-native'
 
 function check(ok: unknown, message: string) {
   if (!ok) throw new Error('PDF native editable-object validation: ' + message)
@@ -147,3 +147,16 @@ const multiple = pdfEditableVectors({
 }, ops, viewport, 400, 240, 1)
 check(multiple.length === 0, 'compound paths cannot become a mismatched single shape')
 console.log('PDF native text and vector conversions: OK')
+
+const textWidgets = pdfEditableTextWidgets([
+  { subtype: 'Widget', fieldType: 'Tx', fieldName: 'Customer', fieldValue: 'Alice',
+    rect: [10, 20, 210, 50], id: 'field-a' },
+  { subtype: 'Widget', fieldType: 'Tx', fieldName: 'Secret', fieldValue: 'hidden',
+    rect: [10, 20, 210, 50], password: true },
+  { subtype: 'Widget', fieldType: 'Btn', fieldValue: 'on', rect: [10, 20, 210, 50] },
+], [1, 0, 0, -1, 0, 240], 400, 240, 1)
+check(textWidgets.length === 1, 'only supported visible text widgets become editable')
+check(textWidgets[0].visible === false && textWidgets[0].text?.content === 'Alice',
+  'PDF widget value is preserved without changing its visual reference')
+check(textWidgets[0].metadata?.sourceObjectKey === 'pdf:p1:widget:0',
+  'PDF widget source index and page must remain traceable')
