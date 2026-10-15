@@ -303,6 +303,9 @@ export interface PdfTextWidget {
   readOnly?: boolean
   password?: boolean
   multiLine?: boolean
+  checkBox?: boolean
+  radioButton?: boolean
+  buttonValue?: string
 }
 export function pdfEditableTextWidgets(
   annotations: readonly PdfTextWidget[], viewport: PdfMatrix,
@@ -341,6 +344,60 @@ export function pdfEditableTextWidgets(
         sourceObjectKey: `pdf:p${pageNumber}:widget:${index}`,
         sourceWidgetIndex: index, sourceWidgetId: annotation.id ?? '',
         sourceFieldName: annotation.fieldName ?? '', sourceText: value,
+        readOnlyField: annotation.readOnly === true, approximateAppearance: true,
+      },
+    })
+  }
+  return layers
+}
+
+/** Recover basic PDF checkbox/radio controls as native geometric placeholders.
+ * Their source widget value is retained; appearance is intentionally approximate.
+ * PDF.js raster stays authoritative until an explicit editing/export workflow exists. */
+export function pdfEditableButtonWidgets(
+  annotations: readonly PdfTextWidget[], viewport: PdfMatrix,
+  width: number, height: number, pageNumber: number,
+): ParsedDocumentLayer[] {
+  const layers: ParsedDocumentLayer[] = []
+  for (const [index, annotation] of annotations.slice(0, 2000).entries()) {
+    if (layers.length >= 100) break
+    if (annotation.subtype !== 'Widget' || annotation.fieldType !== 'Btn' ||
+        (!annotation.checkBox && !annotation.radioButton) ||
+        annotation.hidden || annotation.noView ||
+        !Array.isArray(annotation.rect) || annotation.rect.length !== 4 ||
+        !annotation.rect.every(v => typeof v === 'number' && Number.isFinite(v))) continue
+    const [x0, y0, x1, y1] = annotation.rect
+    if (x1 <= x0 || y1 <= y0 ||
+        Math.abs(viewport[1]) > 0.0001 || Math.abs(viewport[2]) > 0.0001) continue
+    const a = pt(viewport, x0, y0), b = pt(viewport, x1, y1)
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y)
+    const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y)
+    if (!bounded(x, y, width, height) || !bounded(x + w, y + h, width, height) ||
+        w < 3 || h < 3 || w > 2048 || h > 2048) continue
+    const value = annotation.fieldValue
+    // Radio fieldValue describes the group selection; each widget needs its own
+    // export/button value to determine whether that individual radio is active.
+    const checked = annotation.radioButton && annotation.buttonValue
+      ? value === annotation.buttonValue
+      : value !== null && value !== undefined &&
+        value !== 'Off' && value !== false && value !== ''
+    layers.push({
+      kind: 'shape',
+      name: `PDF P${pageNumber} · ${annotation.radioButton ? 'Radio' : 'Checkbox'}: ${(annotation.fieldName || 'Button').slice(0, 50)}`,
+      visible: false,
+      shape: {
+        shape: annotation.radioButton ? 'ellipse' : 'rect', x, y, w, h,
+        radius: 0, sides: 5, starInset: 50,
+        fill: checked ? '#333333' : '#ffffff', fillOpacity: 100,
+        stroke: '#333333', strokeWidth: 1, strokeOpacity: 100,
+      },
+      metadata: {
+        sourceFormat: 'pdf', pageNumber, editableObject: annotation.radioButton ? 'formRadio' : 'formCheckbox',
+        sourceObjectKey: `pdf:p${pageNumber}:widget:${index}`,
+        sourceWidgetIndex: index, sourceWidgetId: annotation.id ?? '',
+        sourceFieldName: annotation.fieldName ?? '',
+        sourceFieldValue: typeof value === 'string' ? value.slice(0, 2000) : value === true,
+        buttonValue: annotation.buttonValue ?? '', checked,
         readOnlyField: annotation.readOnly === true, approximateAppearance: true,
       },
     })

@@ -2,7 +2,7 @@ import type { ParsedDocument, ParsedDocumentLayer } from './document-parser-type
 import { createCanvas, ctx2d } from '../utils/canvas'
 import { choosePdfPages } from './pdf-page-picker'
 import { MAX_PDF_BYTES, MAX_PDF_TOTAL_PIXELS, pdfRenderSize, selectedPdfPages, checkPdfPixelBudget } from './pdf-import-plan'
-import { pdfEditableText, pdfEditableVectors, pdfEditableTextWidgets } from './pdf-native'
+import { pdfEditableText, pdfEditableVectors, pdfEditableTextWidgets, pdfEditableButtonWidgets } from './pdf-native'
 
 /**
  * Rasterize the actual visual PDF pages via bundled PDF.js. This replaces the
@@ -80,8 +80,11 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
         }
         if (recoveredText + recoveredVectors < 512) try {
           const widgets = await page.getAnnotations({ intent: 'display' })
-          const recovered = pdfEditableTextWidgets(widgets, viewport.transform as
-            [number, number, number, number, number, number], canvas.width, canvas.height, index + 1)
+          const matrix = viewport.transform as [number, number, number, number, number, number]
+          const recovered = [
+            ...pdfEditableTextWidgets(widgets, matrix, canvas.width, canvas.height, index + 1),
+            ...pdfEditableButtonWidgets(widgets, matrix, canvas.width, canvas.height, index + 1),
+          ]
           const budget = Math.max(0, 512 - (recoveredText + recoveredVectors))
           const included = recovered.slice(0, budget)
           recoveredText += included.length
