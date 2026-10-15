@@ -390,7 +390,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
       ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
       ['object-select', 'quick-select', 'magic-wand'],
-      ['crop', 'perspective-crop'],
+      ['crop', 'perspective-crop', 'slice', 'hotspot'],
       ['eyedropper', 'color-sampler', 'measure'],
       ['spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
       ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
