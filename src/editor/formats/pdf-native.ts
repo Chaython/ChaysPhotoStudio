@@ -61,6 +61,10 @@ function bounded(x: number, y: number, width: number, height: number): boolean {
 }
 function colorFrom(args: unknown, mode: 'rgb' | 'gray' | 'cmyk'): string | null {
   const raw = Array.isArray(args) ? args : []
+  // PDF.js may already resolve color operators to CSS hex strings.
+  if (raw.length === 1 && typeof raw[0] === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw[0])) {
+    return raw[0].toLowerCase()
+  }
   // PDF.js has historically emitted separate channels and packed Uint8 arrays.
   const values = raw.length === 1 && (Array.isArray(raw[0]) || ArrayBuffer.isView(raw[0]))
     ? Array.from(raw[0] as ArrayLike<number>) : raw
@@ -226,7 +230,7 @@ function pdfRectanglePath(args: unknown): Float32Array | null {
 
 export function pdfEditableVectors(
   list: PdfOperatorList, ops: PdfOps, viewport: PdfMatrix,
-  width: number, height: number, pageNumber: number, debug = false,
+  width: number, height: number, pageNumber: number,
 ): ParsedDocumentLayer[] {
   const result: ParsedDocumentLayer[] = []
   const stack: PdfPaintState[] = []
@@ -236,7 +240,6 @@ export function pdfEditableVectors(
   for (let i = 0; i < length && result.length < MAX_VECTOR; i++) {
     const op = list.fnArray[i]
     const args = list.argsArray[i]
-    if (debug && i < 80) console.info('PDF_VECTOR_STATE', pageNumber, i, op, state.complex, state.fill)
     if (op === ops.save) { if (stack.length >= 128) { state.complex = true; continue }; stack.push({ ...state }); continue }
     if (op === ops.restore) {
       // An unmatched restore is malformed; never assume following paths are safe.
