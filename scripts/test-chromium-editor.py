@@ -1282,6 +1282,13 @@ def main():
                 })""")
                 check(len(result['markers'])==3 and [m['group'] for m in result['markers']]==['1','1','2'],
                       f"Count tool did not create independent groups: {result}")
+                with page.expect_download(timeout=10000) as csv_event:
+                    page.get_by_role("button", name="Export Count CSV").first.click()
+                csv_download=csv_event.value
+                report=Path(csv_download.path()).read_text(encoding="utf-8")
+                check("Group,Index,X,Y" in report and "1,1,112,20" in report and
+                      "2,1,146,51" in report,
+                      f"Count CSV report missing grouped marker data: {report[:360]}")
                 page.evaluate("() => window.__zphotoEngine.undo()")
                 check(page.evaluate("() => window.__zphotoEngine.activeDoc.countMarkers.length")==2,
                       "Count marker undo did not restore annotation list")
