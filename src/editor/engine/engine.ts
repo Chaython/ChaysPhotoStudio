@@ -6311,6 +6311,12 @@ export class Engine {
       c.imageSmoothingQuality = 'high'
       c.drawImage(flat, 0, 0, w, h)
     }
+    if (opts.format === 'pdf') {
+      const { canvasToPdf } = await import('../formats/pdf-export')
+      const blob = await canvasToPdf(out, doc.resolutionPpi ?? 72, opts.quality / 100)
+      downloadBlob(blob, `${opts.fileName || doc.name}.pdf`)
+      return
+    }
     const type = opts.format === 'jpeg' ? 'image/jpeg' : opts.format === 'webp' ? 'image/webp' : 'image/png'
     const encoded = await canvasToBlob(out, type, opts.format === 'png' ? undefined : opts.quality / 100)
     const blob = await embedRasterMetadata(

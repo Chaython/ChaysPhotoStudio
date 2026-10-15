@@ -915,7 +915,7 @@ export interface BrushSettings {
 }
 
 export interface ExportOptions {
-  format: 'png' | 'jpeg' | 'webp'
+  format: 'png' | 'jpeg' | 'webp' | 'pdf'
   quality: number       // 0..100
   scale: number
   fileName: string
