@@ -115,7 +115,7 @@ export const TOOL_DEFS: ToolDef[] = [
 
   { id: 'artboard', label: 'Artboard', group: 3, shortcut: 'V', icon: 'PanelsTopLeft', cursor: 'crosshair',
     defaults: {}, options: [] },
-  { id: 'count', label: 'Count', group: 3, shortcut: 'K', icon: 'ListOrdered', cursor: 'crosshair',
+  { id: 'count', label: 'Count', group: 3, shortcut: 'N', icon: 'ListOrdered', cursor: 'crosshair',
     defaults: { group: '1', markerSize: 10, showLabels: true },
     options: [
       { key:'group', label:'Count group', type:'select', options:[
