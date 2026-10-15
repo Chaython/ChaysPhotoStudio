@@ -47,6 +47,12 @@ const nearBlack = pdfEditableVectors({
 }, ops, viewport, 400, 240, 1)
 check(nearBlack[0]?.shape?.fill === '#010203',
   'packed Uint8 PDF colors must not promote low byte channels to white')
+const clampedNearBlack = pdfEditableVectors({
+  fnArray: [59, 91],
+  argsArray: [[new Uint8ClampedArray([1, 2, 3])], [22, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(clampedNearBlack[0]?.shape?.fill === '#010203',
+  'clamped packed PDF colors must retain low byte channels')
 const normalizedRgb = pdfEditableVectors({
   fnArray: [59, 91],
   argsArray: [[1, 0.5, 0], [22, [rect], [0, 0, 200, 120]]],
