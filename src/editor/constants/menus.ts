@@ -308,6 +308,25 @@ export const MENUS: MenuItem[][] = [
       const doc = engine.activeDoc
       if (doc) await engine.exportActive({ format: 'jpeg', quality: 92, scale: 1, fileName: exportBaseName(doc.name) })
     } },
+    { id: 'file-export-pdf-pages', label: 'Export Original PDF Pages (Flattened)…',
+      enabled: () => (engine.activeDoc?.layers.filter(layer =>
+        layer.pdfSource?.sourceFormat === 'pdf' && layer.pdfSource?.visualReference === true &&
+        layer.kind === 'raster' && !!layer.canvas).length ?? 0) > 1,
+      run: async () => {
+        const doc = engine.activeDoc
+        if (!doc) return
+        const references = doc.layers.filter(layer =>
+          layer.pdfSource?.sourceFormat === 'pdf' && layer.pdfSource?.visualReference === true &&
+          layer.kind === 'raster' && !!layer.canvas)
+        references.sort((a, b) => Number(a.pdfSource?.pageNumber) - Number(b.pdfSource?.pageNumber))
+        if (references.length < 2) return
+        const { canvasPagesToPdf } = await import('../formats/pdf-export')
+        const { downloadBlob } = await import('../utils/canvas')
+        const blob = await canvasPagesToPdf(references.map(layer => layer.canvas!), doc.resolutionPpi ?? 72, 0.92)
+        downloadBlob(blob, exportBaseName(doc.name) + '-original-pages.pdf')
+        store().pushToast('Exported original PDF page references (edits and overlays are not included).', 'success')
+      },
+    },
     { id: 'file-quick-export-pdf', label: 'Export Flattened PDF…', run: async () => {
       const doc = engine.activeDoc
       if (doc) await engine.exportActive({ format: 'pdf', quality: 92, scale: 1, fileName: exportBaseName(doc.name) })
