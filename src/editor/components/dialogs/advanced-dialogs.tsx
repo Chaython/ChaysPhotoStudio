@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { openSponsorsPage } from '../../utils/open-sponsors'
 import { IMPORT_ACCEPT, encodeCanvas } from '../../formats'
 import { metadataResolutionPpi, readImageMetadata } from '../../formats/metadata'
 import { engine } from '../../engine/engine'
@@ -1789,7 +1790,7 @@ export function AboutDialog({ onClose }: DialogProps) {
           size="sm"
           variant="outline"
           className="gap-1.5"
-          onClick={() => window.open('https://github.com/sponsors/Chaython', '_blank', 'noopener')}
+          onClick={openSponsorsPage}
         >
           <Heart size={12} className="text-primary" />
           Donate
