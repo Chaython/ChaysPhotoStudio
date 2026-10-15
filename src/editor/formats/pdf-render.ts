@@ -98,6 +98,7 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
           if (fileName === 'two-pages.pdf') {
             console.info('PDF_VECTOR_DIAGNOSTIC', JSON.stringify({
               ops: { constructPath: pdfjs.OPS.constructPath, fill: pdfjs.OPS.fill },
+              sequence: Array.from(operatorList.fnArray).slice(0, 80).map((op, i) => ({ op, args: operatorList.argsArray[i] })),
               records: Array.from(operatorList.fnArray).map((op, i) => ({
                 op, args: operatorList.argsArray[i],
               })).filter(item => item.op === pdfjs.OPS.constructPath ||
