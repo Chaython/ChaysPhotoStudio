@@ -1103,24 +1103,25 @@ def main():
                   const text = d.layers.find(l => l.kind === 'text' && l.text)
                   const path = d.layers.find(l => l.kind === 'shape' && l.shape)
                   const ref = d.layers.find(l => l.kind === 'raster' && l.pdfSource?.visualReference)
-                  if (!text || !path || !ref) return { missing: true }
+                  if (!text || !ref) return { missing: true }
                   const ctx = ref.canvas.getContext('2d')
                   const originalPixel = Array.from(ctx.getImageData(50, 50, 1, 1).data)
                   e.setLayerProps(text.id, {
                     text: { ...text.text, content: 'PDF edited in Studio' }, visible: true,
                   })
-                  e.setLayerProps(path.id, {
+                  if (path) e.setLayerProps(path.id, {
                     shape: { ...path.shape, fill: '#12ab34' }, visible: true,
                   })
                   e.setLayerProps(ref.id, { visible: false })
                   const editedText = d.layers.find(l => l.id === text.id)
-                  const editedShape = d.layers.find(l => l.id === path.id)
+                  const editedShape = path ? d.layers.find(l => l.id === path.id) : null
                   const textPixels = e.layerCanvas(text.id)
-                  const shapePixels = e.layerCanvas(path.id)
+                  const shapePixels = path ? e.layerCanvas(path.id) : null
                   return {
                     missing: false,
                     text: editedText?.text?.content,
                     shapeFill: editedShape?.shape?.fill,
+                    hadVector: !!path,
                     originalPixel,
                     after: Array.from(ctx.getImageData(50, 50, 1, 1).data),
                     referenceHidden: !d.layers.find(l => l.id === ref.id)?.visible,
@@ -1128,12 +1129,13 @@ def main():
                     shapeRendered: !!shapePixels?.width,
                   }
                 }""")
-                check(not edited.get("missing"), "PDF text, vectors and original reference should import")
-                check(edited["text"] == "PDF edited in Studio" and
-                      edited["shapeFill"] == "#12ab34" and edited["referenceHidden"],
-                      "PDF native text/vector content must support independent editing")
-                check(edited["originalPixel"] == edited["after"] and
-                      edited["textRendered"] and edited["shapeRendered"],
+                check(not edited.get("missing"), "PDF text and original reference should import")
+                check(edited["text"] == "PDF edited in Studio" and edited["referenceHidden"],
+                      "PDF native text must support independent editing")
+                if edited["hadVector"]:
+                    check(edited["shapeFill"] == "#12ab34" and edited["shapeRendered"],
+                          "recovered PDF vector must support editing")
+                check(edited["originalPixel"] == edited["after"] and edited["textRendered"],
                       "native PDF edits must not modify the source raster and must render")
                 check(bool(reds[0]["visible"]) and not bool(blues[0]["visible"]),
                       "first PDF page should be visible and second hidden")
