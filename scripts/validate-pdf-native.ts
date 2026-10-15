@@ -40,6 +40,21 @@ check(shape?.pathAnchors?.[0].x === 0 && shape.pathAnchors[0].y === 240, 'PDF co
 check(shape?.pathAnchors?.[2].x === 400 && shape.pathAnchors[2].y === 0, 'vector scaled to page pixels')
 check(vector[0].visible === false, 'original raster remains visual authority')
 
+// Packed PDF.js RGB channels must remain byte-valued even when a channel is 1.
+const nearBlack = pdfEditableVectors({
+  fnArray: [59, 91],
+  argsArray: [[new Uint8Array([1, 2, 3])], [22, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(nearBlack[0]?.shape?.fill === '#010203',
+  'packed Uint8 PDF colors must not promote low byte channels to white')
+const normalizedRgb = pdfEditableVectors({
+  fnArray: [59, 91],
+  argsArray: [[1, 0.5, 0], [22, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(normalizedRgb[0]?.shape?.fill === '#ff8000',
+  'normalized float PDF colors must remain normalized')
+
+
 const complex = pdfEditableVectors({
   fnArray: [29, 91], argsArray: [[], [22, [rect], [0, 0, 200, 120]]],
 }, ops, viewport, 400, 240, 1)
