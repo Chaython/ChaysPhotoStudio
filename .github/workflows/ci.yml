@@ -57,6 +57,9 @@ jobs:
       - name: Validate multi-artboard geometry, grid coverage and crop bounds
         run: bun run artboards:validate
 
+      - name: Validate Count Tool serialization and group limits
+        run: bun scripts/validate-count-markers.ts
+
       - name: Validate local design templates and brand kits
         run: bun run design-library:validate
 
