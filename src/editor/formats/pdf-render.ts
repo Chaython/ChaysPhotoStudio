@@ -107,7 +107,7 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
           }
           const recovered = pdfEditableVectors(operatorList, pdfjs.OPS,
             viewport.transform as [number, number, number, number, number, number],
-            canvas.width, canvas.height, index + 1)
+            canvas.width, canvas.height, index + 1, fileName === 'two-pages.pdf')
           const budget = Math.max(0, 512 - (recoveredText + recoveredVectors))
           const included = recovered.slice(0, budget)
           recoveredVectors += included.length
