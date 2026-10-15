@@ -134,3 +134,18 @@ bun run dist:all         # Shared icons, web build, Electron & extensions (not T
 ## Licensing
 
 Free for personal and educational use under a **non-commercial, source-available license**; commercial use requires licensing, and redistribution/modifications have additional restrictions. This is **not an OSI-approved open-source license**. See [LICENSE](LICENSE) for the authoritative terms. Commercial contact: **chaython@live.ca** · [Support development](https://github.com/sponsors/Chaython). The project is not affiliated with Adobe, GIMP or Photopea.
+
+<!-- chaython-funding:start -->
+## Support development
+
+Support this project through [GitHub Sponsors](https://github.com/sponsors/Chaython), [Patreon](https://patreon.com/Chaython), [Buy Me a Coffee](https://buymeacoffee.com/chaython), or [PayPal](https://paypal.me/ChaythonM).
+
+Crypto donations:
+
+- **Ethereum (ETH):** `0x201B6E0B0282BBAE1592C24f9CbD39009A70F7d7`
+- **Bitcoin (BTC):** `32o7JmXgFcs4R1SbcLLVKQCRw9KHkhneJi`
+- **Solana (SOL):** `BDicyUL9zizDeYBLw8oBwotv6jtHotLLQD7Bcqg2atLk`
+- **USDC (network not specified):** `0xBeD35dcAd9F1A32459B3C0DF004371EBE939E760`
+
+**For USDC, confirm the intended blockchain network before sending.** The EVM-style address does not specify a network.
+<!-- chaython-funding:end -->
