@@ -1097,7 +1097,9 @@ def main():
                       "PDF.js must render page 1 red vector rectangle")
                 check(len(blues) == 1 and blues[0]["pixel"][2] > 210 and blues[0]["pixel"][0] < 80,
                       "PDF.js must render page 2 blue vector rectangle")
-                check(len(data["layers"]) > 2, "PDF native vector extraction should expose editable shapes")
+                recovered_shapes = [layer for layer in data["layers"] if "Vector" in layer["name"]]
+                check(len(recovered_shapes) >= 2,
+                      "both real PDF pages must recover native editable vector rectangles")
                 edited = page.evaluate("""() => {
                   const e = window.__zphotoEngine, d = e.activeDoc
                   const text = d.layers.find(l => l.kind === 'text' && l.text)
