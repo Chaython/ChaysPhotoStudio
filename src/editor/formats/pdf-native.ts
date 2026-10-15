@@ -64,14 +64,15 @@ function colorFrom(args: unknown, mode: 'rgb' | 'gray' | 'cmyk'): string | null 
   // PDF.js has historically emitted separate channels and packed Uint8 arrays.
   const values = raw.length === 1 && (Array.isArray(raw[0]) || ArrayBuffer.isView(raw[0]))
     ? Array.from(raw[0] as ArrayLike<number>) : raw
-  const number = values.map(Number)
-  if (!number.every(Number.isFinite)) return null
+  // Reject malformed components instead of coercing null/strings into colors.
+  if (!values.every(v => typeof v === 'number' && Number.isFinite(v))) return null
+  const number = values as number[]
   const n = mode === 'gray' ? 1 : mode === 'rgb' ? 3 : 4
   if (number.length < n) return null
   // Packed Uint8 colors are byte values, including channel value 1. Treating
   // 1 as normalized white turned near-black PDF fills into full intensity.
   // PDF.js float channel arguments are instead normalized to [0, 1].
-  const packedBytes = raw.length === 1 && raw[0] instanceof Uint8Array
+  const packedBytes = raw.length === 1 && (raw[0] instanceof Uint8Array || raw[0] instanceof Uint8ClampedArray)
   const normalized = number.slice(0, n).map(v =>
     Math.max(0, Math.min(1, packedBytes ? v / 255 : v > 1 ? v / 255 : v)))
   const channels = mode === 'gray' ? [normalized[0], normalized[0], normalized[0]]
@@ -209,14 +210,28 @@ export function pdfEditableVectors(
   for (let i = 0; i < length && result.length < MAX_VECTOR; i++) {
     const op = list.fnArray[i]
     const args = list.argsArray[i]
-    if (op === ops.save) { stack.push({ ...state }); continue }
-    if (op === ops.restore) { state = stack.pop() ?? baseState(); continue }
+    if (op === ops.save) { if (stack.length >= 128) { state.complex = true; continue }; stack.push({ ...state }); continue }
+    if (op === ops.restore) {
+      // An unmatched restore is malformed; never assume following paths are safe.
+      if (!stack.length) { state.complex = true; continue }
+      state = stack.pop()!
+      continue
+    }
     if (op === ops.transform) {
-      if (finiteMatrix(args)) state.matrix = multiply(state.matrix, args as PdfMatrix)
+      if (finiteMatrix(args)) {
+        const composed = multiply(state.matrix, args as PdfMatrix)
+        if (composed.every(Number.isFinite)) state.matrix = composed
+        else state.complex = true
+      }
       else state.complex = true
       continue
     }
-    if (op === ops.setLineWidth) { state.width = Math.max(0, Number(args?.[0]) || 0); continue }
+    if (op === ops.setLineWidth) {
+      const value = args?.[0]
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) state.complex = true
+      else state.width = value
+      continue
+    }
     if (op === ops.setFillRGBColor || op === ops.setFillGray || op === ops.setFillCMYKColor) {
       state.fill = colorFrom(args, op === ops.setFillGray ? 'gray' : op === ops.setFillCMYKColor ? 'cmyk' : 'rgb')
       continue
@@ -226,16 +241,26 @@ export function pdfEditableVectors(
       continue
     }
     if (op === ops.clip || op === ops.eoClip || op === ops.setGState ||
-        op === ops.beginGroup) { state.complex = true; continue }
+        op === ops.beginGroup || op === ops.endGroup) { state.complex = true; continue }
     if (op !== ops.constructPath || !Array.isArray(args) || state.complex) continue
     const [paintOp, pathData] = args
     const fill = [22, 23, 24, 25, 26, 27].includes(paintOp)
     const stroke = [20, 21, 24, 25, 26, 27].includes(paintOp)
     if (!fill && !stroke) continue
+    // Unknown/invalid paint cannot be represented faithfully. Do not create
+    // transparent or incorrectly colored editable shapes in its place.
+    if ((fill && state.fill === null) || (stroke && state.stroke === null)) continue
+    // PDF's paint operators can request filling an open path (implicitly closed).
+    // Recovered paths must preserve that behavior rather than turning a filled
+    // open contour into a different native shape.
     const path = readPath(pathData?.[0], multiply(viewport, state.matrix), width, height)
-    if (!path) continue
-    const xs = path.anchors.map(a => a.x), ys = path.anchors.map(a => a.y)
-    const minX = Math.min(...xs), minY = Math.min(...ys), maxX = Math.max(...xs), maxY = Math.max(...ys)
+    if (!path || (fill && !path.closed)) continue
+    // Bezier handles can extend beyond endpoints: preserve their full extent.
+    const allX = path.anchors.flatMap(a => [a.x, a.x + (a.inX ?? 0), a.x + (a.outX ?? 0)])
+    const allY = path.anchors.flatMap(a => [a.y, a.y + (a.inY ?? 0), a.y + (a.outY ?? 0)])
+    const minX = Math.min(...allX), minY = Math.min(...allY)
+    const maxX = Math.max(...allX), maxY = Math.max(...allY)
+    if (![minX, minY, maxX, maxY].every(Number.isFinite)) continue
     const scaleX = Math.hypot(state.matrix[0], state.matrix[1]) * Math.hypot(viewport[0], viewport[1])
     const scaleY = Math.hypot(state.matrix[2], state.matrix[3]) * Math.hypot(viewport[2], viewport[3])
     const sw = state.width * (scaleX + scaleY) / 2
