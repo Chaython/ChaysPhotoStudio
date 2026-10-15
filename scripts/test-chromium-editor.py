@@ -1308,6 +1308,77 @@ def main():
                       "Count marker selection escaped into a second document")
                 check(not errors,f"Artboard and Count tools caused uncaught JS errors: {errors[:3]}")
 
+            def canvas_web_region_tools():
+                _, page, errors = app_page(browser)
+                page.set_viewport_size({"width": 1440, "height": 900})
+                page.evaluate("""() => {
+                    window.__zphotoEngine.newDocument({name:'Web region tools', width:160, height:120, fill:'#ffffff'})
+                    window.__zphotoStore.getState().setTool('slice')
+                }""")
+                page.wait_for_function("""() => window.__zphotoEngine.activeDoc?.width === 160 &&
+                    window.__zphotoStore.getState().activeTool === 'slice'""")
+                page.wait_for_function("() => !!window.__zphotoViewport?.canvas")
+                # Match the viewport conversion used by the real input router.
+                def pt(x, y):
+                    return page.evaluate("""([x, y]) => {
+                        const v = window.__zphotoEngine.activeDoc.view
+                        const b = window.__zphotoViewport.canvas.getBoundingClientRect()
+                        return {x:b.left + v.panX + x * v.zoom,
+                                y:b.top + v.panY + y * v.zoom}
+                    }""", [x, y])
+                def drag_region(a, b):
+                    p, q = pt(*a), pt(*b)
+                    page.mouse.move(p["x"], p["y"])
+                    page.mouse.down()
+                    page.mouse.move(q["x"], q["y"], steps=8)
+                    page.mouse.up()
+
+                drag_region((20, 20), (67, 62))
+                regions = page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions")
+                check(len(regions) == 1 and regions[0]["kind"] == "slice",
+                      f"Slice pointer gesture did not create a real project region: {regions}")
+                check(regions[0]["width"] >= 45 and regions[0]["height"] >= 40,
+                      f"Slice bounds were too small: {regions}")
+                # The second tool adds an actual clickable hotspot, not a fake
+                # toolbar-only option, and keeps the first slice intact.
+                page.evaluate("() => window.__zphotoStore.getState().setTool('hotspot')")
+                page.wait_for_function("() => window.__zphotoStore.getState().activeTool === 'hotspot'")
+                drag_region((95, 30), (135, 60))
+                regions = page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions")
+                check(len(regions) == 2 and regions[1]["kind"] == "hotspot",
+                      f"Hotspot did not create an independent project region: {regions}")
+                page.evaluate("() => window.__zphotoEngine.undo()")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions.length") == 1,
+                      "Undo did not remove the newly created hotspot")
+                page.evaluate("() => window.__zphotoEngine.redo()")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions.length") == 2,
+                      "Redo did not restore the hotspot annotation")
+                page.mouse.click(**pt(110, 44))
+                page.keyboard.press("ArrowRight")
+                moved = page.evaluate("() => window.__zphotoEngine.activeDoc.webRegions[1].x")
+                check(moved > 95, "Keyboard arrow did not nudge selected hotspot")
+                page.keyboard.press("Enter")
+                # Web Assets is lazy-loaded. Confirm the key was handled by the
+                # store first, then wait for the modal component to render.
+                page.wait_for_function("""() => window.__zphotoStore.getState().dialogs
+                    .some(d => d.type === 'web-assets')""", timeout=10000)
+                dialog = page.get_by_role("dialog")
+                dialog.get_by_text("Web Slices & Hotspots").wait_for(state="visible", timeout=15000)
+                name_input = dialog.get_by_role("textbox", name="Region name")
+                name_input.wait_for(state="visible", timeout=10000)
+                check(name_input.input_value().startswith("Hotspot"),
+                      "Web Assets details did not focus the selected hotspot")
+                dialog.get_by_role("button", name="Close", exact=True).first.click()
+                # Create a second document; a region selected in another tab
+                # must never be deleted or modified by a keyboard shortcut.
+                page.evaluate("""() => window.__zphotoEngine.newDocument({
+                    name:'Separate annotation doc',width:120,height:90,fill:'#ffffff'
+                })""")
+                page.keyboard.press("Delete")
+                check(page.evaluate("() => (window.__zphotoEngine.activeDoc.webRegions || []).length") == 0,
+                      "Selected hotspot leaked into another document")
+                check(not errors, f"canvas web-region tools threw JavaScript errors: {errors[:3]}")
+
             def color_sampler_info_panel():
                 _, page, errors = app_page(browser)
                 page.evaluate("""() => {
@@ -1377,6 +1448,7 @@ def main():
                 ("named_layout_manager_safety", named_layout_manager_safety),
                 ("editable_layer_context_menu", editable_layer_context_menu),
                 ("artboard_and_count_canvas_tools", artboard_and_count_canvas_tools),
+                ("canvas_web_region_tools", canvas_web_region_tools),
                 ("color_sampler_info_panel", color_sampler_info_panel),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
                 ("video_frame_picker_real_webm", video_frame_picker),

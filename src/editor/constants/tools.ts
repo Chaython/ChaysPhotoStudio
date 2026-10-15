@@ -127,6 +127,15 @@ export const TOOL_DEFS: ToolDef[] = [
     ],
   },
 
+  { id: 'slice', label: 'Slice', group: 3, shortcut: 'K', icon: 'PanelsTopLeft', cursor: 'crosshair',
+    defaults: { showLabels: true },
+    options: [{ key: 'showLabels', label: 'Show Region Names', type: 'toggle' }],
+  },
+  { id: 'hotspot', label: 'Hotspot', group: 3, shortcut: 'K', icon: 'MousePointer2', cursor: 'crosshair',
+    defaults: { showLabels: true },
+    options: [{ key: 'showLabels', label: 'Show Region Names', type: 'toggle' }],
+  },
+
   // group 2 — color picker (standalone button — always visible in the toolbar)
 
   // group 3 — crop / measure
@@ -360,6 +369,7 @@ export const TOOL_CYCLES: ToolId[][] = [
   ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
   ['object-select', 'quick-select', 'magic-wand'],
   ['crop', 'perspective-crop'],
+  ['measure', 'slice', 'hotspot'],
   ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
   ['history-brush', 'art-history-brush'],
   ['eraser', 'background-eraser', 'magic-eraser'],

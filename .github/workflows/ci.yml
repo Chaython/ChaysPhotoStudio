@@ -54,6 +54,9 @@ jobs:
       - name: Validate web slices, hotspots and safe HTML image maps
         run: bun run web-assets:validate
 
+      - name: Validate canvas Slice and Hotspot geometry
+        run: bun scripts/validate-web-region-tools.ts
+
       - name: Validate multi-artboard geometry, grid coverage and crop bounds
         run: bun run artboards:validate
 

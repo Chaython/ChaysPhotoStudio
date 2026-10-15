@@ -831,6 +831,7 @@ export class Engine {
       frames: doc.frames?.map(frame => structuredClone(frame)),
       artboards: doc.artboards?.map(a => structuredClone(a)),
       countMarkers: doc.countMarkers?.map(m => ({ ...m })),
+      webRegions: doc.webRegions?.map(r => ({ ...r })),
       activeArtboardId: doc.activeArtboardId ?? null,
       showArtboardOutlines: doc.showArtboardOutlines !== false,
       linkedDesignStyles: doc.linkedDesignStyles?.map(t => structuredClone(t)),
@@ -858,6 +859,7 @@ export class Engine {
     if ('frames' in st) doc.frames = st.frames?.map(frame => structuredClone(frame))
     if ('artboards' in st) doc.artboards = st.artboards?.map(a => structuredClone(a))
     if ('countMarkers' in st) doc.countMarkers = st.countMarkers?.map(m => ({ ...m }))
+    if ('webRegions' in st) doc.webRegions = st.webRegions?.map(r => ({ ...r }))
     if ('activeArtboardId' in st) doc.activeArtboardId = st.activeArtboardId ?? null
     if ('showArtboardOutlines' in st) doc.showArtboardOutlines = st.showArtboardOutlines !== false
     if ('linkedDesignStyles' in st) doc.linkedDesignStyles = st.linkedDesignStyles?.map(t => structuredClone(t))

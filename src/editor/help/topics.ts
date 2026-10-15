@@ -394,7 +394,7 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     ],
     "tips": [
       "The Shortcuts dialog shows the current binding if it has been customized.",
-      "The editor now includes dedicated Artboard (V family) and Count (N) canvas tools alongside Freeform/Curvature Pen and Type Mask variants."
+      "The editor registers 56 tools, including Artboard, Count, Slice, Hotspot, Freeform/Curvature Pen and Type Mask variants."
     ]
   },
   {
@@ -745,6 +745,26 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Counts stay in the native project and History snapshots, and never change raster pixels or appear in ordinary image export.",
       "The current Count tool supports up to 2,000 markers. Group totals are displayed beside markers when enabled. Export Count CSV in Tool Options saves group, index and X/Y coordinates.",
       "Both tools record real edits in Undo/Redo; moving or resizing with a drag is one History step."
+    ]
+  },
+  {
+    "id": "web-region-tools",
+    "title": "Slice and Hotspot canvas tools",
+    "category": "Tools",
+    "path": "Slice / Hotspot (K tool family) / File → Web Slices & Hotspots",
+    "summary": "Draw and edit web export rectangles directly on the full-resolution canvas.",
+    "steps": [
+      "Choose Slice or Hotspot from the K tool group; drag on the image to create a region. Slice exports a cropped image, while Hotspot defines a clickable image-map link.",
+      "Click a region to select it, drag inside to move it, or drag its lower-right corner to resize. Shift constrains square creation and resizing.",
+      "Use arrow keys to move a selected region one document pixel (Shift moves ten), Delete to remove it, Escape to clear the selection, or Alt/Option-click to delete a region.",
+      "Press Enter or double-click to open File → Web Slices & Hotspots to change names, hotspot URLs, alt text and image-export settings.",
+      "Save the native project to retain regions. Export Web Assets creates cropped slice images and safe HTML image maps without changing the document pixels."
+    ],
+    "tips": [
+      "Slice and Hotspot regions are project-persistent document annotations, not paint layers; there is no destructive raster edit.",
+      "The K shortcut cycles Measure, Slice and Hotspot; no layer needs to be selected to draw regions.",
+      "Each document supports up to 128 web regions. The editor clips regions to document bounds and does not create a region from a single click.",
+      "Web export supports rectangular regions and image maps; polygonal hotspots and native Fireworks document interchange are not yet implemented."
     ]
   },
   {

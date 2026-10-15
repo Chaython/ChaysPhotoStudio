@@ -30,7 +30,7 @@ The following workflows are still **absent** rather than merely incomplete; prio
 | **Full Illustrator AI round-trip writer** | Illustrator | Loss-aware preservation of editable vector appearance and artboard structure |
 | **Native ICC-managed CMYK/spot separations** | Illustrator, Photoshop | Editable press-color documents rather than approximate RGB previews |
 
-**No longer entirely missing:** basic rectangular **web slices/hotspots** have a File-menu editor, while **artboards/pages** now also have a working main-canvas Artboard tool plus File-menu settings, native persistence and regional raster export. Both remain **partial parity**, not native Illustrator/Fireworks project support.
+**No longer entirely missing:** basic rectangular **web slices/hotspots** have canvas tools and a File-menu editor, while **artboards/pages** now also have a working main-canvas Artboard tool plus File-menu settings, native persistence and regional raster export. Both remain **partial parity**, not native Illustrator/Fireworks project support.
 
 
 ## PhotoCraft comparison — missing and partial workflow focus
@@ -72,7 +72,7 @@ Here **?** means unverified from PhotoCraft's referenced audit; ratings are qual
 | Multiple artboards / pages in **one document** | ◐ | ✓ | ◐ | ✓ | ✓ | Studio now stores named artboards with a direct canvas Artboard tool, **per-page layer inclusion**, previews and raster exports. A single master canvas and layer stack remain shared; there are no true independent page trees, page-local object positioning or native Illustrator/Fireworks round trips. |
 | Reusable linked symbols, shared design components / master pages | ◐ | ◐ | ◐ | ✓ | ✓ | Smart Objects and layer comps are related, but Studio lacks a dedicated linked symbol-instance library and shared master-page inheritance. |
 | Interactive UI states / rollover prototype workflow | ◐ | ◐ | ◐ | ✓ | ◐ | Artboards can reference Normal/Hover/Pressed Layer Comps, preview states and export separate images plus a standalone CSS rollover HTML file. No full Fireworks States panel, linked symbols, transitions or page navigation. |
-| Web slices / hotspots / image maps | ◐ | ✓ | ◐ | ✓ | ◐ | **File → Web Slices & Hotspots** now allows rectangular slice/hotspot editing, cropped image export and safe clickable image-map HTML. Polygon hotspots, main-canvas overlays and Fireworks metadata interchange remain missing. |
+| Web slices / hotspots / image maps | ◐ | ✓ | ◐ | ✓ | ◐ | **Slice and Hotspot canvas tools** draw, select, resize and nudge rectangular web regions directly on the image; File → Web Slices & Hotspots edits link metadata and exports slices and safe HTML image maps. Polygon hotspots and native Fireworks interchange remain missing. |
 | Per-slice web-image optimization and export | ◐ | ✓ | ◐ | ✓ | ◐ | PNG/JPEG/WebP export settings and independent layer export exist, not slice-specific optimization or Fireworks multi-page/state/slice output. |
 | Export individual layers/assets | ✓ | ✓ | ◐ | ✓ | ✓ | Export Layers to Files supports selected formats and transparency; not a full UI-asset batch/spec generator or Fireworks state export. |
 | Native editable vector/SVG design interchange | ◐ | ◐ | ◐ | ◐ | ✓ | Selected SVG paths/shapes can be parsed; unsupported SVG paint features and AI/EPS/PDF operators may be dropped/approximated. No Illustrator-grade editable AI writer. |

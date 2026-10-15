@@ -40,6 +40,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Tool groups and choosing the right tool](#tool-groups-and-choosing-the-right-tool)
 - [Paths, text and shapes](#paths-text-and-shapes)
 - [Artboard and Count canvas tools](#artboard-and-count-canvas-tools)
+- [Slice and Hotspot canvas tools](#slice-and-hotspot-canvas-tools)
 - [Ruler measurements and persistent color sampler points](#ruler-measurements-and-persistent-color-sampler-points)
 - [High-precision 16-bit and 32-bit retouching](#high-precision-16-bit-and-32-bit-retouching)
 
@@ -438,7 +439,7 @@ View or customize key bindings and work without a keyboard.
 **Notes and tips:**
 
 - The Shortcuts dialog shows the current binding if it has been customized.
-- The editor now includes dedicated Artboard (V family) and Count (N) canvas tools alongside Freeform/Curvature Pen and Type Mask variants.
+- The editor registers 56 tools, including Artboard, Count, Slice, Hotspot, Freeform/Curvature Pen and Type Mask variants.
 
 ## Plugins, automation and optional AI
 
@@ -771,6 +772,25 @@ Edit export artboards on the canvas and mark counted subjects without changing s
 - Counts stay in the native project and History snapshots, and never change raster pixels or appear in ordinary image export.
 - The current Count tool supports up to 2,000 markers. Group totals are displayed beside markers when enabled. Export Count CSV in Tool Options saves group, index and X/Y coordinates.
 - Both tools record real edits in Undo/Redo; moving or resizing with a drag is one History step.
+
+## Slice and Hotspot canvas tools
+
+Draw and edit web export rectangles directly on the full-resolution canvas.
+
+**Where:** Slice / Hotspot (K tool family) / File → Web Slices & Hotspots
+
+1. Choose Slice or Hotspot from the K tool group; drag on the image to create a region. Slice exports a cropped image, while Hotspot defines a clickable image-map link.
+2. Click a region to select it, drag inside to move it, or drag its lower-right corner to resize. Shift constrains square creation and resizing.
+3. Use arrow keys to move a selected region one document pixel (Shift moves ten), Delete to remove it, Escape to clear the selection, or Alt/Option-click to delete a region.
+4. Press Enter or double-click to open File → Web Slices & Hotspots to change names, hotspot URLs, alt text and image-export settings.
+5. Save the native project to retain regions. Export Web Assets creates cropped slice images and safe HTML image maps without changing the document pixels.
+
+**Notes and tips:**
+
+- Slice and Hotspot regions are project-persistent document annotations, not paint layers; there is no destructive raster edit.
+- The K shortcut cycles Measure, Slice and Hotspot; no layer needs to be selected to draw regions.
+- Each document supports up to 128 web regions. The editor clips regions to document bounds and does not create a region from a single click.
+- Web export supports rectangular regions and image maps; polygonal hotspots and native Fireworks document interchange are not yet implemented.
 
 ## Ruler measurements and persistent color sampler points
 
