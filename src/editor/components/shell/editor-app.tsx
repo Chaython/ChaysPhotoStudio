@@ -250,7 +250,11 @@ export function EditorApp() {
       if (files.length) void openFiles(files)
     }
     window.addEventListener('chays:open-file', onOpenFile as EventListener)
-    return () => window.removeEventListener('chays:open-file', onOpenFile as EventListener)
+    ;(window as unknown as { __chaysOpenFileReady?: boolean }).__chaysOpenFileReady = true
+    return () => {
+      ;(window as unknown as { __chaysOpenFileReady?: boolean }).__chaysOpenFileReady = false
+      window.removeEventListener('chays:open-file', onOpenFile as EventListener)
+    }
   }, [])
 
   // keep zoom display fresh
