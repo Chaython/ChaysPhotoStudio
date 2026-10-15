@@ -375,8 +375,12 @@ export function pdfEditableButtonWidgets(
     if (!bounded(x, y, width, height) || !bounded(x + w, y + h, width, height) ||
         w < 3 || h < 3 || w > 2048 || h > 2048) continue
     const value = annotation.fieldValue
-    const checked = value !== null && value !== undefined &&
-      value !== 'Off' && value !== false && value !== ''
+    // Radio fieldValue describes the group selection; each widget needs its own
+    // export/button value to determine whether that individual radio is active.
+    const checked = annotation.radioButton && annotation.buttonValue
+      ? value === annotation.buttonValue
+      : value !== null && value !== undefined &&
+        value !== 'Off' && value !== false && value !== ''
     layers.push({
       kind: 'shape',
       name: `PDF P${pageNumber} · ${annotation.radioButton ? 'Radio' : 'Checkbox'}: ${(annotation.fieldName || 'Button').slice(0, 50)}`,
