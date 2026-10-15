@@ -168,7 +168,7 @@ export function pdfEditableText(
 ): ParsedDocumentLayer[] {
   const layers: ParsedDocumentLayer[] = []
   const items = Array.isArray(content.items) ? content.items : []
-  for (const item of items.slice(0, MAX_ITEMS)) {
+  for (const [itemIndex, item] of items.slice(0, MAX_ITEMS).entries()) {
     if (layers.length >= MAX_TEXT) break
     if (!item?.str || item.str.trim().length === 0 ||
         item.str.length > 2000 || !finiteMatrix(item.transform)) continue
@@ -193,7 +193,8 @@ export function pdfEditableText(
         align: 'left', lineHeight: 1.2, tracking: 0,
       },
       metadata: { sourceFormat: 'pdf', pageNumber, editableObject: 'text', 
-        originalFontName: item.fontName ?? '', approximateAppearance: true },
+        originalFontName: item.fontName ?? '', sourceTextIndex: itemIndex,
+        sourceTextTransform: [...item.transform!], sourceText: item.str, approximateAppearance: true },
     })
   }
   return layers
@@ -277,7 +278,9 @@ export function pdfEditableVectors(
         stroke: stroke && sw > 0 ? state.stroke : null, strokeWidth: stroke ? sw : 0,
         strokeOpacity: 100, pathAnchors: path.anchors, pathClosed: path.closed,
       },
-      metadata: { sourceFormat: 'pdf', pageNumber, editableObject: 'vector', approximateAppearance: true },
+      metadata: { sourceFormat: 'pdf', pageNumber, editableObject: 'vector',
+        sourceOperatorIndex: i, sourcePaintOperator: paintOp,
+        sourceTransform: [...state.matrix], approximateAppearance: true },
     })
   }
   return result
