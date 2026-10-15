@@ -58,7 +58,7 @@ export function AppBridges() {
           // The editor registers its file listener during hydration.
           let attempts = 0
           const deliver = () => {
-            if ((window as unknown as { __zphotoEngine?: unknown }).__zphotoEngine) {
+            if ((window as unknown as { __chaysOpenFileReady?: boolean }).__chaysOpenFileReady) {
               window.dispatchEvent(new CustomEvent('chays:open-file', { detail: file }))
             } else if (++attempts < 300) window.setTimeout(deliver, 100)
           }
