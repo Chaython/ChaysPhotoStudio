@@ -255,7 +255,6 @@ export function pdfEditableVectors(
     // open contour into a different native shape.
     const path = readPath(pathData?.[0], multiply(viewport, state.matrix), width, height)
     if (!path || (fill && !path.closed)) continue
-    const xs = path.anchors.map(a => a.x), ys = path.anchors.map(a => a.y)
     // Bezier handles can extend beyond endpoints: preserve their full extent.
     const allX = path.anchors.flatMap(a => [a.x, a.x + (a.inX ?? 0), a.x + (a.outX ?? 0)])
     const allY = path.anchors.flatMap(a => [a.y, a.y + (a.inY ?? 0), a.y + (a.outY ?? 0)])
