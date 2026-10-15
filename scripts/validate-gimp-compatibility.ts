@@ -3,7 +3,7 @@ import { Script } from 'node:vm'
 import { evaluateScheme } from '../src/editor/plugins/embedded-scheme'
 import { getEmbeddedWorkerSource } from '../src/editor/plugins/embedded-interpreters'
 import { analyzeGimpScript } from '../src/editor/plugins/gimp-script-analyzer'
-import { analyzeGimpPluginSource } from '../src/editor/plugins/compatibility'
+import { analyzeGimpPluginSource, analyzePluginCompatibility, detectPluginSourceFormat } from '../src/editor/plugins/compatibility'
 
 const scm = [
   '(script-fu-register "sample" "Sample" ...)',
@@ -32,6 +32,18 @@ assert.equal(gmic.language, 'gmic')
 assert.equal(gmic.operations.find(op => op.name === 'fx_sharpen')?.status, 'gmic-bridge')
 assert.equal(analyzeGimpScript('gegl:noise_reduction', 'effect.txt').operations[0]?.name, 'gegl:noise_reduction')
 assert.equal(analyzeGimpScript('// no GIMP calls', 'empty.txt').operations.length, 0)
+assert.equal(detectPluginSourceFormat('(script-fu-register "sample" "Sample" ...)', 'filter.scm'), 'gimp')
+assert.equal(detectPluginSourceFormat('-blur 2\n-fx_sharpen 1', 'effect.gmic'), 'gmic')
+assert.equal(detectPluginSourceFormat('gegl:noise_reduction', 'effect.gegl'), 'gegl')
+assert.equal(detectPluginSourceFormat('console.log("native plugin")', 'plugin.js'), 'zphoto')
+assert.equal(detectPluginSourceFormat('console.log("native plugin")', 'plugin.js', { id: 'com.example.plugin' }), 'zphoto')
+assert.equal(
+  detectPluginSourceFormat('entrypoints.setup = () => {}', 'main.js', { manifestVersion: 5, entrypoints: [{ type: 'command' }] }),
+  'uxp',
+)
+const compat = analyzePluginCompatibility('(script-fu-register "sample" "Sample" ...)', 'filter.scm')
+assert.equal(compat?.ecosystem, 'gimp')
+assert.ok(compat?.warnings.some(w => w.includes('manual review')))
 assert.throws(() => analyzeGimpScript('x'.repeat(2_000_001)), /limit/)
 assert.deepEqual(analyzeGimpScript('throw new Error("EXECUTED")', 'unsafe.py').operations, [])
 console.log('GIMP script analysis is static, bounded, and classifies native/bridge-only references')
