@@ -394,7 +394,7 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     ],
     "tips": [
       "The Shortcuts dialog shows the current binding if it has been customized.",
-      "Main registers 52 tools, including Freeform/Curvature Pen and both Type Mask variants; shared keys cycle within tool families."
+      "The editor now includes dedicated Artboard (V family) and Count (N) canvas tools alongside Freeform/Curvature Pen and Type Mask variants."
     ]
   },
   {
@@ -725,6 +725,26 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "The Edit context menu… entry cannot be hidden, so the layout can always be restored.",
       "The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.",
       "Commands that do not apply to the active layer may be disabled or omitted."
+    ]
+  },
+  {
+    "id": "canvas-artboard-count",
+    "title": "Artboard and Count canvas tools",
+    "category": "Tools",
+    "path": "Artboard (V family) / Count (N) / File → Artboards & Pages",
+    "summary": "Edit export artboards on the canvas and mark counted subjects without changing source pixels.",
+    "steps": [
+      "Choose Artboard from the Move tool family. Drag across empty canvas space to create a page, or Ctrl/Cmd-drag to create a new one even over an existing artboard.",
+      "Click an existing artboard to select it, drag its body to move or its bottom-right corner to resize; hold Shift while creating or resizing to constrain to a square.",
+      "Use arrow keys to nudge the active board one pixel, Shift+arrows for ten, Delete to remove, Escape to deselect, and Enter or double-click to open Artboards & Pages for page-specific layer and rollover/export settings.",
+      "Choose Count (N) to click individual subjects. Change Group in Tool Options (1–5) for separate numbered totals; Shift-click an existing marker to assign that group.",
+      "Drag a count marker to reposition; use arrow keys (Shift = ten pixels), Delete or Alt/Option-click to remove, and Escape to deselect. Save Project to retain annotations."
+    ],
+    "tips": [
+      "Artboards remain regions of the shared document/layer tree, not independent Photoshop or Illustrator document canvases.",
+      "Counts stay in the native project and History snapshots, and never change raster pixels or appear in ordinary image export.",
+      "The current Count tool supports up to 2,000 markers. Group totals are displayed beside markers when enabled.",
+      "Both tools record real edits in Undo/Redo; moving or resizing with a drag is one History step."
     ]
   },
   {
