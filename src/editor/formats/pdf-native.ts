@@ -272,7 +272,8 @@ export function pdfEditableVectors(
     // Do not recover unsupported/compound paths, which remain in the raster.
     if (op === ops.constructPath && Array.isArray(args) && Array.isArray(args[0])) {
       pendingRect = state.complex ? null : pdfRectanglePath(args)
-      continue
+      if (pendingRect) continue
+      // Keep the compact, already-painted constructPath format below.
     }
     const separatePaint = [20, 21, 22, 23, 24, 25, 26, 27].includes(op)
     if (separatePaint && !pendingRect) continue
