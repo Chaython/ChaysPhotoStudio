@@ -83,10 +83,6 @@ linux:
 # Windows NSIS file associations: importable formats are best-effort;
  # OS codecs and optional decoders determine whether a given file can open.
 fileAssociations:
-  - ext: [zproj]
-    name: Photo Studio projects
-    description: Open with Chays Photo Studio
-    role: Editor
   - ext: [psd, psb, ai, indd, xcf, sketch, xd, fig, kri, kra, ora, clip, sai, pxd, pxz, cdr, ufo, afphoto, gvdesign, eps, pdf, pdn]
     name: Layered documents
     description: Open with Chays Photo Studio
