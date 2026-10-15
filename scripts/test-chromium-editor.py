@@ -1132,9 +1132,8 @@ def main():
                 check(not edited.get("missing"), "PDF text and original reference should import")
                 check(edited["text"] == "PDF edited in Studio" and edited["referenceHidden"],
                       "PDF native text must support independent editing")
-                if edited["hadVector"]:
-                    check(edited["shapeFill"] == "#12ab34" and edited["shapeRendered"],
-                          "recovered PDF vector must support editing")
+                check(edited["hadVector"] and edited["shapeFill"] == "#12ab34" and
+                      edited["shapeRendered"], "real PDF rectangle must be recovered and editable")
                 check(edited["originalPixel"] == edited["after"] and edited["textRendered"],
                       "native PDF edits must not modify the source raster and must render")
                 check(bool(reds[0]["visible"]) and not bool(blues[0]["visible"]),
