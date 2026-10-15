@@ -61,6 +61,10 @@ function bounded(x: number, y: number, width: number, height: number): boolean {
 }
 function colorFrom(args: unknown, mode: 'rgb' | 'gray' | 'cmyk'): string | null {
   const raw = Array.isArray(args) ? args : []
+  // PDF.js may already resolve color operators to CSS hex strings.
+  if (raw.length === 1 && typeof raw[0] === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw[0])) {
+    return raw[0].toLowerCase()
+  }
   // PDF.js has historically emitted separate channels and packed Uint8 arrays.
   const values = raw.length === 1 && (Array.isArray(raw[0]) || ArrayBuffer.isView(raw[0]))
     ? Array.from(raw[0] as ArrayLike<number>) : raw
@@ -98,7 +102,7 @@ function readPath(input: unknown, matrix: PdfMatrix, width: number, height: numb
   { anchors: PathAnchor[]; closed: boolean } | null {
   if (!input || typeof input !== 'object' || !('length' in input)) return null
   const raw = input as ArrayLike<number>
-  if (raw.length < 6 || raw.length > MAX_PATH_NUMBERS) return null
+  if (raw.length < 5 || raw.length > MAX_PATH_NUMBERS) return null
   const anchors: PathAnchor[] = []
   let i = 0, closed = false, subpaths = 0
   let last = { x: 0, y: 0 }
@@ -143,6 +147,15 @@ function readPath(input: unknown, matrix: PdfMatrix, width: number, height: numb
       const c2 = { x: x + 2 / 3 * (qx - x), y: y + 2 / 3 * (qy - y) }
       if (!out(c1.x, c1.y) || !push(x, y, c2)) return null
       last = { x, y }
+    } else if (op === 5 || op === 19) { // Rectangle encodings from PDF.js evaluator paths
+      if (subpaths || i + 3 >= raw.length) return null
+      const x = raw[i++], y = raw[i++], w = raw[i++], h = raw[i++]
+      if (!Number.isFinite(w) || !Number.isFinite(h) || w === 0 || h === 0) return null
+      subpaths = 1
+      if (!push(x, y) || !push(x + w, y) ||
+          !push(x + w, y + h) || !push(x, y + h)) return null
+      closed = true
+      if (i !== raw.length) return null
     } else if (op === 4) {
       closed = true
       if (i !== raw.length) return null // do not invent compound paths
@@ -201,6 +214,20 @@ export function pdfEditableText(
   return layers
 }
 
+/** PDF.js also emits unpainted constructPath instructions followed by fill/stroke.
+ * Recover only standalone rectangles whose semantics can be represented safely. */
+function pdfRectanglePath(args: unknown): Float32Array | null {
+  if (!Array.isArray(args) || !Array.isArray(args[0]) ||
+      args[0].length !== 1 || args[0][0] !== 19) return null
+  const coords = args[1]
+  if (!coords || typeof coords !== 'object' || !('length' in coords)) return null
+  const values = Array.from(coords as ArrayLike<number>)
+  if (values.length !== 4 || !values.every(Number.isFinite)) return null
+  const [x, y, w, h] = values
+  if (w === 0 || h === 0) return null
+  return new Float32Array([0, x, y, 1, x + w, y, 1, x + w, y + h, 1, x, y + h, 4])
+}
+
 export function pdfEditableVectors(
   list: PdfOperatorList, ops: PdfOps, viewport: PdfMatrix,
   width: number, height: number, pageNumber: number,
@@ -208,6 +235,7 @@ export function pdfEditableVectors(
   const result: ParsedDocumentLayer[] = []
   const stack: PdfPaintState[] = []
   let state = baseState()
+  let pendingRect: Float32Array | null = null
   const length = Math.min(list.fnArray.length, list.argsArray.length, MAX_OPS)
   for (let i = 0; i < length && result.length < MAX_VECTOR; i++) {
     const op = list.fnArray[i]
@@ -244,8 +272,20 @@ export function pdfEditableVectors(
     }
     if (op === ops.clip || op === ops.eoClip || op === ops.setGState ||
         op === ops.beginGroup || op === ops.endGroup) { state.complex = true; continue }
-    if (op !== ops.constructPath || !Array.isArray(args) || state.complex) continue
-    const [paintOp, pathData] = args
+    // Real PDF.js path operations may be emitted separately from paint ops.
+    // Do not recover unsupported/compound paths, which remain in the raster.
+    if (op === ops.constructPath && Array.isArray(args) && Array.isArray(args[0])) {
+      pendingRect = state.complex ? null : pdfRectanglePath(args)
+      if (pendingRect) continue
+      // Keep the compact, already-painted constructPath format below.
+    }
+    const separatePaint = [20, 21, 22, 23, 24, 25, 26, 27].includes(op)
+    if (separatePaint && !pendingRect) continue
+    if (op !== ops.constructPath && !separatePaint) continue
+    if (state.complex) { pendingRect = null; continue }
+    const paintOp = separatePaint ? op : args?.[0]
+    const pathData = separatePaint ? [pendingRect] : args?.[1]
+    if (separatePaint) pendingRect = null
     const fill = [22, 23, 24, 25, 26, 27].includes(paintOp)
     const stroke = [20, 21, 24, 25, 26, 27].includes(paintOp)
     if (!fill && !stroke) continue

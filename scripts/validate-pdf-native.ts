@@ -178,3 +178,39 @@ check(choiceWidgets[0].metadata?.checked === true && choiceWidgets[1].metadata?.
   'PDF choice field values and checked states remain available')
 check(choiceWidgets[0].metadata?.sourceObjectKey === 'pdf:p3:widget:0',
   'PDF choice widget source identity is preserved')
+
+const realPdfRect = pdfEditableVectors({
+  fnArray: [59, 91, 22],
+  argsArray: [[1, 0, 0], [[19], new Float32Array([0, 0, 200, 120]), new Float32Array([0, 0, 200, 120])], []],
+}, ops, viewport, 400, 240, 1)
+check(realPdfRect.length === 1 && realPdfRect[0].shape?.fill === '#ff0000' &&
+  realPdfRect[0].shape?.pathAnchors?.length === 4,
+  'separate real PDF.js rectangle and fill operators recover editable vector')
+
+const packedRectangle = pdfEditableVectors({
+  fnArray: [59, 91],
+  argsArray: [[1, 0, 0], [22, [new Float32Array([5, 0, 0, 200, 120])], new Float32Array([0, 0, 200, 120])]],
+}, ops, viewport, 400, 240, 1)
+check(packedRectangle.length === 1 && packedRectangle[0].shape?.pathAnchors?.length === 4,
+  'packed PDF.js rectangle opcode is recovered as four editable anchors')
+
+const legacyPaintedRectangle = pdfEditableVectors({
+  fnArray: [59, 91],
+  argsArray: [[1, 0, 0], [22, [new Float32Array([0, 0, 0, 1, 200, 0, 1, 200, 120, 1, 0, 120, 4])], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(legacyPaintedRectangle.length === 1,
+  'existing compact painted constructPath remains editable alongside new PDF.js path forms')
+
+const evaluatorRectangle = pdfEditableVectors({
+  fnArray: [59, 91],
+  argsArray: [[1, 0, 0], [22, [new Float32Array([19, 0, 0, 200, 120])], new Float32Array([0, 0, 200, 120])]],
+}, ops, viewport, 400, 240, 1)
+check(evaluatorRectangle.length === 1 && evaluatorRectangle[0].shape?.pathAnchors?.length === 4,
+  'PDF.js evaluator rectangle opcode 19 yields a native four-corner shape')
+
+const resolvedHexColor = pdfEditableVectors({
+  fnArray: [59, 91],
+  argsArray: [['#FF0000'], [22, [new Float32Array([0, 0, 0, 1, 200, 0, 1, 200, 120, 1, 0, 120, 4])], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(resolvedHexColor.length === 1 && resolvedHexColor[0].shape?.fill === '#ff0000',
+  'PDF.js resolved CSS hex color produces a native editable filled path')
