@@ -10,7 +10,26 @@ const canvas = {
     cb(new Blob([jpeg], { type: 'image/jpeg' }))
   },
 } as unknown as HTMLCanvasElement
+let filled = false
+let drawn = false
+const opaqueCanvas = {
+  width: 0, height: 0,
+  getContext: () => ({
+    set fillStyle(_: string) {},
+    fillRect: () => { filled = true },
+    drawImage: () => { drawn = true },
+  }),
+  toBlob: (canvas as unknown as { toBlob: Function }).toBlob,
+}
+Object.defineProperty(globalThis, 'document', {
+  configurable: true,
+  value: { createElement: (tag: string) => {
+    assert.equal(tag, 'canvas')
+    return opaqueCanvas
+  } },
+})
 const pdf = new Uint8Array(await (await canvasToPdf(canvas, 72)).arrayBuffer())
+assert.ok(filled && drawn, 'transparent source composited onto white before export')
 const text = new TextDecoder('latin1').decode(pdf)
 assert.ok(text.startsWith('%PDF-1.4'))
 assert.ok(text.includes('/MediaBox [0 0 144 72]'))
