@@ -322,6 +322,8 @@ export interface LayerFX {
 }
 
 export interface Layer {
+  /** PDF import provenance retained for native layer editing and project round trips. */
+  pdfSource?: Record<string, unknown>
   /** Document-scoped reusable color / text-style references. */
   linkedDesignStyles?: import('./linked-design-styles').LayerStyleReferences
   id: string
