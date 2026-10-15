@@ -780,6 +780,7 @@ export class Engine {
       psdUnsupportedRealMask: layer.psdUnsupportedRealMask,
       psdPreservedMaskChannels: layer.psdPreservedMaskChannels
         ? structuredClone(layer.psdPreservedMaskChannels) : undefined,
+      pdfSource: layer.pdfSource ? structuredClone(layer.pdfSource) : undefined,
       psdNativeOrigin: layer.psdNativeOrigin ? structuredClone(layer.psdNativeOrigin) : undefined,
       psdGroupPath: layer.psdGroupPath ? [...layer.psdGroupPath] : undefined,
     }
