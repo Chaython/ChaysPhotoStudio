@@ -55,6 +55,18 @@ check(normalizedRgb[0]?.shape?.fill === '#ff8000',
   'normalized float PDF colors must remain normalized')
 
 
+// Unsupported paint must remain in the authoritative raster reference.
+const invalidFill = pdfEditableVectors({
+  fnArray: [59, 91],
+  argsArray: [[Number.NaN, 0, 0], [22, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(invalidFill.length === 0, 'invalid PDF fill color must not become an editable shape')
+const invalidStroke = pdfEditableVectors({
+  fnArray: [58, 91],
+  argsArray: [[Number.NaN, 0, 0], [20, [rect], [0, 0, 200, 120]]],
+}, ops, viewport, 400, 240, 1)
+check(invalidStroke.length === 0, 'invalid PDF stroke color must not become an editable shape')
+
 const complex = pdfEditableVectors({
   fnArray: [29, 91], argsArray: [[], [22, [rect], [0, 0, 200, 120]]],
 }, ops, viewport, 400, 240, 1)
