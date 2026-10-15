@@ -66,7 +66,7 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
         // layers are hidden initially so fonts, masks, images, transparency and
         // unsupported effects never unexpectedly change the imported image.
         // Reveal desired edit layers and hide the reference to replace content.
-        try {
+        if (recoveredText + recoveredVectors < 512) try {
           const { items, styles } = await page.getTextContent({ disableNormalization: false })
           const recovered = pdfEditableText({ items, styles }, viewport.transform as
             [number, number, number, number, number, number], canvas.width, canvas.height, index + 1)
@@ -78,7 +78,7 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
         } catch {
           // A page's raster is still valid when semantic extraction fails.
         }
-        try {
+        if (recoveredText + recoveredVectors < 512) try {
           const operatorList = await page.getOperatorList()
           const recovered = pdfEditableVectors(operatorList, pdfjs.OPS,
             viewport.transform as [number, number, number, number, number, number],
