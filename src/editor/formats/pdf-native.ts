@@ -211,7 +211,12 @@ export function pdfEditableVectors(
     const op = list.fnArray[i]
     const args = list.argsArray[i]
     if (op === ops.save) { if (stack.length >= 128) { state.complex = true; continue }; stack.push({ ...state }); continue }
-    if (op === ops.restore) { state = stack.pop() ?? baseState(); continue }
+    if (op === ops.restore) {
+      // An unmatched restore is malformed; never assume following paths are safe.
+      if (!stack.length) { state.complex = true; continue }
+      state = stack.pop()!
+      continue
+    }
     if (op === ops.transform) {
       if (finiteMatrix(args)) {
         const composed = multiply(state.matrix, args as PdfMatrix)
@@ -236,7 +241,7 @@ export function pdfEditableVectors(
       continue
     }
     if (op === ops.clip || op === ops.eoClip || op === ops.setGState ||
-        op === ops.beginGroup) { state.complex = true; continue }
+        op === ops.beginGroup || op === ops.endGroup) { state.complex = true; continue }
     if (op !== ops.constructPath || !Array.isArray(args) || state.complex) continue
     const [paintOp, pathData] = args
     const fill = [22, 23, 24, 25, 26, 27].includes(paintOp)
@@ -245,10 +250,18 @@ export function pdfEditableVectors(
     // Unknown/invalid paint cannot be represented faithfully. Do not create
     // transparent or incorrectly colored editable shapes in its place.
     if ((fill && state.fill === null) || (stroke && state.stroke === null)) continue
+    // PDF's paint operators can request filling an open path (implicitly closed).
+    // Recovered paths must preserve that behavior rather than turning a filled
+    // open contour into a different native shape.
     const path = readPath(pathData?.[0], multiply(viewport, state.matrix), width, height)
-    if (!path) continue
+    if (!path || (fill && !path.closed)) continue
     const xs = path.anchors.map(a => a.x), ys = path.anchors.map(a => a.y)
-    const minX = Math.min(...xs), minY = Math.min(...ys), maxX = Math.max(...xs), maxY = Math.max(...ys)
+    // Bezier handles can extend beyond endpoints: preserve their full extent.
+    const allX = path.anchors.flatMap(a => [a.x, a.x + (a.inX ?? 0), a.x + (a.outX ?? 0)])
+    const allY = path.anchors.flatMap(a => [a.y, a.y + (a.inY ?? 0), a.y + (a.outY ?? 0)])
+    const minX = Math.min(...allX), minY = Math.min(...allY)
+    const maxX = Math.max(...allX), maxY = Math.max(...allY)
+    if (![minX, minY, maxX, maxY].every(Number.isFinite)) continue
     const scaleX = Math.hypot(state.matrix[0], state.matrix[1]) * Math.hypot(viewport[0], viewport[1])
     const scaleY = Math.hypot(state.matrix[2], state.matrix[3]) * Math.hypot(viewport[2], viewport[3])
     const sw = state.width * (scaleX + scaleY) / 2
