@@ -95,19 +95,9 @@ export async function renderPdfPages(bytes: Uint8Array, fileName: string): Promi
         }
         if (recoveredText + recoveredVectors < 512) try {
           const operatorList = await page.getOperatorList()
-          if (fileName === 'two-pages.pdf') {
-            console.info('PDF_VECTOR_DIAGNOSTIC', JSON.stringify({
-              ops: { constructPath: pdfjs.OPS.constructPath, fill: pdfjs.OPS.fill },
-              sequence: Array.from(operatorList.fnArray).slice(0, 80).map((op, i) => ({ op, args: operatorList.argsArray[i] })),
-              records: Array.from(operatorList.fnArray).map((op, i) => ({
-                op, args: operatorList.argsArray[i],
-              })).filter(item => item.op === pdfjs.OPS.constructPath ||
-                item.op === pdfjs.OPS.fill).slice(0, 8),
-            }))
-          }
           const recovered = pdfEditableVectors(operatorList, pdfjs.OPS,
             viewport.transform as [number, number, number, number, number, number],
-            canvas.width, canvas.height, index + 1, fileName === 'two-pages.pdf')
+            canvas.width, canvas.height, index + 1)
           const budget = Math.max(0, 512 - (recoveredText + recoveredVectors))
           const included = recovered.slice(0, budget)
           recoveredVectors += included.length
