@@ -1232,6 +1232,75 @@ def main():
                 check(not errors, f"GIMP script UI produced JavaScript errors: {errors[:3]}")
                 print("  GIMP lazy-load workers:", counts, flush=True)
 
+            def artboard_and_count_canvas_tools():
+                _, page, errors = app_page(browser)
+                page.set_viewport_size({"width": 1440, "height": 900})
+                page.evaluate("""() => {
+                    window.__zphotoEngine.newDocument({
+                      name:'Artboard Count parity',width:180,height:120,fill:'#ffffff'
+                    })
+                    window.__zphotoStore.getState().setTool('artboard')
+                }""")
+                page.wait_for_function("() => window.__zphotoStore.getState().activeTool === 'artboard'")
+                page.wait_for_function("() => !!window.__zphotoViewport?.canvas")
+                def point(x, y):
+                    return page.evaluate("""([x, y]) => {
+                        const d = window.__zphotoEngine.activeDoc
+                        const b = window.__zphotoViewport.canvas.getBoundingClientRect()
+                        return {x:b.left + d.view.panX + x*d.view.zoom,
+                                y:b.top + d.view.panY + y*d.view.zoom}
+                    }""", [x, y])
+                def mouse_drag(a, b):
+                    p,q=point(*a),point(*b)
+                    page.mouse.move(p['x'],p['y'])
+                    page.mouse.down()
+                    page.mouse.move(q['x'],q['y'],steps=8)
+                    page.mouse.up()
+                mouse_drag((12, 12),(81, 62))
+                boards = page.evaluate("() => window.__zphotoEngine.activeDoc.artboards")
+                check(len(boards)==1 and boards[0]['width']>=68 and boards[0]['height']>=49,
+                      f"Artboard drag failed: {boards}")
+                page.mouse.click(**point(24,25))
+                page.keyboard.press('ArrowRight')
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.artboards[0].x")>=13,
+                      "Artboard keyboard nudge failed")
+                page.evaluate("() => window.__zphotoEngine.undo()")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.artboards[0].x") == 12,
+                      "Artboard nudge Undo failed")
+                page.evaluate("() => window.__zphotoEngine.redo()")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.artboards[0].x")>=13,
+                      "Artboard nudge Redo failed")
+                page.evaluate("() => window.__zphotoStore.getState().setTool('count')")
+                page.wait_for_function("() => window.__zphotoStore.getState().activeTool === 'count'")
+                page.mouse.click(**point(112,20))
+                page.mouse.click(**point(132,36))
+                page.evaluate("() => window.__zphotoStore.getState().setToolOption('count','group','2')")
+                page.mouse.click(**point(146,51))
+                result=page.evaluate("""() => ({
+                  markers: window.__zphotoEngine.activeDoc.countMarkers,
+                  history: window.__zphotoEngine.activeDoc.history.index
+                })""")
+                check(len(result['markers'])==3 and [m['group'] for m in result['markers']]==['1','1','2'],
+                      f"Count tool did not create independent groups: {result}")
+                page.evaluate("() => window.__zphotoEngine.undo()")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.countMarkers.length")==2,
+                      "Count marker undo did not restore annotation list")
+                page.evaluate("() => window.__zphotoEngine.redo()")
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.countMarkers.length")==3,
+                      "Count marker redo did not restore annotation list")
+                page.mouse.click(**point(146,51))
+                page.keyboard.press('ArrowLeft')
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc.countMarkers[2].x") < 146,
+                      "Count marker keyboard nudge did not edit saved point")
+                # Switching to a new document cannot reuse an old marker selection.
+                page.evaluate("""() => window.__zphotoEngine.newDocument({
+                   name:'Other count document',width:90,height:70,fill:'#ffffff'
+                })""")
+                page.keyboard.press('Delete')
+                check(page.evaluate("() => (window.__zphotoEngine.activeDoc.countMarkers||[]).length")==0,
+                      "Count marker selection escaped into a second document")
+                check(not errors,f"Artboard and Count tools caused uncaught JS errors: {errors[:3]}")
+
             def color_sampler_info_panel():
                 _, page, errors = app_page(browser)
                 page.evaluate("""() => {
@@ -1300,6 +1369,7 @@ def main():
                 ("floating_window_layout_lock_during_drag", floating_window_layout_lock_during_drag),
                 ("named_layout_manager_safety", named_layout_manager_safety),
                 ("editable_layer_context_menu", editable_layer_context_menu),
+                ("artboard_and_count_canvas_tools", artboard_and_count_canvas_tools),
                 ("color_sampler_info_panel", color_sampler_info_panel),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
                 ("video_frame_picker_real_webm", video_frame_picker),
