@@ -39,6 +39,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 - [Content-Aware editing](#content-aware-editing)
 - [Tool groups and choosing the right tool](#tool-groups-and-choosing-the-right-tool)
 - [Paths, text and shapes](#paths-text-and-shapes)
+- [Artboard and Count canvas tools](#artboard-and-count-canvas-tools)
 - [Ruler measurements and persistent color sampler points](#ruler-measurements-and-persistent-color-sampler-points)
 - [High-precision 16-bit and 32-bit retouching](#high-precision-16-bit-and-32-bit-retouching)
 
@@ -437,7 +438,7 @@ View or customize key bindings and work without a keyboard.
 **Notes and tips:**
 
 - The Shortcuts dialog shows the current binding if it has been customized.
-- Main registers 52 tools, including Freeform/Curvature Pen and both Type Mask variants; shared keys cycle within tool families.
+- The editor now includes dedicated Artboard (V family) and Count (N) canvas tools alongside Freeform/Curvature Pen and Type Mask variants.
 
 ## Plugins, automation and optional AI
 
@@ -751,6 +752,25 @@ Choose which layer commands appear when right-clicking the canvas.
 - The Edit context menu… entry cannot be hidden, so the layout can always be restored.
 - The context menu remains scoped to the Move tool to avoid interfering with other tools' right-click gestures.
 - Commands that do not apply to the active layer may be disabled or omitted.
+
+## Artboard and Count canvas tools
+
+Edit export artboards on the canvas and mark counted subjects without changing source pixels.
+
+**Where:** Artboard (V family) / Count (N) / File → Artboards & Pages
+
+1. Choose Artboard from the Move tool family. Drag across empty canvas space to create a page, or Ctrl/Cmd-drag to create a new one even over an existing artboard.
+2. Click an existing artboard to select it, drag its body to move or its bottom-right corner to resize; hold Shift while creating or resizing to constrain to a square.
+3. Use arrow keys to nudge the active board one pixel, Shift+arrows for ten, Delete to remove, Escape to deselect, and Enter or double-click to open Artboards & Pages for page-specific layer and rollover/export settings.
+4. Choose Count (N) to click individual subjects. Change Group in Tool Options (1–5) for separate numbered totals; Shift-click an existing marker to assign that group.
+5. Drag a count marker to reposition; use arrow keys (Shift = ten pixels), Delete or Alt/Option-click to remove, and Escape to deselect. Save Project to retain annotations.
+
+**Notes and tips:**
+
+- Artboards remain regions of the shared document/layer tree, not independent Photoshop or Illustrator document canvases.
+- Counts stay in the native project and History snapshots, and never change raster pixels or appear in ordinary image export.
+- The current Count tool supports up to 2,000 markers. Group totals are displayed beside markers when enabled. Export Count CSV in Tool Options saves group, index and X/Y coordinates.
+- Both tools record real edits in Undo/Redo; moving or resizing with a drag is one History step.
 
 ## Ruler measurements and persistent color sampler points
 
