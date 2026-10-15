@@ -17,7 +17,7 @@ assert.equal(Object.getPrototypeOf(countByGroup(markers)),null,'group stats are 
 const items=Array.from({length:MAX_COUNT_MARKERS+40},(_,i)=>({id:'marker-'+i,x:1,y:2,group:'1'}))
 assert.equal(normalizeCountMarkers(items,80,80).length,MAX_COUNT_MARKERS,'bounded marker count')
 assert.deepEqual(normalizeCountMarkers(null,200,200),[])
-assert.deepEqual(normalizeCountMarkers([{id:'unsafe',x:2,y:3,group:'__proto__'}],20,20)[0].group,'__proto__')
+assert.equal(normalizeCountMarkers([{id:'unsafe',x:2,y:3,group:'__proto__'}],20,20)[0].group,'1')
 assert.equal(normalizeArtboards([{id:'board',name:'Page',x:10,y:10,width:20,height:30}],100,100).length,1)
 assert.equal(MAX_ARTBOARDS,64)
 console.log('Count annotations: numeric validation, group counts, duplication and limits passed')
