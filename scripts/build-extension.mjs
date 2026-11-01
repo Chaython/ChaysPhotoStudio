@@ -182,6 +182,7 @@ function buildVariant(name, manifestTweak) {
   assertReferencesResolve(html, dir, name)
   // plugin icons + app icons share icons/ (no filename collisions)
   fs.cpSync(ICONS, path.join(dir, 'icons'), { recursive: true })
+  fs.copyFileSync(path.join(ROOT, 'LICENSE'), path.join(dir, 'LICENSE'))
   // manifest with pinned version (+ variant tweak)
   const manifest = JSON.parse(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'))
   if (manifestTweak) manifestTweak(manifest)
@@ -193,6 +194,7 @@ function buildVariant(name, manifestTweak) {
 // ---------- 3. assemble ----------
 must(SRC, 'extension/ sources missing')
 must(ICONS, 'run `node scripts/gen-icons.mjs` first')
+must(path.join(ROOT, 'LICENSE'), 'project LICENSE missing')
 
 fs.rmSync(OUT, { recursive: true, force: true })
 
@@ -224,7 +226,7 @@ for (const dir of [chrome.dir, firefox.dir]) {
       process.exit(1)
     }
   }
-  for (const f of ['background.js', 'popup.js', 'popup.html', 'index.html']) {
+  for (const f of ['background.js', 'popup.js', 'popup.html', 'index.html', 'LICENSE']) {
     if (!fs.existsSync(path.join(dir, f))) {
       console.error(`build-extension: ${path.relative(ROOT, dir)}/${f} missing`)
       process.exit(1)

@@ -1,0 +1,284 @@
+name: Publish browser extensions
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published stable release tag to submit (for example v1.3.0)"
+        required: false
+        type: string
+      publish_stores:
+        description: "Submit to Firefox AMO and Microsoft Edge Add-ons"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate release packages
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      publish_stores: ${{ steps.release.outputs.publish_stores }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || '' }}
+      PUBLISH_STORES: ${{ github.event_name == 'release' || inputs.publish_stores }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release and download extension packages
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="$RELEASE_TAG"
+          if [[ -z "$tag" ]]; then
+            version="$(node -p "require('./package.json').version")"
+            tag="v$version"
+          fi
+          [[ "$tag" =~ ^v[0-9]+([.][0-9]+)+$ ]] || {
+            echo "::error::Expected a stable vX.Y.Z release tag; got '$tag'."
+            exit 1
+          }
+
+          git fetch --force --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
+          git checkout --detach "$tag"
+          version="$(node -p "require('./package.json').version")"
+          [[ "$tag" == "v$version" ]] || {
+            echo "::error::Tag '$tag' does not match package version '$version'."
+            exit 1
+          }
+
+          release="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease)"
+          [[ "$(jq -r '.isDraft' <<<"$release")" == false ]] || {
+            echo "::error::Release '$tag' is still a draft."
+            exit 1
+          }
+          [[ "$(jq -r '.isPrerelease' <<<"$release")" == false ]] || {
+            echo "::error::Prereleases cannot be submitted to extension stores."
+            exit 1
+          }
+
+          mkdir -p dist
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "chays-photo-studio-extension-v$version.zip" \
+            --pattern "chays-photo-studio-extension-firefox-v$version.zip" \
+            --dir dist
+
+          for browser in chrome firefox; do
+            if [[ "$browser" == chrome ]]; then
+              zip="dist/chays-photo-studio-extension-v$version.zip"
+            else
+              zip="dist/chays-photo-studio-extension-firefox-v$version.zip"
+            fi
+            test -f "$zip" || {
+              echo "::error::Missing release package: $zip"
+              exit 1
+            }
+            node - "$zip" "$version" "$browser" <<'NODE'
+          const { execFileSync } = require('node:child_process')
+          const [zip, version, browser] = process.argv.slice(2)
+          const names = execFileSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).split(/\r?\n/)
+          if (!names.includes('manifest.json')) throw new Error(`${browser} package has no root manifest.json`)
+          if (!names.includes('LICENSE')) throw new Error(`${browser} package does not include the project LICENSE`)
+          const manifest = JSON.parse(execFileSync('unzip', ['-p', zip, 'manifest.json'], { encoding: 'utf8' }))
+          if (manifest.manifest_version !== 3 || manifest.version !== version) {
+            throw new Error(`${browser} package manifest version or format does not match ${version}`)
+          }
+          if (browser === 'firefox' && manifest.browser_specific_settings?.gecko?.id !== 'chays-photo-studio@chaython') {
+            throw new Error('Firefox package has an unexpected Gecko add-on ID')
+          }
+          NODE
+          done
+
+          git archive --format=zip --output="dist/source-v$version.zip" HEAD
+          unzip -Z1 "dist/source-v$version.zip" | grep -qx LICENSE || {
+            echo "::error::Source archive must include the project LICENSE."
+            exit 1
+          }
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "publish_stores=$( [[ "$PUBLISH_STORES" == true ]] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+
+      - name: Upload validated release packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: chays-photo-studio-publish-bundle
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  firefox:
+    name: Firefox Add-ons
+    needs: prepare
+    if: ${{ needs.prepare.outputs.publish_stores == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+    steps:
+      - name: Validate Mozilla credentials
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AMO_JWT_ISSUER) -or [string]::IsNullOrWhiteSpace($env:AMO_JWT_SECRET)) {
+            throw "Firefox publication requires AMO_JWT_ISSUER and AMO_JWT_SECRET."
+          }
+
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: chays-photo-studio-publish-bundle
+          path: dist
+
+      - name: Submit Firefox package to Mozilla Add-ons
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $api = "https://addons.mozilla.org/api/v5"
+          $version = "${{ needs.prepare.outputs.version }}"
+          $guid = "chays-photo-studio@chaython"
+          $firefoxZip = Get-Item -LiteralPath "dist/chays-photo-studio-extension-firefox-v$version.zip"
+          $sourceZip = Get-Item -LiteralPath "dist/source-v$version.zip"
+
+          function ConvertTo-Base64Url([byte[]]$Bytes) {
+              [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+','-').Replace('/','_')
+          }
+          function New-AmoToken {
+              $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+              $payload = @{ iss=$env:AMO_JWT_ISSUER; jti=[guid]::NewGuid().ToString("N"); iat=$now; exp=$now+60 } | ConvertTo-Json -Compress
+              $header = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes('{"alg":"HS256","typ":"JWT"}'))
+              $body = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes($payload))
+              $unsigned = "$header.$body"
+              $hmac = [Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes($env:AMO_JWT_SECRET))
+              try { $signature = ConvertTo-Base64Url ($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($unsigned))) } finally { $hmac.Dispose() }
+              "$unsigned.$signature"
+          }
+          function Get-AmoHeaders { @{ Authorization = "JWT $(New-AmoToken)" } }
+
+          $encodedGuid = [Uri]::EscapeDataString($guid)
+          $url = "$api/addons/addon/$encodedGuid/versions/?filter=all_without_unlisted&page_size=50"
+          while ($url) {
+              $page = Invoke-RestMethod -Method Get -Uri $url -Headers (Get-AmoHeaders)
+              $existing = @($page.results) | Where-Object { [string]$_.version -eq $version } | Select-Object -First 1
+              if ($existing) {
+                  Write-Host "AMO already has version $version (status '$($existing.file.status)'); skipping duplicate submission."
+                  exit 0
+              }
+              $url = [string]$page.next
+          }
+
+          $upload = Invoke-RestMethod -Method Post -Uri "$api/addons/upload/" -Headers (Get-AmoHeaders) `
+              -Form @{ upload=$firefoxZip; channel="listed" }
+          if (-not $upload.uuid) { throw "AMO upload returned no UUID." }
+          $detail = $upload
+          for ($attempt=0; $attempt -lt 60 -and -not $detail.processed; $attempt++) {
+              Start-Sleep -Seconds 5
+              $detail = Invoke-RestMethod -Method Get -Uri "$api/addons/upload/$($upload.uuid)/" -Headers (Get-AmoHeaders)
+          }
+          if (-not $detail.processed) { throw "AMO validation timed out." }
+          if (-not $detail.valid) { throw "AMO validation failed: $($detail.validation | ConvertTo-Json -Depth 20)" }
+          $created = Invoke-RestMethod -Method Post -Uri "$api/addons/addon/$encodedGuid/versions/" `
+              -Headers (Get-AmoHeaders) -Form @{
+                  upload=[string]$upload.uuid
+                  license="other"
+                  source=$sourceZip
+              }
+          if (-not $created) { throw "AMO did not confirm version creation." }
+          Write-Host "Submitted Chay's Photo Studio v$version to Mozilla Add-ons."
+
+  edge:
+    name: Microsoft Edge Add-ons
+    needs: prepare
+    if: ${{ needs.prepare.outputs.publish_stores == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
+      EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
+      EDGE_PRODUCT_ID: ${{ vars.EDGE_PRODUCT_ID }}
+    steps:
+      - name: Validate Edge credentials
+        shell: pwsh
+        run: |
+          $missing = @()
+          foreach ($name in @("EDGE_CLIENT_ID", "EDGE_API_KEY", "EDGE_PRODUCT_ID")) {
+              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) { $missing += $name }
+          }
+          if ($missing.Count -gt 0) {
+              throw "Edge publication requires $($missing -join ', '). Configure EDGE_PRODUCT_ID as the Partner Center product GUID."
+          }
+          if ($env:EDGE_PRODUCT_ID -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
+              throw "EDGE_PRODUCT_ID must be a GUID, not a short store listing ID."
+          }
+
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: chays-photo-studio-publish-bundle
+          path: dist
+
+      - name: Submit Chrome package to Microsoft Edge Add-ons
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${{ needs.prepare.outputs.version }}"
+          $productId = $env:EDGE_PRODUCT_ID
+          $headers = @{ Authorization = "ApiKey $env:EDGE_API_KEY"; "X-ClientID" = $env:EDGE_CLIENT_ID }
+          $root = "https://api.addons.microsoftedge.microsoft.com/v1"
+          $zip = Get-Item -LiteralPath "dist/chays-photo-studio-extension-v$version.zip"
+          $uploadUri = "$root/products/$productId/submissions/draft/package"
+          $response = Invoke-WebRequest -Method Put -Uri $uploadUri -Headers $headers -ContentType "application/zip" -InFile $zip.FullName
+          $operationId = [string]$response.Headers["Location"]
+          if ([string]::IsNullOrWhiteSpace($operationId)) { throw "Edge upload response did not include an operation ID in Location." }
+          $operationId = $operationId.TrimEnd('/').Split('/')[-1]
+          $statusUri = "$root/products/$productId/submissions/draft/package/operations/$operationId"
+          $status = $null
+          for ($attempt=0; $attempt -lt 60; $attempt++) {
+              Start-Sleep -Seconds 5
+              $status = Invoke-RestMethod -Method Get -Uri $statusUri -Headers $headers
+              $statusText = ConvertTo-Json -InputObject $status -Compress -Depth 10
+              if ($statusText -match '"status"\s*:\s*"(Failed|Failure|Rejected)"') { throw "Edge package processing failed: $statusText" }
+              if ($statusText -match '"status"\s*:\s*"(Succeeded|Success|Completed)"') { break }
+          }
+          $statusText = ConvertTo-Json -InputObject $status -Compress -Depth 10
+          if ($statusText -notmatch '"status"\s*:\s*"(Succeeded|Success|Completed)"') { throw "Timed out waiting for Edge package processing: $statusText" }
+          $notes = "Chay's Photo Studio v$version. Full changelog: https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$env:RELEASE_TAG"
+          $body = @{ notes = $notes } | ConvertTo-Json -Compress
+          $published = Invoke-RestMethod -Method Post -Uri "$root/products/$productId/submissions" `
+              -Headers ($headers + @{ "Content-Type"="application/json" }) -Body $body
+          $publishOperation = [string]$published.operationId
+          if ([string]::IsNullOrWhiteSpace($publishOperation)) { $publishOperation = [string]$published.id }
+          if ([string]::IsNullOrWhiteSpace($publishOperation)) { throw "Edge publish returned no operation ID: $(ConvertTo-Json $published -Compress -Depth 10)" }
+          $publishStatusUri = "$root/products/$productId/submissions/operations/$publishOperation"
+          $final = $null
+          for ($attempt=0; $attempt -lt 60; $attempt++) {
+              Start-Sleep -Seconds 5
+              $final = Invoke-RestMethod -Method Get -Uri $publishStatusUri -Headers $headers
+              $finalText = ConvertTo-Json -InputObject $final -Compress -Depth 10
+              if ($finalText -match '"status"\s*:\s*"(Failed|Failure|Rejected)"') { throw "Edge publication failed: $finalText" }
+              if ($finalText -match '"status"\s*:\s*"(Succeeded|Success|Completed)"') { break }
+          }
+          $finalText = ConvertTo-Json -InputObject $final -Compress -Depth 10
+          if ($finalText -notmatch '"status"\s*:\s*"(Succeeded|Success|Completed)"') { throw "Timed out waiting for Edge publication: $finalText" }
+          Write-Host "Submitted Chay's Photo Studio v$version to Microsoft Edge Add-ons."
