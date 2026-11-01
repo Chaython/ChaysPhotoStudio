@@ -136,7 +136,7 @@ export function useKeyboardShortcuts(): void {
       if (cmd) {
         // Let Ctrl/Cmd+V dispatch a native paste event when the app clipboard
         // is empty; canvas-workspace reads external image data from that event.
-        if (cmd.id === 'paste' && combo === 'ctrl+v' && !engine.hasInternalClipboard) return
+        if (cmd === 'paste' && combo === 'ctrl+v' && !engine.hasInternalClipboard) return
         runCommand(cmd)
         e.preventDefault()
         return
