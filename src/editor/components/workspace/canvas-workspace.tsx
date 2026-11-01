@@ -108,7 +108,9 @@ export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
                 const c = await fileToCanvas(file)
                 engine.addLayerFromCanvas(c, 'Pasted Image')
                 useEditorStore.getState().pushToast('Pasted image as a new layer', 'success')
-              } catch { /* bad image — ignore */ }
+              } catch {
+                useEditorStore.getState().pushToast('Could not decode the pasted image', 'error')
+              }
             })()
             return
           }

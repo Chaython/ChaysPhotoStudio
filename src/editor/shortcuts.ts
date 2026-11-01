@@ -35,7 +35,7 @@ export type CommandId =
   | 'newDoc' | 'open' | 'save' | 'saveAs' | 'export'
   // Edit
   | 'undo' | 'redo' | 'copy' | 'copyMerged' | 'cut' | 'paste' | 'pasteInto'
-  | 'fillFg' | 'fillBg' | 'clearSelection' | 'invert'
+  | 'fillFg' | 'fillBg' | 'clearSelection' | 'deleteLayer' | 'invert'
   | 'duplicateLayer' | 'layerViaCut' | 'newLayer' | 'transform' | 'mergeDown' | 'mergeVisible'
   // Image
   | 'imageSize' | 'canvasSize' | 'aiUpscale' | 'liquify' | 'repeatFilter'
@@ -90,7 +90,8 @@ export const COMMANDS: CommandDef[] = [
     run: () => { void engine.pasteIntoSelection() } },
   { id: 'fillFg', label: 'Fill with Foreground', section: 'Edit', defaultCombo: 'alt+backspace', run: () => engine.fillSelection(store().fgColor) },
   { id: 'fillBg', label: 'Fill with Background', section: 'Edit', defaultCombo: 'ctrl+backspace', run: () => engine.fillSelection(store().bgColor) },
-  { id: 'clearSelection', label: 'Clear Selection Pixels', section: 'Edit', defaultCombo: 'delete', aliases: ['backspace'], run: () => { if (engine.activeDoc) engine.deleteSelectionPixels() } },
+  { id: 'deleteLayer', label: 'Delete Layer', section: 'Edit', defaultCombo: 'delete', run: () => engine.deleteLayer() },
+  { id: 'clearSelection', label: 'Clear Selected Pixels', section: 'Edit', defaultCombo: 'backspace', run: () => { if (engine.activeDoc) engine.deleteSelectionPixels() } },
   { id: 'invert', label: 'Invert (Adjustment)', section: 'Edit', defaultCombo: 'ctrl+i', run: () => { const l = engine.activeLayer; if (l) engine.applyAdjustmentToLayer(l.id, 'invert', {}) } },
   { id: 'duplicateLayer', label: 'Layer via Copy / Duplicate Layer', section: 'Edit', defaultCombo: 'ctrl+j',
     run: () => engine.duplicateLayerOrSelection() },

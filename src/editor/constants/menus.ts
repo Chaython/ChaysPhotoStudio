@@ -436,7 +436,7 @@ export const MENUS: MenuItem[][] = [
       run: () => engine.layerViaSelection('cut') },
     { id: 'layer-duplicate', label: 'Duplicate Entire Layer', run: () => { const l = engine.activeLayer; if (l) engine.duplicateLayer(l.id) } },
     { id: 'layer-duplicate-into', label: 'Duplicate Into…', enabled: () => !!engine.activeLayer && engine.docs.length > 1, run: () => openDlg('duplicate-layer', { layerId: engine.activeLayer?.id }) },
-    { id: 'layer-delete', label: 'Delete Layer', run: () => engine.deleteLayer() },
+    { id: 'layer-delete', label: 'Delete Layer', shortcut: sc('deleteLayer'), run: () => engine.deleteLayer() },
     { id: 'layer-raw-redevelop', label: 'Redevelop RAW Smart Object…',
       enabled: () => engine.activeLayer?.kind === 'smart' && !!engine.activeLayer.rawSmart,
       run: () => { void redevelopActiveRawSmartLayer() } },

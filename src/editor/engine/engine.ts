@@ -355,6 +355,7 @@ export class Engine {
     if (!d) return null
     return d.layers.find(l => l.id === d.activeLayerId) ?? null
   }
+  get hasInternalClipboard(): boolean { return this._clip !== null }
   layerById(id: string): Layer | null {
     const d = this.activeDoc
     return d ? d.layers.find(l => l.id === id) ?? null : null
@@ -1661,14 +1662,13 @@ export class Engine {
     const doc = this.activeDoc
     const layer = id ? this.layerById(id) : this.activeLayer
     if (!doc || !layer) return
-    if (doc.layers.length <= 1) { this.ui?.toast('Cannot delete the last layer', 'error'); return }
     const removedAt = doc.layers.findIndex(l => l.id === layer.id)
     if (removedAt < 0) return
     doc.layers.splice(removedAt, 1)
     // Choose the neighbor at the original stack position, not a lookup for
     // the already deleted ID (which always returned -1 and selected the top).
     if (doc.activeLayerId === layer.id) {
-      doc.activeLayerId = doc.layers[Math.min(removedAt, doc.layers.length - 1)].id
+      doc.activeLayerId = doc.layers[Math.min(removedAt, doc.layers.length - 1)]?.id ?? null
     }
     const liveIds = new Set(doc.layers.map(l => l.id))
     doc.selectedLayerIds = (doc.selectedLayerIds ?? []).filter(id => liveIds.has(id))

@@ -83,7 +83,7 @@ function isTypingContext(e: KeyboardEvent): boolean {
 /**
  * Fixed structural helpers (not user-bindable): layer nudging, brush size,
  * color swap/default, opacity digits. Delete/Backspace are handled as the
- * `clearSelection` command in the registry.
+ * `deleteLayer` and `clearSelection` commands in the registry.
  */
 function handlePlainKey(e: KeyboardEvent, k: string): boolean {
   if (e.key === 'Delete' || e.key === 'Backspace') return false // command territory
@@ -134,6 +134,9 @@ export function useKeyboardShortcuts(): void {
       const combo = eventCombo(e)
       const cmd = findCommandByCombo(combo)
       if (cmd) {
+        // Let Ctrl/Cmd+V dispatch a native paste event when the app clipboard
+        // is empty; canvas-workspace reads external image data from that event.
+        if (cmd.id === 'paste' && combo === 'ctrl+v' && !engine.hasInternalClipboard) return
         runCommand(cmd)
         e.preventDefault()
         return
