@@ -2,8 +2,8 @@
 
 Chrome (MV3) + Firefox extension. **Self-contained**: the build bundles the
 entire editor webapp inside the extension (static export at the package
-root), so it opens instantly, works offline, and needs no server, URL
-configuration, or host permissions.
+root, with Next.js files under `next-assets/`), so it opens instantly, works
+offline, and needs no server, URL configuration, or host permissions.
 
 Right-click any image → **Edit image in Chay's Photo Studio** opens the
 bundled editor with the image on the canvas (`?url=…` deep link). The

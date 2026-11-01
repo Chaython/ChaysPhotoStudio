@@ -63,13 +63,42 @@ function appFileFilter(entry) {
   return false
 }
 
+/** Keep Next's generated assets out of the extension root under `_next`.
+ *  Next.js emits root-absolute URLs, so rewrite them to the relocated folder. */
+function relocateNextAssets(appDir) {
+  const source = path.join(appDir, '_next')
+  const target = path.join(appDir, 'next-assets')
+  if (!fs.existsSync(source)) {
+    console.error('build-extension: static export is missing _next assets')
+    process.exit(1)
+  }
+  if (fs.existsSync(target)) {
+    console.error('build-extension: next-assets conflicts with a public export path')
+    process.exit(1)
+  }
+  fs.renameSync(source, target)
+
+  const textExtensions = new Set(['.css', '.html', '.js', '.json', '.svg', '.webmanifest'])
+  const rewrite = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name)
+      if (entry.isDirectory()) rewrite(file)
+      else if (textExtensions.has(path.extname(entry.name))) {
+        const content = fs.readFileSync(file, 'utf8')
+        fs.writeFileSync(file, content.replaceAll('/_next/', '/next-assets/'))
+      }
+    }
+  }
+  rewrite(appDir)
+}
+
 /** Extract every inline <script> payload to a real file so the page
  *  satisfies the MV3 extension-pages CSP (script-src 'self', no
  *  inline). Document order and attributes are preserved — the
  *  hydration payloads (self.__next_f.push) execute exactly where
  *  they used to. Returns the rewritten HTML. */
 function extractInlineScripts(html, outDir) {
-  const chunkDir = path.join(outDir, '_next/static/chunks')
+  const chunkDir = path.join(outDir, 'next-assets/static/chunks')
   fs.mkdirSync(chunkDir, { recursive: true })
   let n = 0
   return html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/g, (whole, attrs, body) => {
@@ -80,7 +109,7 @@ function extractInlineScripts(html, outDir) {
     n++
     fs.writeFileSync(path.join(chunkDir, name), body)
     const kept = String(attrs).replace(/\s*(async|defer)\s*/g, ' ').trim()
-    return `<script${kept ? ' ' + kept : ''} src="_next/static/chunks/${name}"></script>`
+    return `<script${kept ? ' ' + kept : ''} src="/next-assets/static/chunks/${name}"></script>`
   })
 }
 
@@ -147,6 +176,7 @@ function buildVariant(name, manifestTweak) {
   copyTree(SRC, dir, (entry) => entry.name === 'README.md' || entry.name === 'manifest.json')
   // the webapp (post-processed HTML + chunks + public assets)
   copyTree(EXPORT, dir, appFileFilter)
+  relocateNextAssets(dir)
   const html = processAppHtml(dir)
   assertNoInlineScripts(html, name)
   assertReferencesResolve(html, dir, name)
@@ -188,11 +218,21 @@ const ffCount = zipFolder(firefox.dir, `chays-photo-studio-extension-firefox-v${
 // ---------- 4. verify ----------
 for (const dir of [chrome.dir, firefox.dir]) {
   JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')) // throws on invalid
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name.startsWith('_')) {
+      console.error(`build-extension: root directory ${entry.name} is not allowed in ${path.relative(ROOT, dir)}`)
+      process.exit(1)
+    }
+  }
   for (const f of ['background.js', 'popup.js', 'popup.html', 'index.html']) {
     if (!fs.existsSync(path.join(dir, f))) {
       console.error(`build-extension: ${path.relative(ROOT, dir)}/${f} missing`)
       process.exit(1)
     }
+  }
+  if (!fs.existsSync(path.join(dir, 'next-assets', 'static'))) {
+    console.error(`build-extension: ${path.relative(ROOT, dir)}/next-assets/static missing`)
+    process.exit(1)
   }
 }
 

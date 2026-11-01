@@ -1,7 +1,7 @@
 // Chay's Photo Studio — browser plugin background.
 // The plugin is self-contained: the full editor webapp is bundled
-// inside the extension (index.html + _next assets at the package
-// root), so it opens instantly with no server and works offline.
+// inside the extension (index.html + next-assets/), so it opens
+// instantly with no server and works offline.
 // Chrome MV3: service worker. Firefox MV3 (build variant): event
 // page (the build script swaps the manifest's background key; this
 // file is written in callback style so it runs unchanged in both).
