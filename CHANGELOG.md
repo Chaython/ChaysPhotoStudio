@@ -2,6 +2,10 @@
 
 Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
+## Unreleased
+
+- Improved the GIMP-style desktop workspace by moving Tool Options beneath the left toolbox while retaining the shared editor canvas and panels; tuned inspector and bottom Properties dock dimensions for the application-style workspaces.
+
 ## 1.3.0
 
 - Added **Illustrator-style, GIMP-style and Fireworks-style workspace templates** alongside Photoshop-style and Classic. Each template reorders the complete registered tool set into familiar flyout groupings (nothing is hidden) and arranges its own inspector stacks: Illustrator emphasizes Properties with Layers/Paths; GIMP mirrors the Layers/Channels/Paths/Undo dock; Fireworks docks the Properties panel as a bottom strip under the canvas. Workspaces keep independent tool/panel layouts, locks and reset templates, the inspector reset button restores the active template's tab groups, and portable saved layouts remain workspace-independent.
