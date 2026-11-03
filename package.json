@@ -44,6 +44,7 @@
     "design-merge:validate": "bun scripts/validate-design-merge.ts",
     "linked-styles:validate": "bun scripts/validate-linked-design-styles.ts",
     "dock-sizing:validate": "bun scripts/validate-dock-sizing.ts",
+    "workspace-presets:validate": "bun scripts/validate-workspace-presets.ts",
     "gimp:validate": "bun scripts/validate-gimp-compatibility.ts",
     "retouch-safety:validate": "bun scripts/validate-retouch-safety.ts",
     "warp:validate": "bun scripts/validate-transform.ts",

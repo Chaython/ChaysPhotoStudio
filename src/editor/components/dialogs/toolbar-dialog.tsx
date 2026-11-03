@@ -31,7 +31,7 @@ import {
 } from 'lucide-react'
 import * as Icons from 'lucide-react'
 import { TOOL_MAP } from '../../constants/tools'
-import { useEditorStore, defaultToolbarLayout } from '../../store'
+import { useEditorStore, defaultToolbarLayout, WORKSPACE_PRESET_LABELS } from '../../store'
 import { formatCombo } from '../../shortcuts'
 import type { ToolId, ToolbarSection } from '../../types'
 import {
@@ -69,7 +69,7 @@ export function ToolbarCustomizeDialog({ onClose }: DialogProps) {
     <>
       <DialogHeader><DialogTitle>Toolbar layout locked</DialogTitle></DialogHeader>
       <div className="rounded-md border p-3 text-sm text-muted-foreground">
-        The {workspacePreset === 'photoshop' ? 'Photoshop-style' : 'Classic'} workspace protects its tool order and groups.
+        The {WORKSPACE_PRESET_LABELS[workspacePreset]} workspace protects its tool order and groups.
         Tool selection still works normally. Unlock the tool layout to customize it.
       </div>
       <DialogFooter className="gap-2">

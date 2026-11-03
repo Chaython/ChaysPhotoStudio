@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/menubar'
 import type { MenuItem } from '../../constants/menus'
 import { MENUS, PLUGINS_MENU_INDEX, getPluginsMenuItems } from '../../constants/menus'
-import { useEditorStore } from '../../store'
+import { useEditorStore, WORKSPACE_PRESETS, WORKSPACE_PRESET_LABELS } from '../../store'
 import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2, Pencil, X, Lock, Unlock } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -154,13 +154,14 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
         {!mobileMode && <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="flex items-center gap-1 px-2 h-6 rounded hover:bg-accent text-[11px] text-muted-foreground hover:text-foreground" title="Choose workspace template" aria-label="Workspace template">
-              <LayoutGrid size={13} /><span className="hidden 2xl:inline">{workspacePreset === 'photoshop' ? 'Photoshop-style' : 'Classic'}</span>
+              <LayoutGrid size={13} /><span className="hidden 2xl:inline">{workspacePreset === 'classic' ? 'Classic' : WORKSPACE_PRESET_LABELS[workspacePreset]}</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="bottom" align="end" className="w-72 max-w-[calc(100vw-1rem)]">
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace template</div>
-            <DropdownMenuItem onClick={() => setWorkspacePreset('photoshop')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Photoshop-style</span>{workspacePreset === 'photoshop' && <Check size={13} />}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setWorkspacePreset('classic')} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">Classic / custom</span>{workspacePreset === 'classic' && <Check size={13} />}</DropdownMenuItem>
+            {WORKSPACE_PRESETS.map(preset => (
+              <DropdownMenuItem key={preset} onClick={() => setWorkspacePreset(preset)} className="gap-2 text-xs"><LayoutGrid size={13} /><span className="flex-1">{WORKSPACE_PRESET_LABELS[preset]}</span>{workspacePreset === preset && <Check size={13} />}</DropdownMenuItem>
+            ))}
             <DropdownMenuSeparator />
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Protect workspace arrangement</div>
             {(['panels', 'tools'] as const).map(kind => (
@@ -168,7 +169,7 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
                 e.preventDefault()
                 try {
                   setWorkspaceLayoutLock(kind, !workspaceLocks[kind])
-                  pushToast((workspaceLocks[kind] ? 'Unlocked ' : 'Locked ') + kind + ' layout for ' + workspacePreset, 'success')
+                  pushToast((workspaceLocks[kind] ? 'Unlocked ' : 'Locked ') + kind + ' layout for ' + WORKSPACE_PRESET_LABELS[workspacePreset], 'success')
                 } catch (error) { pushToast(String(error), 'error') }
               }}>
                 {workspaceLocks[kind] ? <Lock size={13} /> : <Unlock size={13} />}
@@ -179,7 +180,7 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             <DropdownMenuItem disabled={workspaceLocks.panels || workspaceLocks.tools}
               onClick={() => { resetWorkspaceLayout(); pushToast('Restored current workspace template; saved layouts were kept.', 'success') }}
               title="Reset tools and panels in this workspace only. Named layouts and the other workspace stay unchanged."
-              className="gap-2 text-xs"><RotateCcw size={13} /><span className="flex-1">Restore {workspacePreset === 'photoshop' ? 'Photoshop-style' : 'Classic'} template</span></DropdownMenuItem>
+              className="gap-2 text-xs"><RotateCcw size={13} /><span className="flex-1">Restore {WORKSPACE_PRESET_LABELS[workspacePreset]} template</span></DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Saved layouts (independent from workspace)</div>
             <div className="flex gap-1 px-2 py-1" onKeyDown={e => e.stopPropagation()}>
@@ -275,8 +276,9 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace</div>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => setWorkspacePreset('photoshop')}><LayoutGrid size={13} /><span className="flex-1">Photoshop-style workspace</span>{workspacePreset === 'photoshop' && <Check size={13} />}</DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => setWorkspacePreset('classic')}><LayoutGrid size={13} /><span className="flex-1">Classic / custom workspace</span>{workspacePreset === 'classic' && <Check size={13} />}</DropdownMenuItem>
+            {WORKSPACE_PRESETS.map(preset => (
+              <DropdownMenuItem key={preset} className="gap-2 text-xs" onClick={() => setWorkspacePreset(preset)}><LayoutGrid size={13} /><span className="flex-1">{WORKSPACE_PRESET_LABELS[preset]} workspace</span>{workspacePreset === preset && <Check size={13} />}</DropdownMenuItem>
+            ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => openDialog('help-guide')}>
               <CircleHelp size={13}/><span className="flex-1">Help & User Guide</span>

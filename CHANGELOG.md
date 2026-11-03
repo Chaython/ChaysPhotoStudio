@@ -4,6 +4,7 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 ## 1.3.0
 
+- Added **Illustrator-style, GIMP-style and Fireworks-style workspace templates** alongside Photoshop-style and Classic. Each template reorders the complete registered tool set into familiar flyout groupings (nothing is hidden) and arranges its own inspector stacks: Illustrator emphasizes Properties with Layers/Paths; GIMP mirrors the Layers/Channels/Paths/Undo dock; Fireworks docks the Properties panel as a bottom strip under the canvas. Workspaces keep independent tool/panel layouts, locks and reset templates, the inspector reset button restores the active template's tab groups, and portable saved layouts remain workspace-independent.
 - Added broader LibRaw camera decoding and source-embedded redevelopable RAW Smart Objects, optional Lensfun XML calibration, supported multipart/tiled OpenEXR, selected compressed DICOM, FITS and multipage image imports. Six pinned camera samples passed sensor decoding; other variants require testing.
 - Fixed a CharLS WASM browser build blocker using the Webpack production/static path, plus invalid/duplicate Lensfun focal interpolation.
 - Corrected the Electron release payload checker so legitimate Webpack `.next/static/css` assets no longer cause all-platform packaging failures; it continues to reject incomplete JS/CSS payloads.

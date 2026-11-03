@@ -379,8 +379,9 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   --panel: #323232;
 }
 
-/* Layout skin when Photoshop workspace is selected with the regular dark
-   theme; choosing OLED or Light does not unexpectedly override that theme. */
+/* Layout skin when an inspector workspace (Photoshop-, Illustrator-, GIMP- or
+   Fireworks-style) is selected with the regular dark theme; choosing OLED or
+   Light does not unexpectedly override that theme. */
 
 .dark:not(.oled):not(.photoshop-theme) .zphoto-photoshop-workspace {
   --background: #262626;

@@ -47,6 +47,31 @@ export interface PanelRect {
 /** Inspector grouping is part of the panel layout, not an unexportable UI preference. */
 export const PHOTOSHOP_INSPECTOR_UPPER_TABS = ['color', 'adjustments', 'properties', 'navigator', 'histogram'] as const
 export const PHOTOSHOP_INSPECTOR_LOWER_TABS = ['layers', 'channels', 'paths', 'history', 'actions'] as const
+/** Illustrator Essentials-inspired stacks: color/properties on top, layers & paths below. */
+export const ILLUSTRATOR_INSPECTOR_UPPER_TABS = ['color', 'properties', 'navigator', 'tool-presets'] as const
+export const ILLUSTRATOR_INSPECTOR_LOWER_TABS = ['layers', 'paths', 'layer-comps', 'actions', 'history'] as const
+/** GIMP single-window-inspired: brush/pattern docks on top, the Layers/
+ *  Channels/Paths/Undo dock below. */
+export const GIMP_INSPECTOR_UPPER_TABS = ['color', 'tool-presets', 'patterns', 'clone-source'] as const
+export const GIMP_INSPECTOR_LOWER_TABS = ['layers', 'channels', 'paths', 'history'] as const
+/** Fireworks-inspired: Optimize/Info-style panels on top, Pages/Layers/History
+ *  below; the Properties inspector docks as a bottom strip instead. */
+export const FIREWORKS_INSPECTOR_UPPER_TABS = ['color', 'info', 'histogram', 'navigator'] as const
+export const FIREWORKS_INSPECTOR_LOWER_TABS = ['layers', 'layer-comps', 'history', 'metadata'] as const
+
+/** Default inspector tab groups for a workspace template. */
+export function inspectorTemplateTabs(preset: WorkspacePreset): { upperTabs: string[]; lowerTabs: string[] } {
+  switch (preset) {
+    case 'illustrator':
+      return { upperTabs: [...ILLUSTRATOR_INSPECTOR_UPPER_TABS], lowerTabs: [...ILLUSTRATOR_INSPECTOR_LOWER_TABS] }
+    case 'gimp':
+      return { upperTabs: [...GIMP_INSPECTOR_UPPER_TABS], lowerTabs: [...GIMP_INSPECTOR_LOWER_TABS] }
+    case 'fireworks':
+      return { upperTabs: [...FIREWORKS_INSPECTOR_UPPER_TABS], lowerTabs: [...FIREWORKS_INSPECTOR_LOWER_TABS] }
+    default:
+      return { upperTabs: [...PHOTOSHOP_INSPECTOR_UPPER_TABS], lowerTabs: [...PHOTOSHOP_INSPECTOR_LOWER_TABS] }
+  }
+}
 
 export interface PhotoshopInspectorLayout {
   upperTab: string
@@ -66,11 +91,11 @@ export interface PhotoshopInspectorLayout {
   upperPercent: number
   collapsed: boolean
 }
-function defaultPhotoshopInspector(): PhotoshopInspectorLayout {
+function defaultInspector(preset: WorkspacePreset = 'photoshop'): PhotoshopInspectorLayout {
+  const { upperTabs, lowerTabs } = inspectorTemplateTabs(preset)
   return {
-    upperTab: 'color', lowerTab: 'layers',
-    upperTabs: [...PHOTOSHOP_INSPECTOR_UPPER_TABS],
-    lowerTabs: [...PHOTOSHOP_INSPECTOR_LOWER_TABS],
+    upperTab: upperTabs[0] ?? 'color', lowerTab: lowerTabs[0] ?? 'layers',
+    upperTabs, lowerTabs,
     sideTabs: [], sideTab: '', sideLowerTabs: [], sideLowerTab: '',
     sideSplit: false, sideUpperPercent: 50, sideOpen: false, sideWidth: 280,
     upperPercent: 40, collapsed: false,
@@ -78,9 +103,11 @@ function defaultPhotoshopInspector(): PhotoshopInspectorLayout {
 }
 
 /** The two tab groups are user layouts: no tabs may be duplicated or lost.
- * Legacy layouts with only upperTab/lowerTab gain the original tab ordering. */
-function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
-  const fallback = defaultPhotoshopInspector()
+ * Legacy layouts with only upperTab/lowerTab gain the original tab ordering.
+ * `preset` selects the template tabs that must stay present; `null` validates
+ * structurally without forcing any template's tabs (portable saved layouts). */
+function normalizePhotoshopInspector(input: unknown, preset: WorkspacePreset | null = 'photoshop'): PhotoshopInspectorLayout {
+  const fallback = defaultInspector(preset ?? 'photoshop')
   if (!input || typeof input !== 'object' || Array.isArray(input)) return fallback
   const data = input as Partial<PhotoshopInspectorLayout>
   const allowed = new Set<string>(DOCKABLE_PANEL_IDS)
@@ -101,8 +128,11 @@ function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
   const sideLowerTabs = clean(data.sideLowerTabs ?? fallback.sideLowerTabs)
   const upperTabs = clean(data.upperTabs ?? fallback.upperTabs)
   const lowerTabs = clean(data.lowerTabs ?? fallback.lowerTabs)
-  for (const id of PHOTOSHOP_INSPECTOR_UPPER_TABS) if (!seen.has(id)) { upperTabs.push(id); seen.add(id) }
-  for (const id of PHOTOSHOP_INSPECTOR_LOWER_TABS) if (!seen.has(id)) { lowerTabs.push(id); seen.add(id) }
+  if (preset) {
+    const template = inspectorTemplateTabs(preset)
+    for (const id of template.upperTabs) if (!seen.has(id)) { upperTabs.push(id); seen.add(id) }
+    for (const id of template.lowerTabs) if (!seen.has(id)) { lowerTabs.push(id); seen.add(id) }
+  }
   // Keep both primary stacks navigable even for malformed imported layouts.
   if (!upperTabs.length) {
     const id = lowerTabs.length > 1 ? lowerTabs.shift() : sideTabs.shift()
@@ -136,9 +166,10 @@ function normalizePhotoshopInspector(input: unknown): PhotoshopInspectorLayout {
 }
 
 /** Dock actions and Window-menu navigation must update the same tab selections
- * that the Photoshop inspector persists, even after a tab was moved between stacks. */
-function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: string, enabled: boolean): PhotoshopInspectorLayout {
-  if (!enabled || !isDockablePanelId(tab)) return current
+ * that the inspector persists, even after a tab was moved between stacks.
+ * Only inspector workspaces track tab membership; classic leaves it untouched. */
+function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: string, preset: WorkspacePreset): PhotoshopInspectorLayout {
+  if (!isInspectorPreset(preset) || !isDockablePanelId(tab)) return current
   if (current.upperTabs.includes(tab)) return { ...current, upperTab: tab, collapsed: false }
   if (current.lowerTabs.includes(tab)) return { ...current, lowerTab: tab, collapsed: false }
   // If the user explicitly hid column two, Window → Show Panel should reveal
@@ -146,11 +177,11 @@ function withPhotoshopInspectorTab(current: PhotoshopInspectorLayout, tab: strin
   if (current.sideTabs.includes(tab)) return { ...current, sideTab: tab, collapsed: false }
   if (current.sideLowerTabs.includes(tab)) return { ...current, sideLowerTab: tab, collapsed: false }
   // Window → Show Panel, Add Panel and Dock Right can bring any registered
-  // panel into Essentials. Persist the new tab in the lower stack; otherwise
+  // panel into the inspector. Persist the new tab in the lower stack; otherwise
   // it disappears when the user selects a different panel or reloads.
   return normalizePhotoshopInspector({
     ...current, lowerTabs: [...current.lowerTabs, tab], lowerTab: tab, collapsed: false,
-  })
+  }, preset)
 }
 
 // ---- floating panel layout persistence ---------------------------------------
@@ -162,10 +193,11 @@ const WORKSPACE_LOCKS_KEY = 'zphoto-workspace-layout-locks-v1'
 export type WorkspaceLayoutLockKind = 'tools' | 'panels'
 export type WorkspaceLayoutLocks = Record<WorkspacePreset, Record<WorkspaceLayoutLockKind, boolean>>
 function readWorkspaceLocks(): WorkspaceLayoutLocks {
-  const defaults: WorkspaceLayoutLocks = { classic: { tools: false, panels: false }, photoshop: { tools: false, panels: false } }
+  const defaults = {} as WorkspaceLayoutLocks
+  for (const preset of WORKSPACE_PRESETS) defaults[preset] = { tools: false, panels: false }
   try {
     const saved = JSON.parse(localStorage.getItem(WORKSPACE_LOCKS_KEY) || '{}')
-    for (const preset of ['classic', 'photoshop'] as const) {
+    for (const preset of WORKSPACE_PRESETS) {
       for (const kind of ['tools', 'panels'] as const) defaults[preset][kind] = saved?.[preset]?.[kind] === true
     }
   } catch { /* old clients/private browsing start with unlocked layouts */ }
@@ -176,12 +208,37 @@ function persistWorkspaceLocks(locks: WorkspaceLayoutLocks) {
   catch { throw Error('Cannot save workspace lock settings. Check browser storage permissions.') }
 }
 const LEGACY_CLASSIC_BACKUP_KEY = 'zphoto-classic-layout-backup'
-export type WorkspacePreset = 'classic' | 'photoshop'
+
+/** Workspace templates: Classic plus application-inspired arrangements. */
+export type WorkspacePreset = 'classic' | 'photoshop' | 'illustrator' | 'gimp' | 'fireworks'
+export const WORKSPACE_PRESETS: readonly WorkspacePreset[] = ['classic', 'photoshop', 'illustrator', 'gimp', 'fireworks']
+export const WORKSPACE_PRESET_LABELS: Record<WorkspacePreset, string> = {
+  classic: 'Classic / custom',
+  photoshop: 'Photoshop-style',
+  illustrator: 'Illustrator-style',
+  gimp: 'GIMP-style',
+  fireworks: 'Fireworks-style',
+}
+/** Workspaces built on the stacked inspector dock (single-column toolbox,
+ *  stacked panel groups on the right). Classic keeps the tabbed dock. */
+export const INSPECTOR_PRESETS: readonly WorkspacePreset[] = ['photoshop', 'illustrator', 'gimp', 'fireworks']
+export const isInspectorPreset = (preset: WorkspacePreset): boolean =>
+  (INSPECTOR_PRESETS as readonly string[]).includes(preset)
+/** Header shown above the inspector stacks for each template. */
+export const INSPECTOR_HEADER_LABELS: Record<WorkspacePreset, string> = {
+  classic: 'Panels',
+  photoshop: 'Essentials',
+  illustrator: 'Illustrator',
+  gimp: 'GIMP',
+  fireworks: 'Fireworks',
+}
 
 function loadWorkspacePreset(): WorkspacePreset {
   if (typeof window === 'undefined') return 'classic'
-  try { return localStorage.getItem(WORKSPACE_PRESET_KEY) === 'photoshop' ? 'photoshop' : 'classic' }
-  catch { return 'classic' }
+  try {
+    const saved = localStorage.getItem(WORKSPACE_PRESET_KEY)
+    return (WORKSPACE_PRESETS as readonly string[]).includes(saved ?? '') ? saved as WorkspacePreset : 'classic'
+  } catch { return 'classic' }
 }
 export const DOCK_WIDTH_DEFAULT = 264
 export const DOCK_WIDTH_MIN = 220
@@ -232,7 +289,7 @@ export function restoreManualDockWidth(saved: number | undefined, manual: boolea
 }
 
 
-function loadPanelLayout(rawOverride: string | null = null): {
+function loadPanelLayout(rawOverride: string | null = null, preset: WorkspacePreset | null = null): {
   floating: Record<string, PanelRect>
   zTop: number
   dockWidth: number
@@ -304,7 +361,7 @@ function loadPanelLayout(rawOverride: string | null = null): {
         // Compatibility with split preference from the original Essentials dock.
         try { return { upperPercent: Number(localStorage.getItem('zphoto-photoshop-inspector-split')) || 40 } }
         catch { return {} }
-      })()),
+      })(), preset),
       floating,
       zTop: typeof data.zTop === 'number' ? data.zTop : Object.values(floating).reduce((m, r) => Math.max(m, r.z), 0),
       dockWidth: clampNum(Math.round(data.dockWidth ?? DOCK_WIDTH_DEFAULT), DOCK_WIDTH_MIN, DOCK_WIDTH_MAX),
@@ -380,12 +437,15 @@ function persistShortcutOverrides(overrides: Record<string, string>) {
   try { localStorage.setItem(SHORTCUTS_KEY, JSON.stringify(overrides)) } catch { /* noop */ }
 }
 
-/** default toolbar: ToolDef groups → sections, preserving TOOL_DEFS order */
+/** default toolbar: ToolDef groups → sections, preserving TOOL_DEFS order.
+ *  Application-inspired templates reorder the same registered tools into
+ *  familiar flyout groupings; nothing is removed from any template. */
 export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): ToolbarSection[] {
-  if (preset === 'photoshop') {
-    // Photoshop Essentials-style flyouts. Every registered editor tool stays
-    // accessible, with new tools appended automatically by the sanitizer.
-    const groups: ToolId[][] = [
+  // Flyout-group templates by workspace. Every registered editor tool stays
+  // accessible exactly once, with new tools appended automatically by the sanitizer.
+  const flyoutTemplates: Partial<Record<WorkspacePreset, ToolId[][]>> = {
+    // Photoshop Essentials-style flyouts.
+    photoshop: [
       ['move', 'artboard'],
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
       ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
@@ -406,7 +466,66 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['shape'],
       ['hand'],
       ['zoom'],
-    ]
+    ],
+    // Illustrator-style: selection up top, artboards next to Move, drawing
+    // (pen/type/shape) before painting, retouching grouped in one flyout.
+    illustrator: [
+      ['move', 'artboard'],
+      ['path-select', 'direct-select'],
+      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'object-select', 'quick-select', 'magic-wand'],
+      ['crop', 'perspective-crop', 'slice', 'hotspot'],
+      ['eyedropper', 'color-sampler', 'measure', 'count'],
+      ['text', 'type-mask-horizontal', 'type-mask-vertical'],
+      ['pen', 'pen-freeform', 'pen-curvature'],
+      ['shape'],
+      ['brush', 'pencil', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
+      ['eraser', 'background-eraser', 'magic-eraser'],
+      ['clone-stamp', 'pattern-stamp', 'healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye'],
+      ['paint-bucket', 'gradient'],
+      ['blur', 'sharpen', 'smudge', 'dodge', 'burn', 'sponge'],
+      ['hand', 'zoom'],
+    ],
+    // GIMP-style: selection suite first (rect/ellipse/free/fuzzy), then
+    // measure/crop/text/fill, the paint tools family, and Paths at the end.
+    gimp: [
+      ['move'],
+      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
+      ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
+      ['magic-wand', 'object-select', 'quick-select'],
+      ['eyedropper', 'color-sampler'],
+      ['zoom'],
+      ['measure', 'count'],
+      ['crop', 'perspective-crop', 'artboard', 'slice', 'hotspot'],
+      ['text', 'type-mask-horizontal', 'type-mask-vertical'],
+      ['paint-bucket', 'gradient'],
+      ['pencil', 'brush', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
+      ['eraser', 'background-eraser', 'magic-eraser'],
+      ['clone-stamp', 'pattern-stamp', 'healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye'],
+      ['blur', 'sharpen', 'smudge', 'dodge', 'burn', 'sponge'],
+      ['pen', 'pen-freeform', 'pen-curvature', 'path-select', 'direct-select', 'shape'],
+      ['hand'],
+    ],
+    // Fireworks-style: Pointer/Subselect, the select suite, crop and the web
+    // Slice/Hotspot export tools, then drawing, rubber stamp and fill.
+    fireworks: [
+      ['move', 'path-select', 'direct-select'],
+      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'object-select', 'quick-select', 'magic-wand'],
+      ['crop', 'perspective-crop'],
+      ['slice', 'hotspot', 'artboard', 'count'],
+      ['eyedropper', 'color-sampler', 'measure'],
+      ['text', 'type-mask-horizontal', 'type-mask-vertical'],
+      ['pen', 'pen-freeform', 'pen-curvature'],
+      ['shape'],
+      ['brush', 'pencil', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
+      ['eraser', 'background-eraser', 'magic-eraser'],
+      ['clone-stamp', 'pattern-stamp', 'healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye'],
+      ['blur', 'sharpen', 'smudge', 'dodge', 'burn', 'sponge'],
+      ['paint-bucket', 'gradient'],
+      ['hand', 'zoom'],
+    ],
+  }
+  const groups = flyoutTemplates[preset]
+  if (groups) {
     return sanitizeToolbarLayout(groups.map(ids => ids.length === 1
       ? { kind: 'single' as const, tool: ids[0] }
       : { kind: 'group' as const, tools: ids }))
@@ -492,14 +611,14 @@ function readWorkspaceRecord(preset: WorkspacePreset): { panels: ReturnType<type
       // selected. Preserve that backup when migrating from the old system.
       if (preset === 'classic') {
         const legacy = localStorage.getItem(LEGACY_CLASSIC_BACKUP_KEY)
-        const panels = legacy ? loadPanelLayout(legacy) : null
+        const panels = legacy ? loadPanelLayout(legacy, preset) : null
         if (panels) return { panels, toolbar: loadToolbarLayout() }
       }
       return null
     }
     return {
       panels: typeof data.panels === 'object' && data.panels !== null
-        ? loadPanelLayout(JSON.stringify(data.panels)) : null,
+        ? loadPanelLayout(JSON.stringify(data.panels), preset) : null,
       toolbar: Array.isArray(data.toolbar) && data.toolbar.length ? sanitizeToolbarLayout(data.toolbar) : null,
     }
   } catch { return null }
@@ -561,7 +680,9 @@ function validateLayoutImport(value: unknown): SavedWorkspaceLayout {
         throw Error('Invalid floating panel geometry')
     }
   }
-  const panels = raw.kind === 'tools' ? undefined : loadPanelLayout(JSON.stringify(raw.panels))
+  // Saved layouts are workspace-independent: validate structure without
+  // forcing the active workspace's template tabs into the imported layout.
+  const panels = raw.kind === 'tools' ? undefined : loadPanelLayout(JSON.stringify(raw.panels), null)
   if (raw.kind !== 'tools' && !panels) throw Error('Invalid panel layout')
   const toolbar = raw.kind === 'panels' ? undefined :
     raw.toolbar === null ? null : sanitizeToolbarLayout(raw.toolbar)
@@ -574,21 +695,31 @@ function defaultPanelState(): EditorStore['panels'] {
   return {
     rightTab: 'layers', leftTab: '', leftOpen: false, leftWidth: DOCK_WIDTH_DEFAULT,
     leftWidthManual: false, dockWidthManual: false,
-    colorPanelOpen: true, photoshopInspector: defaultPhotoshopInspector(), floating: {}, dockSide: {}, topOrder: [],
+    colorPanelOpen: true, photoshopInspector: defaultInspector(), floating: {}, dockSide: {}, topOrder: [],
     topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
     dockHeights: {}, zTop: 0, dockWidth: DOCK_WIDTH_DEFAULT,
   }
 }
 
-/** Non-destructive template: save the existing layout before applying the preset. */
-function photoshopPanelState(current: EditorStore['panels']): EditorStore['panels'] {
-  return {
+/** Workspace panel templates: stacked inspector dock, reset floating/dock
+ *  overrides. Photoshop keeps its historical 318px dock; the Fireworks template
+ *  additionally docks the Properties panel as a bottom strip like the original. */
+export function presetPanelState(preset: WorkspacePreset, current: EditorStore['panels']): EditorStore['panels'] {
+  const panels: EditorStore['panels'] = {
     ...current,
     rightTab: 'layers', leftTab: '', leftOpen: false,
     floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
-    dockHeights: {}, photoshopInspector: defaultPhotoshopInspector(),
-    dockWidth: 318, dockWidthManual: false, leftWidthManual: false,
+    dockHeights: {}, photoshopInspector: defaultInspector(preset),
+    dockWidth: preset === 'photoshop' ? 318 : DOCK_WIDTH_DEFAULT,
+    dockWidthManual: false, leftWidthManual: false,
   }
+  if (preset === 'fireworks') {
+    // Fireworks places its Properties inspector below the canvas, not in the
+    // right panel stack; every other registered panel stays reachable in the
+    // inspector via Window → Show Panel or the + menu.
+    panels.dockSide = { properties: 'bottom' }
+  }
+  return panels
 }
 
 interface EditorStore {
@@ -788,7 +919,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   timelineFrames: [],
   // Workspace-specific records are authoritative; the legacy global key is a
   // migration fallback only and must never silently overwrite an edited workspace.
-  panels: { ...defaultPanelState(), ...(readWorkspaceRecord(loadWorkspacePreset())?.panels ?? loadPanelLayout() ?? (loadWorkspacePreset() === 'photoshop' ? photoshopPanelState(defaultPanelState()) : {})) },
+  panels: { ...defaultPanelState(), ...(readWorkspaceRecord(loadWorkspacePreset())?.panels ?? loadPanelLayout(null, loadWorkspacePreset()) ?? (isInspectorPreset(loadWorkspacePreset()) ? presetPanelState(loadWorkspacePreset(), defaultPanelState()) : {})) },
   view: {
     // rulers ON by default for fresh users; anyone with persisted prefs
     // keeps their saved choice (the loader merges over these defaults)
@@ -819,7 +950,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const previous = readWorkspaceRecord(preset)
     const panels = previous?.panels
       ? { ...defaultPanelState(), ...previous.panels }
-      : preset === 'photoshop' ? photoshopPanelState(defaultPanelState()) : defaultPanelState()
+      : isInspectorPreset(preset) ? presetPanelState(preset, defaultPanelState()) : defaultPanelState()
     const toolbarLayout = previous ? previous.toolbar : null
     try { localStorage.setItem(WORKSPACE_PRESET_KEY, preset) } catch { /* noop */ }
     persistPanelLayout(panels)
@@ -830,8 +961,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (s.workspaceLayoutLocks[s.workspacePreset].panels || s.workspaceLayoutLocks[s.workspacePreset].tools) return {}
     // Explicit reset is the only action that discards this workspace's edited
     // toolbar and panel layout. Switching templates never implicitly resets it.
-    const panels = s.workspacePreset === 'photoshop'
-      ? photoshopPanelState(defaultPanelState()) : defaultPanelState()
+    const panels = isInspectorPreset(s.workspacePreset)
+      ? presetPanelState(s.workspacePreset, defaultPanelState()) : defaultPanelState()
     const toolbarLayout = null
     persistPanelLayout(panels)
     persistToolbarLayout(toolbarLayout)
@@ -976,11 +1107,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   bump: () => set(s => ({ renderTick: s.renderTick + 1 })),
   setProgress: (p) => set({ progress: p }),
   setRightPanelTab: (tab) => set(s => {
-    if (s.workspacePreset === 'photoshop' && s.workspaceLayoutLocks.photoshop.panels &&
+    if (isInspectorPreset(s.workspacePreset) && s.workspaceLayoutLocks[s.workspacePreset].panels &&
         ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
           ...s.panels.photoshopInspector.sideTabs, ...s.panels.photoshopInspector.sideLowerTabs].includes(tab)) return {}
     const panels = { ...s.panels, rightTab: tab, photoshopInspector:
-      withPhotoshopInspectorTab(s.panels.photoshopInspector, tab, s.workspacePreset === 'photoshop') }
+      withPhotoshopInspectorTab(s.panels.photoshopInspector, tab, s.workspacePreset) }
     persistPanelLayout(panels)
     return { panels }
   }),
@@ -989,7 +1120,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       'upperTabs', 'lowerTabs', 'sideTabs', 'sideLowerTabs',
       'upperPercent', 'sideWidth', 'sideOpen', 'sideSplit', 'sideUpperPercent',
     ].some(key => Object.prototype.hasOwnProperty.call(patch, key))) return {}
-    const next = normalizePhotoshopInspector({ ...s.panels.photoshopInspector, ...patch })
+    const next = normalizePhotoshopInspector({ ...s.panels.photoshopInspector, ...patch },
+      isInspectorPreset(s.workspacePreset) ? s.workspacePreset : null)
     if (JSON.stringify(next) === JSON.stringify(s.panels.photoshopInspector)) return {}
     const panels = { ...s.panels, photoshopInspector: next }
     persistPanelLayout(panels)
@@ -1028,7 +1160,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       sideLowerTab: target === 'side-lower' ? id : current.sideLowerTab,
       sideOpen: target === 'side' || target === 'side-lower' ? true : current.sideOpen,
       sideSplit: target === 'side-lower' ? true : current.sideSplit,
-    })
+    }, isInspectorPreset(s.workspacePreset) ? s.workspacePreset : null)
     const panels = { ...s.panels, photoshopInspector: next, rightTab: id }
     persistPanelLayout(panels)
     return { panels }
@@ -1070,11 +1202,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       // Selecting existing tabs is still editing/navigation, not rearrangement.
       const target = side ?? s.panels.dockSide[id] ?? 'right'
       if (s.panels.floating[id] || target !== (s.panels.dockSide[id] ?? 'right')) return {}
-      if (s.workspacePreset === 'photoshop' && target === 'right' &&
+      if (isInspectorPreset(s.workspacePreset) && target === 'right' &&
           ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
             ...s.panels.photoshopInspector.sideTabs, ...s.panels.photoshopInspector.sideLowerTabs].includes(id)) return {}
       return target === 'right' ? { panels: { ...s.panels, rightTab: id,
-        photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop') } } : {}
+        photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset) } } : {}
     }
     // Every registered panel is treated identically. Explicit side wins;
     // otherwise a floating panel returns to its last dock, defaulting right.
@@ -1083,7 +1215,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const panels = {
         ...s.panels,
         rightTab: eff === 'right' ? id : s.panels.rightTab,
-        photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop' && eff === 'right'),
+        photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, eff === 'right' ? s.workspacePreset : 'classic'),
         leftTab: eff === 'left' ? id : s.panels.leftTab,
         leftOpen: eff === 'left' ? true : s.panels.leftOpen,
         topOrder: eff === 'top' && !s.panels.topOrder.includes(id)
@@ -1100,7 +1232,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       floating,
       dockSide: { ...s.panels.dockSide, [id]: eff },
       rightTab: eff === 'right' ? id : s.panels.rightTab,
-      photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop' && eff === 'right'),
+      photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, eff === 'right' ? s.workspacePreset : 'classic'),
       leftTab: eff === 'left' ? id : s.panels.leftTab,
       leftOpen: eff === 'left' ? true : s.panels.leftOpen,
       topOrder: eff === 'top'
@@ -1128,7 +1260,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   revealPanel: (id) => set(s => {
-    if (s.workspacePreset === 'photoshop' && s.workspaceLayoutLocks.photoshop.panels &&
+    if (isInspectorPreset(s.workspacePreset) && s.workspaceLayoutLocks[s.workspacePreset].panels &&
         ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
           ...s.panels.photoshopInspector.sideTabs, ...s.panels.photoshopInspector.sideLowerTabs].includes(id) &&
         (s.panels.dockSide[id] ?? 'right') === 'right') return {}
@@ -1148,7 +1280,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const panels = {
       ...s.panels,
       rightTab: side === 'right' ? id : s.panels.rightTab,
-      photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, s.workspacePreset === 'photoshop' && side === 'right'),
+      photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, side === 'right' ? s.workspacePreset : 'classic'),
       leftTab: side === 'left' ? id : s.panels.leftTab,
       leftOpen: side === 'left' ? true : s.panels.leftOpen,
     }
@@ -1283,8 +1415,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   resetPanelLayout: () => set(s => {
     if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}
-    const panels = s.workspacePreset === 'photoshop'
-      ? photoshopPanelState(defaultPanelState())
+    const panels = isInspectorPreset(s.workspacePreset)
+      ? presetPanelState(s.workspacePreset, defaultPanelState())
       : defaultPanelState()
     persistPanelLayout(panels)
     saveWorkspaceRecord(s.workspacePreset, panels, s.toolbarLayout)

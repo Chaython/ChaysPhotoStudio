@@ -4,7 +4,7 @@
 // chrome: tabs, actions, dragging, sizing and persistence are shared.
 import { useEffect, useRef, useState } from 'react'
 import { PanelLeft, PanelLeftClose, PanelRightClose, PanelRightOpen, Plus, RotateCcw } from 'lucide-react'
-import { useEditorStore, PHOTOSHOP_INSPECTOR_UPPER_TABS, PHOTOSHOP_INSPECTOR_LOWER_TABS } from '../../store'
+import { useEditorStore, isInspectorPreset, inspectorTemplateTabs, INSPECTOR_HEADER_LABELS, type WorkspacePreset } from '../../store'
 import { PANEL_MAP, PANELS } from './panel-registry'
 import { autoSideDockWidth } from './auto-dock-sizing'
 import { PanelContextMenu } from './panel-actions-menu'
@@ -299,17 +299,18 @@ function DropOverlay({ side }: { side: 'left' | 'right' }) {
   )
 }
 
-/** A Photoshop-inspired essentials inspector using the actual registered panels.
- * The upper/lower stacks are independently selectable and resize with a
- * keyboard-accessible splitter; floating/dock moves still use the shared store.
- */
-const PHOTOSHOP_UPPER_TABS: readonly string[] = PHOTOSHOP_INSPECTOR_UPPER_TABS
-const PHOTOSHOP_LOWER_TABS: readonly string[] = PHOTOSHOP_INSPECTOR_LOWER_TABS
+/** The stacked inspector dock shared by the application-style workspaces
+ * (Photoshop, Illustrator, GIMP, Fireworks). The upper/lower stacks are
+ * independently selectable and resize with a keyboard-accessible splitter;
+ * floating/dock moves still use the shared store. Each template only chooses
+ * the default tab groups — the interaction is identical everywhere. */
 const PHOTOSHOP_TAB_MIME = 'application/x-zphoto-inspector-tab'
 const clampInspectorSplit = (value: number) => Math.max(22, Math.min(70, value))
 
 function PhotoshopRightDock() {
   const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const workspaceLabel = INSPECTOR_HEADER_LABELS[workspacePreset]
   const inspector = useEditorStore(s => s.panels.photoshopInspector)
   const setInspector = useEditorStore(s => s.setPhotoshopInspector)
   const { upperTab: upperSelection, lowerTab: lowerSelection, upperTabs, lowerTabs,
@@ -552,12 +553,12 @@ function PhotoshopRightDock() {
     <aside data-panel-dock="right" data-photoshop-dock="true" data-drop-active={dropActive ? '1' : undefined}
       data-secondary-visible={showSide ? 'true' : 'false'}
       className="relative hidden md:flex shrink-0 min-h-0 border-l border-border bg-panel panel-dock-drop"
-      style={{ width: width + (showSide ? sideWidth : 0) }} aria-label="Photoshop-style inspector panels">
+      style={{ width: width + (showSide ? sideWidth : 0) }} aria-label={`${workspaceLabel} inspector panels`}>
       <WidthDivider side="right" disabled={panelsLocked} width={width + (showSide ? sideWidth : 0)}
         onWidth={next => setWidth(next - (showSide ? sideWidth : 0))} onReset={resetWidth} />
       <div className="flex shrink-0 min-h-0 flex-col" style={{ width }} data-inspector-column="primary">
         <div className="h-7 shrink-0 pl-2 border-b flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          <span>Essentials</span>
+          <span>{workspaceLabel}</span>
           <div className="flex items-center">
             <AddPanelMenu side="right" mobile={false} />
             <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
@@ -568,19 +569,20 @@ function PhotoshopRightDock() {
               <PanelRightOpen size={13} />
             </button>
             <button type="button" disabled={panelsLocked} className="h-7 w-7 flex items-center justify-center hover:bg-accent disabled:opacity-40"
-              title="Restore the default Photoshop inspector tab groups"
-              aria-label="Reset Photoshop inspector tab groups"
+              title={`Restore the default ${workspaceLabel} inspector tab groups`}
+              aria-label={`Reset ${workspaceLabel} inspector tab groups`}
               onClick={() => {
+                const template = inspectorTemplateTabs(workspacePreset)
                 setInspector({
-                  upperTabs: [...PHOTOSHOP_UPPER_TABS], lowerTabs: [...PHOTOSHOP_LOWER_TABS],
+                  upperTabs: [...template.upperTabs], lowerTabs: [...template.lowerTabs],
                   sideTabs: [], sideTab: '', sideLowerTabs: [], sideLowerTab: '',
                   sideSplit: false, sideUpperPercent: 50, sideOpen: false, sideWidth: 280,
-                  upperTab: 'color', lowerTab: 'layers',
+                  upperTab: template.upperTabs[0] ?? 'color', lowerTab: template.lowerTabs[0] ?? 'layers',
                 })
-                useEditorStore.getState().setRightPanelTab('layers')
+                useEditorStore.getState().setRightPanelTab(template.lowerTabs[0] ?? 'layers')
               }}><RotateCcw size={12}/></button>
             <button type="button" className="h-7 w-7 flex items-center justify-center hover:bg-accent"
-              title="Collapse inspector to icons" aria-label="Collapse Photoshop inspector"
+              title="Collapse inspector to icons" aria-label={`Collapse ${workspaceLabel} inspector`}
               onClick={() => setInspector({ collapsed: true })}><PanelRightClose size={13} /></button>
           </div>
         </div>
@@ -589,7 +591,7 @@ function PhotoshopRightDock() {
           {tabs(upperTabs, upper, selectUpper, 'Upper inspector panel tabs', 'upper')}
           <div className="flex flex-1 min-h-0 flex-col overflow-auto zphoto-scroll">{content(upper)}</div>
         </section>
-        <div role="separator" tabIndex={0} aria-label="Resize Photoshop inspector groups"
+        <div role="separator" tabIndex={0} aria-label={`Resize ${workspaceLabel} inspector groups`}
           aria-orientation="horizontal" aria-valuemin={22} aria-valuemax={70} aria-valuenow={upperPercent}
           title="Drag to resize upper and lower panels; arrow keys resize"
           className="h-2 shrink-0 flex items-center cursor-row-resize touch-none border-y border-border/60 bg-panel hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
@@ -699,7 +701,7 @@ export function PanelDock({ mobile = false }: { mobile?: boolean }) {
     if (healed !== rightTab) setTab(healed)
   }, [rightTab, floating, dockSide, mobile, setTab])
 
-  if (!mobile && workspacePreset === 'photoshop') return <PhotoshopRightDock />
+  if (!mobile && isInspectorPreset(workspacePreset)) return <PhotoshopRightDock />
   if (!mobile && !dockVisible) return null
 
   return (

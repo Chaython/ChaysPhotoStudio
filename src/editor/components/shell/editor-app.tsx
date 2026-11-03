@@ -13,7 +13,7 @@ import { NativeModuleShell } from '../panels/native-module-shell'
 import { DialogManager } from '../dialogs/dialog-manager'
 import { WelcomeScreen } from './welcome-screen'
 import { useKeyboardShortcuts } from '../../keyboard-shortcuts'
-import { useEditorStore } from '../../store'
+import { useEditorStore, isInspectorPreset } from '../../store'
 import { engine } from '../../engine/engine'
 import { openFiles, placeImageAsSmartLayer } from '../../engine/io'
 import { isVideoImport } from '../../formats/photopea-formats'
@@ -270,7 +270,7 @@ export function EditorApp() {
   }, [])
 
   return (
-    <div className={cn("h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none", !mobileMode && workspacePreset === "photoshop" && "zphoto-photoshop-workspace")} style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
+    <div className={cn("h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none", !mobileMode && isInspectorPreset(workspacePreset) && "zphoto-photoshop-workspace")} style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
       <MenuBar theme={theme} setTheme={setTheme} mobileMode={mobileMode} setMobileMode={setMobileMode} />
       <div className={cn('flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
         {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
