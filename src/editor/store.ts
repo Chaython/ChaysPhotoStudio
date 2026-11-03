@@ -468,7 +468,7 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
   const tools: Record<string, Record<string, string>> = {
     photoshop: {},
     illustrator: {
-      'tool:move': 'v'
+      'tool:move': 'v',
       'tool:path-select': 'a', 'tool:direct-select': 'a',
       'tool:pen': 'p', 'tool:pen-freeform': 'p', 'tool:pen-curvature': 'p',
       'tool:text': 't', 'tool:shape': 'm',
@@ -483,9 +483,9 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
       'tool:lasso': 'f', 'tool:polygon-lasso': 'f',
       'tool:magic-wand': 'u', 'tool:crop': 'c',
       'tool:eyedropper': 'o', 'tool:color-sampler': 'o',
-      'tool:zoom': 'z'
+      'tool:zoom': 'z',
       'tool:text': 't', 'tool:brush': 'p',
-      'tool:pencil': 'n'
+      'tool:pencil': 'n',
       'tool:gradient': 'g', 'tool:clone-stamp': 'c',
     },
     fireworks: {
