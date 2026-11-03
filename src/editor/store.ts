@@ -415,6 +415,8 @@ const defaultOptions = () => {
 
 // ---- customizable shortcuts + toolbar layout persistence (TASK 17) ------------
 const SHORTCUTS_KEY = 'zphoto-shortcuts'
+const SHORTCUT_PROFILES_KEY = 'zphoto-shortcut-profiles-v1'
+const PERSONAL_SHORTCUT_BACKUP_KEY = 'zphoto-personal-shortcuts-backup-v1'
 const TOOLBAR_KEY = 'zphoto-toolbar'
 
 function loadShortcutOverrides(): Record<string, string> {
@@ -435,6 +437,89 @@ function loadShortcutOverrides(): Record<string, string> {
 function persistShortcutOverrides(overrides: Record<string, string>) {
   if (typeof localStorage === 'undefined') return
   try { localStorage.setItem(SHORTCUTS_KEY, JSON.stringify(overrides)) } catch { /* noop */ }
+}
+
+type WorkspaceShortcutProfiles = Partial<Record<WorkspacePreset, Record<string, string>>>
+function loadShortcutProfiles(): WorkspaceShortcutProfiles {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SHORTCUT_PROFILES_KEY) || '{}')
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+    const profiles: WorkspaceShortcutProfiles = {}
+    for (const preset of WORKSPACE_PRESETS) {
+      const candidate = raw[preset]
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+      const clean: Record<string, string> = {}
+      for (const [key, value] of Object.entries(candidate)) {
+        if (typeof value === 'string' && value.length <= 80) clean[key] = value
+      }
+      profiles[preset] = clean
+    }
+    return profiles
+  } catch { return {} }
+}
+function persistShortcutProfiles(profiles: WorkspaceShortcutProfiles) {
+  try { localStorage.setItem(SHORTCUT_PROFILES_KEY, JSON.stringify(profiles)) }
+  catch { throw Error('Unable to save workspace shortcut profiles. Check browser storage permissions.') }
+}
+
+/** Familiar application key assignments. Unlisted commands keep the editor's
+ *  shared command defaults; users can customize each workspace independently. */
+function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string, string> {
+  const tools: Record<string, Record<string, string>> = {
+    photoshop: {},
+    illustrator: {
+      'tool:move': 'v', 'tool:artboard': 'shift+o',
+      'tool:path-select': 'a', 'tool:direct-select': 'a',
+      'tool:pen': 'p', 'tool:pen-freeform': 'p', 'tool:pen-curvature': 'p',
+      'tool:text': 't', 'tool:shape': 'm',
+      'tool:brush': 'b', 'tool:pencil': 'n',
+      'tool:eyedropper': 'i', 'tool:color-sampler': 'i',
+      'tool:hand': 'h', 'tool:zoom': 'z',
+      'tool:gradient': 'g',
+    },
+    gimp: {
+      'tool:move': 'm',
+      'tool:marquee-rect': 'r', 'tool:marquee-ellipse': 'e',
+      'tool:lasso': 'f', 'tool:polygon-lasso': 'f',
+      'tool:magic-wand': 'u', 'tool:crop': 'c',
+      'tool:eyedropper': 'o', 'tool:color-sampler': 'o',
+      'tool:zoom': 'z', 'tool:measure': 'shift+m',
+      'tool:text': 't', 'tool:brush': 'p',
+      'tool:pencil': 'n', 'tool:eraser': 'shift+e',
+      'tool:gradient': 'g', 'tool:clone-stamp': 'c',
+    },
+    fireworks: {
+      'tool:move': 'v', 'tool:path-select': 'a', 'tool:direct-select': 'a',
+      'tool:crop': 'c', 'tool:slice': 'k', 'tool:hotspot': 'k',
+      'tool:text': 't', 'tool:pen': 'p', 'tool:pen-freeform': 'p',
+      'tool:shape': 'u', 'tool:brush': 'b', 'tool:pencil': 'n',
+      'tool:eyedropper': 'i', 'tool:color-sampler': 'i',
+      'tool:zoom': 'z', 'tool:hand': 'h',
+    },
+    classic: {},
+  }
+  // The tool dispatcher accepts single-letter tool keys only. Filter any
+  // multi-key reference so the profile never installs an unusable binding.
+  return Object.fromEntries(Object.entries(tools[preset] ?? {}).filter(([, combo]) => /^[a-z]$/.test(combo)))
+}
+
+function loadPersonalShortcutBackup(): Record<string, string> | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PERSONAL_SHORTCUT_BACKUP_KEY) || 'null')
+    if (!raw || raw.version !== 1 || !raw.overrides || typeof raw.overrides !== 'object') return null
+    return Object.fromEntries(Object.entries(raw.overrides).filter(([, value]) => typeof value === 'string')) as Record<string, string>
+  } catch { return null }
+}
+function savePersonalShortcutBackup(overrides: Record<string, string>) {
+  try {
+    // First snapshot wins: subsequent workspace changes cannot replace the
+    // user's original custom bindings with an application template.
+    if (!localStorage.getItem(PERSONAL_SHORTCUT_BACKUP_KEY)) {
+      localStorage.setItem(PERSONAL_SHORTCUT_BACKUP_KEY, JSON.stringify({
+        version: 1, savedAt: new Date().toISOString(), overrides,
+      }))
+    }
+  } catch { /* do not block workspace switching when storage is unavailable */ }
 }
 
 /** default toolbar: ToolDef groups → sections, preserving TOOL_DEFS order.
@@ -856,6 +941,9 @@ interface EditorStore {
   // ---- customizable shortcuts + toolbar (TASK 17) ----
   /** effective shortcut overrides — keys are CommandId or `tool:${ToolId}` */
   shortcutOverrides: Record<string, string>
+  /** True when the pre-profile personal shortcut backup exists. */
+  shortcutBackupAvailable: boolean
+  restorePersonalShortcutBackup(): void
   /** set (or clear with null → default) one shortcut binding */
   setShortcutOverride(id: string, combo: string | null): void
   resetShortcutOverrides(): void
@@ -939,6 +1027,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       : {}),
   },
   shortcutOverrides: loadShortcutOverrides(),
+  shortcutBackupAvailable: !!loadPersonalShortcutBackup(),
   toolbarLayout: readWorkspaceRecord(loadWorkspacePreset()) ? readWorkspaceRecord(loadWorkspacePreset())!.toolbar : loadToolbarLayout(),
   savedLayouts: readSavedLayouts(),
 
@@ -947,6 +1036,15 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     // A template is applied on first entry only. Subsequent visits restore the
     // independent, last-edited panel and toolbar layouts of this workspace.
     saveWorkspaceRecord(s.workspacePreset, s.panels, s.toolbarLayout)
+    // Preserve the user's original custom bindings once, then maintain an
+    // independent editable profile for every workspace template.
+    savePersonalShortcutBackup(s.shortcutOverrides)
+    const shortcutProfiles = loadShortcutProfiles()
+    shortcutProfiles[s.workspacePreset] = { ...s.shortcutOverrides }
+    const targetShortcutOverrides = shortcutProfiles[preset] ?? defaultWorkspaceShortcutProfile(preset)
+    shortcutProfiles[preset] = { ...targetShortcutOverrides }
+    persistShortcutProfiles(shortcutProfiles)
+    persistShortcutOverrides(targetShortcutOverrides)
     const previous = readWorkspaceRecord(preset)
     const panels = previous?.panels
       ? { ...defaultPanelState(), ...previous.panels }
@@ -955,7 +1053,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     try { localStorage.setItem(WORKSPACE_PRESET_KEY, preset) } catch { /* noop */ }
     persistPanelLayout(panels)
     persistToolbarLayout(toolbarLayout)
-    return { workspacePreset: preset, panels, toolbarLayout }
+    return { workspacePreset: preset, panels, toolbarLayout, shortcutOverrides: targetShortcutOverrides,
+      shortcutBackupAvailable: !!loadPersonalShortcutBackup() }
   }),
   resetWorkspaceLayout: () => set(s => {
     if (s.workspaceLayoutLocks[s.workspacePreset].panels || s.workspaceLayoutLocks[s.workspacePreset].tools) return {}
@@ -1435,6 +1534,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   // ---- customizable shortcuts + toolbar (TASK 17) ----
+  restorePersonalShortcutBackup: () => set(() => {
+    const backup = loadPersonalShortcutBackup()
+    if (!backup) return {}
+    persistShortcutOverrides(backup)
+    const profiles = loadShortcutProfiles()
+    profiles[useEditorStore.getState().workspacePreset] = { ...backup }
+    persistShortcutProfiles(profiles)
+    return { shortcutOverrides: backup, shortcutBackupAvailable: true }
+  }),
+
   setShortcutOverride: (id, combo) => set(s => {
     const overrides = { ...s.shortcutOverrides }
     if (combo === null) delete overrides[id]
