@@ -68,8 +68,10 @@ const FIXED_HELPERS: [string, string][] = [
 
 export function ShortcutsDialog({ onClose }: DialogProps) {
   const overrides = useEditorStore(s => s.shortcutOverrides)
+  const shortcutBackupAvailable = useEditorStore(s => s.shortcutBackupAvailable)
   const setShortcutOverride = useEditorStore(s => s.setShortcutOverride)
   const resetShortcutOverrides = useEditorStore(s => s.resetShortcutOverrides)
+  const restorePersonalShortcutBackup = useEditorStore(s => s.restorePersonalShortcutBackup)
   const pushToast = useEditorStore(s => s.pushToast)
 
   const [listening, setListening] = useState<Listening>(null)
@@ -218,6 +220,17 @@ export function ShortcutsDialog({ onClose }: DialogProps) {
             className="h-7 pl-7 text-xs"
           />
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-xs gap-1.5"
+          disabled={!shortcutBackupAvailable}
+          title="Restore the personal shortcut snapshot saved before workspace profiles were enabled"
+          onClick={() => { restorePersonalShortcutBackup(); setNote(null); setListening(null); pushToast('Your saved personal shortcuts were restored', 'success') }}
+        >
+          <RotateCcw size={12} />
+          Restore my hotkeys
+        </Button>
         <Button
           size="sm"
           variant="ghost"
