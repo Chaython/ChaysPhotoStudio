@@ -119,10 +119,16 @@ for (const preset of presetList) {
 }
 assert.equal(presetPanelState('photoshop', { ...basePanels } as any).dockWidth, 318,
   'photoshop keeps its historical 318px inspector width')
+assert.equal(presetPanelState('illustrator', { ...basePanels } as any).dockWidth, 300,
+  'illustrator uses its narrower properties/layers inspector')
+const gimp = presetPanelState('gimp', { ...basePanels } as any)
+assert.equal(gimp.dockWidth, 286, 'gimp uses a compact right-side dock')
+assert.equal(gimp.leftWidth, 260, 'gimp reserves the wider toolbox column')
 const fireworks = presetPanelState('fireworks', { ...basePanels } as any)
 assert.equal(fireworks.dockSide.properties, 'bottom',
   'fireworks docks the Properties inspector below the canvas')
-assert.equal(fireworks.dockWidth, DOCK_WIDTH_DEFAULT, 'fireworks uses the default inspector width')
+assert.equal(fireworks.dockWidth, 270, 'fireworks uses its compact inspector width')
+assert.equal(fireworks.bottomHeight, 210, 'fireworks reserves space for its Properties strip')
 assert.ok(!('properties' in presetPanelState('illustrator', { ...basePanels } as any).dockSide),
   'other templates do not move Properties to the bottom')
 
