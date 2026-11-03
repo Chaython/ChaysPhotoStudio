@@ -276,10 +276,16 @@ export function EditorApp() {
         {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
         <div className="flex flex-1 min-h-0 min-w-0">
           {!mobileMode && (
-            <div className="hidden md:flex flex-col">
+            <div className={cn("hidden md:flex flex-col shrink-0", workspacePreset === 'gimp' && "w-[260px] border-r border-border/70")}>
               <NativeModuleShell id="tools" axis="vertical">
                 <Toolbar />
               </NativeModuleShell>
+              {workspacePreset === 'gimp' && (
+                <section aria-label="GIMP-style tool options" className="min-h-0 max-h-[42%] overflow-auto border-t border-border/70 bg-panel">
+                  <div className="px-2 py-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">Tool Options</div>
+                  <ToolOptionsBar embedded />
+                </section>
+              )}
             </div>
           )}
           {!mobileMode && <LeftDock />}
@@ -295,11 +301,13 @@ export function EditorApp() {
                   <Toolbar compact />
                   <ToolOptionsBar />
                 </div>
-                <div className="hidden md:block">
-                  <NativeModuleShell id="tool-options" axis="horizontal">
-                    <ToolOptionsBar embedded />
-                  </NativeModuleShell>
-                </div>
+                {workspacePreset !== 'gimp' && (
+                  <div className="hidden md:block">
+                    <NativeModuleShell id="tool-options" axis="horizontal">
+                      <ToolOptionsBar embedded />
+                    </NativeModuleShell>
+                  </div>
+                )}
               </>
             )}
             {!mobileMode && (
