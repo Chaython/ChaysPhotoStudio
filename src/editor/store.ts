@@ -793,10 +793,18 @@ export function presetPanelState(preset: WorkspacePreset, current: EditorStore['
   const panels: EditorStore['panels'] = {
     ...current,
     rightTab: 'layers', leftTab: '', leftOpen: false,
-    floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT, bottomHeight: 192,
+    floating: {}, dockSide: {}, topOrder: [], topHeight: TOP_HEIGHT_DEFAULT,
+    // Keep the existing editor chrome, but size the shared docks like the
+    // corresponding application's standard desktop workspace.
+    bottomHeight: preset === 'fireworks' ? 210 : 192,
     dockHeights: {}, photoshopInspector: defaultInspector(preset),
-    dockWidth: preset === 'photoshop' ? 318 : DOCK_WIDTH_DEFAULT,
+    dockWidth: preset === 'photoshop' ? 318
+      : preset === 'illustrator' ? 300
+      : preset === 'gimp' ? 286
+      : preset === 'fireworks' ? 270
+      : DOCK_WIDTH_DEFAULT,
     dockWidthManual: false, leftWidthManual: false,
+    leftWidth: preset === 'gimp' ? 260 : DOCK_WIDTH_DEFAULT,
   }
   if (preset === 'fireworks') {
     // Fireworks places its Properties inspector below the canvas, not in the
