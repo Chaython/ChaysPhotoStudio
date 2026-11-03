@@ -38,6 +38,7 @@
     "dist:validate": "node scripts/validate-distribution.mjs",
     "tools:validate": "bun scripts/validate-tools.ts",
     "web-assets:validate": "bun scripts/validate-web-assets.ts",
+    "web-hotspots:validate": "bun scripts/validate-web-hotspot-shapes.ts",
     "artboards:validate": "bun scripts/validate-artboards.ts",
     "design-library:validate": "bun scripts/validate-design-library.ts",
     "design-merge:validate": "bun scripts/validate-design-merge.ts",

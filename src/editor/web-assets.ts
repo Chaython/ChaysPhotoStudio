@@ -2,6 +2,8 @@
 // Exported image maps must stay at intrinsic pixel size: scaling the <img>
 // without recalculating <area> coords makes the clickable hotspots misalign.
 export type WebRegionKind = 'slice' | 'hotspot'
+// Slices stay rectangular; circle/polygon shapes apply to hotspots only.
+export type WebRegionShape = 'rect' | 'circle' | 'poly'
 export interface WebRegion {
   id: string
   kind: WebRegionKind
@@ -10,11 +12,25 @@ export interface WebRegion {
   y: number
   width: number
   height: number
+  shape?: WebRegionShape
+  /** Flat integer [x0,y0,x1,y1,...] polygon vertices; polygon hotspots only. */
+  points?: number[]
   href?: string
   alt?: string
   target?: '_self' | '_blank'
 }
 export const MAX_WEB_REGIONS = 128
+/** Polygon hotspots accept at most 60 vertices (120 coordinate entries). */
+export const MAX_WEB_REGION_POINTS = 60
+
+export function regionShape(r: Pick<WebRegion, 'kind' | 'shape'>): WebRegionShape {
+  return r.kind === 'hotspot' && r.shape ? r.shape : 'rect'
+}
+
+/** Circle hotspots are stored as their square bounding box; derive center/radius. */
+export function circleMetrics(r: Pick<WebRegion, 'x' | 'y' | 'width' | 'height'>): { cx: number; cy: number; radius: number } {
+  return { cx: r.x + r.width / 2, cy: r.y + r.height / 2, radius: Math.min(r.width, r.height) / 2 }
+}
 
 export function fileStem(value: string): string {
   return value.replace(/\.zproj\.json$/i, '').replace(/\.[^.]+$/, '')
@@ -43,14 +59,47 @@ export function normalizeWebRegions(input: unknown, width: number, height: numbe
     if (coords.some(n => !Number.isSafeInteger(n))) continue
     let [x, y, w, h] = coords
     if (w < 1 || h < 1 || x >= width || y >= height || x + w <= 0 || y + h <= 0) continue
+    const kind = r.kind
+    const shape: WebRegionShape = kind === 'hotspot' && r.shape === 'circle' ? 'circle'
+      : kind === 'hotspot' && r.shape === 'poly' ? 'poly' : 'rect'
+    let points: number[] | undefined
+    if (shape === 'poly') {
+      // Polygon vertices: flat integer pairs clamped to the document, with a
+      // recomputed bounding box so legacy rect code paths keep working.
+      if (!Array.isArray(r.points)) continue
+      const raw = r.points.slice(0, MAX_WEB_REGION_POINTS * 2)
+      if (raw.length < 6 || raw.length % 2 !== 0) continue
+      if (raw.some(n => !Number.isSafeInteger(n))) continue
+      points = []
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      const distinct = new Set<string>()
+      for (let i = 0; i < raw.length; i += 2) {
+        const px = Math.max(0, Math.min(width - 1, raw[i]))
+        const py = Math.max(0, Math.min(height - 1, raw[i + 1]))
+        points.push(px, py)
+        distinct.add(px + ',' + py)
+        minX = Math.min(minX, px); maxX = Math.max(maxX, px)
+        minY = Math.min(minY, py); maxY = Math.max(maxY, py)
+      }
+      // Degenerate polygons (a single point or a two-point line) have no clickable area.
+      if (distinct.size < 3) continue
+      x = minX; y = minY; w = maxX - minX + 1; h = maxY - minY + 1
+      if (w < 1 || h < 1) continue
+    } else if (shape === 'circle') {
+      // Keep circles square so the derived radius matches the drawn bounds.
+      const side = Math.min(w, h)
+      w = side; h = side
+    }
     const right = Math.min(width, x + w), bottom = Math.min(height, y + h)
     x = Math.max(0, x); y = Math.max(0, y)
     w = right - x; h = bottom - y
     if (w < 1 || h < 1) continue
     ids.add(r.id)
     out.push({
-      id: r.id, kind: r.kind, name: typeof r.name === 'string' ? r.name.slice(0, 120) : r.kind,
+      id: r.id, kind, name: typeof r.name === 'string' ? r.name.slice(0, 120) : kind,
       x, y, width: w, height: h,
+      ...(shape === 'circle' ? { shape: 'circle' as const }
+        : shape === 'poly' && points ? { shape: 'poly' as const, points } : {}),
       href: typeof r.href === 'string' ? r.href.slice(0, 2048) : '',
       alt: typeof r.alt === 'string' ? r.alt.slice(0, 280) : '',
       target: r.target === '_blank' ? '_blank' : '_self',
@@ -67,8 +116,18 @@ export function buildImageMapHtml(imageName: string, width: number, height: numb
   const areas = regions.filter(r => r.kind === 'hotspot').map(r => {
     const href = webSafeHref(r.href || '')
     if (!href) return ''
-    const coords = [r.x, r.y, r.x + r.width, r.y + r.height].join(',')
-    return '    <area shape="rect" coords="' + coords + '" href="' + escapeWebHtml(href)
+    let shapeAttr = 'rect', coords: string
+    if (regionShape(r) === 'circle') {
+      const c = circleMetrics(r)
+      shapeAttr = 'circle'
+      coords = [Math.round(c.cx), Math.round(c.cy), Math.max(1, Math.round(c.radius))].join(',')
+    } else if (regionShape(r) === 'poly' && r.points && r.points.length >= 6) {
+      shapeAttr = 'poly'
+      coords = r.points.join(',')
+    } else {
+      coords = [r.x, r.y, r.x + r.width, r.y + r.height].join(',')
+    }
+    return '    <area shape="' + shapeAttr + '" coords="' + coords + '" href="' + escapeWebHtml(href)
       + '" alt="' + escapeWebHtml(r.alt || r.name) + '" target="' + r.target
       + '"' + (r.target === '_blank' ? ' rel="noopener noreferrer"' : '') + '>'
   }).filter(Boolean)

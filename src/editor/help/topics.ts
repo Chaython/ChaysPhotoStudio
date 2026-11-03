@@ -752,19 +752,20 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     "title": "Slice and Hotspot canvas tools",
     "category": "Tools",
     "path": "Slice / Hotspot (K tool family) / File → Web Slices & Hotspots",
-    "summary": "Draw and edit web export rectangles directly on the full-resolution canvas.",
+    "summary": "Draw and edit web export regions, including circle and polygon hotspots, directly on the full-resolution canvas.",
     "steps": [
       "Choose Slice or Hotspot from the K tool group; drag on the image to create a region. Slice exports a cropped image, while Hotspot defines a clickable image-map link.",
-      "Click a region to select it, drag inside to move it, or drag its lower-right corner to resize. Shift constrains square creation and resizing.",
+      "Pick a Hotspot Shape in Tool Options: Rectangle and Circle use drag creation (circles stay square); Polygon places a vertex per click, closes when you click the highlighted first vertex or press Enter, and Escape cancels.",
+      "Click a region to select it, drag inside to move it, or drag its lower-right corner to resize (Shift constrains square). Selected polygons show draggable vertex handles instead of a corner handle.",
       "Use arrow keys to move a selected region one document pixel (Shift moves ten), Delete to remove it, Escape to clear the selection, or Alt/Option-click to delete a region.",
-      "Press Enter or double-click to open File → Web Slices & Hotspots to change names, hotspot URLs, alt text and image-export settings.",
+      "Press Enter or double-click to open File → Web Slices & Hotspots to change names, hotspot URLs, alt text and image-export settings; the dialog can also draw all three hotspot shapes and numerically translate or rescale polygon vertices.",
       "Save the native project to retain regions. Export Web Assets creates cropped slice images and safe HTML image maps without changing the document pixels."
     ],
     "tips": [
       "Slice and Hotspot regions are project-persistent document annotations, not paint layers; there is no destructive raster edit.",
       "The K shortcut cycles Measure, Slice and Hotspot; no layer needs to be selected to draw regions.",
-      "Each document supports up to 128 web regions. The editor clips regions to document bounds and does not create a region from a single click.",
-      "Web export supports rectangular regions and image maps; polygonal hotspots and native Fireworks document interchange are not yet implemented."
+      "Each document supports up to 128 web regions and each polygon up to 60 vertices. The editor clips regions to document bounds and does not create a region from a single click.",
+      "Web export supports rectangular slices plus rectangular, circular and polygon image-map areas; polygon slices and native Fireworks document interchange are not yet implemented."
     ]
   },
   {

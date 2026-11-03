@@ -57,6 +57,9 @@ jobs:
       - name: Validate canvas Slice and Hotspot geometry
         run: bun scripts/validate-web-region-tools.ts
 
+      - name: Validate circle and polygon hotspot shapes
+        run: bun run web-hotspots:validate
+
       - name: Validate multi-artboard geometry, grid coverage and crop bounds
         run: bun run artboards:validate
 

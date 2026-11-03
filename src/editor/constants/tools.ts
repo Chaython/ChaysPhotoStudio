@@ -132,8 +132,11 @@ export const TOOL_DEFS: ToolDef[] = [
     options: [{ key: 'showLabels', label: 'Show Region Names', type: 'toggle' }],
   },
   { id: 'hotspot', label: 'Hotspot', group: 3, shortcut: 'K', icon: 'MousePointer2', cursor: 'crosshair',
-    defaults: { showLabels: true },
-    options: [{ key: 'showLabels', label: 'Show Region Names', type: 'toggle' }],
+    defaults: { showLabels: true, shape: 'rect' },
+    options: [
+      { key: 'shape', label: 'Shape', type: 'select', options: [{ label: 'Rectangle', value: 'rect' }, { label: 'Circle', value: 'circle' }, { label: 'Polygon', value: 'poly' }], hint: 'Polygon: click to add vertices, click the first vertex or press Enter to finish, Esc to cancel' },
+      { key: 'showLabels', label: 'Show Region Names', type: 'toggle' },
+    ],
   },
 
   // group 2 — color picker (standalone button — always visible in the toolbar)
