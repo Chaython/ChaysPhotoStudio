@@ -278,7 +278,7 @@ export function EditorApp() {
           {!mobileMode && (
             <div className={cn("hidden md:flex flex-col shrink-0", workspacePreset === 'gimp' && "w-[260px] border-r border-border/70")}>
               <NativeModuleShell id="tools" axis="vertical">
-                <Toolbar />
+                <Toolbar embedded={workspacePreset === 'gimp'} />
               </NativeModuleShell>
               {workspacePreset === 'gimp' && (
                 <section aria-label="GIMP-style tool options" className="min-h-0 max-h-[42%] overflow-auto border-t border-border/70 bg-panel">
