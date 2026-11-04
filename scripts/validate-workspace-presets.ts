@@ -139,8 +139,12 @@ assert.match(propertiesSource, /workspacePreset === 'illustrator' && layer\.kind
   'Illustrator Properties must show context-sensitive vector controls only for vector objects')
 assert.match(propertiesSource, /function IllustratorShapeProperties\(/,
   'Illustrator vector objects need a dedicated Properties inspector')
-for (const control of ['Object fill color', 'Object stroke color', 'Object X', 'Object Y', 'Object W', 'Object H', 'Stroke weight']) {
+for (const control of ['Object fill color', 'Object stroke color', 'Stroke weight']) {
   assert.ok(propertiesSource.includes(control), `Illustrator Properties must expose ${control}`)
+}
+for (const axis of ['X', 'Y', 'W', 'H']) {
+  assert.ok(propertiesSource.includes(`numberField('${axis}'`),
+    `Illustrator Properties must expose editable object ${axis}`)
 }
 assert.match(toolbarSource, /swapColors/,
   'Illustrator toolbar must expose Fill/Stroke swapping')
