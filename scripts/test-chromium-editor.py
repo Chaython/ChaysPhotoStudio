@@ -400,7 +400,7 @@ def main():
                 # Reset applies the active workspace's initial template only;
                 # named presets and the other workspace must remain intact.
                 page.get_by_role("button", name="Workspace template").click()
-                page.get_by_role("menuitem", name="Restore Classic template").click()
+                page.get_by_role("menuitem", name="Restore Classic / custom template").click()
                 check(store(page, "s.toolbarLayout") is None,
                       "factory reset did not restore Classic toolbar")
                 check(store(page, "s.panels.dockWidth") == 264,
@@ -491,7 +491,7 @@ def main():
                 saved = store(page, "JSON.parse(s.exportNamedLayout('Custom inspector tabs')).panels.photoshopInspector")
                 check("history" in saved["upperTabs"] and "channels" in saved["lowerTabs"],
                       "export omitted inspector tab groups")
-                page.get_by_role("button", name="Reset Photoshop inspector tab groups").click()
+                page.get_by_role("button", name="Reset Essentials inspector tab groups").click()
                 check(store(page, "s.panels.photoshopInspector.upperTabs") ==
                       ["color", "adjustments", "properties", "navigator", "histogram"],
                       "Reset inspector tab groups did not restore Photoshop defaults")
@@ -626,7 +626,7 @@ def main():
                 page.wait_for_selector('[data-inspector-column="secondary"]')
                 check(store(page, "s.panels.photoshopInspector.sideWidth") == 335,
                       "Responsive fallback changed the persistent column width")
-                page.get_by_role("button", name="Reset Photoshop inspector tab groups").click()
+                page.get_by_role("button", name="Reset Essentials inspector tab groups").click()
                 check(store(page, "s.panels.photoshopInspector.sideTabs") == [],
                       "Inspector group reset left an orphaned secondary column tab")
                 check(store(page, "s.panels.photoshopInspector.sideOpen") is False,
@@ -745,7 +745,7 @@ def main():
                       "Workspace menu did not independently lock both layouts")
                 check(page.locator('[data-inspector-tab="color"]').get_attribute("draggable") == "false",
                       "Locked Photoshop tabs are still draggable")
-                check(page.locator('[aria-label="Resize Photoshop inspector groups"]').get_attribute("aria-disabled") == "true",
+                check(page.locator('[aria-label="Resize Essentials inspector groups"]').get_attribute("aria-disabled") == "true",
                       "Locked inspector splitter is still enabled")
                 check(page.get_by_role("button", name="Arrange panels for the right dock").is_disabled(),
                       "Locked inspector still offers the Add Panel rearrangement menu")
