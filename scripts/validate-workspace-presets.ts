@@ -142,6 +142,13 @@ assert.match(propertiesSource, /function IllustratorShapeProperties\(/,
 for (const control of ['Object fill color', 'Object stroke color', 'Stroke weight']) {
   assert.ok(propertiesSource.includes(control), `Illustrator Properties must expose ${control}`)
 }
+for (const control of [
+  'Fill opacity', 'Stroke opacity', 'Stroke alignment', 'Stroke pattern', 'Line cap',
+  'Polygon sides', 'Star inner radius percent', 'Custom dash length', 'Custom dash gap',
+  'Start arrow', 'End arrow',
+]) {
+  assert.ok(propertiesSource.includes(control), `Illustrator Properties must expose ${control}`)
+}
 for (const [axis, key] of [['X', 'x'], ['Y', 'y'], ['W', 'w'], ['H', 'h']] as const) {
   assert.ok(new RegExp(`numberField\\('${axis}', '${key}'(?:, 0)?\\)`).test(propertiesSource),
     `Illustrator Properties must expose editable object ${axis}`)
