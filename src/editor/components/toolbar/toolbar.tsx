@@ -64,6 +64,15 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
   const pushToast = useEditorStore(s => s.pushToast)
   const sections = useToolbarSections()
   const keys = useToolKeys()
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const fgColor = useEditorStore(s => s.fgColor)
+  const bgColor = useEditorStore(s => s.bgColor)
+  const setFgColor = useEditorStore(s => s.setFgColor)
+  const setBgColor = useEditorStore(s => s.setBgColor)
+  const activeColorTarget = useEditorStore(s => s.activeColorTarget)
+  const setActiveColorTarget = useEditorStore(s => s.setActiveColorTarget)
+  const swapColors = useEditorStore(s => s.swapColors)
+  const illustratorColors = workspacePreset === 'illustrator' && !compact && !embedded
 
   // ---------- drag & drop (desktop rail only) ----------
   const [dragSrc, setDragSrc] = useState<ToolId | null>(null)
@@ -229,6 +238,52 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
           </div>
         )
       })}
+      {illustratorColors && (
+        <div className="mt-auto border-t border-border/60 px-1.5 py-2 flex flex-col items-center gap-1.5" aria-label="Fill and Stroke colors">
+          <div className="relative w-9 h-9" aria-label="Fill and Stroke swatches">
+            <label
+              className={cn('absolute left-0 top-0 z-10 h-6 w-6 rounded-sm border-2 shadow-sm cursor-pointer', activeColorTarget === 'fg' ? 'border-primary' : 'border-foreground/60')}
+              title="Fill color — click to choose"
+              aria-label="Choose Fill color"
+              style={{ backgroundColor: fgColor }}
+            >
+              <input
+                type="color"
+                value={fgColor}
+                onFocus={() => setActiveColorTarget('fg')}
+                onChange={e => { setActiveColorTarget('fg'); setFgColor(e.target.value) }}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                aria-label="Fill color picker"
+              />
+            </label>
+            <label
+              className={cn('absolute right-0 bottom-0 h-6 w-6 rounded-sm border-2 shadow-sm cursor-pointer', activeColorTarget === 'bg' ? 'border-primary' : 'border-foreground/60')}
+              title="Stroke color — click to choose"
+              aria-label="Choose Stroke color"
+              style={{ backgroundColor: bgColor }}
+            >
+              <input
+                type="color"
+                value={bgColor}
+                onFocus={() => setActiveColorTarget('bg')}
+                onChange={e => { setActiveColorTarget('bg'); setBgColor(e.target.value) }}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                aria-label="Stroke color picker"
+              />
+            </label>
+          </div>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => { setFgColor('#000000'); setBgColor('#ffffff') }}
+              className="h-4 w-4 rounded-sm border border-border text-[10px] leading-none hover:bg-accent"
+              title="Default Fill and Stroke colors" aria-label="Default Fill and Stroke colors">↙</button>
+            <button type="button" onClick={swapColors}
+              className="h-4 w-4 rounded-sm border border-border flex items-center justify-center hover:bg-accent"
+              title="Swap Fill and Stroke colors" aria-label="Swap Fill and Stroke colors">
+              <Icons.ArrowLeftRight size={10} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
