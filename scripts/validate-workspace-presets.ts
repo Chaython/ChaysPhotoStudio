@@ -143,7 +143,7 @@ for (const control of ['Object fill color', 'Object stroke color', 'Stroke weigh
   assert.ok(propertiesSource.includes(control), `Illustrator Properties must expose ${control}`)
 }
 for (const [axis, key] of [['X', 'x'], ['Y', 'y'], ['W', 'w'], ['H', 'h']] as const) {
-  assert.ok(propertiesSource.includes(`numberField('${axis}', '${key}')`),
+  assert.ok(new RegExp(`numberField\\('${axis}', '${key}'(?:, 0)?\\)`).test(propertiesSource),
     `Illustrator Properties must expose editable object ${axis}`)
 }
 assert.match(toolbarSource, /swapColors/,
