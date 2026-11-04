@@ -171,9 +171,10 @@ assert.match(editorShell, /<Toolbar embedded=\{workspacePreset === 'gimp'\} \/>/
   'GIMP toolbox must use the shared toolbar in its wide toolbox column')
 assert.match(editorShell, /workspacePreset === 'gimp'[\s\S]*?<ToolOptionsBar embedded layout="vertical" \/>/,
   'GIMP tool options must remain beneath the toolbox in a vertical contextual layout')
-assert.match(toolbarSource, /layout === 'vertical'[\s\S]*?'flex-col items-stretch'/,
+const toolOptionsSource = readFileSync(new URL('../src/editor/components/toolbar/tool-options-bar.tsx', import.meta.url), 'utf8')
+assert.match(toolOptionsSource, /layout === 'vertical'[\s\S]*?'flex-col items-stretch'/,
   'GIMP tool options must stack controls vertically rather than wrap as a horizontal toolbar')
-assert.match(toolbarSource, /layout !== 'vertical' && <VDivider \/>/,
+assert.match(toolOptionsSource, /layout !== 'vertical' && <VDivider \/>/,
   'GIMP tool options must not show horizontal toolbar dividers')
 assert.match(editorShell, /workspacePreset !== 'gimp'[\s\S]*?<ToolOptionsBar embedded \/>/,
   'other workspaces retain the shared horizontal tool-options strip')
