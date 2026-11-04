@@ -71,9 +71,47 @@ const WORKSPACE_TOOL_ICONS: Record<string, Record<string, string>> = {
   },
 }
 
+const WORKSPACE_CUSTOM_GLYPHS: Record<string, Record<string, React.ReactNode>> = {
+  photoshop: {
+    'marquee-rect': <><rect x="4" y="5" width="16" height="14" strokeDasharray="2 2" /><path d="M7 8h10M7 16h10" /></>,
+    'spot-healing': <><circle cx="12" cy="12" r="7" /><path d="M12 7v10M7 12h10M9 9l6 6M15 9l-6 6" /></>,
+    'clone-stamp': <><path d="M7 8h10v7H7zM9 15v3h6v-3" /><path d="M9 5h6" /></>,
+    brush: <><path d="m5 16 9-9 4 4-9 9H5z" /><path d="m14 7 2-2 4 4-2 2" /></>,
+  },
+  illustrator: {
+    move: <><path d="M12 2v20M2 12h20M12 2l-2 3m2-3 2 3M22 12l-3-2m3 2-3 2M12 22l-2-3m2 3 2-3M2 12l3-2m-3 2 3 2" /></>,
+    artboard: <><rect x="4" y="4" width="16" height="16" /><path d="M8 2v4m8-4v4M8 18v4m8-4v4M2 8h4m12 0h4M2 16h4m12 0h4" /></>,
+    'path-select': <><path d="M5 19 7 5l12 4-8 10z" /><circle cx="5" cy="19" r="1.6" fill="currentColor" /><circle cx="7" cy="5" r="1.6" fill="currentColor" /><circle cx="19" cy="9" r="1.6" fill="currentColor" /><circle cx="11" cy="19" r="1.6" fill="currentColor" /></>,
+    'direct-select': <><path d="m5 3 2 17 4-5 4 5 2-2-4-5 6-1z" /><circle cx="7" cy="5" r="1.2" fill="currentColor" /></>,
+    pen: <><path d="m12 3 6 6-8 10-5 2 2-5z" /><path d="m10 5 6 6M5 16l4 3" /><circle cx="12" cy="3" r="1.5" /></>,
+    'pen-freeform': <><path d="M4 18c2-12 5-12 8-5s5 6 8-7" /><circle cx="4" cy="18" r="1.5" /><circle cx="20" cy="6" r="1.5" /></>,
+    text: <><path d="M4 5h16M12 5v14M8 19h8" /><path d="M8 5 6 9m10-4 2 4" /></>,
+    shape: <><rect x="3" y="4" width="8" height="8" /><circle cx="17" cy="8" r="4" /><path d="m12 21 4-7 4 7z" /></>,
+  },
+  gimp: {
+    'marquee-rect': <><rect x="4" y="4" width="16" height="16" strokeDasharray="1.5 2" /><path d="M8 8h8v8H8z" /></>,
+    brush: <><path d="m5 17 9-10 4 4-9 10H5z" /><path d="M14 7 17 4l4 4-3 3" /><path d="M4 21c0-2 2-3 4-3" /></>,
+    pen: <><path d="M4 19 12 4l8 15z" /><circle cx="12" cy="4" r="1.5" fill="currentColor" /><circle cx="4" cy="19" r="1.5" fill="currentColor" /><circle cx="20" cy="19" r="1.5" fill="currentColor" /></>,
+  },
+  fireworks: {
+    slice: <><rect x="3" y="4" width="18" height="16" /><path d="M12 4v16M3 12h18" /><path d="m9 9 3 3-3 3" /></>,
+    hotspot: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3" /></>,
+    shape: <><rect x="3" y="4" width="8" height="8" /><circle cx="17" cy="8" r="4" /><path d="m12 21 4-7 4 7z" /></>,
+  },
+}
+
 function ToolIcon({ icon, toolId, size = 16 }: { icon: string; toolId?: ToolId; size?: number }) {
   const workspacePreset = useEditorStore(s => s.workspacePreset)
   const workspaceIcon = toolId ? WORKSPACE_TOOL_ICONS[workspacePreset]?.[toolId] : undefined
+  const customGlyph = toolId ? WORKSPACE_CUSTOM_GLYPHS[workspacePreset]?.[toolId] : undefined
+  if (customGlyph) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {customGlyph}
+      </svg>
+    )
+  }
   const Cmp = (Icons as any)[workspaceIcon ?? icon] ?? (Icons as any)[icon] ?? Icons.MousePointer2
   return <Cmp size={size} strokeWidth={1.75} />
 }
