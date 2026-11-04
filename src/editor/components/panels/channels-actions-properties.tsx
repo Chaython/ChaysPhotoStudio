@@ -545,6 +545,7 @@ export function ActionsPanel() {
 export function PropertiesPanel() {
   const activeLayerId = useEditorStore(s => s.activeLayerId)
   const tick = useEditorStore(s => s.renderTick)
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
   const doc = engine.activeDoc
   const layer = doc?.layers.find(l => l.id === activeLayerId)
   void tick
@@ -576,6 +577,10 @@ export function PropertiesPanel() {
         )}
       </div>
 
+      {workspacePreset === 'illustrator' && layer.kind === 'shape' && layer.shape && (
+        <IllustratorShapeProperties layerId={layer.id} />
+      )}
+
       {isAdj && <AdjustmentEditor layerId={layer.id} />}
 
       <BlendIfSection key={layer.id} layerId={layer.id} />
@@ -593,6 +598,82 @@ export function PropertiesPanel() {
         </div>
       )}
     </FancyScroll>
+  )
+}
+
+// Illustrator's Properties inspector exposes editable vector geometry and
+// appearance directly, rather than requiring users to hunt through Tool Options.
+function IllustratorShapeProperties({ layerId }: { layerId: string }) {
+  const tick = useEditorStore(s => s.renderTick)
+  const layer = engine.layerById(layerId)
+  const shape = layer?.shape
+  void tick
+  if (!shape) return null
+  const update = (patch: Partial<typeof shape>) => {
+    const current = engine.layerById(layerId)?.shape
+    if (!current) return
+    engine.setLayerProps(layerId, { shape: { ...current, ...patch } }, {
+      history: false, label: 'Edit Vector Object',
+    })
+  }
+  const numberField = (label: string, key: 'x' | 'y' | 'w' | 'h', min = -100000) => (
+    <label className="flex min-w-0 items-center gap-1 text-[10px]">
+      <span className="w-3 shrink-0 text-muted-foreground">{label}</span>
+      <input type="number" value={Number(shape[key] ?? 0)} min={min} max={100000}
+        step={1} onChange={e => update({ [key]: Number(e.target.value) })}
+        className="h-6 w-full min-w-0 rounded border bg-background px-1 text-[10px]"
+        aria-label={`Object ${label}`} />
+    </label>
+  )
+  return (
+    <div className="border-t pt-2 space-y-2">
+      <div className="flex items-center gap-1.5">
+        <Icons.SquareDashed size={13} className="text-primary" />
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex-1">Object</span>
+        <span className="text-[9px] text-muted-foreground">Vector</span>
+      </div>
+      <label className="flex items-center gap-2 text-[10px]">
+        <span className="w-10 shrink-0 text-muted-foreground">Shape</span>
+        <select value={shape.shape} onChange={e => update({ shape: e.target.value as typeof shape.shape })}
+          className="h-6 min-w-0 flex-1 rounded border bg-background px-1 text-[10px]" aria-label="Vector shape">
+          {(['rect', 'rounded-rect', 'ellipse', 'triangle', 'polygon', 'star', 'line', 'path'] as const)
+            .map(value => <option key={value} value={value}>{value.replace('-', ' ')}</option>)}
+        </select>
+      </label>
+      <div className="grid grid-cols-2 gap-1.5">
+        {numberField('X', 'x')}{numberField('Y', 'y')}
+        {numberField('W', 'w', 0)}{numberField('H', 'h', 0)}
+      </div>
+      <div className="space-y-1.5">
+        <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Appearance</div>
+        <div className="grid grid-cols-[44px_1fr_auto] items-center gap-1.5">
+          <span className="text-[10px]">Fill</span>
+          <input type="color" value={shape.fill ?? '#ffffff'}
+            onChange={e => update({ fill: e.target.value })}
+            className="h-6 w-full rounded border bg-transparent p-0" aria-label="Object fill color" />
+          <button type="button" onClick={() => update({ fill: shape.fill === null ? '#ffffff' : null })}
+            className="h-6 rounded border px-1.5 text-[9px] hover:bg-accent"
+            aria-pressed={shape.fill === null}>{shape.fill === null ? 'None' : 'On'}</button>
+        </div>
+        <div className="grid grid-cols-[44px_1fr_auto] items-center gap-1.5">
+          <span className="text-[10px]">Stroke</span>
+          <input type="color" value={shape.stroke ?? '#000000'}
+            onChange={e => update({ stroke: e.target.value })}
+            className="h-6 w-full rounded border bg-transparent p-0" aria-label="Object stroke color" />
+          <button type="button" onClick={() => update({ stroke: shape.stroke === null ? '#000000' : null })}
+            className="h-6 rounded border px-1.5 text-[9px] hover:bg-accent"
+            aria-pressed={shape.stroke === null}>{shape.stroke === null ? 'None' : 'On'}</button>
+        </div>
+        <label className="grid grid-cols-[44px_1fr_42px] items-center gap-1.5 text-[10px]">
+          <span>Weight</span>
+          <input type="range" min={0} max={100} step={0.5} value={shape.strokeWidth}
+            onChange={e => update({ strokeWidth: Number(e.target.value) })} className="min-w-0" />
+          <input type="number" min={0} max={1000} step={0.5} value={shape.strokeWidth}
+            onChange={e => update({ strokeWidth: Number(e.target.value) })}
+            className="h-6 w-full rounded border bg-background px-1 text-[10px]" aria-label="Stroke weight" />
+        </label>
+      </div>
+    </div>
   )
 }
 
