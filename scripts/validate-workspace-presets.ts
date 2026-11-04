@@ -134,6 +134,14 @@ assert.ok(toolbarSource.includes('aria-label="Fill color picker"') && toolbarSou
   'Illustrator Fill swatch must open a color picker')
 assert.ok(toolbarSource.includes('aria-label="Stroke color picker"') && toolbarSource.includes('type="color"'),
   'Illustrator Stroke swatch must open a color picker')
+const propertiesSource = readFileSync(new URL('../src/editor/components/panels/channels-actions-properties.tsx', import.meta.url), 'utf8')
+assert.match(propertiesSource, /workspacePreset === 'illustrator' && layer\.kind === 'shape'/,
+  'Illustrator Properties must show context-sensitive vector controls only for vector objects')
+assert.match(propertiesSource, /function IllustratorShapeProperties\(/,
+  'Illustrator vector objects need a dedicated Properties inspector')
+for (const control of ['Object fill color', 'Object stroke color', 'Object X', 'Object Y', 'Object W', 'Object H', 'Stroke weight']) {
+  assert.ok(propertiesSource.includes(control), `Illustrator Properties must expose ${control}`)
+}
 assert.match(toolbarSource, /swapColors/,
   'Illustrator toolbar must expose Fill/Stroke swapping')
 const topDockSource = readFileSync(new URL('../src/editor/components/panels/top-dock.tsx', import.meta.url), 'utf8')
