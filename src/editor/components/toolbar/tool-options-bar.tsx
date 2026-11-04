@@ -59,7 +59,7 @@ export function ToolOptionsBar({ embedded = false, mobile = false, layout = 'hor
           'flex gap-x-3 gap-y-1.5 px-2 py-1.5 min-w-0 min-h-9',
           layout === 'vertical' ? 'flex-col items-stretch flex-1' : 'flex-row items-center flex-1',
           layout === 'vertical'
-            ? 'flex-wrap overflow-y-auto'
+            ? 'flex-nowrap overflow-y-auto'
             : mobile
               ? 'flex-nowrap overflow-x-auto zphoto-scroll min-h-12 py-2 [&_button]:min-h-9 [&_input]:min-h-9 [&_[role=combobox]]:min-h-9 [&_[role=slider]]:min-h-7'
               : (collapsed ? 'flex-nowrap overflow-x-auto zphoto-scroll' : 'flex-wrap'),
