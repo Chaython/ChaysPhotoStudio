@@ -47,9 +47,10 @@ export interface PanelRect {
 /** Inspector grouping is part of the panel layout, not an unexportable UI preference. */
 export const PHOTOSHOP_INSPECTOR_UPPER_TABS = ['color', 'adjustments', 'properties', 'navigator', 'histogram'] as const
 export const PHOTOSHOP_INSPECTOR_LOWER_TABS = ['layers', 'channels', 'paths', 'history', 'actions'] as const
-/** Illustrator Essentials-inspired stacks: color/properties on top, layers & paths below. */
-export const ILLUSTRATOR_INSPECTOR_UPPER_TABS = ['color', 'properties', 'navigator', 'tool-presets'] as const
-export const ILLUSTRATOR_INSPECTOR_LOWER_TABS = ['layers', 'paths', 'layer-comps', 'actions', 'history'] as const
+/** Illustrator Essentials-inspired stacks: Properties is the first-stop control
+ *  surface, with color/navigation nearby and object structure/history below. */
+export const ILLUSTRATOR_INSPECTOR_UPPER_TABS = ['properties', 'color', 'navigator', 'tool-presets'] as const
+export const ILLUSTRATOR_INSPECTOR_LOWER_TABS = ['layers', 'paths', 'history', 'actions', 'layer-comps'] as const
 /** GIMP single-window-inspired: brush/pattern docks on top, the Layers/
  *  Channels/Paths/Undo dock below. */
 export const GIMP_INSPECTOR_UPPER_TABS = ['color', 'tool-presets', 'patterns', 'clone-source'] as const
