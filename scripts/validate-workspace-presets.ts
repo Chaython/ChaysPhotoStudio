@@ -141,6 +141,13 @@ assert.match(propertiesSource, /function IllustratorShapeProperties\(/,
   'Illustrator vector objects need a dedicated Properties inspector')
 assert.match(propertiesSource, /workspacePreset === 'photoshop' && isText/,
   'Photoshop Character and Paragraph controls must only appear for selected type layers')
+assert.match(propertiesSource, /workspacePreset === 'fireworks' && <FireworksLayerProperties/,
+  'Fireworks Properties dock must show its contextual layer controls')
+assert.match(propertiesSource, /function FireworksLayerProperties\(/,
+  'Fireworks needs a dedicated contextual Properties inspector')
+for (const control of ['Fireworks Properties', 'Opacity', 'Blend mode', 'Visible', 'Hidden', 'Locked', 'Unlocked']) {
+  assert.ok(propertiesSource.includes(control), `Fireworks Properties must expose ${control}`)
+}
 assert.match(propertiesSource, /function PhotoshopTypeControls\(/,
   'Photoshop type layers need a dedicated contextual Character and Paragraph inspector')
 for (const control of [
