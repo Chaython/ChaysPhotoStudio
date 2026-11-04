@@ -93,6 +93,11 @@ for (const preset of presetList) {
 const inspectorSignatures = INSPECTOR_PRESETS.map(p => JSON.stringify(inspectorTemplateTabs(p)))
 assert.equal(new Set(inspectorSignatures).size, INSPECTOR_PRESETS.length,
   'each inspector workspace needs its own template')
+// Illustrator opens on Properties and keeps object structure/history in its lower stack.
+assert.deepEqual(inspectorTemplateTabs('illustrator').upperTabs, ['properties', 'color', 'navigator', 'tool-presets'],
+  'illustrator opens with its Properties controls visible')
+assert.deepEqual(inspectorTemplateTabs('illustrator').lowerTabs, ['layers', 'paths', 'history', 'actions', 'layer-comps'],
+  'illustrator keeps object structure and editing history together')
 // Fireworks reserves Properties for the bottom strip, not the right inspector.
 assert.ok(!inspectorTemplateTabs('fireworks').upperTabs.includes('properties') &&
   !inspectorTemplateTabs('fireworks').lowerTabs.includes('properties'),
