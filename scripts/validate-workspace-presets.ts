@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   WORKSPACE_PRESETS, WORKSPACE_PRESET_LABELS, INSPECTOR_PRESETS, INSPECTOR_HEADER_LABELS,
   isInspectorPreset, inspectorTemplateTabs, defaultToolbarLayout, sanitizeToolbarLayout,
@@ -96,6 +97,18 @@ assert.equal(new Set(inspectorSignatures).size, INSPECTOR_PRESETS.length,
 assert.ok(!inspectorTemplateTabs('fireworks').upperTabs.includes('properties') &&
   !inspectorTemplateTabs('fireworks').lowerTabs.includes('properties'),
   'fireworks keeps Properties docked at the bottom instead of the inspector stacks')
+
+// --- Shared shell presentation invariants --------------------------------------
+// Workspace presets must adapt the shared editor shell rather than fork it.
+// GIMP gets a wide, wrapping toolbox and its tool options below that toolbox;
+// the shared horizontal options strip stays disabled for that preset.
+const editorShell = readFileSync(new URL('../src/editor/components/shell/editor-app.tsx', import.meta.url), 'utf8')
+assert.match(editorShell, /<Toolbar embedded=\{workspacePreset === 'gimp'\} \/>/,
+  'GIMP toolbox must use the shared toolbar in its wide toolbox column')
+assert.match(editorShell, /workspacePreset === 'gimp'[\s\S]*?<ToolOptionsBar embedded \/>/,
+  'GIMP tool options must remain beneath the toolbox')
+assert.match(editorShell, /workspacePreset !== 'gimp'[\s\S]*?<ToolOptionsBar embedded \/>/,
+  'other workspaces retain the shared horizontal tool-options strip')
 
 // --- Panel templates -----------------------------------------------------------
 const basePanels = {
