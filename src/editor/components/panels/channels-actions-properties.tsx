@@ -681,6 +681,59 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
             onChange={e => update({ strokeWidth: Number(e.target.value) })}
             className="h-6 w-full rounded border bg-background px-1 text-[10px]" aria-label="Stroke weight" />
         </label>
+        {([['Fill opacity', 'fillOpacity'], ['Stroke opacity', 'strokeOpacity']] as const).map(([label, key]) => (
+          <label key={key} className="grid grid-cols-[82px_1fr_38px] items-center gap-1.5 text-[10px]">
+            <span>{label}</span>
+            <input type="range" min={0} max={100} step={1} value={shape[key] ?? 100}
+              onChange={e => update({ [key]: Number(e.target.value) })}
+              className="min-w-0" aria-label={label} />
+            <span className="text-right tabular-nums">{Math.round(shape[key] ?? 100)}%</span>
+          </label>
+        ))}
+        <div className="grid grid-cols-2 gap-1.5">
+          <label className="flex items-center gap-1 text-[10px]">
+            <span className="text-muted-foreground">Align</span>
+            <select value={shape.strokeAlign ?? 'center'}
+              onChange={e => update({ strokeAlign: e.target.value as NonNullable<typeof shape.strokeAlign> })}
+              className="h-6 min-w-0 flex-1 rounded border bg-background px-1" aria-label="Stroke alignment">
+              <option value="inside">Inside</option><option value="center">Center</option><option value="outside">Outside</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-[10px]">
+            <span className="text-muted-foreground">Dash</span>
+            <select value={shape.dash ?? 'solid'}
+              onChange={e => update({ dash: e.target.value as NonNullable<typeof shape.dash> })}
+              className="h-6 min-w-0 flex-1 rounded border bg-background px-1" aria-label="Stroke pattern">
+              <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="custom">Custom</option>
+            </select>
+          </label>
+        </div>
+        <label className="flex items-center gap-1.5 text-[10px]">
+          <span className="text-muted-foreground">Line cap</span>
+          <select value={shape.lineCap ?? 'butt'}
+            onChange={e => update({ lineCap: e.target.value as CanvasLineCap })}
+            className="h-6 flex-1 rounded border bg-background px-1" aria-label="Line cap">
+            <option value="butt">Butt</option><option value="round">Round</option><option value="square">Square</option>
+          </select>
+        </label>
+        {(shape.shape === 'polygon' || shape.shape === 'star') && (
+          <div className="grid grid-cols-2 gap-1.5">
+            <label className="flex items-center gap-1 text-[10px]">
+              <span className="text-muted-foreground">Sides</span>
+              <input type="number" min={3} max={32} step={1} value={shape.sides}
+                onChange={e => update({ sides: Math.max(3, Math.min(32, Number(e.target.value) || 3)) })}
+                className="h-6 min-w-0 w-full rounded border bg-background px-1" aria-label="Polygon sides" />
+            </label>
+            {shape.shape === 'star' && (
+              <label className="flex items-center gap-1 text-[10px]">
+                <span className="text-muted-foreground">Inset</span>
+                <input type="number" min={1} max={99} step={1} value={shape.starInset}
+                  onChange={e => update({ starInset: Math.max(1, Math.min(99, Number(e.target.value) || 1)) })}
+                  className="h-6 min-w-0 w-full rounded border bg-background px-1" aria-label="Star inner radius percent" />
+              </label>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
