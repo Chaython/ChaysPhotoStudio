@@ -142,8 +142,8 @@ assert.match(propertiesSource, /function IllustratorShapeProperties\(/,
 for (const control of ['Object fill color', 'Object stroke color', 'Stroke weight']) {
   assert.ok(propertiesSource.includes(control), `Illustrator Properties must expose ${control}`)
 }
-for (const axis of ['X', 'Y', 'W', 'H']) {
-  assert.ok(propertiesSource.includes(`numberField('${axis}'`),
+for (const [axis, key] of [['X', 'x'], ['Y', 'y'], ['W', 'w'], ['H', 'h']] as const) {
+  assert.ok(propertiesSource.includes(`numberField('${axis}', '${key}')`),
     `Illustrator Properties must expose editable object ${axis}`)
 }
 assert.match(toolbarSource, /swapColors/,
