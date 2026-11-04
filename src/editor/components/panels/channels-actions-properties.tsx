@@ -577,6 +577,7 @@ export function PropertiesPanel() {
         )}
       </div>
 
+      {workspacePreset === 'fireworks' && <FireworksLayerProperties layerId={layer.id} />}
       {workspacePreset === 'illustrator' && layer.kind === 'shape' && layer.shape && (
         <IllustratorShapeProperties layerId={layer.id} />
       )}
@@ -599,6 +600,64 @@ export function PropertiesPanel() {
         </div>
       )}
     </FancyScroll>
+  )
+}
+
+// Fireworks keeps common web-asset controls immediately available in its
+// bottom Properties dock, regardless of the selected layer kind.
+function FireworksLayerProperties({ layerId }: { layerId: string }) {
+  const tick = useEditorStore(s => s.renderTick)
+  const layer = engine.layerById(layerId)
+  const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  void tick
+  useEffect(() => () => {
+    if (historyTimer.current) clearTimeout(historyTimer.current)
+  }, [])
+  if (!layer) return null
+  const update = (patch: Partial<typeof layer>) => {
+    if (!engine.layerById(layerId)) return
+    engine.setLayerProps(layerId, patch, { history: false, label: 'Edit Fireworks Properties' })
+    if (historyTimer.current) clearTimeout(historyTimer.current)
+    historyTimer.current = setTimeout(() => {
+      historyTimer.current = null
+      engine.pushHistory('Edit Fireworks Properties')
+    }, 300)
+  }
+  return (
+    <section className="border-t pt-2 space-y-2">
+      <div className="flex items-center gap-1.5">
+        <Icons.SlidersHorizontal size={13} className="text-primary" />
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex-1">Fireworks Properties</span>
+        <span className="text-[9px] text-muted-foreground">{layer.kind}</span>
+      </div>
+      <label className="grid grid-cols-[54px_1fr_42px] items-center gap-1.5 text-[10px]">
+        <span>Opacity</span>
+        <input type="range" min={0} max={100} value={layer.opacity}
+          onChange={e => update({ opacity: Number(e.target.value) })} className="min-w-0" />
+        <span className="text-right tabular-nums">{Math.round(layer.opacity)}%</span>
+      </label>
+      <label className="flex items-center justify-between gap-2 text-[10px]">
+        <span>Blend mode</span>
+        <select value={layer.blendMode}
+          onChange={e => update({ blendMode: e.target.value as typeof layer.blendMode })}
+          className="h-6 min-w-0 w-36 rounded border bg-background px-1 text-[10px]" aria-label="Fireworks blend mode">
+          {(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'linear-dodge', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'] as const)
+            .map(mode => <option key={mode} value={mode}>{mode.replace('-', ' ')}</option>)}
+        </select>
+      </label>
+      <div className="grid grid-cols-2 gap-1">
+        <button type="button" aria-pressed={layer.visible}
+          onClick={() => update({ visible: !layer.visible })}
+          className={`h-7 rounded border text-[10px] ${layer.visible ? 'bg-primary/10 border-primary/40' : 'bg-background'}`}>
+          {layer.visible ? 'Visible' : 'Hidden'}
+        </button>
+        <button type="button" aria-pressed={layer.locked}
+          onClick={() => update({ locked: !layer.locked })}
+          className={`h-7 rounded border text-[10px] ${layer.locked ? 'bg-primary/10 border-primary/40' : 'bg-background'}`}>
+          {layer.locked ? 'Locked' : 'Unlocked'}
+        </button>
+      </div>
+    </section>
   )
 }
 
