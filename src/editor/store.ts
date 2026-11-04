@@ -797,7 +797,7 @@ export function presetPanelState(preset: WorkspacePreset, current: EditorStore['
     // Keep the existing editor chrome, but size the shared docks like the
     // corresponding application's standard desktop workspace.
     bottomHeight: preset === 'fireworks' ? 210 : 192,
-    dockHeights: {}, photoshopInspector: defaultInspector(preset),
+    dockHeights: preset === 'fireworks' ? { bottom: 210 } : {}, photoshopInspector: defaultInspector(preset),
     dockWidth: preset === 'photoshop' ? 318
       : preset === 'illustrator' ? 300
       : preset === 'gimp' ? 286
