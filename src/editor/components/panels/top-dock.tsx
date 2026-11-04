@@ -47,8 +47,8 @@ export function TopDock({ side = 'top' }: { side?: 'top' | 'bottom' | 'top-left'
         <div className="w-8 flex items-center justify-center border-r border-border/60 flex-shrink-0">
           <AddPanelMenu side={side} mobile={false} />
         </div>
-        <div className={cn("min-w-0 flex overflow-x-auto zphoto-scroll", manualHeight ? "flex-1" : "flex-initial")} role="list" aria-label={`${side} dock panels`}>
-          {ids.map(id => <TopPanelBox key={id} id={id} hasDoc={hasDoc} manualHeight={manualHeight} />)}
+        <div className={cn("min-w-0 flex overflow-x-auto zphoto-scroll", (manualHeight || side === "bottom") ? "flex-1" : "flex-initial")} role="list" aria-label={`${side} dock panels`}>
+          {ids.map(id => <TopPanelBox key={id} id={id} hasDoc={hasDoc} manualHeight={manualHeight} side={side} />)}
         </div>
       </div>
 
@@ -63,7 +63,7 @@ export function TopDock({ side = 'top' }: { side?: 'top' | 'bottom' | 'top-left'
   )
 }
 
-function TopPanelBox({ id, hasDoc, manualHeight }: { id: string; hasDoc: boolean; manualHeight: boolean }) {
+function TopPanelBox({ id, hasDoc, manualHeight, side }: { id: string; hasDoc: boolean; manualHeight: boolean; side: 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' }) {
   const def = PANEL_MAP[id]
   const pull = useRef<{ x: number; y: number; handed: boolean } | null>(null)
 
@@ -97,7 +97,7 @@ function TopPanelBox({ id, hasDoc, manualHeight }: { id: string; hasDoc: boolean
   const width = horizontalDockPanelWidth(id, def.topWidth ?? Math.max(200, Math.min(360, def.defaultFloat.w)))
 
   return (
-    <div role="listitem" className={cn("flex flex-col border-r border-border/60 flex-shrink-0 bg-panel", manualHeight && "h-full")} style={width}>
+    <div role="listitem" className={cn("flex flex-col border-r border-border/60 flex-shrink-0 bg-panel", manualHeight && "h-full", side === "bottom" && id === "properties" && "flex-1 min-w-0")} style={side === "bottom" && id === "properties" ? { width: "100%", minWidth: 0 } : width}>
       <PanelContextMenu id={id}>
         <div
           className="h-7 flex items-center gap-1 px-1.5 border-b bg-panel/80 flex-shrink-0 cursor-grab active:cursor-grabbing"
