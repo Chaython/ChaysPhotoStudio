@@ -139,6 +139,17 @@ assert.match(propertiesSource, /workspacePreset === 'illustrator' && layer\.kind
   'Illustrator Properties must show context-sensitive vector controls only for vector objects')
 assert.match(propertiesSource, /function IllustratorShapeProperties\(/,
   'Illustrator vector objects need a dedicated Properties inspector')
+assert.match(propertiesSource, /workspacePreset === 'photoshop' && isText/,
+  'Photoshop Character and Paragraph controls must only appear for selected type layers')
+assert.match(propertiesSource, /function PhotoshopTypeControls\(/,
+  'Photoshop type layers need a dedicated contextual Character and Paragraph inspector')
+for (const control of [
+  'Character font family', 'Character font size', 'Character font style',
+  'Character leading', 'Character tracking', 'Character baseline shift',
+  'Strikethrough', 'Paragraph', 'Text direction', 'Word spacing', 'Box width',
+]) {
+  assert.ok(propertiesSource.includes(control), `Photoshop Type inspector must expose ${control}`)
+}
 for (const control of ['Object fill color', 'Object stroke color', 'Stroke weight']) {
   assert.ok(propertiesSource.includes(control), `Illustrator Properties must expose ${control}`)
 }
