@@ -108,6 +108,15 @@ assert.ok(!inspectorTemplateTabs('fireworks').upperTabs.includes('properties') &
 // GIMP gets a wide, wrapping toolbox and its tool options below that toolbox;
 // the shared horizontal options strip stays disabled for that preset.
 const editorShell = readFileSync(new URL('../src/editor/components/shell/editor-app.tsx', import.meta.url), 'utf8')
+const toolbarSource = readFileSync(new URL('../src/editor/components/toolbar/toolbar.tsx', import.meta.url), 'utf8')
+assert.match(toolbarSource, /workspacePreset === 'illustrator' && !compact && !embedded/,
+  'Illustrator Fill/Stroke controls belong at the bottom of the standard vertical toolbar')
+assert.match(toolbarSource, /Choose Fill color[\\s\\S]*?type="color"/,
+  'Illustrator Fill swatch must open a color picker')
+assert.match(toolbarSource, /Choose Stroke color[\\s\\S]*?type="color"/,
+  'Illustrator Stroke swatch must open a color picker')
+assert.match(toolbarSource, /swapColors/,
+  'Illustrator toolbar must expose Fill/Stroke swapping')
 const topDockSource = readFileSync(new URL('../src/editor/components/panels/top-dock.tsx', import.meta.url), 'utf8')
 assert.match(editorShell, /<Toolbar embedded=\{workspacePreset === 'gimp'\} \/>/,
   'GIMP toolbox must use the shared toolbar in its wide toolbox column')
