@@ -103,12 +103,15 @@ assert.ok(!inspectorTemplateTabs('fireworks').upperTabs.includes('properties') &
 // GIMP gets a wide, wrapping toolbox and its tool options below that toolbox;
 // the shared horizontal options strip stays disabled for that preset.
 const editorShell = readFileSync(new URL('../src/editor/components/shell/editor-app.tsx', import.meta.url), 'utf8')
+const topDockSource = readFileSync(new URL('../src/editor/components/panels/top-dock.tsx', import.meta.url), 'utf8')
 assert.match(editorShell, /<Toolbar embedded=\{workspacePreset === 'gimp'\} \/>/,
   'GIMP toolbox must use the shared toolbar in its wide toolbox column')
 assert.match(editorShell, /workspacePreset === 'gimp'[\s\S]*?<ToolOptionsBar embedded \/>/,
   'GIMP tool options must remain beneath the toolbox')
 assert.match(editorShell, /workspacePreset !== 'gimp'[\s\S]*?<ToolOptionsBar embedded \/>/,
   'other workspaces retain the shared horizontal tool-options strip')
+assert.match(topDockSource, /side === "bottom" && id === "properties"[\s\S]*?width: "100%"/,
+  'Fireworks Properties must expand across the bottom dock instead of staying a narrow floating-panel width')
 
 // --- Panel templates -----------------------------------------------------------
 const basePanels = {
