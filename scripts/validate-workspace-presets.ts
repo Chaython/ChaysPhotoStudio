@@ -117,7 +117,7 @@ assert.ok(!inspectorTemplateTabs('fireworks').upperTabs.includes('properties') &
 const editorShell = readFileSync(new URL('../src/editor/components/shell/editor-app.tsx', import.meta.url), 'utf8')
 const toolbarSource = readFileSync(new URL('../src/editor/components/toolbar/toolbar.tsx', import.meta.url), 'utf8')
 assert.ok(toolbarSource.includes('const WORKSPACE_CUSTOM_GLYPHS'), 'custom vector glyphs must be defined')
-for (const glyph of ['artboard', 'path-select', 'direct-select', 'pen-freeform', 'slice', 'hotspot']) {
+for (const glyph of ['artboard', 'path-select', 'direct-select', 'pen-freeform', 'slice', 'hotspot', 'lasso', 'crop', 'eyedropper', 'gradient', 'eraser', 'clone-stamp', 'healing-brush']) {
   assert.ok(toolbarSource.includes(`'${glyph}':`), `custom glyph required for ${glyph}`)
 }
 assert.ok(toolbarSource.includes('WORKSPACE_CUSTOM_GLYPHS[workspacePreset]'),
