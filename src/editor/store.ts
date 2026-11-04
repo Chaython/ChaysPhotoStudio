@@ -556,20 +556,30 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
     // Illustrator-style: selection up top, artboards next to Move, drawing
     // (pen/type/shape) before painting, retouching grouped in one flyout.
     illustrator: [
+      // Illustrator's primary rail: selection, vector construction, type,
+      // paint, color and navigation. Photoshop-only tools remain reachable
+      // in secondary flyouts so no registered tool is lost.
       ['move', 'artboard'],
       ['path-select', 'direct-select'],
-      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'object-select', 'quick-select', 'magic-wand'],
-      ['crop', 'perspective-crop', 'slice', 'hotspot'],
-      ['eyedropper', 'color-sampler', 'measure', 'count'],
-      ['text', 'type-mask-horizontal', 'type-mask-vertical'],
+      ['lasso', 'polygon-lasso', 'magic-wand'],
       ['pen', 'pen-freeform', 'pen-curvature'],
+      ['text'],
       ['shape'],
-      ['brush', 'pencil', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
+      ['brush', 'pencil'],
+      ['eyedropper'],
+      ['gradient', 'paint-bucket'],
+      ['hand'],
+      ['zoom'],
+      // Additional selection tools.
+      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'magnetic-lasso', 'selection-brush', 'object-select', 'quick-select'],
+      // Artboard-adjacent and web/export utilities.
+      ['crop', 'perspective-crop', 'slice', 'hotspot', 'measure', 'count'],
+      // Alternate text modes and raster paint tools.
+      ['type-mask-horizontal', 'type-mask-vertical', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
+      // Raster cleanup and tonal tools retained for compatibility.
       ['eraser', 'background-eraser', 'magic-eraser'],
       ['clone-stamp', 'pattern-stamp', 'healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye'],
-      ['paint-bucket', 'gradient'],
       ['blur', 'sharpen', 'smudge', 'dodge', 'burn', 'sponge'],
-      ['hand', 'zoom'],
     ],
     // GIMP-style: selection suite first (rect/ellipse/free/fuzzy), then
     // measure/crop/text/fill, the paint tools family, and Paths at the end.
