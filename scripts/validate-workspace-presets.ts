@@ -109,6 +109,10 @@ assert.ok(!inspectorTemplateTabs('fireworks').upperTabs.includes('properties') &
 // the shared horizontal options strip stays disabled for that preset.
 const editorShell = readFileSync(new URL('../src/editor/components/shell/editor-app.tsx', import.meta.url), 'utf8')
 const toolbarSource = readFileSync(new URL('../src/editor/components/toolbar/toolbar.tsx', import.meta.url), 'utf8')
+assert.match(toolbarSource, /const WORKSPACE_TOOL_ICONS:[\\s\\S]*?photoshop:[\\s\\S]*?illustrator:[\\s\\S]*?gimp:[\\s\\S]*?fireworks:/,
+  'each application workspace must define its own tool icon language')
+assert.match(toolbarSource, /WORKSPACE_TOOL_ICONS\\[workspacePreset\\]/,
+  'tool icon rendering must resolve through the active workspace preset')
 assert.match(toolbarSource, /workspacePreset === 'illustrator' && !compact && !embedded/,
   'Illustrator Fill/Stroke controls belong at the bottom of the standard vertical toolbar')
 assert.match(toolbarSource, /Choose Fill color[\\s\\S]*?type="color"/,
