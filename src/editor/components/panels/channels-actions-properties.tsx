@@ -586,6 +586,7 @@ export function PropertiesPanel() {
       <BlendIfSection key={layer.id} layerId={layer.id} />
 
       {isText && <TextProperties layerId={layer.id} />}
+      {workspacePreset === 'photoshop' && isText && <PhotoshopTypeControls layerId={layer.id} />}
 
       {(layer.smartFilters.length > 0 || layer.kind !== 'adjustment') && <SmartFiltersSection layerId={layer.id} />}
 
@@ -598,6 +599,118 @@ export function PropertiesPanel() {
         </div>
       )}
     </FancyScroll>
+  )
+}
+
+// Photoshop-style Character and Paragraph controls stay contextual to the
+// selected type layer while using the same editable TextSpec as every workspace.
+function PhotoshopTypeControls({ layerId }: { layerId: string }) {
+  const tick = useEditorStore(s => s.renderTick)
+  const layer = engine.layerById(layerId)
+  const text = layer?.text
+  void tick
+  if (!text) return null
+  const update = (patch: Partial<typeof text>) => {
+    const current = engine.layerById(layerId)?.text
+    if (!current) return
+    engine.setLayerProps(layerId, { text: { ...current, ...patch } }, {
+      history: false, label: 'Edit Type Character',
+    })
+  }
+  return (
+    <div className="border-t pt-2 space-y-2">
+      <section className="space-y-1.5">
+        <div className="flex items-center gap-1.5">
+          <Icons.Type size={13} className="text-primary" />
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Character</span>
+        </div>
+        <div className="grid grid-cols-[1fr_68px] gap-1">
+          <label className="text-[9px] text-muted-foreground">Font family
+            <input value={text.fontFamily} onChange={e => update({ fontFamily: e.target.value })}
+              className="mt-0.5 h-6 w-full min-w-0 rounded border bg-background px-1 text-[10px]" aria-label="Character font family" />
+          </label>
+          <label className="text-[9px] text-muted-foreground">Size
+            <input type="number" min={1} max={2000} step={0.5} value={text.fontSize}
+              onChange={e => update({ fontSize: Math.max(1, Number(e.target.value) || 1) })}
+              className="mt-0.5 h-6 w-full rounded border bg-background px-1 text-[10px]" aria-label="Character font size" />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          <label className="text-[9px] text-muted-foreground">Style
+            <select value={text.fontWeight ?? (text.bold ? 700 : 400)}
+              onChange={e => { const weight = Number(e.target.value); update({ fontWeight: weight, bold: weight >= 650 }) }}
+              className="mt-0.5 h-6 w-full rounded border bg-background px-1 text-[10px]" aria-label="Character font style">
+              <option value={300}>Light</option><option value={400}>Regular</option>
+              <option value={500}>Medium</option><option value={600}>Semibold</option>
+              <option value={700}>Bold</option><option value={800}>Heavy</option><option value={900}>Black</option>
+            </select>
+          </label>
+          <label className="text-[9px] text-muted-foreground">Leading
+            <input type="number" min={0.5} max={5} step={0.05} value={text.lineHeight}
+              onChange={e => update({ lineHeight: Math.max(0.5, Number(e.target.value) || 0.5) })}
+              className="mt-0.5 h-6 w-full rounded border bg-background px-1 text-[10px]" aria-label="Character leading" />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-1 text-[10px]">
+          <label className="flex items-center gap-1"><input type="checkbox" checked={text.italic}
+            onChange={e => update({ italic: e.target.checked })} /> Italic</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={text.underline ?? false}
+            onChange={e => update({ underline: e.target.checked })} /> Underline</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={text.strikethrough ?? false}
+            onChange={e => update({ strikethrough: e.target.checked })} /> Strikethrough</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={text.kerning !== false}
+            onChange={e => update({ kerning: e.target.checked })} /> Kerning</label>
+        </div>
+        <label className="grid grid-cols-[58px_1fr_42px] items-center gap-1 text-[10px]">
+          <span>Tracking</span>
+          <input type="range" min={-100} max={1000} step={1} value={text.tracking}
+            onChange={e => update({ tracking: Number(e.target.value) })} className="min-w-0" />
+          <input type="number" min={-1000} max={5000} value={text.tracking}
+            onChange={e => update({ tracking: Number(e.target.value) })}
+            className="h-5 w-full rounded border bg-background px-1 text-[9px]" aria-label="Character tracking" />
+        </label>
+        <label className="grid grid-cols-[58px_1fr_42px] items-center gap-1 text-[10px]">
+          <span>Baseline</span>
+          <input type="range" min={-100} max={100} value={text.baselineShift ?? 0}
+            onChange={e => update({ baselineShift: Number(e.target.value) })} className="min-w-0" />
+          <input type="number" min={-1000} max={1000} value={text.baselineShift ?? 0}
+            onChange={e => update({ baselineShift: Number(e.target.value) })}
+            className="h-5 w-full rounded border bg-background px-1 text-[9px]" aria-label="Character baseline shift" />
+        </label>
+      </section>
+      <section className="border-t pt-2 space-y-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Paragraph</div>
+        <div className="grid grid-cols-3 gap-1">
+          {(['left', 'center', 'right'] as const).map(align => (
+            <button key={align} type="button" aria-pressed={text.align === align}
+              onClick={() => update({ align })}
+              className={`h-6 rounded border text-[10px] capitalize ${text.align === align ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-background hover:bg-accent'}`}>
+              {align}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center justify-between gap-2 text-[10px]">
+          <span>Text direction</span>
+          <select value={text.direction ?? 'horizontal'}
+            onChange={e => update({ direction: e.target.value as NonNullable<typeof text.direction> })}
+            className="h-6 rounded border bg-background px-1 text-[10px]">
+            <option value="horizontal">Horizontal</option><option value="vertical">Vertical</option>
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-1">
+          <label className="text-[9px] text-muted-foreground">Word spacing
+            <input type="number" min={-100} max={500} step={0.5} value={text.wordSpacing ?? 0}
+              onChange={e => update({ wordSpacing: Number(e.target.value) })}
+              className="mt-0.5 h-6 w-full rounded border bg-background px-1 text-[10px]" />
+          </label>
+          <label className="text-[9px] text-muted-foreground">Box width
+            <input type="number" min={0} max={100000} value={text.boxWidth ?? 0}
+              onChange={e => update({ boxWidth: Math.max(0, Number(e.target.value) || 0) })}
+              className="mt-0.5 h-6 w-full rounded border bg-background px-1 text-[10px]" />
+          </label>
+        </div>
+      </section>
+    </div>
   )
 }
 
