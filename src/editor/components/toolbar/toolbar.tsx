@@ -28,8 +28,53 @@ import { engine } from '../../engine/engine'
 import { setActiveTool } from '../../tools/registry'
 import { insertBefore, moveToGroup, pinToTop } from './layout-ops'
 
-function ToolIcon({ icon, size = 16 }: { icon: string; size?: number }) {
-  const Cmp = (Icons as any)[icon] ?? Icons.MousePointer2
+/**
+ * Workspace icon language. The tools and their behavior remain shared, but
+ * each preset gets a recognizable icon vocabulary instead of reusing one
+ * generic rail. Names resolve to lucide-react exports with a safe fallback.
+ */
+const WORKSPACE_TOOL_ICONS: Record<string, Record<string, string>> = {
+  photoshop: {
+    move: 'Move', 'marquee-rect': 'SquareDashed', 'marquee-ellipse': 'CircleDashed',
+    lasso: 'Lasso', 'polygon-lasso': 'Pentagon', 'magnetic-lasso': 'Magnet',
+    'object-select': 'ScanSearch', 'quick-select': 'BrushHighlighter', 'magic-wand': 'WandSparkles',
+    crop: 'Crop', eyedropper: 'Pipette', brush: 'Paintbrush', pencil: 'Pencil',
+    eraser: 'Eraser', 'clone-stamp': 'Stamp', 'spot-healing': 'Sparkles',
+    gradient: 'Blend', 'paint-bucket': 'PaintBucket', pen: 'PenTool', text: 'Type',
+    shape: 'Shapes', hand: 'Hand', zoom: 'ZoomIn',
+  },
+  illustrator: {
+    move: 'Pointer', artboard: 'PanelsTopLeft', 'marquee-rect': 'MousePointer2',
+    'marquee-ellipse': 'Circle', lasso: 'Lasso', 'polygon-lasso': 'Pentagon',
+    'magic-wand': 'Wand2', eyedropper: 'Pipette', brush: 'Brush',
+    pencil: 'Pencil', eraser: 'Eraser', pen: 'PenTool', 'pen-freeform': 'PenLine',
+    'pen-curvature': 'Spline', text: 'Type', 'path-select': 'MousePointer2',
+    'direct-select': 'MousePointer', shape: 'Shapes', gradient: 'Blend',
+    'paint-bucket': 'PaintBucket', hand: 'Hand', zoom: 'ZoomIn',
+  },
+  gimp: {
+    move: 'Move', 'marquee-rect': 'Square', 'marquee-ellipse': 'Circle',
+    lasso: 'Lasso', 'polygon-lasso': 'PenLine', 'magnetic-lasso': 'Magnet',
+    'quick-select': 'Brush', 'magic-wand': 'WandSparkles', crop: 'Crop',
+    eyedropper: 'Pipette', brush: 'Paintbrush', pencil: 'Pencil',
+    eraser: 'Eraser', 'clone-stamp': 'Stamp', 'healing-brush': 'Bandage',
+    gradient: 'Blend', 'paint-bucket': 'PaintBucket', pen: 'Waypoints',
+    text: 'Type', shape: 'Shapes', hand: 'Hand', zoom: 'ZoomIn',
+  },
+  fireworks: {
+    move: 'Pointer', artboard: 'PanelsTopLeft', 'marquee-rect': 'Square',
+    'marquee-ellipse': 'Circle', lasso: 'Lasso', crop: 'Crop',
+    slice: 'Scissors', hotspot: 'MousePointerClick', eyedropper: 'Pipette',
+    brush: 'Paintbrush', pencil: 'Pencil', eraser: 'Eraser',
+    pen: 'PenTool', text: 'Type', shape: 'Shapes', gradient: 'Blend',
+    'paint-bucket': 'PaintBucket', hand: 'Hand', zoom: 'ZoomIn',
+  },
+}
+
+function ToolIcon({ icon, toolId, size = 16 }: { icon: string; toolId?: ToolId; size?: number }) {
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const workspaceIcon = toolId ? WORKSPACE_TOOL_ICONS[workspacePreset]?.[toolId] : undefined
+  const Cmp = (Icons as any)[workspaceIcon ?? icon] ?? (Icons as any)[icon] ?? Icons.MousePointer2
   return <Cmp size={size} strokeWidth={1.75} />
 }
 
@@ -409,7 +454,7 @@ function ToolGroupButton({
               onDragEnd={dnd ? endDrag : undefined}
               title={dnd ? 'Drag onto the toolbar to pin this tool' : undefined}
             >
-              <ToolIcon icon={t.icon} />
+              <ToolIcon icon={t.icon} toolId={t.id} />
               <span className="flex-1">{t.label}</span>
               {t.id === activeTool && <Icons.Check size={11} className="text-primary" />}
               <span className="text-muted-foreground font-mono text-[10px]">{formatCombo(keys[t.id])}</span>
@@ -469,7 +514,7 @@ function ToolButton({
         hasGroup && !compact && 'mb-0'
       )}
     >
-      <ToolIcon icon={def.icon} size={compact ? 15 : 17} />
+      <ToolIcon icon={def.icon} toolId={def.id} size={compact ? 15 : 17} />
       {active && <span className={cn('absolute bg-primary', compact ? 'left-0.5 w-0.5 h-6' : 'left-0 w-0.5 h-6')} />}
     </button>
   )
