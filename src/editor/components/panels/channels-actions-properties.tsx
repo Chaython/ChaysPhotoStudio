@@ -607,7 +607,11 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
   const tick = useEditorStore(s => s.renderTick)
   const layer = engine.layerById(layerId)
   const shape = layer?.shape
+  const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   void tick
+  useEffect(() => () => {
+    if (historyTimer.current) clearTimeout(historyTimer.current)
+  }, [])
   if (!shape) return null
   const update = (patch: Partial<typeof shape>) => {
     const current = engine.layerById(layerId)?.shape
@@ -615,6 +619,11 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
     engine.setLayerProps(layerId, { shape: { ...current, ...patch } }, {
       history: false, label: 'Edit Vector Object',
     })
+    if (historyTimer.current) clearTimeout(historyTimer.current)
+    historyTimer.current = setTimeout(() => {
+      historyTimer.current = null
+      engine.pushHistory('Edit Vector Object')
+    }, 300)
   }
   const numberField = (label: string, key: 'x' | 'y' | 'w' | 'h', min = -100000) => (
     <label className="flex min-w-0 items-center gap-1 text-[10px]">
