@@ -29,7 +29,7 @@ function loadCollapsed(): boolean {
   try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
 }
 
-export function ToolOptionsBar({ embedded = false, mobile = false }: { embedded?: boolean; mobile?: boolean }) {
+export function ToolOptionsBar({ embedded = false, mobile = false, layout = 'horizontal' }: { embedded?: boolean; mobile?: boolean; layout?: 'horizontal' | 'vertical' }) {
   const activeTool = useEditorStore(s => s.activeTool)
   const opts = useEditorStore(s => s.toolOptions[s.activeTool])
   const setToolOption = useEditorStore(s => s.setToolOption)
@@ -53,15 +53,17 @@ export function ToolOptionsBar({ embedded = false, mobile = false }: { embedded?
     // Collapsed (chevron): one slim row — extra controls swipe horizontally.
     // Below md the bar is always the single-row swipe strip (mobile overlay
     // scrollbars + no room to wrap anyway).
-    <div className={cn('flex bg-panel flex-shrink-0 min-w-0', !embedded && 'border-b', embedded && 'h-full')}>
+    <div className={cn('flex bg-panel flex-shrink-0 min-w-0', layout === 'vertical' ? 'flex-col items-stretch' : 'flex-row', !embedded && 'border-b', embedded && 'h-full')}>
       <div
         className={cn(
-          'flex items-center gap-x-3 gap-y-1.5 px-3 py-1.5 min-w-0 flex-1 min-h-9',
+          'flex gap-x-3 gap-y-1.5 px-2 py-1.5 min-w-0 min-h-9',
+          layout === 'vertical' ? 'flex-col items-stretch flex-1' : 'flex-row items-center flex-1',
           mobile
             ? 'flex-nowrap overflow-x-auto zphoto-scroll min-h-12 py-2 [&_button]:min-h-9 [&_input]:min-h-9 [&_[role=combobox]]:min-h-9 [&_[role=slider]]:min-h-7'
             : (collapsed ? 'flex-nowrap overflow-x-auto zphoto-scroll' : 'flex-wrap'),
           !mobile && 'max-md:flex-nowrap max-md:overflow-x-auto max-md:zphoto-scroll',
-          embedded && 'content-start overflow-auto'
+          embedded && 'content-start overflow-auto',
+          layout === 'vertical' && '[&>div]:w-full [&>div]:justify-between [&>div]:min-w-0 [&>div]:px-1 [&>div]:py-1 [&>div]:border-b [&>div]:border-border/50 [&>div]:rounded-sm [&>button]:self-start'
         )}
         role="group"
         aria-label="Tool options"
@@ -69,11 +71,11 @@ export function ToolOptionsBar({ embedded = false, mobile = false }: { embedded?
         <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap pr-1">
           {def.label}
         </span>
-        <VDivider />
+        {layout !== 'vertical' && <VDivider />}
         {(activeTool === 'brush' || activeTool === 'eraser') && (
           <>
             <BrushTipPicker tool={activeTool} />
-            <VDivider />
+            {layout !== 'vertical' && <VDivider />}
           </>
         )}
         {hasControls ? (
@@ -91,7 +93,7 @@ export function ToolOptionsBar({ embedded = false, mobile = false }: { embedded?
       </div>
       {/* minimize / expand — the whole point of the collapsed mode is reclaiming
           canvas space; hidden below md where the bar is already a single row */}
-      {!mobile && <div className="hidden md:flex items-center px-1 flex-shrink-0 border-l border-border/60">
+      {!mobile && layout !== 'vertical' && <div className="hidden md:flex items-center px-1 flex-shrink-0 border-l border-border/60">
         <button
           type="button"
           className="h-7 w-7 flex items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
