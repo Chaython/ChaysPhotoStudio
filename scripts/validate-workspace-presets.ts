@@ -142,6 +142,7 @@ assert.equal(fireworks.dockSide.properties, 'bottom',
   'fireworks docks the Properties inspector below the canvas')
 assert.equal(fireworks.dockWidth, 270, 'fireworks uses its compact inspector width')
 assert.equal(fireworks.bottomHeight, 210, 'fireworks reserves space for its Properties strip')
+assert.equal(fireworks.dockHeights.bottom, 210, 'fireworks applies the default height to its bottom dock')
 assert.ok(!('properties' in presetPanelState('illustrator', { ...basePanels } as any).dockSide),
   'other templates do not move Properties to the bottom')
 
