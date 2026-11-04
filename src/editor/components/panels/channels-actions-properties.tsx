@@ -716,6 +716,36 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
             <option value="butt">Butt</option><option value="round">Round</option><option value="square">Square</option>
           </select>
         </label>
+        {shape.dash === 'custom' && (
+          <div className="grid grid-cols-2 gap-1.5">
+            <label className="flex items-center gap-1 text-[10px]">
+              <span className="text-muted-foreground">Dash</span>
+              <input type="number" min={1} max={1000} value={shape.dashLength ?? 12}
+                onChange={e => update({ dashLength: Math.max(1, Number(e.target.value) || 1) })}
+                className="h-6 min-w-0 w-full rounded border bg-background px-1" aria-label="Custom dash length" />
+            </label>
+            <label className="flex items-center gap-1 text-[10px]">
+              <span className="text-muted-foreground">Gap</span>
+              <input type="number" min={1} max={1000} value={shape.gapLength ?? 8}
+                onChange={e => update({ gapLength: Math.max(1, Number(e.target.value) || 1) })}
+                className="h-6 min-w-0 w-full rounded border bg-background px-1" aria-label="Custom dash gap" />
+            </label>
+          </div>
+        )}
+        {shape.shape === 'line' && (
+          <div className="flex items-center gap-3 text-[10px]">
+            <label className="flex items-center gap-1">
+              <input type="checkbox" checked={shape.arrowStart ?? false}
+                onChange={e => update({ arrowStart: e.target.checked })} />
+              Start arrow
+            </label>
+            <label className="flex items-center gap-1">
+              <input type="checkbox" checked={shape.arrowEnd ?? false}
+                onChange={e => update({ arrowEnd: e.target.checked })} />
+              End arrow
+            </label>
+          </div>
+        )}
         {(shape.shape === 'polygon' || shape.shape === 'star') && (
           <div className="grid grid-cols-2 gap-1.5">
             <label className="flex items-center gap-1 text-[10px]">
