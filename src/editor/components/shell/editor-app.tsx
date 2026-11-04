@@ -283,7 +283,7 @@ export function EditorApp() {
               {workspacePreset === 'gimp' && (
                 <section aria-label="GIMP-style tool options" className="min-h-0 max-h-[42%] overflow-auto border-t border-border/70 bg-panel">
                   <div className="px-2 py-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">Tool Options</div>
-                  <ToolOptionsBar embedded />
+                  <ToolOptionsBar embedded layout="vertical" />
                 </section>
               )}
             </div>
