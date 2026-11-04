@@ -116,6 +116,12 @@ assert.ok(!inspectorTemplateTabs('fireworks').upperTabs.includes('properties') &
 // the shared horizontal options strip stays disabled for that preset.
 const editorShell = readFileSync(new URL('../src/editor/components/shell/editor-app.tsx', import.meta.url), 'utf8')
 const toolbarSource = readFileSync(new URL('../src/editor/components/toolbar/toolbar.tsx', import.meta.url), 'utf8')
+assert.ok(toolbarSource.includes('const WORKSPACE_CUSTOM_GLYPHS'), 'custom vector glyphs must be defined')
+for (const glyph of ['artboard', 'path-select', 'direct-select', 'pen-freeform', 'slice', 'hotspot']) {
+  assert.ok(toolbarSource.includes(`'${glyph}':`), `custom glyph required for ${glyph}`)
+}
+assert.ok(toolbarSource.includes('WORKSPACE_CUSTOM_GLYPHS[workspacePreset]'),
+  'custom glyphs must resolve by active workspace')
 assert.ok(toolbarSource.includes('const WORKSPACE_TOOL_ICONS'), 'workspace icon maps must be defined')
 for (const preset of ['photoshop', 'illustrator', 'gimp', 'fireworks']) {
   assert.ok(toolbarSource.includes(`  ${preset}: {`), `${preset} must have a distinct tool icon map`)
