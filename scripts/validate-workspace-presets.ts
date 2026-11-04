@@ -39,6 +39,13 @@ for (const preset of presetList) {
   assert.equal(tools.length, new Set(tools).size, `${preset}: no tool may appear twice`)
   assert.deepEqual([...tools].sort(), [...allToolIds].sort(),
     `${preset}: every registered tool must stay accessible exactly once`)
+  if (preset === 'illustrator') {
+    assert.deepEqual(layout.slice(0, 11).map(section => section.kind === 'single' ? [section.tool] : section.tools), [
+      ['move', 'artboard'], ['path-select', 'direct-select'], ['lasso', 'polygon-lasso', 'magic-wand'],
+      ['pen', 'pen-freeform', 'pen-curvature'], ['text'], ['shape'], ['brush', 'pencil'],
+      ['eyedropper'], ['gradient', 'paint-bucket'], ['hand'], ['zoom'],
+    ], 'Illustrator primary rail must prioritize vector selection, drawing, type and navigation tools')
+  }
   // The sanitizer is the authority on structure; templates must already comply.
   assert.deepEqual(sanitizeToolbarLayout(layout), layout,
     `${preset}: template must survive sanitization unchanged`)
