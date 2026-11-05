@@ -46,6 +46,12 @@ assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:clone-stamp'], 'c')
 assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:crop'], undefined)
 assert.equal(defaultWorkspaceShortcutProfile('illustrator').deselect, 'ctrl+shift+a')
 assert.equal(defaultWorkspaceShortcutProfile('fireworks').deselect, 'ctrl+d')
+assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:crop'], 'shift+c',
+  'GIMP Crop must use its native Shift+C shortcut')
+assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:paint-bucket'], 'shift+b',
+  'GIMP Bucket Fill must use its native Shift+B shortcut')
+assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:eraser'], 'shift+e',
+  'GIMP Eraser must use its native Shift+E shortcut')
 
 assert.ok(INSPECTOR_PRESETS.includes('photoshop') && !INSPECTOR_PRESETS.includes('classic'),
   'classic must keep the tabbed dock while inspector presets use the stacked dock')
