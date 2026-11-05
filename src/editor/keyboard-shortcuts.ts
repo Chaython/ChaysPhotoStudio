@@ -148,7 +148,14 @@ export function useKeyboardShortcuts(): void {
       // Shift+letter is reserved for explicit tool bindings (e.g. GIMP Shift+C).
       // It must not accidentally trigger plain-key helpers such as color swap.
       if (e.shiftKey && /^[a-z]$/.test(combo.split('+').at(-1) ?? '')) {
-        if (!e.repeat && handleToolKey(combo)) e.preventDefault()
+        if (e.repeat) return
+        // Photoshop uses Shift+tool-key to cycle the variants in a tool group.
+        // Prefer an explicit shifted binding (used by GIMP); otherwise fall
+        // back to the matching unshifted Photoshop group.
+        const state = useEditorStore.getState()
+        const handled = handleToolKey(combo) ||
+          (state.workspacePreset === 'photoshop' && handleToolKey(combo.slice('shift+'.length)))
+        if (handled) e.preventDefault()
         return
       }
 
