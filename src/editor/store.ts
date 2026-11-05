@@ -509,13 +509,12 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
     gimp: {
       // GIMP's Edit/Layer menu bindings differ from Adobe applications.
       undo: 'ctrl+z', redo: 'ctrl+y',
-      deselect: 'ctrl+shift+a', reselect: 'ctrl+shift+t',
-      invertSelection: 'ctrl+i',
+      deselect: 'ctrl+shift+a', invertSelection: 'ctrl+i',
       duplicateLayer: 'ctrl+shift+d', mergeDown: 'ctrl+m',
       'tool:move': 'm',
       'tool:marquee-rect': 'r', 'tool:marquee-ellipse': 'e',
       'tool:lasso': 'f', 'tool:polygon-lasso': 'f',
-      'tool:magic-wand': 'u', 'tool:crop': 'c',
+      'tool:magic-wand': 'z',
       'tool:eyedropper': 'o', 'tool:color-sampler': 'o',
       'tool:zoom': 'z',
       'tool:text': 't', 'tool:brush': 'p',
