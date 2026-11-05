@@ -465,7 +465,7 @@ function persistShortcutProfiles(profiles: WorkspaceShortcutProfiles) {
 
 /** Familiar application key assignments. Unlisted commands keep the editor's
  *  shared command defaults; users can customize each workspace independently. */
-function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string, string> {
+export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string, string> {
   const tools: Record<string, Record<string, string>> = {
     // Photoshop-style single-key tool families (repeated presses cycle
     // between tools that share the application's flyout shortcut).
@@ -497,7 +497,6 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
       // Illustrator uses its own Select-menu conventions for vector work.
       undo: 'ctrl+z', redo: 'ctrl+shift+z',
       deselect: 'ctrl+shift+a', invertSelection: 'ctrl+shift+i',
-      duplicateLayer: 'ctrl+c',
       'tool:move': 'v',
       'tool:path-select': 'a', 'tool:direct-select': 'a',
       'tool:pen': 'p', 'tool:pen-freeform': 'p', 'tool:pen-curvature': 'p',
@@ -525,7 +524,7 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
     },
     fireworks: {
       undo: 'ctrl+z', redo: 'ctrl+y',
-      deselect: 'ctrl+d', reselect: 'ctrl+shift+d',
+      deselect: 'ctrl+d',
       invertSelection: 'ctrl+shift+i', duplicateLayer: 'ctrl+shift+d',
       'tool:move': 'v', 'tool:path-select': 'a', 'tool:direct-select': 'a',
       'tool:crop': 'c', 'tool:slice': 'k', 'tool:hotspot': 'k',
