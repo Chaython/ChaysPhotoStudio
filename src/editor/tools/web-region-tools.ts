@@ -41,6 +41,8 @@ function setSelectedRegion(docId: string, id: string | null) {
   selected = id ? { docId, id } : null
   const doc = engine.docs.find(item => item.id === docId)
   if (doc) doc.activeWebRegionId = id
+  // The canvas overlay redraw alone does not rerender the React inspector.
+  engine.emit()
 }
 function currentRegions(): WebRegion[] {
   const doc = engine.activeDoc
@@ -122,7 +124,7 @@ function begin(p: PointerInfo, kind: WebRegionKind) {
     const hit = findWebRegion(currentRegions(), p.docX, p.docY)
     if (p.alt && hit) { remove(hit.id); return }
     if (hit) {
-      selected = { docId: doc.id, id: hit.id }
+      setSelectedRegion(doc.id, hit.id)
       const vertex = regionShape(hit) === 'poly' ? findRegionVertex(hit, p.docX, p.docY, handleTol) : -1
       drag = {
         docId: doc.id, mode: vertex >= 0 ? 'vertex' : 'move', kind, shape: regionShape(hit),
@@ -206,7 +208,7 @@ function finish(p: PointerInfo) {
       ...draft, href: '', alt: '', target: '_self',
     }], doc.id, d.kind === 'slice' ? 'Create Web Slice'
       : d.shape === 'circle' ? 'Create Circle Hotspot' : 'Create Web Hotspot')
-    selected = { docId: doc.id, id }
+    setSelectedRegion(doc.id, id)
   } else if (d.mode === 'move' && d.id && d.draftRegion && regionShape(d.draftRegion) === 'poly') {
     const next = moveRegion(d.draftRegion, draft.x - d.original!.x, draft.y - d.original!.y, doc.width, doc.height)
     if (rectChanged(d.original!, draft)) {
