@@ -467,7 +467,29 @@ function persistShortcutProfiles(profiles: WorkspaceShortcutProfiles) {
  *  shared command defaults; users can customize each workspace independently. */
 function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string, string> {
   const tools: Record<string, Record<string, string>> = {
-    photoshop: {},
+    // Photoshop-style single-key tool families (repeated presses cycle
+    // between tools that share the application's flyout shortcut).
+    photoshop: {
+      'tool:move': 'v',
+      'tool:marquee-rect': 'm', 'tool:marquee-ellipse': 'm',
+      'tool:marquee-row': 'm', 'tool:marquee-column': 'm',
+      'tool:lasso': 'l', 'tool:polygon-lasso': 'l', 'tool:magnetic-lasso': 'l',
+      'tool:selection-brush': 'l',
+      'tool:object-select': 'w', 'tool:quick-select': 'w', 'tool:magic-wand': 'w',
+      'tool:crop': 'c', 'tool:perspective-crop': 'c',
+      'tool:eyedropper': 'i', 'tool:color-sampler': 'i',
+      'tool:spot-healing': 'j', 'tool:healing-brush': 'j', 'tool:patch': 'j', 'tool:red-eye': 'j',
+      'tool:brush': 'b', 'tool:pencil': 'b', 'tool:mixer-brush': 'b', 'tool:color-replacement': 'b',
+      'tool:clone-stamp': 's', 'tool:pattern-stamp': 's',
+      'tool:history-brush': 'y', 'tool:art-history-brush': 'y',
+      'tool:eraser': 'e', 'tool:background-eraser': 'e', 'tool:magic-eraser': 'e',
+      'tool:gradient': 'g', 'tool:paint-bucket': 'g',
+      'tool:dodge': 'o', 'tool:burn': 'o', 'tool:sponge': 'o',
+      'tool:pen': 'p', 'tool:pen-freeform': 'p', 'tool:pen-curvature': 'p',
+      'tool:text': 't', 'tool:type-mask-horizontal': 't', 'tool:type-mask-vertical': 't',
+      'tool:path-select': 'a', 'tool:direct-select': 'a',
+      'tool:shape': 'u', 'tool:hand': 'h', 'tool:zoom': 'z',
+    },
     illustrator: {
       'tool:move': 'v',
       'tool:path-select': 'a', 'tool:direct-select': 'a',
@@ -966,6 +988,8 @@ interface EditorStore {
   /** set (or clear with null → default) one shortcut binding */
   setShortcutOverride(id: string, combo: string | null): void
   resetShortcutOverrides(): void
+  /** Restore the active application's factory shortcut profile. */
+  resetWorkspaceShortcutProfile(): void
   /** custom toolbar section order — null = factory default layout */
   toolbarLayout: ToolbarSection[] | null
   setToolbarLayout(sections: ToolbarSection[] | null): void
@@ -1574,6 +1598,15 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   resetShortcutOverrides: () => set(() => {
     try { localStorage.removeItem(SHORTCUTS_KEY) } catch { /* noop */ }
     return { shortcutOverrides: {} }
+  }),
+
+  resetWorkspaceShortcutProfile: () => set(s => {
+    const defaults = defaultWorkspaceShortcutProfile(s.workspacePreset)
+    const profiles = loadShortcutProfiles()
+    profiles[s.workspacePreset] = { ...defaults }
+    persistShortcutProfiles(profiles)
+    persistShortcutOverrides(defaults)
+    return { shortcutOverrides: defaults }
   }),
 
   setToolbarLayout: (sections) => set(s => {
