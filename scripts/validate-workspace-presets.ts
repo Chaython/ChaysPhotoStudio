@@ -220,7 +220,7 @@ for (const control of ['Fireworks Properties', 'Opacity', 'Blend mode', 'Visible
 }
 assert.match(propertiesSource, /function PhotoshopTypeControls\(/,
   'Photoshop type layers need a dedicated contextual Character and Paragraph inspector')
-assert.match(propertiesSource, /function PhotoshopTypeControls\([\s\S]*?historyTimer = useRef[\s\S]*?history: false, label: 'Edit Type Character'[\s\S]*?engine\.pushHistory\('Edit Type Character'\)[\s\S]*?\}, 300\)/,
+assert.match(propertiesSource, /function PhotoshopTypeControls\([\s\S]*?historyTimer = useRef[\s\S]*?history: false, label: 'Edit Type Character'[\s\S]*?engine\.pushHistory\('Edit Type Character'(?:, [^)]+)?\)[\s\S]*?\}, 300\)/,
   'Photoshop Character and Paragraph edits must batch rapid changes into one undo step')
 for (const [component, label] of [
   ['PhotoshopTypeControls', 'Edit Type Character'],
@@ -228,7 +228,7 @@ for (const [component, label] of [
   ['FireworksLayerProperties', 'Edit Fireworks Properties'],
 ] as const) {
   const start = propertiesSource.indexOf(`function ${component}`)
-  const end = propertiesSource.indexOf('\\nfunction ', start + 10)
+  const end = propertiesSource.indexOf('\nfunction ', start + 10)
   const source = propertiesSource.slice(start, end < 0 ? undefined : end)
   assert.match(source, /historyDoc = useRef/,
     `${component} must retain the document that received pending edits`)
