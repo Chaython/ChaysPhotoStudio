@@ -33,8 +33,8 @@ function activateTool(id: ToolId) {
 }
 
 /** Pressing a tool key repeatedly cycles within its (dynamic) group. */
-function handleToolKey(key: string): boolean {
-  const list = resolvedToolKeyMap()[key]
+function handleToolKey(combo: string): boolean {
+  const list = resolvedToolKeyMap()[combo]
   if (!list?.length) return false
   const current = useEditorStore.getState().activeTool
   const idx = list.indexOf(current)
@@ -113,7 +113,7 @@ function handlePlainKey(e: KeyboardEvent, k: string): boolean {
   }
   if (k >= 'a' && k <= 'z') {
     if (e.repeat) return false // holding a tool key shouldn't spin the cycle
-    return handleToolKey(k)
+    return handleToolKey(eventCombo(e))
   }
   return false
 }
@@ -142,8 +142,15 @@ export function useKeyboardShortcuts(): void {
         return
       }
 
-      // modifier combos that matched no command never fall through
+      // Ctrl/Cmd/Alt combos that matched no command never fall through.
       if (e.ctrlKey || e.metaKey || e.altKey) return
+
+      // Shift+letter is reserved for explicit tool bindings (e.g. GIMP Shift+C).
+      // It must not accidentally trigger plain-key helpers such as color swap.
+      if (e.shiftKey && /^[a-z]$/.test(combo.split('+').at(-1) ?? '')) {
+        if (!e.repeat && handleToolKey(combo)) e.preventDefault()
+        return
+      }
 
       // ---- plain keys: fixed helpers, then tool activation ----
       const parts = combo.split('+')
