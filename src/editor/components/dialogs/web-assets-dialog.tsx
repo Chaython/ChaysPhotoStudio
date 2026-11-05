@@ -42,6 +42,13 @@ export function WebAssetsDialog({ inst, onClose }: DialogProps) {
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
   const [polyDraft, setPolyDraft] = useState<number[] | null>(null)
   const [polyCursor, setPolyCursor] = useState<{ x: number; y: number } | null>(null)
+  const selectRegion = (id: string | null) => {
+    setSelected(id)
+    if (doc) {
+      doc.activeWebRegionId = id
+      engine.emit()
+    }
+  }
   const previewRef = useRef<HTMLCanvasElement>(null)
   const previewBoxRef = useRef<HTMLDivElement>(null)
   const thumbSize = useMemo(() => {
@@ -103,7 +110,7 @@ export function WebAssetsDialog({ inst, onClose }: DialogProps) {
       ...bounds, href: '', alt: '', target: '_self',
     }
     commitRegions([...regions, r])
-    setSelected(r.id)
+    selectRegion(r.id)
     setPolyDraft(null); setPolyCursor(null)
   }
   const finishPolyDraft = () => {
@@ -130,7 +137,7 @@ export function WebAssetsDialog({ inst, onClose }: DialogProps) {
       }
       // No draft yet: clicking an existing region still selects it.
       const hit = findWebRegion(regions, p.x, p.y)
-      if (hit) { setSelected(hit.id); setDrag(null); setCursor(null); return }
+      if (hit) { selectRegion(hit.id); setDrag(null); setCursor(null); return }
       setPolyDraft([p.x, p.y])
       setPolyCursor(p)
       return
@@ -151,7 +158,7 @@ export function WebAssetsDialog({ inst, onClose }: DialogProps) {
     if (!p || polyMode) return
     if (Math.abs(p.x - drag.x) < 3 && Math.abs(p.y - drag.y) < 3) {
       const hit = findWebRegion(regions, p.x, p.y)
-      setSelected(hit?.id ?? null)
+      selectRegion(hit?.id ?? null)
       return
     }
     if (regions.length >= MAX_WEB_REGIONS) {
@@ -170,7 +177,7 @@ export function WebAssetsDialog({ inst, onClose }: DialogProps) {
       href: '', alt: '', target: '_self',
     }
     commitRegions([...regions, r])
-    setSelected(r.id)
+    selectRegion(r.id)
   }
   const onPreviewKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter' && polyDraft) { event.preventDefault(); finishPolyDraft() }
@@ -342,7 +349,7 @@ export function WebAssetsDialog({ inst, onClose }: DialogProps) {
             onPointerCancel={() => { setDrag(null); setCursor(null) }} />
         </div>
         <div className="max-h-24 overflow-y-auto rounded border border-border p-1 flex flex-wrap gap-1">
-          {regions.map(r => <button type="button" key={r.id} onClick={() => setSelected(r.id)}
+          {regions.map(r => <button type="button" key={r.id} onClick={() => selectRegion(r.id)}
             className={'rounded border px-2 py-1 text-[10px] ' + (selected === r.id ? 'border-primary bg-primary/15' : 'border-border')}>
             {r.kind === 'slice' ? '▣ ' : regionShape(r) === 'circle' ? '● ' : regionShape(r) === 'poly' ? '⬠ ' : '↗ '}{r.name}
           </button>)}
@@ -357,7 +364,7 @@ export function WebAssetsDialog({ inst, onClose }: DialogProps) {
             <Input aria-label="Region name" className="h-7 text-xs flex-1" value={active.name}
               onChange={e => update({ name: e.target.value })} />
             <Button size="sm" variant="destructive" onClick={() => {
-              commitRegions(regions.filter(r => r.id !== active.id)); setSelected(null)
+              commitRegions(regions.filter(r => r.id !== active.id)); selectRegion(null)
             }}>Delete</Button>
           </div>
           <div className="grid grid-cols-4 gap-2">{(['x', 'y', 'width', 'height'] as const).map(numberField)}</div>
