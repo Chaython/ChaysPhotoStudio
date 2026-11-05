@@ -200,6 +200,10 @@ assert.match(webRegionToolSource, /function setSelectedRegion\(/,
   'Slice and Hotspot tools must share a document-level focused region')
 assert.match(webRegionToolSource, /doc\.activeWebRegionId = id/,
   'Canvas selection must publish its focused web region to the inspector')
+assert.match(webRegionToolSource, /function setSelectedRegion\([\s\S]*?engine\.emit\(\)/,
+  'Canvas region selection must rerender the React inspector as well as the canvas overlay')
+assert.doesNotMatch(webRegionToolSource, /selected = \{ docId:/,
+  'Canvas region selection must always use the shared document-state synchronizer')
 const webAssetsDialogSource = readFileSync(new URL('../src/editor/components/dialogs/web-assets-dialog.tsx', import.meta.url), 'utf8')
 assert.match(webAssetsDialogSource, /inst\.props\?\.regionId \?\? doc\?\.activeWebRegionId/,
   'Web Assets editor must open on the region currently focused by the canvas')
