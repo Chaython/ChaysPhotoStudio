@@ -1589,9 +1589,19 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   setShortcutOverride: (id, combo) => set(s => {
     const overrides = { ...s.shortcutOverrides }
-    if (combo === null) delete overrides[id]
-    else overrides[id] = combo
+    if (combo === null) {
+      // A row-level reset returns to this application's factory binding,
+      // not the generic classic-tool key when a workspace has its own map.
+      const workspaceDefault = defaultWorkspaceShortcutProfile(s.workspacePreset)[id]
+      if (workspaceDefault) overrides[id] = workspaceDefault
+      else delete overrides[id]
+    } else {
+      overrides[id] = combo
+    }
     persistShortcutOverrides(overrides)
+    const profiles = loadShortcutProfiles()
+    profiles[s.workspacePreset] = { ...overrides }
+    persistShortcutProfiles(profiles)
     return { shortcutOverrides: overrides }
   }),
 
