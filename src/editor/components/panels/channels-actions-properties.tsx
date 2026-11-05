@@ -745,7 +745,11 @@ function PhotoshopTypeControls({ layerId }: { layerId: string }) {
   const tick = useEditorStore(s => s.renderTick)
   const layer = engine.layerById(layerId)
   const text = layer?.text
+  const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   void tick
+  useEffect(() => () => {
+    if (historyTimer.current) clearTimeout(historyTimer.current)
+  }, [])
   if (!text) return null
   const update = (patch: Partial<typeof text>) => {
     const current = engine.layerById(layerId)?.text
@@ -753,6 +757,12 @@ function PhotoshopTypeControls({ layerId }: { layerId: string }) {
     engine.setLayerProps(layerId, { text: { ...current, ...patch } }, {
       history: false, label: 'Edit Type Character',
     })
+    // Group slider drags and related Character/Paragraph edits into one undo step.
+    if (historyTimer.current) clearTimeout(historyTimer.current)
+    historyTimer.current = setTimeout(() => {
+      historyTimer.current = null
+      engine.pushHistory('Edit Type Character')
+    }, 300)
   }
   return (
     <div className="border-t pt-2 space-y-2">

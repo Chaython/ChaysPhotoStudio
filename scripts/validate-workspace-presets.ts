@@ -220,6 +220,8 @@ for (const control of ['Fireworks Properties', 'Opacity', 'Blend mode', 'Visible
 }
 assert.match(propertiesSource, /function PhotoshopTypeControls\(/,
   'Photoshop type layers need a dedicated contextual Character and Paragraph inspector')
+assert.match(propertiesSource, /function PhotoshopTypeControls\([\s\S]*?historyTimer = useRef[\s\S]*?history: false, label: 'Edit Type Character'[\s\S]*?engine\.pushHistory\('Edit Type Character'\)[\s\S]*?\}, 300\)/,
+  'Photoshop Character and Paragraph edits must batch rapid changes into one undo step')
 for (const control of [
   'Character font family', 'Character font size', 'Character font style',
   'Character leading', 'Character tracking', 'Character baseline shift',
