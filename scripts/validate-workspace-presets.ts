@@ -7,10 +7,12 @@ import {
   ILLUSTRATOR_INSPECTOR_UPPER_TABS, ILLUSTRATOR_INSPECTOR_LOWER_TABS,
   GIMP_INSPECTOR_UPPER_TABS, GIMP_INSPECTOR_LOWER_TABS,
   FIREWORKS_INSPECTOR_UPPER_TABS, FIREWORKS_INSPECTOR_LOWER_TABS,
+  defaultWorkspaceShortcutProfile,
   DOCK_WIDTH_DEFAULT,
 } from '../src/editor/store'
 import type { ToolbarSection, ToolId } from '../src/editor/types'
 import { TOOL_DEFS } from '../src/editor/constants/tools'
+import { COMMANDS } from '../src/editor/shortcuts'
 import { DOCKABLE_PANEL_IDS, isDockablePanelId } from '../src/editor/constants/panel-ids'
 
 // --- Registry invariants -------------------------------------------------------
@@ -22,6 +24,26 @@ for (const preset of presetList) {
   assert.ok(WORKSPACE_PRESET_LABELS[preset].length > 0, `label for ${preset}`)
   assert.ok(INSPECTOR_HEADER_LABELS[preset].length > 0, `inspector header for ${preset}`)
 }
+// Application shortcut profiles must target registered commands/tools only.
+const commandIds = new Set(COMMANDS.map(command => command.id))
+const toolIds = new Set(TOOL_DEFS.map(tool => tool.id))
+for (const preset of presetList) {
+  const profile = defaultWorkspaceShortcutProfile(preset)
+  for (const [key, combo] of Object.entries(profile)) {
+    if (key.startsWith('tool:')) {
+      assert.ok(toolIds.has(key.slice(5) as ToolId), `shortcut profile ${preset} references registered tool ${key}`)
+      assert.match(combo, /^[a-z]$/, `tool shortcut ${key} must be a single letter`)
+    } else {
+      assert.ok(commandIds.has(key), `shortcut profile ${preset} references registered command ${key}`)
+      assert.match(combo, /^[a-z0-9]+(?:\\+[a-z0-9]+)*$/, `command shortcut ${key} must use a valid combo`)
+    }
+  }
+}
+assert.equal(defaultWorkspaceShortcutProfile('photoshop').deselect, 'ctrl+d')
+assert.equal(defaultWorkspaceShortcutProfile('gimp').redo, 'ctrl+y')
+assert.equal(defaultWorkspaceShortcutProfile('illustrator').deselect, 'ctrl+shift+a')
+assert.equal(defaultWorkspaceShortcutProfile('fireworks').deselect, 'ctrl+d')
+
 assert.ok(INSPECTOR_PRESETS.includes('photoshop') && !INSPECTOR_PRESETS.includes('classic'),
   'classic must keep the tabbed dock while inspector presets use the stacked dock')
 assert.equal(isInspectorPreset('classic'), false)
