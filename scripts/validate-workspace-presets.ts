@@ -207,6 +207,12 @@ assert.doesNotMatch(webRegionToolSource, /selected = \{ docId:/,
 const webAssetsDialogSource = readFileSync(new URL('../src/editor/components/dialogs/web-assets-dialog.tsx', import.meta.url), 'utf8')
 assert.match(webAssetsDialogSource, /inst\.props\?\.regionId \?\? doc\?\.activeWebRegionId/,
   'Web Assets editor must open on the region currently focused by the canvas')
+assert.match(webAssetsDialogSource, /const selectRegion = \(id: string \| null\) =>[\s\S]*?doc\.activeWebRegionId = id/,
+  'Web Assets dialog selection must synchronize the document focused region')
+assert.match(webAssetsDialogSource, /onClick=\{\(\) => selectRegion\(r\.id\)\}/,
+  'Selecting a web object in the inspector must update shared focus state')
+assert.match(webAssetsDialogSource, /commitRegions\(regions\.filter\(r => r\.id !== active\.id\)\); selectRegion\(null\)/,
+  'Deleting the focused web object must clear shared focus state')
 for (const control of ['Fireworks Properties', 'Opacity', 'Blend mode', 'Visible', 'Hidden', 'Locked', 'Unlocked']) {
   assert.ok(propertiesSource.includes(control), `Fireworks Properties must expose ${control}`)
 }
