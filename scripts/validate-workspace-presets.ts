@@ -43,7 +43,7 @@ assert.equal(defaultWorkspaceShortcutProfile('photoshop').deselect, 'ctrl+d')
 assert.equal(defaultWorkspaceShortcutProfile('gimp').redo, 'ctrl+y')
 assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:magic-wand'], 'z')
 assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:clone-stamp'], 'c')
-assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:crop'], undefined)
+assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:crop'], 'shift+c')
 assert.equal(defaultWorkspaceShortcutProfile('illustrator').deselect, 'ctrl+shift+a')
 assert.equal(defaultWorkspaceShortcutProfile('fireworks').deselect, 'ctrl+d')
 assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:crop'], 'shift+c',
