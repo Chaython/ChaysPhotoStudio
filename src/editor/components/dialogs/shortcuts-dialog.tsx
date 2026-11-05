@@ -102,7 +102,7 @@ export function ShortcutsDialog({ onClose }: DialogProps) {
     return out
   }, [overrides])
 
-  /** tools currently sharing each letter → cycle groups */
+  /** tools sharing each exact key combo → cycle groups */
   const cyclePartners = useMemo(() => {
     const map: Record<string, ToolId[]> = {}
     for (const t of TOOL_DEFS) {
@@ -120,7 +120,7 @@ export function ShortcutsDialog({ onClose }: DialogProps) {
         const parts = combo.split('+')
         const key = parts[parts.length - 1]
         const reason = parts.length > 1
-          ? 'Tool keys are a single letter (no Ctrl / Alt / Shift)'
+          ? 'Tool keys must be a letter, optionally with Shift (no Ctrl / Alt)'
           : RESERVED_TOOL_KEYS.has(key)
             ? `"${key.toUpperCase()}" is reserved for a fixed helper`
             : 'Not a letter A–Z'
@@ -262,7 +262,7 @@ export function ShortcutsDialog({ onClose }: DialogProps) {
           <div className="flex items-center gap-1.5 pb-1.5 mb-1 border-b border-border/50">
             <MousePointerClick size={12} className="text-primary" />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">Tools</span>
-            <span className="ml-auto text-[10px] text-muted-foreground">single letter · shared letters cycle</span>
+            <span className="ml-auto text-[10px] text-muted-foreground">letter or Shift+letter · shared bindings cycle</span>
           </div>
           <div className="grid sm:grid-cols-2 gap-x-3">
             {toolRows.map(t => {
@@ -292,7 +292,7 @@ export function ShortcutsDialog({ onClose }: DialogProps) {
                               : 'bg-muted/70 border-border/60 text-foreground/85 hover:border-primary/40'
                         )}
                       >
-                        {isHot ? 'press…' : key.toUpperCase()}
+                        {isHot ? 'press…' : formatCombo(key)}
                       </button>
                       {overridden && (
                         <button
