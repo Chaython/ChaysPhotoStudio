@@ -533,9 +533,13 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
     },
     classic: {},
   }
-  // The tool dispatcher accepts single-letter tool keys only. Filter any
-  // multi-key reference so the profile never installs an unusable binding.
-  return Object.fromEntries(Object.entries(tools[preset] ?? {}).filter(([, combo]) => /^[a-z]$/.test(combo)))
+  // Tool activation currently accepts plain letters only; command bindings
+  // use the same canonical Ctrl/Alt/Shift combo format as shortcuts.ts.
+  return Object.fromEntries(Object.entries(tools[preset] ?? {}).filter(([key, combo]) =>
+    key.startsWith('tool:')
+      ? /^[a-z]$/.test(combo)
+      : /^[a-z0-9]+(?:\+[a-z0-9]+)*$/.test(combo)
+  ))
 }
 
 /** Merge newly added factory bindings into a saved profile without
