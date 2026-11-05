@@ -200,6 +200,8 @@ assert.match(webRegionToolSource, /function setSelectedRegion\(/,
   'Slice and Hotspot tools must share a document-level focused region')
 assert.match(webRegionToolSource, /doc\.activeWebRegionId = id/,
   'Canvas selection must publish its focused web region to the inspector')
+assert.match(webRegionToolSource, /function selectedId\(\): string \| null \{[\s\S]*?const focused = doc\.activeWebRegionId[\s\S]*?return doc\.webRegions\?\.some\(region => region\.id === focused\) \? focused : null/,
+  'Canvas overlay highlighting must read the shared document focus set by inspector and dialog selections')
 assert.match(webRegionToolSource, /function setSelectedRegion\([\s\S]*?engine\.emit\(\)/,
   'Canvas region selection must rerender the React inspector as well as the canvas overlay')
 assert.doesNotMatch(webRegionToolSource, /selected = \{ docId:/,
