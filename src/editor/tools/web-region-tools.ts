@@ -40,7 +40,9 @@ function selectedId(): string | null {
   // The inspector and Web Assets dialog can focus a region without going
   // through this tool module, so the document field is the shared authority.
   const focused = doc.activeWebRegionId
-  if (focused) return doc.webRegions?.some(region => region.id === focused) ? focused : null
+  if (focused !== undefined) {
+    return focused && doc.webRegions?.some(region => region.id === focused) ? focused : null
+  }
   return selected && selected.docId === doc.id ? selected.id : null
 }
 function setSelectedRegion(docId: string, id: string | null) {
