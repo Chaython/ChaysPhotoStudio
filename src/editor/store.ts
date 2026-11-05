@@ -470,6 +470,9 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
     // Photoshop-style single-key tool families (repeated presses cycle
     // between tools that share the application's flyout shortcut).
     photoshop: {
+      undo: 'ctrl+z', redo: 'ctrl+shift+z',
+      deselect: 'ctrl+d', reselect: 'ctrl+shift+d', invertSelection: 'ctrl+shift+i',
+      duplicateLayer: 'ctrl+j', mergeDown: 'ctrl+e',
       'tool:move': 'v',
       'tool:marquee-rect': 'm', 'tool:marquee-ellipse': 'm',
       'tool:marquee-row': 'm', 'tool:marquee-column': 'm',
@@ -491,10 +494,10 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
       'tool:shape': 'u', 'tool:hand': 'h', 'tool:zoom': 'z',
     },
     illustrator: {
-      // Illustrator uses Shift+Ctrl+A for Deselect; supported command
-      // bindings remain canonical Ctrl/Alt/Shift combos.
-      deselect: 'ctrl+shift+a',
-      invertSelection: 'ctrl+shift+i',
+      // Illustrator uses its own Select-menu conventions for vector work.
+      undo: 'ctrl+z', redo: 'ctrl+shift+z',
+      deselect: 'ctrl+shift+a', invertSelection: 'ctrl+shift+i',
+      duplicateLayer: 'ctrl+c',
       'tool:move': 'v',
       'tool:path-select': 'a', 'tool:direct-select': 'a',
       'tool:pen': 'p', 'tool:pen-freeform': 'p', 'tool:pen-curvature': 'p',
@@ -505,11 +508,11 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
       'tool:gradient': 'g',
     },
     gimp: {
-      // GIMP's redo, deselect and duplicate-layer conventions differ from PS.
-      redo: 'ctrl+y',
-      deselect: 'ctrl+shift+a',
-      duplicateLayer: 'ctrl+shift+d',
-      mergeDown: 'ctrl+m',
+      // GIMP's Edit/Layer menu bindings differ from Adobe applications.
+      undo: 'ctrl+z', redo: 'ctrl+y',
+      deselect: 'ctrl+shift+a', reselect: 'ctrl+shift+t',
+      invertSelection: 'ctrl+i',
+      duplicateLayer: 'ctrl+shift+d', mergeDown: 'ctrl+m',
       'tool:move': 'm',
       'tool:marquee-rect': 'r', 'tool:marquee-ellipse': 'e',
       'tool:lasso': 'f', 'tool:polygon-lasso': 'f',
@@ -521,9 +524,9 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
       'tool:gradient': 'g', 'tool:clone-stamp': 'c',
     },
     fireworks: {
-      redo: 'ctrl+y',
-      deselect: 'ctrl+d',
-      duplicateLayer: 'ctrl+shift+d',
+      undo: 'ctrl+z', redo: 'ctrl+y',
+      deselect: 'ctrl+d', reselect: 'ctrl+shift+d',
+      invertSelection: 'ctrl+shift+i', duplicateLayer: 'ctrl+shift+d',
       'tool:move': 'v', 'tool:path-select': 'a', 'tool:direct-select': 'a',
       'tool:crop': 'c', 'tool:slice': 'k', 'tool:hotspot': 'k',
       'tool:text': 't', 'tool:pen': 'p', 'tool:pen-freeform': 'p',
