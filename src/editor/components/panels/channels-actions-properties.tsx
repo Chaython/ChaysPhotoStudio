@@ -688,6 +688,7 @@ function FireworksLayerProperties({ layerId }: { layerId: string }) {
   const layer = engine.layerById(layerId)
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyDoc = useRef<typeof engine.activeDoc>(null)
+  const historyLayerId = useRef<string | null>(null)
   void tick
   useEffect(() => () => {
     if (historyTimer.current) {
@@ -695,6 +696,7 @@ function FireworksLayerProperties({ layerId }: { layerId: string }) {
       historyTimer.current = null
       if (historyDoc.current) engine.pushHistory('Edit Fireworks Properties', historyDoc.current)
       historyDoc.current = null
+      historyLayerId.current = null
     }
   }, [])
   if (!layer) return null
@@ -702,17 +704,20 @@ function FireworksLayerProperties({ layerId }: { layerId: string }) {
     if (!engine.layerById(layerId)) return
     const doc = engine.activeDoc
     if (!doc) return
-    if (historyDoc.current && historyDoc.current !== doc) {
+    if ((historyDoc.current && historyDoc.current !== doc) ||
+      (historyLayerId.current && historyLayerId.current !== layerId)) {
       if (historyTimer.current) clearTimeout(historyTimer.current)
       historyTimer.current = null
       engine.pushHistory('Edit Fireworks Properties', historyDoc.current)
     } else if (historyTimer.current) clearTimeout(historyTimer.current)
     historyDoc.current = doc
+    historyLayerId.current = layerId
     engine.setLayerProps(layerId, patch, { history: false, label: 'Edit Fireworks Properties' })
     historyTimer.current = setTimeout(() => {
       historyTimer.current = null
       const target = historyDoc.current
       historyDoc.current = null
+      historyLayerId.current = null
       if (target) engine.pushHistory('Edit Fireworks Properties', target)
     }, 300)
   }
@@ -762,6 +767,7 @@ function PhotoshopTypeControls({ layerId }: { layerId: string }) {
   const text = layer?.text
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyDoc = useRef<typeof engine.activeDoc>(null)
+  const historyLayerId = useRef<string | null>(null)
   void tick
   useEffect(() => () => {
     if (historyTimer.current) {
@@ -769,6 +775,7 @@ function PhotoshopTypeControls({ layerId }: { layerId: string }) {
       historyTimer.current = null
       if (historyDoc.current) engine.pushHistory('Edit Type Character', historyDoc.current)
       historyDoc.current = null
+      historyLayerId.current = null
     }
   }, [])
   if (!text) return null
@@ -777,17 +784,20 @@ function PhotoshopTypeControls({ layerId }: { layerId: string }) {
     if (!current) return
     const doc = engine.activeDoc
     if (!doc) return
-    if (historyDoc.current && historyDoc.current !== doc) {
+    if ((historyDoc.current && historyDoc.current !== doc) ||
+      (historyLayerId.current && historyLayerId.current !== layerId)) {
       if (historyTimer.current) clearTimeout(historyTimer.current)
       historyTimer.current = null
       engine.pushHistory('Edit Type Character', historyDoc.current)
     } else if (historyTimer.current) clearTimeout(historyTimer.current)
     historyDoc.current = doc
+    historyLayerId.current = layerId
     engine.setLayerProps(layerId, { text: { ...current, ...patch } }, { history: false, label: 'Edit Type Character' })
     historyTimer.current = setTimeout(() => {
       historyTimer.current = null
       const target = historyDoc.current
       historyDoc.current = null
+      historyLayerId.current = null
       if (target) engine.pushHistory('Edit Type Character', target)
     }, 300)
   }
@@ -896,6 +906,7 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
   const shape = layer?.shape
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyDoc = useRef<typeof engine.activeDoc>(null)
+  const historyLayerId = useRef<string | null>(null)
   void tick
   useEffect(() => () => {
     if (historyTimer.current) {
@@ -903,6 +914,7 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
       historyTimer.current = null
       if (historyDoc.current) engine.pushHistory('Edit Vector Object', historyDoc.current)
       historyDoc.current = null
+      historyLayerId.current = null
     }
   }, [])
   if (!shape) return null
@@ -911,17 +923,20 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
     if (!current) return
     const doc = engine.activeDoc
     if (!doc) return
-    if (historyDoc.current && historyDoc.current !== doc) {
+    if ((historyDoc.current && historyDoc.current !== doc) ||
+      (historyLayerId.current && historyLayerId.current !== layerId)) {
       if (historyTimer.current) clearTimeout(historyTimer.current)
       historyTimer.current = null
       engine.pushHistory('Edit Vector Object', historyDoc.current)
     } else if (historyTimer.current) clearTimeout(historyTimer.current)
     historyDoc.current = doc
+    historyLayerId.current = layerId
     engine.setLayerProps(layerId, { shape: { ...current, ...patch } }, { history: false, label: 'Edit Vector Object' })
     historyTimer.current = setTimeout(() => {
       historyTimer.current = null
       const target = historyDoc.current
       historyDoc.current = null
+      historyLayerId.current = null
       if (target) engine.pushHistory('Edit Vector Object', target)
     }, 300)
   }

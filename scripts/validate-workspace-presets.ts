@@ -232,6 +232,10 @@ for (const [component, label] of [
   const source = propertiesSource.slice(start, end < 0 ? undefined : end)
   assert.match(source, /historyDoc = useRef/,
     `${component} must retain the document that received pending edits`)
+  assert.match(source, /historyLayerId = useRef/,
+    `${component} must keep edits to different layers in separate undo steps`)
+  assert.match(source, /historyLayerId\.current && historyLayerId\.current !== layerId/,
+    `${component} must flush pending history when the selected layer changes`)
   assert.ok(source.includes(`engine.pushHistory('${label}', historyDoc.current)`),
     `${component} must commit pending edits when its inspector unmounts`)
   assert.ok(source.includes(`engine.pushHistory('${label}', target)`),
