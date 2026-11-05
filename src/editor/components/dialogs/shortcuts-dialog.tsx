@@ -412,7 +412,7 @@ export function ShortcutsDialog({ onClose }: DialogProps) {
         <Button size="sm" variant="outline" onClick={() => {
           resetWorkspaceShortcutProfile()
           setNote(null)
-          pushToast({ title: 'Workspace shortcuts restored', description: 'Factory shortcuts for this workspace have been restored.' })
+          pushToast('Factory shortcuts for this workspace have been restored.', 'success')
         }}>
           <RotateCcw size={12} className="mr-1" /> Restore workspace defaults
         </Button>
