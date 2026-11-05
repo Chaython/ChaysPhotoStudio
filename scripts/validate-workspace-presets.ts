@@ -32,7 +32,7 @@ for (const preset of presetList) {
   for (const [key, combo] of Object.entries(profile)) {
     if (key.startsWith('tool:')) {
       assert.ok(toolIds.has(key.slice(5) as ToolId), `shortcut profile ${preset} references registered tool ${key}`)
-      assert.match(combo, /^[a-z]$/, `tool shortcut ${key} must be a single letter`)
+      assert.match(combo, /^(?:[a-z]|shift\\+[a-z])$/, `tool shortcut ${key} must be a letter with optional Shift`)
     } else {
       assert.ok(commandIds.has(key), `shortcut profile ${preset} references registered command ${key}`)
       assert.match(combo, /^[a-z0-9]+(?:\+[a-z0-9]+)*$/, `command shortcut ${key} must use a valid combo`)
