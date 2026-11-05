@@ -687,18 +687,33 @@ function FireworksLayerProperties({ layerId }: { layerId: string }) {
   const tick = useEditorStore(s => s.renderTick)
   const layer = engine.layerById(layerId)
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const historyDoc = useRef<typeof engine.activeDoc>(null)
   void tick
   useEffect(() => () => {
-    if (historyTimer.current) clearTimeout(historyTimer.current)
+    if (historyTimer.current) {
+      clearTimeout(historyTimer.current)
+      historyTimer.current = null
+      if (historyDoc.current) engine.pushHistory('Edit Fireworks Properties', historyDoc.current)
+      historyDoc.current = null
+    }
   }, [])
   if (!layer) return null
   const update = (patch: Partial<typeof layer>) => {
     if (!engine.layerById(layerId)) return
+    const doc = engine.activeDoc
+    if (!doc) return
+    if (historyDoc.current && historyDoc.current !== doc) {
+      if (historyTimer.current) clearTimeout(historyTimer.current)
+      historyTimer.current = null
+      engine.pushHistory('Edit Fireworks Properties', historyDoc.current)
+    } else if (historyTimer.current) clearTimeout(historyTimer.current)
+    historyDoc.current = doc
     engine.setLayerProps(layerId, patch, { history: false, label: 'Edit Fireworks Properties' })
-    if (historyTimer.current) clearTimeout(historyTimer.current)
     historyTimer.current = setTimeout(() => {
       historyTimer.current = null
-      engine.pushHistory('Edit Fireworks Properties')
+      const target = historyDoc.current
+      historyDoc.current = null
+      if (target) engine.pushHistory('Edit Fireworks Properties', target)
     }, 300)
   }
   return (
@@ -746,22 +761,34 @@ function PhotoshopTypeControls({ layerId }: { layerId: string }) {
   const layer = engine.layerById(layerId)
   const text = layer?.text
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const historyDoc = useRef<typeof engine.activeDoc>(null)
   void tick
   useEffect(() => () => {
-    if (historyTimer.current) clearTimeout(historyTimer.current)
+    if (historyTimer.current) {
+      clearTimeout(historyTimer.current)
+      historyTimer.current = null
+      if (historyDoc.current) engine.pushHistory('Edit Type Character', historyDoc.current)
+      historyDoc.current = null
+    }
   }, [])
   if (!text) return null
   const update = (patch: Partial<typeof text>) => {
     const current = engine.layerById(layerId)?.text
     if (!current) return
-    engine.setLayerProps(layerId, { text: { ...current, ...patch } }, {
-      history: false, label: 'Edit Type Character',
-    })
-    // Group slider drags and related Character/Paragraph edits into one undo step.
-    if (historyTimer.current) clearTimeout(historyTimer.current)
+    const doc = engine.activeDoc
+    if (!doc) return
+    if (historyDoc.current && historyDoc.current !== doc) {
+      if (historyTimer.current) clearTimeout(historyTimer.current)
+      historyTimer.current = null
+      engine.pushHistory('Edit Type Character', historyDoc.current)
+    } else if (historyTimer.current) clearTimeout(historyTimer.current)
+    historyDoc.current = doc
+    engine.setLayerProps(layerId, { text: { ...current, ...patch } }, { history: false, label: 'Edit Type Character' })
     historyTimer.current = setTimeout(() => {
       historyTimer.current = null
-      engine.pushHistory('Edit Type Character')
+      const target = historyDoc.current
+      historyDoc.current = null
+      if (target) engine.pushHistory('Edit Type Character', target)
     }, 300)
   }
   return (
@@ -868,21 +895,34 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
   const layer = engine.layerById(layerId)
   const shape = layer?.shape
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const historyDoc = useRef<typeof engine.activeDoc>(null)
   void tick
   useEffect(() => () => {
-    if (historyTimer.current) clearTimeout(historyTimer.current)
+    if (historyTimer.current) {
+      clearTimeout(historyTimer.current)
+      historyTimer.current = null
+      if (historyDoc.current) engine.pushHistory('Edit Vector Object', historyDoc.current)
+      historyDoc.current = null
+    }
   }, [])
   if (!shape) return null
   const update = (patch: Partial<typeof shape>) => {
     const current = engine.layerById(layerId)?.shape
     if (!current) return
-    engine.setLayerProps(layerId, { shape: { ...current, ...patch } }, {
-      history: false, label: 'Edit Vector Object',
-    })
-    if (historyTimer.current) clearTimeout(historyTimer.current)
+    const doc = engine.activeDoc
+    if (!doc) return
+    if (historyDoc.current && historyDoc.current !== doc) {
+      if (historyTimer.current) clearTimeout(historyTimer.current)
+      historyTimer.current = null
+      engine.pushHistory('Edit Vector Object', historyDoc.current)
+    } else if (historyTimer.current) clearTimeout(historyTimer.current)
+    historyDoc.current = doc
+    engine.setLayerProps(layerId, { shape: { ...current, ...patch } }, { history: false, label: 'Edit Vector Object' })
     historyTimer.current = setTimeout(() => {
       historyTimer.current = null
-      engine.pushHistory('Edit Vector Object')
+      const target = historyDoc.current
+      historyDoc.current = null
+      if (target) engine.pushHistory('Edit Vector Object', target)
     }, 300)
   }
   const numberField = (label: string, key: 'x' | 'y' | 'w' | 'h', min = -100000) => (
