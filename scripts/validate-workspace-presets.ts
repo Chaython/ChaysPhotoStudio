@@ -25,8 +25,8 @@ for (const preset of presetList) {
   assert.ok(INSPECTOR_HEADER_LABELS[preset].length > 0, `inspector header for ${preset}`)
 }
 // Application shortcut profiles must target registered commands/tools only.
-const commandIds = new Set(COMMANDS.map(command => command.id))
-const toolIds = new Set(TOOL_DEFS.map(tool => tool.id))
+const commandIds = new Set<string>(COMMANDS.map(command => command.id))
+const toolIds = new Set<string>(TOOL_DEFS.map(tool => tool.id))
 for (const preset of presetList) {
   const profile = defaultWorkspaceShortcutProfile(preset)
   for (const [key, combo] of Object.entries(profile)) {
