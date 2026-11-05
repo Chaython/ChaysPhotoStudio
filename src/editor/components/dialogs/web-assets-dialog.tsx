@@ -30,7 +30,7 @@ export function WebAssetsDialog({ inst, onClose }: DialogProps) {
   const [regions, setRegions] = useState<WebRegion[]>(() =>
     doc ? normalizeWebRegions(doc.webRegions, doc.width, doc.height) : [])
   const [selected, setSelected] = useState<string | null>(() => {
-    const requested = inst.props?.regionId
+    const requested = inst.props?.regionId ?? doc?.activeWebRegionId
     return typeof requested === 'string' && doc?.webRegions?.some(r => r.id === requested) ? requested : null
   })
   const [drawKind, setDrawKind] = useState<WebRegionKind>('slice')
