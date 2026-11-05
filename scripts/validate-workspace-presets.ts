@@ -176,6 +176,13 @@ assert.match(propertiesSource, /workspacePreset === 'fireworks' && <FireworksLay
   'Fireworks Properties dock must show its contextual layer controls')
 assert.match(propertiesSource, /function FireworksLayerProperties\(/,
   'Fireworks needs a dedicated contextual Properties inspector')
+assert.match(propertiesSource, /if \(!layer\)[\s\S]*?workspacePreset !== 'fireworks'[\s\S]*?<FireworksDocumentProperties doc=\{doc\}/,
+  'Fireworks document Properties must remain visible when no layer is selected')
+assert.match(propertiesSource, /function FireworksDocumentProperties\(/,
+  'Fireworks needs a document-level web asset inspector')
+for (const control of ['Document Properties', 'Web Objects', 'slices', 'hotspots', 'Export Artboards']) {
+  assert.ok(propertiesSource.includes(control), `Fireworks document inspector must expose ${control}`)
+}
 for (const control of ['Fireworks Properties', 'Opacity', 'Blend mode', 'Visible', 'Hidden', 'Locked', 'Unlocked']) {
   assert.ok(propertiesSource.includes(control), `Fireworks Properties must expose ${control}`)
 }
