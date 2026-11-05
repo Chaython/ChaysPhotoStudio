@@ -679,6 +679,8 @@ export interface PsDocument {
   showArtboardOutlines?: boolean
   /** Editable rectangular slices and hotspots, persisted in .zproj.json. */
   webRegions?: import('./web-assets').WebRegion[]
+  /** Currently focused web region for synchronized canvas/inspector selection (view state). */
+  activeWebRegionId?: string | null
   id: string
   name: string
   width: number
