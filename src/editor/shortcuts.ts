@@ -292,11 +292,11 @@ export const RESERVED_TOOL_KEYS = new Set([
   'backspace', 'delete', 'enter', 'escape', 'tab', 'space', '/',
 ])
 
-/** Tools are bound to a single plain letter (no modifiers). */
+/** Tool bindings allow a plain letter or Shift+letter; Ctrl/Alt stay command-only. */
 export function isValidToolBinding(combo: string): boolean {
   const parts = combo.split('+')
   const key = parts[parts.length - 1]
-  const hasMods = parts.length > 1
-  if (hasMods) return false
-  return key.length === 1 && key >= 'a' && key <= 'z' && !RESERVED_TOOL_KEYS.has(key)
+  const validModifier = parts.length === 1 || (parts.length === 2 && parts[0] === 'shift')
+  return validModifier && key.length === 1 && key >= 'a' && key <= 'z' &&
+    !RESERVED_TOOL_KEYS.has(key)
 }
