@@ -643,9 +643,14 @@ function FireworksDocumentProperties({ doc }: { doc: PsDocument }) {
           <div className="text-[10px] text-muted-foreground">No slices or hotspots in this document</div>
         ) : regions.map(region => (
           <button key={region.id} type="button"
-            onClick={() => useEditorStore.getState().openDialog('web-assets', { regionId: region.id })}
+            onClick={() => {
+              doc.activeWebRegionId = region.id
+              engine.emit()
+              useEditorStore.getState().openDialog('web-assets', { regionId: region.id })
+            }}
             aria-label={`Edit ${region.kind} ${region.name}`}
-            className="w-full text-left rounded border border-border/60 px-1.5 py-1 min-w-0 hover:bg-accent/50 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary">
+            aria-pressed={doc.activeWebRegionId === region.id}
+            className={`w-full text-left rounded border px-1.5 py-1 min-w-0 hover:bg-accent/50 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${doc.activeWebRegionId === region.id ? 'border-primary bg-primary/10' : 'border-border/60'}`}>
             <div className="flex items-center gap-1">
               {region.kind === 'slice' ? <Icons.SquareDashed size={11} /> : <Icons.MousePointer2 size={11} />}
               <span className="text-[10px] font-medium truncate flex-1">{region.name}</span>
