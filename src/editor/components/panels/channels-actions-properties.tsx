@@ -708,7 +708,7 @@ function FireworksLayerProperties({ layerId }: { layerId: string }) {
       (historyLayerId.current && historyLayerId.current !== layerId)) {
       if (historyTimer.current) clearTimeout(historyTimer.current)
       historyTimer.current = null
-      engine.pushHistory('Edit Fireworks Properties', historyDoc.current)
+      if (historyDoc.current) engine.pushHistory('Edit Fireworks Properties', historyDoc.current)
     } else if (historyTimer.current) clearTimeout(historyTimer.current)
     historyDoc.current = doc
     historyLayerId.current = layerId
@@ -788,7 +788,7 @@ function PhotoshopTypeControls({ layerId }: { layerId: string }) {
       (historyLayerId.current && historyLayerId.current !== layerId)) {
       if (historyTimer.current) clearTimeout(historyTimer.current)
       historyTimer.current = null
-      engine.pushHistory('Edit Type Character', historyDoc.current)
+      if (historyDoc.current) engine.pushHistory('Edit Type Character', historyDoc.current)
     } else if (historyTimer.current) clearTimeout(historyTimer.current)
     historyDoc.current = doc
     historyLayerId.current = layerId
@@ -927,7 +927,7 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
       (historyLayerId.current && historyLayerId.current !== layerId)) {
       if (historyTimer.current) clearTimeout(historyTimer.current)
       historyTimer.current = null
-      engine.pushHistory('Edit Vector Object', historyDoc.current)
+      if (historyDoc.current) engine.pushHistory('Edit Vector Object', historyDoc.current)
     } else if (historyTimer.current) clearTimeout(historyTimer.current)
     historyDoc.current = doc
     historyLayerId.current = layerId
