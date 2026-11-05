@@ -37,6 +37,11 @@ let polyCursor: RegionPoint | null = null
 function selectedId(): string | null {
   return selected && selected.docId === engine.activeDoc?.id ? selected.id : null
 }
+function setSelectedRegion(docId: string, id: string | null) {
+  selected = id ? { docId, id } : null
+  const doc = engine.docs.find(item => item.id === docId)
+  if (doc) doc.activeWebRegionId = id
+}
 function currentRegions(): WebRegion[] {
   const doc = engine.activeDoc
   return doc ? normalizeWebRegions(doc.webRegions, doc.width, doc.height) : []
@@ -55,7 +60,7 @@ function remove(id: string) {
   const before = currentRegions()
   if (!before.some(r => r.id === id)) return
   writeRegions(before.filter(r => r.id !== id), doc.id, 'Delete Web Region')
-  if (selectedId() === id) selected = null
+  if (selectedId() === id) setSelectedRegion(doc.id, null)
 }
 function atPointer(p: PointerInfo): RegionPoint | null {
   const doc = engine.activeDoc
@@ -82,7 +87,7 @@ function finishPolygon(): boolean {
         id, kind: 'hotspot', shape: 'poly', points: points.slice(),
         name: 'Hotspot ' + count, ...bounds, href: '', alt: '', target: '_self',
       }], doc.id, 'Create Polygon Hotspot')
-      selected = { docId: doc.id, id }
+      setSelectedRegion(doc.id, id)
     }
   }
   polyDraft = null
@@ -129,7 +134,7 @@ function begin(p: PointerInfo, kind: WebRegionKind) {
       engine.pokeOverlay()
       return
     }
-    selected = null
+    setSelectedRegion(doc.id, null)
     polyDraft = { docId: doc.id, points: [pos.x, pos.y] }
     polyCursor = pos
     engine.pokeOverlay()
@@ -140,7 +145,7 @@ function begin(p: PointerInfo, kind: WebRegionKind) {
   const hit = findWebRegion(regions, p.docX, p.docY)
   if (p.alt && hit) { drag = null; remove(hit.id); return }
   const resize = hit && Math.hypot(p.docX - (hit.x + hit.width - 1), p.docY - (hit.y + hit.height - 1)) <= handleTol
-  selected = hit ? { docId: doc.id, id: hit.id } : null
+  setSelectedRegion(doc.id, hit?.id ?? null)
   drag = {
     docId: doc.id, mode: hit ? (resize ? 'resize' : 'move') : 'create',
     kind, shape: hit ? regionShape(hit) : shape, id: hit?.id ?? null, start: pos,
@@ -223,7 +228,7 @@ function keydown(e: KeyboardEvent): boolean {
   if (e.key === 'Enter' && polyDraft) { finishPolygon(); return true }
   const id = selectedId()
   if (!doc || !id || e.ctrlKey || e.metaKey) return false
-  if (e.key === 'Escape') { selected = null; engine.pokeOverlay(); return true }
+  if (e.key === 'Escape') { setSelectedRegion(doc.id, null); engine.pokeOverlay(); return true }
   if (e.key === 'Delete' || e.key === 'Backspace') { remove(id); return true }
   if (e.key === 'Enter') { useEditorStore.getState().openDialog('web-assets', { regionId: id }); return true }
   const delta: Record<string, [number, number]> = {
