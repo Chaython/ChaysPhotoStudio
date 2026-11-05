@@ -519,7 +519,9 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
       'tool:zoom': 'z',
       'tool:text': 't', 'tool:brush': 'p',
       'tool:pencil': 'n',
-      'tool:gradient': 'g', 'tool:clone-stamp': 'c',
+      'tool:gradient': 'l', 'tool:paint-bucket': 'shift+b',
+      'tool:eraser': 'shift+e', 'tool:crop': 'shift+c',
+      'tool:clone-stamp': 'c',
     },
     fireworks: {
       undo: 'ctrl+z', redo: 'ctrl+y',
@@ -534,11 +536,11 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
     },
     classic: {},
   }
-  // Tool activation currently accepts plain letters only; command bindings
-  // use the same canonical Ctrl/Alt/Shift combo format as shortcuts.ts.
+  // Tool activation accepts plain letters and Shift+letter; commands use
+  // the full canonical Ctrl/Alt/Shift combo format from shortcuts.ts.
   return Object.fromEntries(Object.entries(tools[preset] ?? {}).filter(([key, combo]) =>
     key.startsWith('tool:')
-      ? /^[a-z]$/.test(combo)
+      ? /^(?:[a-z]|shift\+[a-z])$/.test(combo)
       : /^[a-z0-9]+(?:\+[a-z0-9]+)*$/.test(combo)
   ))
 }
