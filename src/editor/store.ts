@@ -538,6 +538,13 @@ function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record<string
   return Object.fromEntries(Object.entries(tools[preset] ?? {}).filter(([, combo]) => /^[a-z]$/.test(combo)))
 }
 
+/** Merge newly added factory bindings into a saved profile without
+ * overwriting any binding the user has already customized. */
+function loadActiveWorkspaceShortcutOverrides(): Record<string, string> {
+  const preset = loadWorkspacePreset()
+  return { ...defaultWorkspaceShortcutProfile(preset), ...loadShortcutOverrides() }
+}
+
 function loadPersonalShortcutBackup(): Record<string, string> | null {
   try {
     const raw = JSON.parse(localStorage.getItem(PERSONAL_SHORTCUT_BACKUP_KEY) || 'null')
@@ -1081,7 +1088,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       })()
       : {}),
   },
-  shortcutOverrides: loadShortcutOverrides(),
+  shortcutOverrides: loadActiveWorkspaceShortcutOverrides(),
   shortcutBackupAvailable: !!loadPersonalShortcutBackup(),
   toolbarLayout: readWorkspaceRecord(loadWorkspacePreset()) ? readWorkspaceRecord(loadWorkspacePreset())!.toolbar : loadToolbarLayout(),
   savedLayouts: readSavedLayouts(),
@@ -1096,7 +1103,12 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     savePersonalShortcutBackup(s.shortcutOverrides)
     const shortcutProfiles = loadShortcutProfiles()
     shortcutProfiles[s.workspacePreset] = { ...s.shortcutOverrides }
-    const targetShortcutOverrides = shortcutProfiles[preset] ?? defaultWorkspaceShortcutProfile(preset)
+    // Add newly introduced factory bindings to older saved profiles while
+    // retaining every explicit user customization already stored there.
+    const targetShortcutOverrides = {
+      ...defaultWorkspaceShortcutProfile(preset),
+      ...(shortcutProfiles[preset] ?? {}),
+    }
     shortcutProfiles[preset] = { ...targetShortcutOverrides }
     persistShortcutProfiles(shortcutProfiles)
     persistShortcutOverrides(targetShortcutOverrides)
