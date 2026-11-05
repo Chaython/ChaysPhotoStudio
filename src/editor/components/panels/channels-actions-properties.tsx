@@ -694,7 +694,7 @@ function FireworksLayerProperties({ layerId }: { layerId: string }) {
     if (historyTimer.current) {
       clearTimeout(historyTimer.current)
       historyTimer.current = null
-      if (historyDoc.current) engine.pushHistory('Edit Fireworks Properties', historyDoc.current)
+      if (historyDoc.current) engine.pushHistory('Edit Fireworks Properties', historyDoc.current ?? undefined)
       historyDoc.current = null
       historyLayerId.current = null
     }
@@ -773,7 +773,7 @@ function PhotoshopTypeControls({ layerId }: { layerId: string }) {
     if (historyTimer.current) {
       clearTimeout(historyTimer.current)
       historyTimer.current = null
-      if (historyDoc.current) engine.pushHistory('Edit Type Character', historyDoc.current)
+      if (historyDoc.current) engine.pushHistory('Edit Type Character', historyDoc.current ?? undefined)
       historyDoc.current = null
       historyLayerId.current = null
     }
@@ -912,7 +912,7 @@ function IllustratorShapeProperties({ layerId }: { layerId: string }) {
     if (historyTimer.current) {
       clearTimeout(historyTimer.current)
       historyTimer.current = null
-      if (historyDoc.current) engine.pushHistory('Edit Vector Object', historyDoc.current)
+      if (historyDoc.current) engine.pushHistory('Edit Vector Object', historyDoc.current ?? undefined)
       historyDoc.current = null
       historyLayerId.current = null
     }
