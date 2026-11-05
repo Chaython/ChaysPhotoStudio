@@ -187,6 +187,10 @@ assert.match(propertiesSource, /openDialog\('web-assets'\)/,
   'Fireworks document inspector must link to the web asset manager')
 assert.match(propertiesSource, /openDialog\('artboards'\)/,
   'Fireworks document inspector must link to the artboard manager')
+assert.match(propertiesSource, /openDialog\('web-assets', \{ regionId: region\.id \}\)/,
+  'Fireworks web object entries must open the editor focused on that region')
+assert.match(propertiesSource, /aria-label=\{\`Edit \$\{region\.kind\} \$\{region\.name\}\`\}/,
+  'Fireworks web object entries must expose an accessible edit action')
 for (const control of ['Fireworks Properties', 'Opacity', 'Blend mode', 'Visible', 'Hidden', 'Locked', 'Unlocked']) {
   assert.ok(propertiesSource.includes(control), `Fireworks Properties must expose ${control}`)
 }
