@@ -658,6 +658,18 @@ function FireworksDocumentProperties({ doc }: { doc: PsDocument }) {
         <span className="text-muted-foreground">Export Artboards</span>
         <span className="font-medium tabular-nums">{doc.artboards?.length ?? 0}</span>
       </div>
+      <div className="grid grid-cols-2 gap-1">
+        <button type="button"
+          onClick={() => useEditorStore.getState().openDialog('web-assets')}
+          className="h-7 rounded border text-[10px] hover:bg-accent">
+          Manage Web Objects
+        </button>
+        <button type="button"
+          onClick={() => useEditorStore.getState().openDialog('artboards')}
+          className="h-7 rounded border text-[10px] hover:bg-accent">
+          Manage Artboards
+        </button>
+      </div>
     </section>
   )
 }
