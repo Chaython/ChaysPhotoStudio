@@ -68,6 +68,8 @@ const FIXED_HELPERS: [string, string][] = [
 
 export function ShortcutsDialog({ onClose }: DialogProps) {
   const overrides = useEditorStore(s => s.shortcutOverrides)
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const resetWorkspaceShortcutProfile = useEditorStore(s => s.resetWorkspaceShortcutProfile)
   const shortcutBackupAvailable = useEditorStore(s => s.shortcutBackupAvailable)
   const setShortcutOverride = useEditorStore(s => s.setShortcutOverride)
   const resetShortcutOverrides = useEditorStore(s => s.resetShortcutOverrides)
@@ -403,10 +405,17 @@ export function ShortcutsDialog({ onClose }: DialogProps) {
         )}
       </div>
 
-      <DialogFooter className="gap-2">
+      <DialogFooter className="gap-2 flex-wrap">
         <span className="mr-auto text-[10px] text-muted-foreground">
-          Click a key chip, then press the new keystroke · changes apply immediately and persist
+          {workspacePreset === 'classic' ? 'Classic' : workspacePreset[0].toUpperCase() + workspacePreset.slice(1)} shortcut profile · changes save independently per workspace
         </span>
+        <Button size="sm" variant="outline" onClick={() => {
+          resetWorkspaceShortcutProfile()
+          setNote(null)
+          pushToast({ title: 'Workspace shortcuts restored', description: 'Factory shortcuts for this workspace have been restored.' })
+        }}>
+          <RotateCcw size={12} className="mr-1" /> Restore workspace defaults
+        </Button>
         <Button size="sm" onClick={onClose}>Close</Button>
       </DialogFooter>
     </>
