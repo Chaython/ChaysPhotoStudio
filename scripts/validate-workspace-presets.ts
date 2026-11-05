@@ -191,6 +191,18 @@ assert.match(propertiesSource, /openDialog\('web-assets', \{ regionId: region\.i
   'Fireworks web object entries must open the editor focused on that region')
 assert.match(propertiesSource, /aria-label=\{\`Edit \$\{region\.kind\} \$\{region\.name\}\`\}/,
   'Fireworks web object entries must expose an accessible edit action')
+assert.match(propertiesSource, /doc\.activeWebRegionId === region\.id/,
+  'Fireworks inspector must highlight the canvas-focused web object')
+assert.match(propertiesSource, /doc\.activeWebRegionId = region\.id/,
+  'Fireworks inspector clicks must synchronize focused web object state')
+const webRegionToolSource = readFileSync(new URL('../src/editor/tools/web-region-tools.ts', import.meta.url), 'utf8')
+assert.match(webRegionToolSource, /function setSelectedRegion\(/,
+  'Slice and Hotspot tools must share a document-level focused region')
+assert.match(webRegionToolSource, /doc\.activeWebRegionId = id/,
+  'Canvas selection must publish its focused web region to the inspector')
+const webAssetsDialogSource = readFileSync(new URL('../src/editor/components/dialogs/web-assets-dialog.tsx', import.meta.url), 'utf8')
+assert.match(webAssetsDialogSource, /inst\.props\?\.regionId \?\? doc\?\.activeWebRegionId/,
+  'Web Assets editor must open on the region currently focused by the canvas')
 for (const control of ['Fireworks Properties', 'Opacity', 'Blend mode', 'Visible', 'Hidden', 'Locked', 'Unlocked']) {
   assert.ok(propertiesSource.includes(control), `Fireworks Properties must expose ${control}`)
 }
