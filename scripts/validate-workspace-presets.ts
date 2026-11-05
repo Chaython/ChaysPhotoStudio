@@ -35,12 +35,15 @@ for (const preset of presetList) {
       assert.match(combo, /^[a-z]$/, `tool shortcut ${key} must be a single letter`)
     } else {
       assert.ok(commandIds.has(key), `shortcut profile ${preset} references registered command ${key}`)
-      assert.match(combo, /^[a-z0-9]+(?:\\+[a-z0-9]+)*$/, `command shortcut ${key} must use a valid combo`)
+      assert.match(combo, /^[a-z0-9]+(?:\+[a-z0-9]+)*$/, `command shortcut ${key} must use a valid combo`)
     }
   }
 }
 assert.equal(defaultWorkspaceShortcutProfile('photoshop').deselect, 'ctrl+d')
 assert.equal(defaultWorkspaceShortcutProfile('gimp').redo, 'ctrl+y')
+assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:magic-wand'], 'z')
+assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:clone-stamp'], 'c')
+assert.equal(defaultWorkspaceShortcutProfile('gimp')['tool:crop'], undefined)
 assert.equal(defaultWorkspaceShortcutProfile('illustrator').deselect, 'ctrl+shift+a')
 assert.equal(defaultWorkspaceShortcutProfile('fireworks').deselect, 'ctrl+d')
 
