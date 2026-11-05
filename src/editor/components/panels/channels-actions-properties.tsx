@@ -18,7 +18,7 @@ import { ControlRenderer } from '../toolbar/tool-options-bar'
 import { cn } from '@/lib/utils'
 import { FancyScroll } from '@/components/ui/fancy-scroll'
 import type {
-  AdjustmentType, BlendIfSettings, BlendIfSlider, ChannelView, FilterType, PsAction,
+  AdjustmentType, BlendIfSettings, BlendIfSlider, ChannelView, FilterType, PsAction, PsDocument,
 } from '../../types'
 
 // ================= Channels =================
@@ -551,20 +551,32 @@ export function PropertiesPanel() {
   void tick
 
   if (!doc) return <div className="p-4 text-[11px] text-muted-foreground">No document</div>
-  if (!layer) return <div className="p-4 text-[11px] text-muted-foreground">No active layer</div>
+  if (!layer) {
+    if (workspacePreset !== 'fireworks') return <div className="p-4 text-[11px] text-muted-foreground">No active layer</div>
+    return (
+      <FancyScroll className="h-full" contentClassName="p-3 space-y-3 text-[11px]">
+        <FireworksDocumentProperties doc={doc} />
+        <div className="border-t pt-2 text-[10px] text-muted-foreground">
+          No object selected. Select a layer or web region to inspect its properties.
+        </div>
+      </FancyScroll>
+    )
+  }
 
   const isAdj = layer.kind === 'adjustment' && layer.adjustment
   const isText = layer.kind === 'text' && layer.text
 
   return (
     <FancyScroll className="h-full" contentClassName="p-3 space-y-3 text-[11px]">
-      <div>
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Document</div>
-        <div className="font-medium">{doc.name}</div>
-        <div className="text-muted-foreground">
-          {doc.width} × {doc.height} px · {doc.workingColorSpace === 'display-p3' ? 'Display-P3' : 'RGB'}/{doc.workingBitDepth ?? 8} · {doc.layers.length} layers · {Math.round((doc.resolutionPpi ?? 72) * 100) / 100} PPI
-        </div>
-      </div>
+      {workspacePreset === 'fireworks' ? <FireworksDocumentProperties doc={doc} /> : (
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Document</div>
+                <div className="font-medium">{doc.name}</div>
+                <div className="text-muted-foreground">
+                  {doc.width} × {doc.height} px · {doc.workingColorSpace === 'display-p3' ? 'Display-P3' : 'RGB'}/{doc.workingBitDepth ?? 8} · {doc.layers.length} layers · {Math.round((doc.resolutionPpi ?? 72) * 100) / 100} PPI
+                </div>
+              </div>
+      )}
 
       <div className="border-t pt-2">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Layer · {layer.kind}</div>
@@ -603,6 +615,52 @@ export function PropertiesPanel() {
   )
 }
 
+// Fireworks' inspector remains useful with no selected object: web slices,
+// hotspots and export artboards belong to the document, not to a layer.
+function FireworksDocumentProperties({ doc }: { doc: PsDocument }) {
+  const regions = doc.webRegions ?? []
+  const slices = regions.filter(region => region.kind === 'slice')
+  const hotspots = regions.filter(region => region.kind === 'hotspot')
+  return (
+    <section className="space-y-2">
+      <div>
+        <div className="flex items-center gap-1.5 mb-1">
+          <Icons.FileImage size={13} className="text-primary" />
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Document Properties</span>
+        </div>
+        <div className="font-medium truncate">{doc.name}</div>
+        <div className="text-[10px] text-muted-foreground">
+          {doc.width} × {doc.height} px · {doc.workingColorSpace === 'display-p3' ? 'Display-P3' : 'RGB'}/{doc.workingBitDepth ?? 8} · {doc.layers.length} layers · {Math.round((doc.resolutionPpi ?? 72) * 100) / 100} PPI
+        </div>
+      </div>
+      <div className="border-t pt-2 space-y-1.5">
+        <div className="flex items-center gap-1.5">
+          <Icons.Scissors size={12} className="text-primary" />
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground flex-1">Web Objects</span>
+          <span className="text-[9px] text-muted-foreground">{slices.length} slices · {hotspots.length} hotspots</span>
+        </div>
+        {regions.length === 0 ? (
+          <div className="text-[10px] text-muted-foreground">No slices or hotspots in this document</div>
+        ) : regions.map(region => (
+          <div key={region.id} className="rounded border border-border/60 px-1.5 py-1 min-w-0">
+            <div className="flex items-center gap-1">
+              {region.kind === 'slice' ? <Icons.SquareDashed size={11} /> : <Icons.MousePointer2 size={11} />}
+              <span className="text-[10px] font-medium truncate flex-1">{region.name}</span>
+              <span className="text-[9px] text-muted-foreground uppercase">{region.kind}</span>
+            </div>
+            <div className="text-[9px] text-muted-foreground tabular-nums">
+              {region.x}, {region.y} · {region.width} × {region.height} px{region.kind === 'hotspot' && region.href ? ' · ' + region.href : ''}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="border-t pt-2 flex items-center justify-between text-[10px]">
+        <span className="text-muted-foreground">Export Artboards</span>
+        <span className="font-medium tabular-nums">{doc.artboards?.length ?? 0}</span>
+      </div>
+    </section>
+  )
+}
 // Fireworks keeps common web-asset controls immediately available in its
 // bottom Properties dock, regardless of the selected layer kind.
 function FireworksLayerProperties({ layerId }: { layerId: string }) {
