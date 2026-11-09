@@ -489,8 +489,12 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   const anyLayer = layer as any
   if (anyLayer._cacheKey === cacheKey && anyLayer._cache) return anyLayer._cache
 
+  const cachedBase = anyLayer._strokeBaseCacheKey === baseCacheKey
+    ? anyLayer._strokeBaseCache as HTMLCanvasElement | undefined
+    : undefined
   let content: HTMLCanvasElement | null = null
   let contentDX = 0, contentDY = 0 // doc-space registration of `content` (raster offset)
+  if (!cachedBase) {
   if (layer.kind === 'raster' && layer.canvas) {
     content = layer.canvas
     contentDX = layer.offsetX ?? 0
@@ -534,15 +538,13 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
     }
     content = c
   }
-  if (!content) return null
+  if (!cachedBase && !content) return null
+  }
 
   // Cache the expensive, unchanged layer content separately from the live
   // stroke. Pointer movement changes _strokeV every frame, but it must not
   // rerender text/smart transforms or re-run smart and preview filters.
   let out: HTMLCanvasElement
-  const cachedBase = anyLayer._strokeBaseCacheKey === baseCacheKey
-    ? anyLayer._strokeBaseCache as HTMLCanvasElement | undefined
-    : undefined
   if (cachedBase) {
     out = anyLayer._strokePreviewCanvas as HTMLCanvasElement | undefined
     if (!out || out.width !== doc.width || out.height !== doc.height) {
