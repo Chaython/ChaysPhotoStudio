@@ -586,10 +586,11 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       const dist = Math.hypot(fx - st.last.x, fy - st.last.y)
       if (dist > 0.01) st.traveled += dist
       if (dist > 0.01) {
-        for (const d of walkDabs(st.last.x, st.last.y, fx, fy, spacing)) stampDab(d.x, d.y, p)
+        const dabs = walkDabs(st.last.x, st.last.y, fx, fy, spacing)
+        for (const d of dabs) stampDab(d.x, d.y, p)
         // One composite refresh per pointer event, not one per generated dab.
         if (dist >= spacing) st.last = { x: fx, y: fy }
-        engine.requestRender()
+        if (dabs.length) engine.requestRender()
       }
       st.lastP = p
     },
