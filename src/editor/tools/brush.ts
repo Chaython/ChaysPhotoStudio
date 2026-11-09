@@ -459,7 +459,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
             py += Math.sin(a) * sr
           }
         }
-        engine.dab(px, py, drawFn, flow, Math.max(4, radius * extent))
+        engine.dab(px, py, drawFn, flow, Math.max(4, radius * extent), true)
       }
     }
   }
@@ -478,6 +478,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     st.airbrushTimer = setInterval(() => {
       if (!st.active || !st.airbrushPos) { stopAirbrush(); return }
       stampDab(st.airbrushPos.x, st.airbrushPos.y, st.lastP, AIRBRUSH_FLOW_FACTOR)
+      engine.requestRender()
     }, AIRBRUSH_INTERVAL_MS)
   }
 
@@ -552,6 +553,8 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       } else {
         stampDab(p.docX, p.docY, p)
       }
+      // All interpolated/symmetric dabs above share one render invalidation.
+      engine.requestRender()
       if (opts.airbrush === true) startAirbrush()
     },
 
@@ -582,8 +585,12 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       const spacing = strokeSpacing(opts, st.stamp)
       const dist = Math.hypot(fx - st.last.x, fy - st.last.y)
       if (dist > 0.01) st.traveled += dist
-      for (const d of walkDabs(st.last.x, st.last.y, fx, fy, spacing)) stampDab(d.x, d.y, p)
-      if (dist >= spacing) st.last = { x: fx, y: fy }
+      if (dist > 0.01) {
+        for (const d of walkDabs(st.last.x, st.last.y, fx, fy, spacing)) stampDab(d.x, d.y, p)
+        // One composite refresh per pointer event, not one per generated dab.
+        if (dist >= spacing) st.last = { x: fx, y: fy }
+        engine.requestRender()
+      }
       st.lastP = p
     },
 
