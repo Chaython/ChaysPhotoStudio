@@ -484,7 +484,8 @@ function applyFastPreviewFilter(out: HTMLCanvasElement, type: FilterType, params
 }
 
 export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement | null {
-  const cacheKey = `${doc._epoch}|${layer._v}|${layer._mv}|${layer.maskEnabled ? 1 : 0}|vm${layer.vectorMask?.enabled === false ? 0 : layer.vectorMask ? 1 : 0}|${doc.previewFilter && doc.previewFilter.layerId === layer.id ? JSON.stringify(doc.previewFilter) : ''}|${doc._strokeLayerId === layer.id ? `st${doc._strokeV}` : ''}|${layer.fx ? 'fx' : ''}`
+  const baseCacheKey = `${doc._epoch}|${layer._v}|${layer._mv}|${layer.maskEnabled ? 1 : 0}|vm${layer.vectorMask?.enabled === false ? 0 : layer.vectorMask ? 1 : 0}|${doc.previewFilter && doc.previewFilter.layerId === layer.id ? JSON.stringify(doc.previewFilter) : ''}|${layer.fx ? 'fx' : ''}`
+  const cacheKey = `${baseCacheKey}|${doc._strokeLayerId === layer.id ? `st${doc._strokeV}` : ''}`
   const anyLayer = layer as any
   if (anyLayer._cacheKey === cacheKey && anyLayer._cache) return anyLayer._cache
 
@@ -535,30 +536,52 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   }
   if (!content) return null
 
-  // work on a copy
-  const out = createCanvas(doc.width, doc.height)
+  // Cache the expensive, unchanged layer content separately from the live
+  // stroke. Pointer movement changes _strokeV every frame, but it must not
+  // rerender text/smart transforms or re-run smart and preview filters.
+  let out: HTMLCanvasElement
+  const cachedBase = anyLayer._strokeBaseCacheKey === baseCacheKey
+    ? anyLayer._strokeBaseCache as HTMLCanvasElement | undefined
+    : undefined
+  if (cachedBase) {
+    out = anyLayer._strokePreviewCanvas as HTMLCanvasElement | undefined
+    if (!out || out.width !== doc.width || out.height !== doc.height) {
+      out = createCanvas(doc.width, doc.height)
+      anyLayer._strokePreviewCanvas = out
+    }
+    const previewCtx = ctx2d(out)
+    previewCtx.clearRect(0, 0, doc.width, doc.height)
+    previewCtx.drawImage(cachedBase, 0, 0)
+  } else {
+    out = createCanvas(doc.width, doc.height)
+    const baseCtx = ctx2d(out)
+    baseCtx.drawImage(content, contentDX, contentDY)
+
+    // smart filters (non-destructive chain)
+    if (layer.kind === 'smart' && layer.smartFilters.length) {
+      for (const sf of layer.smartFilters) {
+        if (!sf.enabled) continue
+        const img = getProcessingPixelData(out)
+        imageOps.applyFilter(img, sf.type, sf.params)
+        putProcessingPixelData(out, img)
+      }
+    }
+
+    // dialog live-preview filter. Broad blurs use native Canvas2D preview
+    // instead of synchronous full-resolution JS pixel math on every slider tick.
+    if (doc.previewFilter && doc.previewFilter.layerId === layer.id) {
+      if (!applyFastPreviewFilter(out, doc.previewFilter.type, doc.previewFilter.params)) {
+        const img = getProcessingPixelData(out)
+        imageOps.applyFilter(img, doc.previewFilter.type, doc.previewFilter.params)
+        putProcessingPixelData(out, img)
+      }
+    }
+
+    anyLayer._strokeBaseCache = cloneCanvas(out)
+    anyLayer._strokeBaseCacheKey = baseCacheKey
+    anyLayer._strokePreviewCanvas = out
+  }
   const ctx = ctx2d(out)
-  ctx.drawImage(content, contentDX, contentDY)
-
-  // smart filters (non-destructive chain)
-  if (layer.kind === 'smart' && layer.smartFilters.length) {
-    for (const sf of layer.smartFilters) {
-      if (!sf.enabled) continue
-      const img = getProcessingPixelData(out)
-      imageOps.applyFilter(img, sf.type, sf.params)
-      putProcessingPixelData(out, img)
-    }
-  }
-
-  // dialog live-preview filter. Broad blurs use native Canvas2D preview
-  // instead of synchronous full-resolution JS pixel math on every slider tick.
-  if (doc.previewFilter && doc.previewFilter.layerId === layer.id) {
-    if (!applyFastPreviewFilter(out, doc.previewFilter.type, doc.previewFilter.params)) {
-      const img = getProcessingPixelData(out)
-      imageOps.applyFilter(img, doc.previewFilter.type, doc.previewFilter.params)
-      putProcessingPixelData(out, img)
-    }
-  }
 
   // active stroke buffer
   if (doc._stroke && doc._strokeLayerId === layer.id) {
