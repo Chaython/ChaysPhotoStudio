@@ -555,6 +555,7 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
     previewCtx.clearRect(0, 0, doc.width, doc.height)
     previewCtx.drawImage(cachedBase, 0, 0)
   } else {
+    if (!content) return null
     out = createCanvas(doc.width, doc.height)
     const baseCtx = ctx2d(out)
     baseCtx.drawImage(content, contentDX, contentDY)
