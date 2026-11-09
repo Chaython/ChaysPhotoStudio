@@ -4705,7 +4705,7 @@ export class Engine {
     this.requestRender()
   }
 
-  dab(x: number, y: number, draw: (ctx: CanvasRenderingContext2D, x: number, y: number) => void, flow = 1, radius = 64) {
+  dab(x: number, y: number, draw: (ctx: CanvasRenderingContext2D, x: number, y: number) => void, flow = 1, radius = 64, deferRender = false) {
     const doc = this.activeDoc
     if (!doc?._stroke) return
     const ctx = ctx2d(doc._stroke)
@@ -4724,7 +4724,10 @@ export class Engine {
     }
     // bump the stroke version so prepareLayer/flat cache keys pick up new dabs
     doc._strokeV = (doc._strokeV || 0) + 1
-    this.requestRender()
+    // Brush tools can emit many dabs for one pointer event. Let them batch
+    // invalidation and schedule one render after the complete event instead
+    // of queuing a renderer request for every individual dab.
+    if (!deferRender) this.requestRender()
   }
 
   endStroke(label = 'Brush Stroke') {
