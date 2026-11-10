@@ -1,4 +1,4 @@
-import { chooseLensfunCurve, matchLensfunRecords, lensfunDistortionScale, lensfunTcaScale, scoreLensfunModelMatch, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
+import { chooseLensfunCurve, matchLensfunRecords, lensfunDistortionScale, lensfunTcaScale, scoreLensfunModelMatch, selectLensfunVignettingSamples, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
@@ -945,4 +945,27 @@ const defaultedTca=chooseLensfunCurve([
 ],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:100})
 check(defaultedTca?.br===0.002 && defaultedTca.bb===-0.003,
   'Lensfun interpolation blends omitted polynomial coefficients using their model defaults')
+const vignetteSamples=[
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.1},
+  {model:'pa',focal:50,aperture:4,distance:100,k1:0.2},
+  {model:'pa',focal:50,aperture:5.6,distance:2,k1:0.3},
+] as const
+const closeFocusVignette=selectLensfunVignettingSamples([...vignetteSamples],
+  {maker:'',model:'',lens:'',focal:50,aperture:4,distance:2})
+const infinityVignette=selectLensfunVignettingSamples([...vignetteSamples],
+  {maker:'',model:'',lens:'',focal:50,aperture:4,distance:1000})
+check(closeFocusVignette.length===1&&closeFocusVignette[0].distance===2&&
+  closeFocusVignette[0].k1===0.1,
+  'Lensfun vignetting selects the matching near-focus calibration')
+check(infinityVignette.length===1&&infinityVignette[0].distance===100&&
+  infinityVignette[0].k1===0.2,
+  'Lensfun vignetting selects the infinity calibration for distant subjects')
+check(selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.1},
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.2},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:2}).length===0,
+  'Lensfun vignetting rejects equally ranked duplicate calibration samples')
+check(selectLensfunVignettingSamples([...vignetteSamples],
+  {maker:'',model:'',lens:'',focal:50,aperture:0,distance:2}).length===0,
+  'Lensfun vignetting remains disabled without a valid EXIF aperture')
 console.log('Scientific, DICOM-RLE, EXR, Lensfun calibration and multipage TIFF/DCX tests passed')
