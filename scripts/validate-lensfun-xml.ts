@@ -20,6 +20,12 @@ for(const [kind,model] of [
 check('distortion rejects ACM',isSupportedLensfunModel('distortion','acm'),false)
 check('TCA rejects distortion model',isSupportedLensfunModel('tca','poly5'),false)
 check('vignetting rejects TCA model',isSupportedLensfunModel('vignetting','linear'),false)
+check('distortion coefficient validation rejects linear TCA model',
+  hasRequiredLensfunCoefficients('distortion',curve('linear',{a:0,b:0,c:0})),false)
+check('TCA coefficient validation rejects distortion model',
+  hasRequiredLensfunCoefficients('tca',curve('poly5',{vr:1,br:0,cr:0,vb:1,bb:0,cb:0})),false)
+check('vignetting coefficient validation rejects linear TCA model',
+  hasRequiredLensfunCoefficients('vignetting',curve('linear',{aperture:4,distance:1000,k1:0,k2:0,k3:0})),false)
 
 check('poly3 distortion requires k1',hasRequiredLensfunCoefficients('distortion',curve('poly3',{k1:0.02})))
 check('poly3 distortion rejects missing k1',hasRequiredLensfunCoefficients('distortion',curve('poly3')),false)
