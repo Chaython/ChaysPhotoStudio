@@ -111,7 +111,7 @@ function commitStroke() {
   engine.pokeOverlay()
 }
 
-export const selectionBrushTool: Tool = {
+export const quickMaskTool: Tool = {
   id: 'quick-mask',
   cursor: 'none',
 
