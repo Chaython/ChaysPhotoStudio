@@ -136,3 +136,52 @@ export function warpCanvasPerspective(
   dc.putImageData(dst, 0, 0)
   return out
 }
+
+
+/** Map one source plane onto a destination quadrilateral without flattening
+ *  the surrounding document. Pixels outside the destination plane stay
+ *  transparent; callers can composite multiple planes in painter order. */
+export function warpCanvasQuadToQuad(
+  source: HTMLCanvasElement,
+  sourceQuad: Point2[],
+  destinationQuad: Point2[],
+  outW: number,
+  outH: number,
+): HTMLCanvasElement {
+  const out = document.createElement('canvas')
+  out.width = Math.max(1, Math.round(outW))
+  out.height = Math.max(1, Math.round(outH))
+  if (!isValidPerspectiveQuad(sourceQuad) || !isValidPerspectiveQuad(destinationQuad)) return out
+  const inverse = homography(destinationQuad, sourceQuad)
+  if (!inverse) return out
+
+  const minX = Math.max(0, Math.floor(Math.min(...destinationQuad.map(p => p.x))))
+  const minY = Math.max(0, Math.floor(Math.min(...destinationQuad.map(p => p.y))))
+  const maxX = Math.min(out.width - 1, Math.ceil(Math.max(...destinationQuad.map(p => p.x))))
+  const maxY = Math.min(out.height - 1, Math.ceil(Math.max(...destinationQuad.map(p => p.y))))
+  if (maxX < minX || maxY < minY) return out
+
+  const sc = source.getContext('2d', { willReadFrequently: true })
+  const dc = out.getContext('2d')
+  if (!sc || !dc) return out
+  const src = sc.getImageData(0, 0, source.width, source.height)
+  const dst = dc.createImageData(out.width, out.height)
+  const inside = (p: Point2): boolean => {
+    let hit = false
+    for (let i = 0, j = 3; i < 4; j = i++) {
+      const a = destinationQuad[i], b = destinationQuad[j]
+      if (((a.y > p.y) !== (b.y > p.y)) &&
+          p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) hit = !hit
+    }
+    return hit
+  }
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if (!inside({ x: x + 0.5, y: y + 0.5 })) continue
+      const sample = projectPoint(inverse, { x: x + 0.5, y: y + 0.5 })
+      sampleBilinear(src, sample.x, sample.y, dst.data, (y * out.width + x) * 4)
+    }
+  }
+  dc.putImageData(dst, 0, 0)
+  return out
+}
