@@ -38,6 +38,7 @@ import { sliceTool, hotspotTool } from './web-region-tools'
 import { sliceSelectTool } from './slice-select'
 import { artboardTool } from './artboard-tool'
 import { countTool } from './count'
+import { frameTool } from './frame-tool'
 
 export const TOOLS: Record<ToolId, Tool> = {
   'move': moveTool,
@@ -62,6 +63,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'slice-select': sliceSelectTool,
   'hotspot': hotspotTool,
   'artboard': artboardTool,
+  'frame': frameTool,
   'count': countTool,
   'brush': brushTool,
   'pencil': pencilTool,
