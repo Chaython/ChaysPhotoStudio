@@ -991,4 +991,14 @@ check(selectLensfunVignettingSamples([
 check(selectLensfunVignettingSamples([...vignetteSamples],
   {maker:'',model:'',lens:'',focal:50,aperture:0,distance:2}).length===0,
   'Lensfun vignetting remains disabled without a valid EXIF aperture')
+check(selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.1},
+  {model:'pa',focal:50,aperture:4,distance:100,k1:0.2},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:0}).length===0,
+  'Lensfun vignetting rejects ambiguous focus-distance samples when EXIF distance is missing')
+const singleUnknownDistanceVignette=selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.1},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:0})
+check(singleUnknownDistanceVignette.length===1&&singleUnknownDistanceVignette[0].k1===0.1,
+  'Lensfun vignetting can use one unique aperture sample when focus distance is unavailable')
 console.log('Scientific, DICOM-RLE, EXR, Lensfun calibration and multipage TIFF/DCX tests passed')
