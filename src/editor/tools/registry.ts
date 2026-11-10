@@ -10,6 +10,7 @@ import { magneticLassoTool } from './magnetic-lasso'
 import { measureTool } from './measure'
 import { objectSelectTool, quickSelectTool } from './select-tools'
 import { selectionBrushTool } from './selection-brush'
+import { quickMaskTool } from './quick-mask'
 import { magicWandTool } from './wand'
 import { brushTool, pencilTool } from './brush'
 import { mixerBrushTool } from './mixer-brush'
@@ -48,6 +49,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'polygon-lasso': polygonLassoTool,
   'magnetic-lasso': magneticLassoTool,
   'selection-brush': selectionBrushTool,
+  'quick-mask': quickMaskTool,
   'measure': measureTool,
   'object-select': objectSelectTool,
   'quick-select': quickSelectTool,
