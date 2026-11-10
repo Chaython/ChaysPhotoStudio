@@ -177,7 +177,10 @@ export function selectLensfunVignettingSamples(curves:LensfunCurve[],exif:Camera
   const selected:LensfunCurve[]=[]
   for(const focal of focals){
     const candidates=curves.filter(x=>x.focal===focal&&x.aperture!==undefined&&
-      Math.abs(x.aperture-exif.aperture)<=0.35)
+      Math.abs(x.aperture-exif.aperture)<=0.35&&
+      // A near-focus EXIF distance must not silently fall back to an infinity
+      // or unspecified-distance vignette calibration.
+      (exif.distance>=100||(x.distance!==undefined&&x.distance<100)))
     if(!candidates.length)continue
     const distanceScore=(sample:LensfunCurve)=>{
       const d=sample.distance
