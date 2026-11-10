@@ -70,13 +70,14 @@
     "hdr-object-layer:validate": "bun scripts/validate-hdr-object-layer.ts",
     "fill-coverage:validate": "bun scripts/validate-fill-coverage.ts",
     "heritage-formats:validate": "bun scripts/validate-heritage-raster.ts",
-    "formats:validate": "bun scripts/validate-heritage-raster.ts && bun scripts/validate-new-formats.ts && bun scripts/validate-psd-roundtrip.ts",
+    "formats:validate": "bun scripts/validate-heritage-raster.ts && bun scripts/validate-new-formats.ts && bun scripts/validate-psd-roundtrip.ts && bun run lensfun:validate",
     "video-frame:validate": "bun scripts/validate-video-frame-picker.ts",
     "pdf:validate": "bun scripts/validate-pdf-import.ts && bun scripts/validate-pdf-native.ts && bun scripts/validate-pdf-export.ts",
     "psd:validate": "bun scripts/validate-psd-roundtrip.ts",
     "psd:real-validate": "PSD_REAL_CORPUS=1 bun scripts/validate-psd-roundtrip.ts",
     "raw-corpus:validate": "bun scripts/validate-camera-raw-corpus.ts",
-    "dock-routing:validate": "bun scripts/validate-dock-routing.ts"
+    "dock-routing:validate": "bun scripts/validate-dock-routing.ts",
+    "lensfun:validate": "bun scripts/validate-lensfun-xml.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
