@@ -24,7 +24,7 @@ import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import { clamp, createCanvas, ctx2d } from '../utils/canvas'
 import {
-  getOptions, brushSettingsFrom, walkDabs, walkDabsEach, pencilDab,
+  getOptions, brushSettingsFrom, walkDabsEach, pencilDab,
   symmetricPoints, drawSymmetryOverlay, ema,
 } from './shared'
 import { getTip, drawTipCursor, tipExtentMul, ERASER_TIP_IDS } from './brush-tips'
