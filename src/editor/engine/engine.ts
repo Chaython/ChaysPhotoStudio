@@ -1496,6 +1496,8 @@ export class Engine {
       ...src,
       id: uid(),
       name: `${src.name} copy`,
+      visible: src.frame ? true : src.visible,
+      frame: src.frame ? { ...structuredClone(src.frame), contentLayerId: undefined } : src.frame,
       canvas: src.canvas ? cloneCanvas(src.canvas) : null,
       hdrPixels: src.hdrPixels ? new Float32Array(src.hdrPixels) : src.hdrPixels,
       _hdrPreviewBefore: src._hdrPreviewBefore ? new Float32Array(src._hdrPreviewBefore) : src._hdrPreviewBefore,
