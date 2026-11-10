@@ -337,6 +337,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       ['sharpenAmount','Sharpen amount',0,200,1],
       ['sharpenRadius','Sharpen radius (developed pixels)',1,3,1],
       ['sharpenThreshold','Sharpen noise threshold',0,100,1],
+      ['defringe','Purple / green fringe removal',0,100,1],
     ] as [keyof RawDetailSettings,string,number,number,number][]){
       const input=field(label,'number',String(current.detail[key]),undefined,detail.grid) as HTMLInputElement
       input.min=String(min);input.max=String(max);input.step=String(step)
@@ -345,7 +346,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     }
     const detailNote=document.createElement('p')
     detailNote.style.cssText='grid-column:1/-1;opacity:.8;font-size:12px'
-    detailNote.textContent='16-bit display-referred, edge-aware noise reduction and sharpening. Preview operates on a downsampled image, so inspect full-resolution output at 100% for accurate detail.'
+    detailNote.textContent='16-bit edge-aware noise reduction, selective purple/green edge defringing and sharpening. Defringe targets isolated color spikes at contrast edges rather than globally desaturating the image. Preview is downsampled; inspect full-resolution output at 100%.'
     const detailReset=document.createElement('button')
     detailReset.type='button';detailReset.textContent='Reset detail'
     detailReset.style.cssText='grid-column:1/-1;padding:7px 10px;border:1px solid var(--border);border-radius:6px'
