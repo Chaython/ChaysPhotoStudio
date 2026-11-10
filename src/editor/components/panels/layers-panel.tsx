@@ -95,7 +95,8 @@ export function LayersPanel() {
       return
     }
     soloBackup.current = Object.fromEntries(doc.layers.map(l => [l.id, l.visible]))
-    for (const l of doc.layers) l.visible = l.id === id
+    const soloIds = selectedSet.has(id) && selectedSet.size > 1 ? selectedSet : new Set([id])
+    for (const l of doc.layers) l.visible = soloIds.has(l.id)
     engine.pushHistory('Solo Layer')
     engine.emit()
   }
@@ -195,7 +196,12 @@ export function LayersPanel() {
             renaming={renaming === meta.id}
             renameValue={renameValue}
             onActivate={e => setActive(meta.id, e)}
-            onToggleVisibility={(solo) => solo ? toggleSolo(meta.id) : engine.setLayerProps(meta.id, { visible: !meta.visible })}
+            onToggleVisibility={(solo) => {
+              if (solo) toggleSolo(meta.id)
+              else if (selectedSet.has(meta.id) && selectedSet.size > 1)
+                engine.setSelectedLayerProps({ visible: !meta.visible }, 'Layer Visibility')
+              else engine.setLayerProps(meta.id, { visible: !meta.visible })
+            }}
             onStartRename={() => { setRenaming(meta.id); setRenameValue(meta.name) }}
             onRename={v => {
               engine.setLayerProps(meta.id, { name: v })
