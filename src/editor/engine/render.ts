@@ -678,8 +678,10 @@ export class Viewport {
     if (this.panning) {
       const doc = engine.activeDoc
       if (doc) {
-        doc.view.panX = this.panStart.panX + (e.clientX - this.panStart.x)
-        doc.view.panY = this.panStart.panY + (e.clientY - this.panStart.y)
+        const sx = e.clientX - this.panStart.x, sy = e.clientY - this.panStart.y
+        const angle = -(Number(doc.view.rotation) || 0) * Math.PI / 180
+        doc.view.panX = this.panStart.panX + sx * Math.cos(angle) - sy * Math.sin(angle)
+        doc.view.panY = this.panStart.panY + sx * Math.sin(angle) + sy * Math.cos(angle)
         doc.view.autoFit = false // user pan → sticky per-doc view
         this.needsDraw = true
         this.overlayDirty = true
