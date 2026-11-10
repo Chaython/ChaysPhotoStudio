@@ -229,6 +229,22 @@ export function pickLayerAt(docX: number, docY: number): string | null {
 
 let regionFalloffScratch = new Float32Array(0)
 let regionFalloffBusy = false
+let regionBeforeScratch = new Uint8ClampedArray(0)
+let regionBeforeBusy = false
+
+function borrowRegionBefore(source: Uint8ClampedArray): Uint8ClampedArray {
+  if (!regionBeforeBusy) {
+    if (regionBeforeScratch.length < source.length) {
+      let capacity = Math.max(1024, regionBeforeScratch.length || 1024)
+      while (capacity < source.length) capacity *= 2
+      regionBeforeScratch = new Uint8ClampedArray(capacity)
+    }
+    regionBeforeBusy = true
+    regionBeforeScratch.set(source)
+    return regionBeforeScratch.subarray(0, source.length)
+  }
+  return new Uint8ClampedArray(source)
+}
 
 function borrowRegionFalloff(length: number): Float32Array {
   // All current region processors are synchronous. Keep a reusable buffer for
@@ -365,7 +381,8 @@ export function regionProcess(
   if (rw <= 0 || rh <= 0) return false
   const c = ctx2d(canvas)
   const region = c.getImageData(x0, y0, rw, rh)
-  const before = new Uint8ClampedArray(region.data)
+  const before = borrowRegionBefore(region.data)
+  const ownsBeforeScratch = before.buffer === regionBeforeScratch.buffer
   const falloff = borrowRegionFalloff(rw * rh)
   const ownsScratch = falloff.buffer === regionFalloffScratch.buffer
   const inner = clamp(hardness / 100, 0, 0.98)
@@ -436,6 +453,7 @@ export function regionProcess(
     return true
   } finally {
     if (ownsScratch) regionFalloffBusy = false
+    if (ownsBeforeScratch) regionBeforeBusy = false
   }
 }
 
