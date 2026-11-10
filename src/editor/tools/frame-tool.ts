@@ -110,10 +110,13 @@ export const frameTool: Tool = {
   onPointerDown(p: PointerInfo) {
     const doc = engine.activeDoc
     if (!doc || p.button !== 0) return
-    const hit = [...frameLayers(doc)].reverse().find(layer => layer.frame && frameContains(layer.frame, p.docX, p.docY))
+    const tolerance = 9 / Math.max(.05, doc.view.zoom)
+    const hit = [...frameLayers(doc)].reverse().find(layer => layer.frame &&
+      (frameContains(layer.frame, p.docX, p.docY) ||
+       Math.hypot(p.docX - layer.frame.x - layer.frame.width, p.docY - layer.frame.y - layer.frame.height) <= tolerance))
     if (hit?.frame) {
       selectedFrameId = hit.id; doc.activeLayerId = hit.id; doc.selectedLayerIds = [hit.id]
-      const f = hit.frame, tolerance = 9 / Math.max(.05, doc.view.zoom)
+      const f = hit.frame
       const resize = Math.hypot(p.docX - f.x - f.width, p.docY - f.y - f.height) <= tolerance
       drag = { layerId: hit.id, kind: resize ? 'resize' : 'move', startX: p.docX, startY: p.docY, original: structuredClone(f), draft: structuredClone(f) }
       engine.emitOverlay(); return
@@ -129,11 +132,13 @@ export const frameTool: Tool = {
     if (d.kind === 'new') {
       let w = dx, h = dy
       if (p.shift) { const side = Math.max(Math.abs(w), Math.abs(h)); w = Math.sign(w || 1) * side; h = Math.sign(h || 1) * side }
-      d.draft = { ...d.draft, x: clamp(Math.min(d.startX, d.startX + w), 0, doc.width - 1), y: clamp(Math.min(d.startY, d.startY + h), 0, doc.height - 1), width: Math.max(1, Math.min(doc.width, Math.abs(w))), height: Math.max(1, Math.min(doc.height, Math.abs(h))) }
+      const x = clamp(Math.min(d.startX, d.startX + w), 0, doc.width - 1)
+      const y = clamp(Math.min(d.startY, d.startY + h), 0, doc.height - 1)
+      d.draft = { ...d.draft, x, y, width: Math.max(1, Math.min(doc.width - x, Math.abs(w))), height: Math.max(1, Math.min(doc.height - y, Math.abs(h))) }
     } else if (d.kind === 'move' && d.original) d.draft = { ...d.original, x: clamp(d.original.x + dx, 0, doc.width - d.original.width), y: clamp(d.original.y + dy, 0, doc.height - d.original.height) }
     else if (d.original) {
       const width = clamp(d.original.width + dx, 2, doc.width - d.original.x)
-      const height = p.shift ? width : clamp(d.original.height + dy, 2, doc.height - d.original.y)
+      const height = p.shift ? Math.min(width, doc.height - d.original.y) : clamp(d.original.height + dy, 2, doc.height - d.original.y)
       d.draft = { ...d.original, width, height }
     }
     engine.pokeOverlay()
