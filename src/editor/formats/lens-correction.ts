@@ -71,6 +71,7 @@ export function applyLensProfile(image:RawImage,input:LensProfile):RawImage {
       const d=cal.distortion
       // Lensfun polynomial correction maps; input stays untouched.
       if(d.model==='poly3')radial*=1-(d.k1??0)+(d.k1??0)*r2
+      if(d.model==='poly5')radial*=1+(d.k1??0)*r2+(d.k2??0)*r2*r2
       if(d.model==='ptlens')radial*=1-(d.a??0)-(d.b??0)-(d.c??0)+
         (d.c??0)*r+(d.b??0)*r2+(d.a??0)*r2*r
     }
