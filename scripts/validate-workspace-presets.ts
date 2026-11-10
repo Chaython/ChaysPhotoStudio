@@ -105,7 +105,7 @@ assert.deepEqual(defaultToolbarLayout('photoshop').map(s => s.kind === 'single' 
   ['text', 'type-mask-horizontal', 'type-mask-vertical'],
   ['path-select', 'direct-select'],
   ['shape'],
-  ['hand'],
+  ['hand', 'rotate-view'],
   ['zoom'],
 ], 'photoshop toolbar template must stay stable')
 
