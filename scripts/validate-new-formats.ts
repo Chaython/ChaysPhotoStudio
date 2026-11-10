@@ -1,4 +1,4 @@
-import { chooseLensfunCurve, scoreLensfunModelMatch, type CameraExif } from '../src/editor/formats/lensfun-xml'
+import { chooseLensfunCurve, matchLensfunRecords, scoreLensfunModelMatch, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
@@ -885,4 +885,26 @@ check(scoreLensfunModelMatch('50mm','Canon EF 50mm')===0,
 check(scoreLensfunModelMatch('EF 50mm f/1.8','Canon EF 50mm f/1.8 STM')<
   scoreLensfunModelMatch('EF 50mm f/1.8 STM','Canon EF 50mm f/1.8 STM'),
   'Lensfun prefers the most specific contained model string')
+const lensfunMeta={fields:[
+  {group:'EXIF',tag:'LensModel',label:'Lens Model',value:'Canon EF 50mm f/1.8 STM'},
+  {group:'EXIF',tag:'FocalLength',label:'Focal Length',value:'50 mm'},
+  {group:'EXIF',tag:'FNumber',label:'F Number',value:'4'},
+]} as never
+const lensfunRecord=(maker:string,model:string):LensfunLensRecord=>({
+  maker,model,crop:1.5,curves:{distortion:[{model:'poly3',focal:50,k1:0.1}],tca:[],vignetting:[]},
+})
+const preciseLensMatch=matchLensfunRecords([
+  lensfunRecord('Canon','EF 50mm f/1.8 STM'),
+  lensfunRecord('Third Party','Canon EF 50mm f/1.8 STM'),
+],lensfunMeta)
+check(preciseLensMatch?.maker==='Third Party' &&
+  preciseLensMatch.distortion?.k1===0.1,
+  'Lensfun record matching selects the unique exact model over a contained partial match')
+check(matchLensfunRecords([
+  lensfunRecord('Canon','Canon EF 50mm f/1.8 STM'),
+  lensfunRecord('Third Party','Canon EF 50mm f/1.8 STM'),
+],lensfunMeta)===null,
+  'Lensfun record matching rejects equal-best manufacturer ambiguity')
+check(matchLensfunRecords([lensfunRecord('Generic','50mm')],lensfunMeta)===null,
+  'Lensfun record matching rejects generic focal-only profile names')
 console.log('Scientific, DICOM-RLE, EXR, Lensfun calibration and multipage TIFF/DCX tests passed')
