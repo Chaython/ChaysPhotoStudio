@@ -1,4 +1,4 @@
-import { chooseLensfunCurve, matchLensfunRecords, lensfunDistortionScale, lensfunTcaScale, scoreLensfunModelMatch, selectLensfunVignettingSamples, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
+import { chooseLensfunCurve, matchLensfunRecords, lensfunDistortionScale, lensfunTcaScale, scoreLensfunModelMatch, selectLensfunVignettingSamples, isSupportedLensfunModel, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
@@ -907,6 +907,17 @@ check(matchLensfunRecords([
   'Lensfun record matching rejects equal-best manufacturer ambiguity')
 check(matchLensfunRecords([lensfunRecord('Generic','50mm')],lensfunMeta)===null,
   'Lensfun record matching rejects generic focal-only profile names')
+check(isSupportedLensfunModel('distortion','poly3') &&
+  isSupportedLensfunModel('distortion','poly5') &&
+  isSupportedLensfunModel('distortion','ptlens') &&
+  !isSupportedLensfunModel('distortion','linear') &&
+  isSupportedLensfunModel('tca','linear') &&
+  isSupportedLensfunModel('tca','poly3') &&
+  !isSupportedLensfunModel('tca','poly5') &&
+  isSupportedLensfunModel('vignetting','pa') &&
+  !isSupportedLensfunModel('vignetting','poly3') &&
+  !isSupportedLensfunModel('distortion','acm'),
+  'Lensfun XML only accepts documented supported models for each calibration kind')
 const polyTca={model:'poly3',focal:50,vr:1.001,br:0.002,cr:0.003,
   vb:0.999,bb:-0.004,cb:0.005} as const
 check(Math.abs(lensfunTcaScale(polyTca,'red',0.5)-(1.001+0.002*0.25+0.003*0.5))<1e-9,
