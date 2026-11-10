@@ -16,6 +16,7 @@ import { useKeyboardShortcuts } from '../../keyboard-shortcuts'
 import { useEditorStore, isInspectorPreset } from '../../store'
 import { engine } from '../../engine/engine'
 import { openFiles, placeImageAsSmartLayer } from '../../engine/io'
+import { findImageFrameAtScreen } from '../../tools/frame-tool'
 import { isVideoImport } from '../../formats/photopea-formats'
 import { startAutoSave } from '../../engine/autosave'
 import { dataUrlToCanvas } from '../../image-ops'
@@ -223,7 +224,7 @@ export function EditorApp() {
       if (others.length) useEditorStore.getState().pushToast(`Skipped ${others.length} unsupported file${others.length > 1 ? 's' : ''}`, 'error')
       if (projects.length) void openFiles(projects)
       if (importable.length === 1 && engine.activeDoc) {
-        void placeImageAsSmartLayer(importable[0])
+        void placeImageAsSmartLayer(importable[0], findImageFrameAtScreen(e.clientX, e.clientY))
       } else if (importable.length) {
         void openFiles(importable)
       }
