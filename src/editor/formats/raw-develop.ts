@@ -538,6 +538,8 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     tca.step='0.0001';tca.min='-0.05';tca.max='0.05'
     const vignette=field('Vignette correction (-0.6…0.6)','number',String(current.lensProfile.vignette),undefined,optics.grid) as HTMLInputElement
     vignette.step='0.01';vignette.min='-0.6';vignette.max='0.6'
+    const edgeMode=field('Corrected image edges','select',current.lensProfile.edgeMode,
+      ['extend|Extend edge pixels','black|Fill outside with black','transparent|Make outside transparent'],optics.grid) as HTMLSelectElement
     const lensStatus=document.createElement('p')
     lensStatus.style.cssText='font-size:12px;overflow-wrap:anywhere;opacity:.85;margin-top:10px'
     const camera=cameraExif(metadata)
@@ -672,7 +674,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         channel,curveInputs[channel].map(input=>input.valueAsNumber),
       ]))),
       lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,
-        tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
+        tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,edgeMode:edgeMode.value as LensProfile['edgeMode'],lensfun:chosenLensfun},
       localMasks:normalizeRawLocalMasks(localMasks),
       detail:normalizeRawDetail(Object.fromEntries(Object.entries(detailInputs).map(([key,input])=>[key,input.valueAsNumber]))),
     })
@@ -925,7 +927,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     for(const band of RAW_MIX_BANDS)
       for(const property of mixProperties)mixInputs[band][property].addEventListener('input',schedulePreview)
     const sensorInputs=[exposure,whiteBalance,matrixMode,...multiplierInputs,interpolation,highlight,denoise,
-      k1,k2,tca,vignette,lensName]
+      k1,k2,tca,vignette,edgeMode,lensName]
     for(const input of sensorInputs){
       input.addEventListener('input',schedulePreview)
       input.addEventListener('change',schedulePreview)
