@@ -54,7 +54,7 @@ export function EditorApp() {
     document.documentElement.classList.toggle('zphoto', true)
     window.localStorage.setItem('chays-photo-studio-theme', theme)
     const desktop = (window as any).chaysPhotoStudio
-    if (desktop?.platform === 'win32') void desktop.setTitleBarTheme?.(theme === 'oled')
+    if (desktop?.platform === 'win32') void desktop.setTitleBarTheme?.(theme)
   }, [theme])
 
   useEffect(() => {
