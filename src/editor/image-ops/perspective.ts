@@ -56,6 +56,24 @@ export function quadOutputSize(q: Point2[]): { w: number; h: number } {
   }
 }
 
+
+/** Reject collapsed, self-crossing and non-finite plane quads before solving a homography. */
+export function isValidPerspectiveQuad(quad: Point2[]): boolean {
+  if (quad.length !== 4 || quad.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return false
+  let twiceArea = 0
+  let sign = 0
+  for (let i = 0; i < 4; i++) {
+    const a = quad[i], b = quad[(i + 1) % 4], c = quad[(i + 2) % 4]
+    twiceArea += a.x * b.y - b.x * a.y
+    const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
+    if (Math.abs(cross) < 1e-6) return false
+    const nextSign = Math.sign(cross)
+    if (sign && nextSign !== sign) return false
+    sign = nextSign
+  }
+  return Math.abs(twiceArea) > 1
+}
+
 function sampleBilinear(src: ImageData, x: number, y: number, out: Uint8ClampedArray, j: number) {
   if (x < -0.5 || y < -0.5 || x > src.width - 0.5 || y > src.height - 0.5) {
     out[j] = out[j + 1] = out[j + 2] = out[j + 3] = 0
