@@ -276,7 +276,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
           <label className="ml-auto flex items-center gap-1.5 text-[11px]"><input type="checkbox" checked={preview} onChange={e => setPreview(e.target.checked)} /> Preview</label>
         </div>
         <canvas ref={previewCanvasRef} width={PREVIEW_W} height={PREVIEW_H} onPointerDown={handlePreviewPointerDown} onPointerMove={handlePreviewPointerMove} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag} className="w-full rounded border border-border cursor-crosshair touch-none" aria-label="Blur Gallery focus editor" />
-        <p className="text-[10px] text-muted-foreground">{mode === 'field' ? 'Click to add blur pins. Select a pin by clicking near it, then adjust its blur amount.' : mode === 'iris' ? 'Click to position the sharp elliptical focus area. Adjust its width, height and transition.' : 'Click to position the sharp focus strip. Adjust its width, angle and transition.'}</p>
+        <p className="text-[10px] text-muted-foreground">{mode === 'field' ? 'Click to add blur pins or drag existing pins to reposition them. Select a pin to adjust its blur amount.' : mode === 'iris' ? 'Drag to position the sharp elliptical focus area. Adjust its width, height, rotation and transition.' : 'Drag to position the sharp focus strip. Adjust its width, angle and transition.'}</p>
         {control('Maximum Blur', maxBlur, 1, 60, 1, updateMaxBlur)}
         {mode === 'field' && <>
           {control('Selected Pin', selectedPin + 1, 1, Math.max(1, pins.length), 1, v => setSelectedPin(Math.min(pins.length - 1, v - 1)))}
