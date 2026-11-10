@@ -106,8 +106,30 @@ export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
             void (async () => {
               try {
                 const c = await fileToCanvas(file)
-                engine.addLayerFromCanvas(c, 'Pasted Image')
-                useEditorStore.getState().pushToast('Pasted image as a new layer', 'success')
+                // Pasting an image into an empty workspace should behave like
+                // creating a new image document: preserve native pixel size,
+                // with transparency around the pasted layer (not a cropped
+                // or flattened image-sized background).
+                if (!engine.activeDoc) {
+                  engine.newDocument({
+                    name: 'Pasted Image',
+                    width: c.width,
+                    height: c.height,
+                    fill: 'transparent',
+                  })
+                  const layer = engine.addLayerFromCanvas(c, 'Pasted Image', {
+                    center: false,
+                    historyLabel: 'Paste Image',
+                  })
+                  if (!layer) throw new Error('Could not add pasted image to the new document')
+                  useEditorStore.getState().pushToast(
+                    `Created a ${c.width} × ${c.height} transparent document from clipboard`,
+                    'success',
+                  )
+                } else {
+                  engine.addLayerFromCanvas(c, 'Pasted Image')
+                  useEditorStore.getState().pushToast('Pasted image as a new layer', 'success')
+                }
               } catch {
                 useEditorStore.getState().pushToast('Could not decode the pasted image', 'error')
               }
