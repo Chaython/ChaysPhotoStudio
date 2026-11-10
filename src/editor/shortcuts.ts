@@ -98,7 +98,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'layerViaCut', label: 'Layer via Cut', section: 'Edit', defaultCombo: 'ctrl+shift+j',
     run: () => engine.layerViaSelection('cut') },
   { id: 'newLayer', label: 'New Layer', section: 'Edit', defaultCombo: 'ctrl+shift+n', run: () => engine.addRasterLayer() },
-  { id: 'transform', label: 'Free Transform…', section: 'Edit', defaultCombo: 'ctrl+t', run: () => openDlg('transform', { layerId: engine.activeLayer?.id }) },
+  { id: 'transform', label: 'Free Transform…', section: 'Edit', defaultCombo: 'ctrl+t', run: () => { const doc = engine.activeDoc; const ids = doc?.selectedLayerIds ?? []; const group = ids.length > 1 && ids.includes(doc?.activeLayerId ?? '') ? ids : undefined; openDlg('transform', { layerId: engine.activeLayer?.id, ...(group ? { layerIds: group } : {}) }) } },
   { id: 'mergeDown', label: 'Merge Down', section: 'Edit', defaultCombo: 'ctrl+e', run: () => engine.mergeDown() },
   { id: 'mergeVisible', label: 'Merge Visible', section: 'Edit', defaultCombo: 'ctrl+shift+e', run: () => engine.mergeVisible() },
   // ---- Image ----
