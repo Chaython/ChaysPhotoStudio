@@ -971,6 +971,13 @@ check(closeFocusVignette.length===1&&closeFocusVignette[0].distance===2&&
 check(infinityVignette.length===1&&infinityVignette[0].distance===100&&
   infinityVignette[0].k1===0.2,
   'Lensfun vignetting selects the infinity calibration for distant subjects')
+const unknownDistanceVignette=selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,k1:0.3},
+  {model:'pa',focal:50,aperture:4,distance:100,k1:0.2},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:1000})
+check(unknownDistanceVignette.length===1&&unknownDistanceVignette[0].distance===100&&
+  unknownDistanceVignette[0].k1===0.2,
+  'Lensfun vignetting does not mistake a missing focus distance for an infinity calibration')
 check(selectLensfunVignettingSamples([
   {model:'pa',focal:50,aperture:4,distance:2,k1:0.1},
   {model:'pa',focal:50,aperture:4,distance:2,k1:0.2},
