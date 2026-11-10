@@ -608,11 +608,13 @@ export class Viewport {
     if (e.button === 2) return // context menu
     const rect = this.rect()
     if (!rect) return
-    const sx = e.clientX - rect.left, sy = e.clientY - rect.top
-    this.lastMouse = rotateScreenPoint(sx, sy, Number(doc?.view.rotation) || 0, this.host?.clientWidth ?? 0, this.host?.clientHeight ?? 0)
+    const sx0 = e.clientX - rect.left, sy0 = e.clientY - rect.top
+    const doc = engine.activeDoc
+    const mapped = rotateScreenPoint(sx0, sy0, Number(doc?.view.rotation) || 0, this.host?.clientWidth ?? 0, this.host?.clientHeight ?? 0)
+    const sx = mapped.x, sy = mapped.y
+    this.lastMouse = mapped
 
     // ---- rulers & guides ----
-    const doc = engine.activeDoc
     const prefs = useEditorStore.getState().view
     if (doc && prefs.showRulers && e.button === 0) {
       const inTopRuler = sy < RULER_W && sx >= RULER_W
