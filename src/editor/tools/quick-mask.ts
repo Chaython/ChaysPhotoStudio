@@ -1,10 +1,10 @@
 // ============================================================
 // Quick Mask — Photoshop-style painted selection overlay.
 //
-// While active, the selected area is shown as a colored overlay instead of
-// marching ants. Size / Hardness / Opacity control the grayscale selection
-// mask itself, so soft or low-opacity strokes remain editable as partial
-// selection values. Alt temporarily subtracts; Shift temporarily adds.
+// While active, masked-out pixels are shown with a red overlay. With no
+// existing selection the document starts fully selected (no red overlay).
+// Size / Hardness / Opacity edit the grayscale mask non-destructively; Alt
+// temporarily subtracts from the selection and Shift temporarily adds.
 // ============================================================
 import type { PointerInfo, Tool } from '../types'
 import { engine } from '../engine/engine'
@@ -22,6 +22,11 @@ function ensureLiveMask() {
   if (!doc) { liveMask = null; liveDocId = null; return }
   if (liveMask && liveDocId === doc.id && liveMask.width === doc.width && liveMask.height === doc.height) return
   liveMask = doc.selection ? cloneCanvas(doc.selection.mask) : createCanvas(doc.width, doc.height)
+  if (!doc.selection) {
+    const maskCtx = ctx2d(liveMask)
+    maskCtx.fillStyle = '#fff'
+    maskCtx.fillRect(0, 0, doc.width, doc.height)
+  }
   liveDocId = doc.id
 }
 
@@ -54,8 +59,6 @@ function dab(x: number, y: number) {
   mc.globalAlpha = opacity
   softDab(mc, x, y, radius, hardness, '#ffffff')
   mc.restore()
-
-
 }
 
 function paintTo(p: PointerInfo) {
