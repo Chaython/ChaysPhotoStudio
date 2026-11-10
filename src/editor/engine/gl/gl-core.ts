@@ -214,6 +214,7 @@ const QUAD = new Float32Array([
 
 let quadBuf: WebGLBuffer | null = null
 const attribLocationCache = new WeakMap<WebGLProgram, number>()
+const quadVaoCache = new WeakMap<WebGLProgram, WebGLVertexArrayObject>()
 const uniformLocationCache = new WeakMap<WebGLProgram, Map<string, WebGLUniformLocation | null>>()
 
 /** Cache immutable shader-interface lookups; querying GL during every pass can synchronize with the driver. */
@@ -235,18 +236,26 @@ export function drawQuad(gl: WebGL2RenderingContext, program: WebGLProgram): voi
     gl.bindBuffer(gl.ARRAY_BUFFER, null)
   }
   gl.useProgram(program)
-  gl.bindVertexArray(null)
-  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf)
-  let loc = attribLocationCache.get(program)
-  if (loc === undefined) {
-    loc = gl.getAttribLocation(program, 'aPos')
-    attribLocationCache.set(program, loc)
+  let vao = quadVaoCache.get(program)
+  if (!vao) {
+    let loc = attribLocationCache.get(program)
+    if (loc === undefined) {
+      loc = gl.getAttribLocation(program, 'aPos')
+      attribLocationCache.set(program, loc)
+    }
+    if (loc < 0) return
+    vao = gl.createVertexArray() ?? undefined
+    if (!vao) return
+    gl.bindVertexArray(vao)
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf)
+    gl.enableVertexAttribArray(loc)
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
+    quadVaoCache.set(program, vao)
+  } else {
+    gl.bindVertexArray(vao)
   }
-  if (loc < 0) return
-  gl.enableVertexAttribArray(loc)
-  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
   gl.drawArrays(gl.TRIANGLES, 0, 6)
-  gl.bindBuffer(gl.ARRAY_BUFFER, null)
+  gl.bindVertexArray(null)
 }
 
 // ---------------- textures ----------------
