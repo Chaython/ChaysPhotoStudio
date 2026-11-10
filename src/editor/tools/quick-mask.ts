@@ -12,45 +12,24 @@ import { cloneCanvas, createCanvas, ctx2d } from '../utils/canvas'
 import { drawBrushCursor, getOptions, softDab, walkDabsEach } from './shared'
 
 let liveMask: HTMLCanvasElement | null = null
-let tintMask: HTMLCanvasElement | null = null
 let liveDocId: string | null = null
-let tintColor = ''
 let activeStroke = false
 let subtractStroke = false
 let lastPoint: { x: number; y: number } | null = null
 
-function rebuildTint() {
-  const doc = engine.activeDoc
-  if (!doc || !liveMask) { tintMask = null; return }
-  const opts = getOptions('quick-mask')
-  const color = typeof opts.overlayColor === 'string' ? opts.overlayColor : '#ef4444'
-  const out = createCanvas(doc.width, doc.height)
-  const c = ctx2d(out)
-  c.drawImage(liveMask, 0, 0)
-  c.globalCompositeOperation = 'source-in'
-  c.fillStyle = color
-  c.fillRect(0, 0, doc.width, doc.height)
-  c.globalCompositeOperation = 'source-over'
-  tintMask = out
-  tintColor = color
-}
-
 function ensureLiveMask() {
   const doc = engine.activeDoc
-  if (!doc) { liveMask = null; tintMask = null; liveDocId = null; return }
+  if (!doc) { liveMask = null; liveDocId = null; return }
   if (liveMask && liveDocId === doc.id && liveMask.width === doc.width && liveMask.height === doc.height) return
   liveMask = doc.selection ? cloneCanvas(doc.selection.mask) : createCanvas(doc.width, doc.height)
   liveDocId = doc.id
-  rebuildTint()
 }
 
 function resetLive() {
   activeStroke = false
   lastPoint = null
   liveMask = null
-  tintMask = null
   liveDocId = null
-  tintColor = ''
 }
 
 function strokeIsSubtract(p: PointerInfo): boolean {
@@ -76,15 +55,7 @@ function dab(x: number, y: number) {
   softDab(mc, x, y, radius, hardness, '#ffffff')
   mc.restore()
 
-  if (!tintMask || tintColor !== (opts.overlayColor ?? '#ef4444')) rebuildTint()
-  if (tintMask) {
-    const tc = ctx2d(tintMask)
-    tc.save()
-    tc.globalCompositeOperation = subtractStroke ? 'destination-out' : 'source-over'
-    tc.globalAlpha = opacity
-    softDab(tc, x, y, radius, hardness, typeof opts.overlayColor === 'string' ? opts.overlayColor : '#ef4444')
-    tc.restore()
-  }
+
 }
 
 function paintTo(p: PointerInfo) {
