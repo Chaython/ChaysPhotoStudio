@@ -209,7 +209,8 @@ export const healingBrushTool: Tool = {
     })
     const stepped = line.count > 0
     if (stepped || Math.hypot(p.docX - hst.last.x, p.docY - hst.last.y) >= spacing) {
-      hst.last = { x: p.docX, y: p.docY }
+      hst.last.x = p.docX
+      hst.last.y = p.docY
     }
   },
 
@@ -412,7 +413,10 @@ export const spotHealingTool: Tool = {
     const opts = getOptions('spot-healing')
     const spacing = Math.max(1, (Number(opts.size) || 40) * Math.max(.01, (Number(opts.spacing) || 25) / 100))
     walkDabsEach(spotLast.x, spotLast.y, p.docX, p.docY, spacing, (x, y) => spotMark(x, y))
-    if (Math.hypot(p.docX - spotLast.x, p.docY - spotLast.y) >= spacing) spotLast = { x: p.docX, y: p.docY }
+    if (Math.hypot(p.docX - spotLast.x, p.docY - spotLast.y) >= spacing) {
+      spotLast.x = p.docX
+      spotLast.y = p.docY
+    }
     engine.pokeOverlay()
   },
 
