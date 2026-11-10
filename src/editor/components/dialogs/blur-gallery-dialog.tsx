@@ -19,12 +19,13 @@ function smoothstep(a: number, b: number, value: number): number {
   return t * t * (3 - 2 * t)
 }
 
-function renderBlurGallery(
+async function renderBlurGallery(
   source: HTMLCanvasElement,
   mode: Mode,
   pins: Pin[],
   settings: { maxBlur: number; focusX: number; focusY: number; focusWidth: number; focusHeight: number; feather: number; angle: number; band: number },
-): HTMLCanvasElement {
+  shouldCancel?: () => boolean,
+): Promise<HTMLCanvasElement> {
   const width = source.width, height = source.height
   const output = createCanvas(width, height)
   const outputCtx = ctx2d(output)
@@ -46,6 +47,13 @@ function renderBlurGallery(
   const ry = Math.max(2, settings.focusHeight * height / 2)
 
   for (let y = 0; y < height; y++) {
+    // Yield periodically so large-document mask generation does not monopolize
+    // the UI thread. The caller can cancel between chunks (document switch or
+    // superseded preview).
+    if (y > 0 && y % 16 === 0) {
+      await new Promise<void>(resolve => window.setTimeout(resolve, 0))
+      if (shouldCancel?.()) throw new Error('Blur Gallery render cancelled')
+    }
     for (let x = 0; x < width; x++) {
       let strength = 1
       if (mode === 'field') {
@@ -117,33 +125,42 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
   const previewCanvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
-    const previewCanvas = previewCanvasRef.current
-    if (!source || !previewCanvas) return
-    const scale = Math.min(1, (PREVIEW_W - 20) / source.width, (PREVIEW_H - 20) / source.height)
-    const w = Math.max(1, Math.round(source.width * scale)), h = Math.max(1, Math.round(source.height * scale))
-    const small = createCanvas(w, h)
-    ctx2d(small).drawImage(source, 0, 0, w, h)
-    const scaledPins = pins.map(p => ({ ...p, x: p.x, y: p.y }))
-    const result = preview
-      ? renderBlurGallery(small, mode, scaledPins, { ...settings, maxBlur: Math.max(0.5, maxBlur * scale), feather: Math.max(1, feather * scale), focusX, focusY, band: band / 100 })
-      : small
-    const canvas = previewCanvas
-    canvas.width = PREVIEW_W
-    canvas.height = PREVIEW_H
-    const ctx = ctx2d(canvas)
-    ctx.fillStyle = '#202329'
-    ctx.fillRect(0, 0, PREVIEW_W, PREVIEW_H)
-    const x = (PREVIEW_W - w) / 2, y = (PREVIEW_H - h) / 2
-    ctx.drawImage(result, x, y)
-    const mark = (px: number, py: number, label: string, active: boolean) => {
-      ctx.beginPath(); ctx.arc(x + px * w, y + py * h, active ? 8 : 6, 0, Math.PI * 2)
-      ctx.fillStyle = active ? '#f59e0b' : '#38bdf8'; ctx.fill()
-      ctx.strokeStyle = '#111827'; ctx.lineWidth = 2; ctx.stroke()
-      ctx.fillStyle = '#111827'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText(label, x + px * w, y + py * h)
+    let cancelled = false
+    const render = async () => {
+      const previewCanvas = previewCanvasRef.current
+      if (!source || !previewCanvas) return
+      const scale = Math.min(1, (PREVIEW_W - 20) / source.width, (PREVIEW_H - 20) / source.height)
+      const w = Math.max(1, Math.round(source.width * scale)), h = Math.max(1, Math.round(source.height * scale))
+      const small = createCanvas(w, h)
+      ctx2d(small).drawImage(source, 0, 0, w, h)
+      const result = preview
+        ? await renderBlurGallery(small, mode, pins, { ...settings, maxBlur: Math.max(0.5, maxBlur * scale), feather: Math.max(1, feather * scale), focusX, focusY, band: band / 100 }, () => cancelled)
+        : small
+      if (cancelled) return
+      const canvas = previewCanvas
+      canvas.width = PREVIEW_W
+      canvas.height = PREVIEW_H
+      const ctx = ctx2d(canvas)
+      ctx.fillStyle = '#202329'
+      ctx.fillRect(0, 0, PREVIEW_W, PREVIEW_H)
+      const x = (PREVIEW_W - w) / 2, y = (PREVIEW_H - h) / 2
+      ctx.drawImage(result, x, y)
+      const mark = (px: number, py: number, label: string, active: boolean) => {
+        ctx.beginPath(); ctx.arc(x + px * w, y + py * h, active ? 8 : 6, 0, Math.PI * 2)
+        ctx.fillStyle = active ? '#f59e0b' : '#38bdf8'; ctx.fill()
+        ctx.strokeStyle = '#111827'; ctx.lineWidth = 2; ctx.stroke()
+        ctx.fillStyle = '#111827'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(label, x + px * w, y + py * h)
+      }
+      if (mode === 'field') pins.forEach((p, i) => mark(p.x, p.y, String(i + 1), i === selectedPin))
+      else mark(focusX, focusY, '•', true)
     }
-    if (mode === 'field') pins.forEach((p, i) => mark(p.x, p.y, String(i + 1), i === selectedPin))
-    else mark(focusX, focusY, '•', true)
+    void render().catch(error => {
+      if (!cancelled && error instanceof Error && error.message !== 'Blur Gallery render cancelled') {
+        useEditorStore.getState().pushToast('Blur Gallery preview could not be rendered', 'error')
+      }
+    })
+    return () => { cancelled = true }
   }, [source, mode, pins, selectedPin, preview, settings, maxBlur, feather, focusX, focusY, band])
 
   const handlePreviewClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -182,12 +199,16 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     }
     setApplying(true)
     try {
-      const output = renderBlurGallery(source, mode, pins, settings)
+      const output = await renderBlurGallery(source, mode, pins, settings, () => engine.activeDoc?.id !== documentId)
       if (engine.activeDoc?.id !== documentId) return
       const created = engine.addLayerFromCanvas(output, 'Blur Gallery Result', { center: false, aboveActive: true, historyLabel: 'Blur Gallery' })
       if (created) {
         useEditorStore.getState().pushToast(`Applied ${mode === 'field' ? 'Field Blur' : mode === 'iris' ? 'Iris Blur' : 'Tilt-Shift'} to a new editable layer`, 'success')
         onClose()
+      }
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== 'Blur Gallery render cancelled') {
+        useEditorStore.getState().pushToast('Blur Gallery could not finish rendering', 'error')
       }
     } finally {
       setApplying(false)
