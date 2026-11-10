@@ -9,7 +9,7 @@ import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import type { DeferredRegionStroke } from './shared'
 import {
-  getOptions, getBgColor, getFgColor, canUseByteRetouch, beginDeferredRegionStroke, deferredRegionProcess, deferredStrokePixel, walkDabs, drawBrushCursor,
+  getOptions, getBgColor, getFgColor, canUseByteRetouch, beginDeferredRegionStroke, deferredRegionProcess, deferredStrokePixel, walkDabsEach, drawBrushCursor,
 } from './shared'
 import { clamp, hexToRgb, rgbToHsv, hsvToRgb } from '../utils/canvas'
 import { rgbToLab } from '../image-ops/color'
@@ -190,7 +190,7 @@ export const colorReplacementTool: Tool = {
     let size = Math.max(2, Number(opts.size) || 50)
     if (p.pointerType === 'pen' && opts.pressureSize === true) size *= .25 + .75 * clamp(p.pressure, 0, 1)
     const spacing = Math.max(1, size * clamp((Number(opts.spacing) || 15) / 100, .01, 2))
-    for (const q of walkDabs(last.x, last.y, p.docX, p.docY, spacing)) dab(q.x, q.y, p)
+    walkDabsEach(last.x, last.y, p.docX, p.docY, spacing, (x, y) => dab(x, y, p))
     if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
   },
 
