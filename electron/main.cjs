@@ -10,7 +10,7 @@
 // Also relays image files launched via file association / "Open
 // with" / macOS open-file to the renderer over IPC.
 // ============================================================
-const { app, BrowserWindow, Menu, shell, session, ipcMain } = require('electron')
+const { app, BrowserWindow, Menu, shell, session, ipcMain, nativeTheme } = require('electron')
 const { spawn, execFile } = require('node:child_process')
 const { installGimpIpc } = require('./gimp-runtime.cjs')
 const http = require('node:http')
@@ -378,6 +378,12 @@ function createWindow() {
     autoHideMenuBar: process.platform !== 'darwin',
     backgroundColor: '#1c1c1c',
     title: "Chay's Photo Studio",
+    // Keep native Windows caption buttons while allowing the OLED theme to
+    // paint the complete title-bar surface true black.
+    ...(process.platform === 'win32' ? {
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { color: '#1c1c1c', symbolColor: '#ffffff', height: 32 },
+    } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -385,6 +391,15 @@ function createWindow() {
       sandbox: false, // preload needs require('electron') only — keep sandbox off for IPC stability
       spellcheck: false,
     },
+  })
+
+  ipcMain.removeHandler('chays:window-theme')
+  ipcMain.handle('chays:window-theme', (_event, oled) => {
+    if (process.platform !== 'win32' || !mainWindow || mainWindow.isDestroyed()) return false
+    const color = oled === true ? '#000000' : '#1c1c1c'
+    nativeTheme.themeSource = 'dark'
+    mainWindow.setTitleBarOverlay({ color, symbolColor: '#ffffff', height: 32 })
+    return true
   })
 
   mainWindow.once('ready-to-show', () => {
