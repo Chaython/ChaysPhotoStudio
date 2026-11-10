@@ -563,8 +563,11 @@ export const handTool: Tool = {
   onPointerMove(p: PointerInfo) {
     const doc = engine.activeDoc
     if (!doc || !handDrag.active) return
-    const dx = p.rawX - handDrag.lastX
-    const dy = p.rawY - handDrag.lastY
+    const screenDx = p.rawX - handDrag.lastX
+    const screenDy = p.rawY - handDrag.lastY
+    const angle = -(Number(doc.view.rotation) || 0) * Math.PI / 180
+    const dx = screenDx * Math.cos(angle) - screenDy * Math.sin(angle)
+    const dy = screenDx * Math.sin(angle) + screenDy * Math.cos(angle)
     const now = performance.now()
     const dt = Math.max(.001, (now - handLastT) / 1000)
     doc.view.panX += dx
