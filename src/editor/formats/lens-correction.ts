@@ -1,7 +1,7 @@
 // Non-destructive *parameters* stored with camera RAW Smart Objects.
 // Explicit user-calibrated coefficients, NOT a substitute for calibrated Lensfun profiles.
 import type { RawImage } from './decoders'
-import type { LensfunCalibration } from './lensfun-xml'
+import { lensfunTcaScale, type LensfunCalibration } from './lensfun-xml'
 
 export interface LensProfile {
   /** User supplied identity, e.g. camera/lens + focal length; never auto-claimed. */
@@ -95,8 +95,8 @@ export function applyLensProfile(image:RawImage,input:LensProfile):RawImage {
       let magnification=c===3?radial:radial+shift*r2
       if(c!==3&&cal?.tca){
         const t=cal.tca
-        const factor=c===0?(t.vr??1)+(t.br??0)*r2:
-          c===2?(t.vb??1)+(t.bb??0)*r2:1
+        const factor=c===0?lensfunTcaScale(t,'red',r):
+          c===2?lensfunTcaScale(t,'blue',r):1
         magnification*=factor
       }
       const sx=cx+(x-cx)*magnification
