@@ -258,8 +258,19 @@ jobs:
             if curl -fsS http://127.0.0.1:8765/ >/dev/null; then break; fi
             sleep 0.25
           done
-          command -v ffmpeg || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
-          python scripts/test-chromium-editor.py
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            echo "ffmpeg missing; installing with bounded apt retries"
+            sudo timeout 150s apt-get update -qq \
+              -o Acquire::Retries=2 \
+              -o Acquire::http::Timeout=20 \
+              -o Acquire::https::Timeout=20
+            sudo timeout 120s apt-get install -y -qq ffmpeg \
+              -o Acquire::Retries=2 \
+              -o Acquire::http::Timeout=20 \
+              -o Acquire::https::Timeout=20
+          fi
+          command -v ffmpeg
+          python -u scripts/test-chromium-editor.py
 
       - name: Upload Chromium E2E diagnostics
         if: always()
