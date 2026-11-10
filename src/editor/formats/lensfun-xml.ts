@@ -8,7 +8,10 @@ export interface LensfunCurve {
   distance?: number
   k1?: number; k2?: number; k3?: number
   a?: number; b?: number; c?: number
-  vr?: number; vb?: number; br?: number; bb?: number
+  /** Linear TCA channel scale factors. */
+  kr?: number; kb?: number
+  /** Polynomial TCA coefficients (red/blue). */
+  vr?: number; vb?: number; br?: number; bb?: number; cr?: number; cb?: number
 }
 export interface LensfunCalibration {
   source: 'lensfun-xml'
@@ -41,7 +44,7 @@ function parseCurve(element:Element):LensfunCurve|null {
   const focal=numeric(element.getAttribute('focal'))
   if(focal===undefined||focal<=0)return null
   const result:LensfunCurve={model:model as LensfunCurve['model'],focal}
-  for(const prop of ['aperture','distance','k1','k2','k3','a','b','c','vr','vb','br','bb'] as const){
+  for(const prop of ['aperture','distance','k1','k2','k3','a','b','c','kr','kb','vr','vb','br','bb','cr','cb'] as const){
     const n=numeric(element.getAttribute(prop))
     if(n!==undefined)result[prop]=n
   }
@@ -116,13 +119,24 @@ export function chooseLensfunCurve(curves: LensfunCurve[], exif: CameraExif): Le
   if (!a || !b || a.model !== b.model || b.focal <= a.focal) return undefined
   const t = (exif.focal - a.focal) / (b.focal - a.focal)
   const result: LensfunCurve = { model: a.model, focal: exif.focal }
-  for (const key of ['k1','k2','k3','a','b','c','vr','vb','br','bb'] as const) {
+  for (const key of ['k1','k2','k3','a','b','c','kr','kb','vr','vb','br','bb','cr','cb'] as const) {
     if (a[key] !== undefined && b[key] !== undefined)
       result[key] = a[key]! * (1-t) + b[key]! * t
   }
   if (a.aperture === b.aperture) result.aperture = a.aperture
   if (a.distance === b.distance) result.distance = a.distance
   return result
+}
+/** Lensfun TCA channel scale at normalized source radius. Linear uses kr/kb;
+ * poly3 uses b*r² + c*r + v independently for red and blue. */
+export function lensfunTcaScale(curve:LensfunCurve,channel:'red'|'blue',radius:number):number {
+  if(!Number.isFinite(radius))return 1
+  if(curve.model==='linear')return channel==='red'?(curve.kr??1):(curve.kb??1)
+  if(curve.model!=='pa'&&curve.model!=='poly3')return 1
+  const r=Math.max(0,Math.min(2,radius))
+  return channel==='red'?
+    (curve.br??0)*r*r+(curve.cr??0)*r+(curve.vr??1):
+    (curve.bb??0)*r*r+(curve.cb??0)*r+(curve.vb??1)
 }
 /** Score only defensible model-string matches. Exact EXIF model matches win;
  * longer contained model names are accepted to accommodate EXIF vendor prefixes.
