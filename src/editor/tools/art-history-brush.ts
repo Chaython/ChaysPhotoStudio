@@ -7,7 +7,7 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, walkDabs, drawBrushCursor } from './shared'
+import { getOptions, walkDabsEach, drawBrushCursor } from './shared'
 import { createCanvas, ctx2d, clamp, getImageData } from '../utils/canvas'
 
 let active = false
@@ -190,7 +190,7 @@ export const artHistoryBrushTool: Tool = {
     const opts = getOptions('art-history-brush')
     const size = Math.max(2, Number(opts.size) || 38)
     const spacing = Math.max(1, size * clamp((Number(opts.spacing) || 18) / 100, .01, 2))
-    for (const q of walkDabs(last.x, last.y, p.docX, p.docY, spacing)) artDab(q.x, q.y, p)
+    walkDabsEach(last.x, last.y, p.docX, p.docY, spacing, (x, y) => artDab(x, y, p))
     if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
   },
 
