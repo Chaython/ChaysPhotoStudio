@@ -386,7 +386,7 @@ export const TOOL_CYCLES: ToolId[][] = [
   ['history-brush', 'art-history-brush'],
   ['eraser', 'background-eraser', 'magic-eraser'],
   ['clone-stamp', 'pattern-stamp'],
-  ['healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye'],
+  ['healing-brush', 'spot-healing', 'remove', 'patch', 'content-aware-move', 'red-eye'],
   ['blur', 'sharpen', 'smudge'],
   ['dodge', 'burn', 'sponge'],
   ['gradient', 'paint-bucket'],
