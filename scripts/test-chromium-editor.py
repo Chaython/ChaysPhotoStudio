@@ -14,6 +14,7 @@ import struct
 import sys
 import traceback
 import hashlib
+import base64
 import urllib.request
 import zlib
 from pathlib import Path
@@ -1463,6 +1464,43 @@ def main():
                       "sampler export filename was incorrect")
                 check(not errors, f"Info panel caused JavaScript errors: {errors[:3]}")
 
+            def paste_image_without_document():
+                _, page, errors = app_page(browser)
+                check(page.evaluate("() => window.__zphotoEngine.activeDoc === null"),
+                      "welcome screen unexpectedly has an active document")
+                png = base64.b64encode(pixel_png(13, 7)).decode("ascii")
+                prevented = page.evaluate("""(encoded) => {
+                    const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0))
+                    const transfer = new DataTransfer()
+                    transfer.items.add(new File([bytes], 'clipboard.png', { type: 'image/png' }))
+                    const event = new ClipboardEvent('paste', {
+                        bubbles: true, cancelable: true, clipboardData: transfer
+                    })
+                    return !window.dispatchEvent(event)
+                }""", png)
+                check(prevented, "image paste event was not intercepted")
+                page.wait_for_function("""() => {
+                    const d = window.__zphotoEngine.activeDoc
+                    return d && d.width === 13 && d.height === 7 && d.layers.length >= 2
+                }""", timeout=10000)
+                state = page.evaluate("""() => {
+                    const d = window.__zphotoEngine.activeDoc
+                    const background = d.layers.find(l => l.name === 'Layer 1')
+                    const pasted = d.layers.find(l => l.name === 'Pasted Image')
+                    const pixel = background?.canvas?.getContext('2d')?.getImageData(0, 0, 1, 1).data
+                    return {
+                        width: d.width, height: d.height,
+                        backgroundAlpha: pixel ? pixel[3] : -1,
+                        pastedWidth: pasted?.canvas?.width,
+                        pastedHeight: pasted?.canvas?.height,
+                    }
+                }""")
+                check(state == {
+                    "width": 13, "height": 7, "backgroundAlpha": 0,
+                    "pastedWidth": 13, "pastedHeight": 7,
+                }, f"clipboard paste did not create an exact-size transparent document: {state}")
+                check(not errors, f"welcome-screen clipboard paste threw JavaScript errors: {errors[:3]}")
+
             def mobile_start():
                 _, page, errors = app_page(browser, size=(430, 850))
                 check(page.locator("body").bounding_box()["width"] <= 431,
@@ -1473,6 +1511,7 @@ def main():
 
             for name, fn in [
                 ("editor_startup", startup),
+                ("paste_image_without_document", paste_image_without_document),
                 ("eight_dock_routes", all_routes),
                 ("dock_resize_reset_persistence", resize_reset),
                 ("dock_context_move_float", context_float),
