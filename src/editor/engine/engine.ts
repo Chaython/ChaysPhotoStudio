@@ -6324,8 +6324,14 @@ export class Engine {
   fitToScreen(viewW: number, viewH: number) {
     const doc = this.activeDoc
     if (!doc) return
-    const z = Math.min((viewW - 80) / doc.width, (viewH - 80) / doc.height, 8)
+    const angle = (Number(doc.view.rotation) || 0) * Math.PI / 180
+    const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle))
+    const boundsW = doc.width * cos + doc.height * sin
+    const boundsH = doc.width * sin + doc.height * cos
+    const z = Math.min((viewW - 80) / Math.max(1, boundsW), (viewH - 80) / Math.max(1, boundsH), 8)
     doc.view.zoom = clamp(z, 0.02, 32)
+    // The renderer rotates around the viewport center, so center the unrotated
+    // document rectangle there; its rotated bounds then fit symmetrically.
     doc.view.panX = (viewW - doc.width * doc.view.zoom) / 2
     doc.view.panY = (viewH - doc.height * doc.view.zoom) / 2
     doc.view.autoFit = false // concrete view assigned → sticky from now on
