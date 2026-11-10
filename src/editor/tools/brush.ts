@@ -40,7 +40,7 @@ import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import { clamp, createCanvas, ctx2d } from '../utils/canvas'
 import {
-  getOptions, brushSettingsFrom, getFgColor, getBgColor, walkDabs, walkDabsEach, softDab, pencilDab, drawBrushCursor,
+  getOptions, brushSettingsFrom, getFgColor, getBgColor, walkDabsEach, softDab, pencilDab, drawBrushCursor,
   symmetricPoints, drawSymmetryOverlay, ema,
 } from './shared'
 import { getActiveId, getById, getCachedStampCanvas, warmPreset } from '../plugins/brush-presets'
