@@ -39,20 +39,39 @@ const MAX_DABS_PER_POINTER_EVENT = 256
  * distribute the capped dabs across the whole segment so the stroke still
  * reaches the current pointer without an apparent gap.
  */
-export function walkDabs(x0: number, y0: number, x1: number, y1: number, spacingPx: number): { x: number; y: number }[] {
+export interface DabWalkResult {
+  count: number
+  lastX: number
+  lastY: number
+}
+
+/** Iterate dab coordinates without allocating an array or point object per dab. */
+export function walkDabsEach(
+  x0: number, y0: number, x1: number, y1: number, spacingPx: number,
+  visit: (x: number, y: number) => void,
+): DabWalkResult {
   const dx = x1 - x0, dy = y1 - y0
   const dist = Math.hypot(dx, dy)
   const step = Math.max(0.5, spacingPx)
-  if (dist < 0.01) return []
+  if (dist < 0.01) return { count: 0, lastX: x0, lastY: y0 }
   const ideal = Math.floor(dist / step)
-  if (ideal <= 0) return []
+  if (ideal <= 0) return { count: 0, lastX: x0, lastY: y0 }
   const n = Math.min(MAX_DABS_PER_POINTER_EVENT, ideal)
   const capped = ideal > n
-  const out: { x: number; y: number }[] = new Array(n)
+  let lastX = x0, lastY = y0
   for (let i = 1; i <= n; i++) {
     const t = capped ? i / n : (i * step) / dist
-    out[i - 1] = { x: x0 + dx * t, y: y0 + dy * t }
+    lastX = x0 + dx * t
+    lastY = y0 + dy * t
+    visit(lastX, lastY)
   }
+  return { count: n, lastX, lastY }
+}
+
+/** Array compatibility wrapper for tools that need to inspect the generated points. */
+export function walkDabs(x0: number, y0: number, x1: number, y1: number, spacingPx: number): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = []
+  walkDabsEach(x0, y0, x1, y1, spacingPx, (x, y) => out.push({ x, y }))
   return out
 }
 
@@ -124,10 +143,10 @@ export function pencilDab(ctx: CanvasRenderingContext2D, x: number, y: number, r
     pencilNibCache.set(key, nib)
   }
   const half = nib.width / 2
-  ctx.save()
+  const previousSmoothing = ctx.imageSmoothingEnabled
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(nib, Math.round(x - half), Math.round(y - half))
-  ctx.restore()
+  ctx.imageSmoothingEnabled = previousSmoothing
 }
 
 /** brush cursor circle for the cursor layer (screen space) — precise crosshair when tiny */
