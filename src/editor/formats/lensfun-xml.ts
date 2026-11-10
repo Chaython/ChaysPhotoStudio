@@ -2,7 +2,7 @@
 // Users import license-cleared Lensfun XML, and matching is deliberately conservative.
 import type { ImageMetadata } from '../types'
 export interface LensfunCurve {
-  model: 'poly3' | 'ptlens' | 'linear' | 'pa'
+  model: 'poly3' | 'poly5' | 'ptlens' | 'linear' | 'pa'
   focal: number
   aperture?: number
   distance?: number
@@ -40,7 +40,7 @@ const numeric = (text:string|null):number|undefined => {
 }
 function parseCurve(element:Element):LensfunCurve|null {
   const model=element.getAttribute('model')
-  if(!['poly3','ptlens','linear','pa'].includes(model||''))return null
+  if(!['poly3','poly5','ptlens','linear','pa'].includes(model||''))return null
   const focal=numeric(element.getAttribute('focal'))
   if(focal===undefined||focal<=0)return null
   const result:LensfunCurve={model:model as LensfunCurve['model'],focal}
