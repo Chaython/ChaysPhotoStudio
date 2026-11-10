@@ -929,4 +929,20 @@ const interpolatedTca=chooseLensfunCurve([
 check(interpolatedTca?.vr===1.001 && interpolatedTca.cr===0.003 &&
   interpolatedTca.vb===0.999 && interpolatedTca.cb===0.001,
   'Lensfun TCA interpolation retains every red/blue polynomial coefficient')
+check(chooseLensfunCurve([
+  {model:'poly3',focal:40,k1:0.1},{model:'poly3',focal:40,k1:0.2},
+  {model:'poly3',focal:60,k1:0.3},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:100})===undefined,
+  'Lensfun interpolation rejects duplicate lower-focal calibration endpoints')
+check(chooseLensfunCurve([
+  {model:'poly3',focal:40,k1:0.1},
+  {model:'poly3',focal:60,k1:0.3},{model:'poly3',focal:60,k1:0.4},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:100})===undefined,
+  'Lensfun interpolation rejects duplicate upper-focal calibration endpoints')
+const defaultedTca=chooseLensfunCurve([
+  {model:'poly3',focal:40,vr:1, vb:1},
+  {model:'poly3',focal:60,vr:1.002, br:0.004, vb:0.998, bb:-0.006},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:100})
+check(defaultedTca?.br===0.002 && defaultedTca.bb===-0.003,
+  'Lensfun interpolation blends omitted polynomial coefficients using their model defaults')
 console.log('Scientific, DICOM-RLE, EXR, Lensfun calibration and multipage TIFF/DCX tests passed')
