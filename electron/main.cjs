@@ -378,8 +378,8 @@ function createWindow() {
     autoHideMenuBar: process.platform !== 'darwin',
     backgroundColor: '#1c1c1c',
     title: "Chay's Photo Studio",
-    // Keep native Windows caption buttons while allowing the OLED theme to
-    // paint the complete title-bar surface true black.
+    // Keep native Windows caption buttons and let each app theme control
+    // the native title-bar surface and caption-button contrast.
     ...(process.platform === 'win32' ? {
       titleBarStyle: 'hidden',
       titleBarOverlay: { color: '#1c1c1c', symbolColor: '#ffffff', height: 32 },
@@ -394,11 +394,19 @@ function createWindow() {
   })
 
   ipcMain.removeHandler('chays:window-theme')
-  ipcMain.handle('chays:window-theme', (_event, oled) => {
+  ipcMain.handle('chays:window-theme', (_event, theme) => {
     if (process.platform !== 'win32' || !mainWindow || mainWindow.isDestroyed()) return false
-    const color = oled === true ? '#000000' : '#1c1c1c'
-    nativeTheme.themeSource = 'dark'
-    mainWindow.setTitleBarOverlay({ color, symbolColor: '#ffffff', height: 32 })
+    // Match the editor's four selectable themes. Light needs dark caption
+    // glyphs; the three dark surfaces use white glyphs for clear contrast.
+    const palette = {
+      light: { color: '#f5f4f1', symbolColor: '#202020' },
+      dark: { color: '#1c1c1c', symbolColor: '#ffffff' },
+      oled: { color: '#000000', symbolColor: '#ffffff' },
+      photoshop: { color: '#323232', symbolColor: '#ffffff' },
+    }
+    const selected = palette[theme] || palette.dark
+    nativeTheme.themeSource = theme === 'light' ? 'light' : 'dark'
+    mainWindow.setTitleBarOverlay({ ...selected, height: 32 })
     return true
   })
 
