@@ -38,9 +38,19 @@ const numeric = (text:string|null):number|undefined => {
   const n=Number(text)
   return Number.isFinite(n)?n:undefined
 }
-function parseCurve(element:Element):LensfunCurve|null {
+export type LensfunCalibrationKind='distortion'|'tca'|'vignetting'
+
+/** Keep calibration models scoped to the Lensfun XML element that defines them.
+ * Unsupported ACM variants and cross-kind models are deliberately not imported. */
+export function isSupportedLensfunModel(kind:LensfunCalibrationKind,model:string|null):boolean {
+  if(kind==='distortion')return model==='poly3'||model==='poly5'||model==='ptlens'
+  if(kind==='tca')return model==='linear'||model==='poly3'
+  return model==='pa'
+}
+
+function parseCurve(element:Element,kind:LensfunCalibrationKind):LensfunCurve|null {
   const model=element.getAttribute('model')
-  if(!['poly3','poly5','ptlens','linear','pa'].includes(model||''))return null
+  if(!isSupportedLensfunModel(kind,model))return null
   const focal=numeric(element.getAttribute('focal'))
   if(focal===undefined||focal<=0)return null
   const result:LensfunCurve={model:model as LensfunCurve['model'],focal}
@@ -66,7 +76,7 @@ export function importLensfunXml(xml:string):number {
     const curves={distortion:[] as LensfunCurve[],tca:[] as LensfunCurve[],vignetting:[] as LensfunCurve[]}
     for(const node of Array.from(calibration.children)){
       if(node.localName==='distortion'||node.localName==='tca'||node.localName==='vignetting'){
-        const curve=parseCurve(node)
+        const curve=parseCurve(node,node.localName as LensfunCalibrationKind)
         if(curve)curves[node.localName].push(curve)
       }
     }
