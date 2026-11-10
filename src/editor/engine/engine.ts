@@ -1623,7 +1623,8 @@ export class Engine {
   /** The Photoshop Ctrl+J behavior: selected pixels become a new raster layer,
    * while no selection duplicates the whole editable layer. */
   duplicateLayerOrSelection(): Layer | null {
-    return this.activeDoc?.selection ? this.layerViaSelection('copy') : this.duplicateLayer()
+    if (this.activeDoc?.selection) return this.layerViaSelection('copy')
+    return this.duplicateSelectedLayers()[0] ?? null
   }
 
   duplicateLayer(id?: string): Layer | null {
