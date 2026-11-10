@@ -23,7 +23,7 @@ import { ADJUSTMENTS } from '../../image-ops/adjustments'
 import { buildCurveLUT } from '../../image-ops/interp'
 import { hexToRgbTriple } from '../../image-ops/color'
 import {
-  getGL, glAvailable, glInfo, compileProgram, drawQuad, bindTarget, acquireFBO, releaseFBO,
+  getGL, glAvailable, glInfo, compileProgram, drawQuad, bindTarget, acquireFBO, releaseFBO, cachedUniformLocation,
   bindUniformTex, uploadCanvas, uploadLUT, QUAD_VS,
 } from './gl-core'
 
@@ -752,9 +752,9 @@ export function glCompositeDocument(doc: PsDocument, target: HTMLCanvasElement):
         gl.useProgram(progBlend)
         bindUniformTex(gl, progBlend, 'uSrc', tex, 0)
         bindUniformTex(gl, progBlend, 'uBackdrop', bdTex, 1)
-        gl.uniform1f(gl.getUniformLocation(progBlend, 'uOpacity'), cl.opacity / 100)
-        gl.uniform1i(gl.getUniformLocation(progBlend, 'uBlendMode'), BLEND_ID[cl.blendMode] ?? 0)
-        gl.uniform1i(gl.getUniformLocation(progBlend, 'uClipAlpha'), 1)
+        gl.uniform1f(cachedUniformLocation(progBlend, 'uOpacity'), cl.opacity / 100)
+        gl.uniform1i(cachedUniformLocation(progBlend, 'uBlendMode'), BLEND_ID[cl.blendMode] ?? 0)
+        gl.uniform1i(cachedUniformLocation(progBlend, 'uClipAlpha'), 1)
         drawQuad(gl, progBlend)
         ;[sFrom, sTo] = [sTo, sFrom]
       }
@@ -766,9 +766,9 @@ export function glCompositeDocument(doc: PsDocument, target: HTMLCanvasElement):
       gl.useProgram(progBlend)
       bindUniformTex(gl, progBlend, 'uSrc', sFrom.tex, 0)
       bindUniformTex(gl, progBlend, 'uBackdrop', acc.tex, 1)
-      gl.uniform1f(gl.getUniformLocation(progBlend, 'uOpacity'), base.opacity / 100)
-      gl.uniform1i(gl.getUniformLocation(progBlend, 'uBlendMode'), BLEND_ID[base.blendMode] ?? 0)
-      gl.uniform1i(gl.getUniformLocation(progBlend, 'uClipAlpha'), 0)
+      gl.uniform1f(cachedUniformLocation(progBlend, 'uOpacity'), base.opacity / 100)
+      gl.uniform1i(cachedUniformLocation(progBlend, 'uBlendMode'), BLEND_ID[base.blendMode] ?? 0)
+      gl.uniform1i(cachedUniformLocation(progBlend, 'uClipAlpha'), 0)
       drawQuad(gl, progBlend)
       ;[acc, accTmp] = [accTmp, acc]
     }
@@ -780,7 +780,7 @@ export function glCompositeDocument(doc: PsDocument, target: HTMLCanvasElement):
       gl.clear(gl.COLOR_BUFFER_BIT)
       gl.useProgram(progChannel)
       bindUniformTex(gl, progChannel, 'uSrc', acc.tex, 0)
-      gl.uniform1i(gl.getUniformLocation(progChannel, 'uChannel'), doc.channelView === 'r' ? 0 : doc.channelView === 'g' ? 1 : 2)
+      gl.uniform1i(cachedUniformLocation(progChannel, 'uChannel'), doc.channelView === 'r' ? 0 : doc.channelView === 'g' ? 1 : 2)
       drawQuad(gl, progChannel)
       ;[acc, accTmp] = [accTmp, acc]
     }
@@ -795,16 +795,16 @@ export function glCompositeDocument(doc: PsDocument, target: HTMLCanvasElement):
         gl.clear(gl.COLOR_BUFFER_BIT)
         gl.useProgram(progAdjust)
         bindUniformTex(gl, progAdjust, 'uBackdrop', acc.tex, 0)
-        gl.uniform1i(gl.getUniformLocation(progAdjust, 'uHasMask'), 0)
-        gl.uniform1i(gl.getUniformLocation(progAdjust, 'uHasLut'), lutTex ? 1 : 0)
+        gl.uniform1i(cachedUniformLocation(progAdjust, 'uHasMask'), 0)
+        gl.uniform1i(cachedUniformLocation(progAdjust, 'uHasLut'), lutTex ? 1 : 0)
         if (lutTex) bindUniformTex(gl, progAdjust, 'uLut', lutTex, 2)
-        gl.uniform1i(gl.getUniformLocation(progAdjust, 'uOpacityI'), 1000)
-        gl.uniform1i(gl.getUniformLocation(progAdjust, 'uBlendMode'), 0)
-        gl.uniform1i(gl.getUniformLocation(progAdjust, 'uAdjMode'), setup.mode)
-        gl.uniform1i(gl.getUniformLocation(progAdjust, 'uReplace'), 1)
-        gl.uniform4fv(gl.getUniformLocation(progAdjust, 'uAdjA'), setup.A)
-        gl.uniform4fv(gl.getUniformLocation(progAdjust, 'uAdjB'), setup.B)
-        gl.uniform4fv(gl.getUniformLocation(progAdjust, 'uAdjC'), setup.C)
+        gl.uniform1i(cachedUniformLocation(progAdjust, 'uOpacityI'), 1000)
+        gl.uniform1i(cachedUniformLocation(progAdjust, 'uBlendMode'), 0)
+        gl.uniform1i(cachedUniformLocation(progAdjust, 'uAdjMode'), setup.mode)
+        gl.uniform1i(cachedUniformLocation(progAdjust, 'uReplace'), 1)
+        gl.uniform4fv(cachedUniformLocation(progAdjust, 'uAdjA'), setup.A)
+        gl.uniform4fv(cachedUniformLocation(progAdjust, 'uAdjB'), setup.B)
+        gl.uniform4fv(cachedUniformLocation(progAdjust, 'uAdjC'), setup.C)
         drawQuad(gl, progAdjust)
         ;[acc, accTmp] = [accTmp, acc]
       }
@@ -870,16 +870,16 @@ function adjustPassOn(gl: WebGL2RenderingContext, prog: WebGLProgram, from: FBOR
   gl.useProgram(prog)
   bindUniformTex(gl, prog, 'uBackdrop', from.tex, 0)
   if (maskTex) bindUniformTex(gl, prog, 'uMask', maskTex, 1)
-  gl.uniform1i(gl.getUniformLocation(prog, 'uHasMask'), maskTex ? 1 : 0)
-  gl.uniform1i(gl.getUniformLocation(prog, 'uHasLut'), lutTex ? 1 : 0)
+  gl.uniform1i(cachedUniformLocation(prog, 'uHasMask'), maskTex ? 1 : 0)
+  gl.uniform1i(cachedUniformLocation(prog, 'uHasLut'), lutTex ? 1 : 0)
   if (lutTex) bindUniformTex(gl, prog, 'uLut', lutTex, 2)
-  gl.uniform1i(gl.getUniformLocation(prog, 'uOpacityI'), Math.round(layer.opacity * 10))
-  gl.uniform1i(gl.getUniformLocation(prog, 'uBlendMode'), BLEND_ID[layer.blendMode] ?? 0)
-  gl.uniform1i(gl.getUniformLocation(prog, 'uAdjMode'), setup.mode)
-  gl.uniform1i(gl.getUniformLocation(prog, 'uReplace'), 0)
-  gl.uniform4fv(gl.getUniformLocation(prog, 'uAdjA'), setup.A)
-  gl.uniform4fv(gl.getUniformLocation(prog, 'uAdjB'), setup.B)
-  gl.uniform4fv(gl.getUniformLocation(prog, 'uAdjC'), setup.C)
+  gl.uniform1i(cachedUniformLocation(prog, 'uOpacityI'), Math.round(layer.opacity * 10))
+  gl.uniform1i(cachedUniformLocation(prog, 'uBlendMode'), BLEND_ID[layer.blendMode] ?? 0)
+  gl.uniform1i(cachedUniformLocation(prog, 'uAdjMode'), setup.mode)
+  gl.uniform1i(cachedUniformLocation(prog, 'uReplace'), 0)
+  gl.uniform4fv(cachedUniformLocation(prog, 'uAdjA'), setup.A)
+  gl.uniform4fv(cachedUniformLocation(prog, 'uAdjB'), setup.B)
+  gl.uniform4fv(cachedUniformLocation(prog, 'uAdjC'), setup.C)
   drawQuad(gl, prog)
   return true
 }
