@@ -224,3 +224,10 @@ The WebGL2 compositor can independently use **RGBA16F intermediate framebuffers*
 ### 32-bit transform safety
 
 Raster Transform Warp / Puppet Warp now explicitly refuse authoritative 32-bit HDR layers rather than changing only their float16 display mirror and leaving scene-linear Float32 pixels stale. Smart Objects can still carry non-destructive warp meshes in 32-bit documents. A future Float32 mesh rasterizer can remove this guard without sacrificing HDR values above 1.0.
+
+
+## Blur Gallery and multi-plane perspective
+
+**Filter → Blur Gallery** provides three separate focus workflows: Field Blur with multiple independently adjustable pins, Iris Blur with a rotatable elliptical focus area, and Tilt-Shift with an adjustable focus band. A full-strength Gaussian-blurred source is composited through a generated spatial alpha mask, keeping the original layer untouched and placing the result on a new editable raster layer. Preview rendering is constrained to the dialog viewport. This first implementation is limited to 8-bit documents; higher-bit-depth documents are refused rather than silently quantized. GPU acceleration, multiple blur kernels, richer bokeh controls and non-destructive editable Smart Filter parameters remain future work.
+
+**Edit → Vanishing Point** provides multiple source/destination quadrilateral planes, convex-quad validation and projective mapping onto a separate editable result layer. The original source layer is preserved. This is an initial multi-plane mapping workflow, not yet Photoshop's complete Vanishing Point experience: shared-edge snapping, automatic plane adjacency/vanishing-line propagation, perspective-aware clone stamping and persistent editable plane metadata remain future work. It is also restricted to 8-bit documents.
