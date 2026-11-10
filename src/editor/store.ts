@@ -582,9 +582,9 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
     photoshop: [
       ['move', 'artboard'],
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
-      ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
+      ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'quick-mask'],
       ['object-select', 'quick-select', 'magic-wand'],
-      ['crop', 'perspective-crop', 'slice', 'hotspot'],
+      ['crop', 'perspective-crop', 'slice', 'slice-select', 'hotspot'],
       ['eyedropper', 'color-sampler', 'measure', 'count'],
       ['spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
       ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
@@ -619,9 +619,9 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['hand'],
       ['zoom'],
       // Additional selection tools.
-      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'magnetic-lasso', 'selection-brush', 'object-select', 'quick-select'],
+      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'magnetic-lasso', 'selection-brush', 'quick-mask', 'object-select', 'quick-select'],
       // Artboard-adjacent and web/export utilities.
-      ['crop', 'perspective-crop', 'slice', 'hotspot', 'measure', 'count'],
+      ['crop', 'perspective-crop', 'slice', 'slice-select', 'hotspot', 'measure', 'count'],
       // Alternate text modes and raster paint tools.
       ['type-mask-horizontal', 'type-mask-vertical', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
       // Raster cleanup and tonal tools retained for compatibility.
@@ -635,11 +635,11 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['move'],
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
       ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
-      ['magic-wand', 'object-select', 'quick-select'],
+      ['magic-wand', 'object-select', 'quick-select', 'quick-mask'],
       ['eyedropper', 'color-sampler'],
       ['zoom'],
       ['measure', 'count'],
-      ['crop', 'perspective-crop', 'artboard', 'slice', 'hotspot'],
+      ['crop', 'perspective-crop', 'artboard', 'slice', 'slice-select', 'hotspot'],
       ['text', 'type-mask-horizontal', 'type-mask-vertical'],
       ['paint-bucket', 'gradient'],
       ['pencil', 'brush', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
@@ -653,9 +653,9 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
     // Slice/Hotspot export tools, then drawing, rubber stamp and fill.
     fireworks: [
       ['move', 'path-select', 'direct-select'],
-      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'object-select', 'quick-select', 'magic-wand'],
+      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'quick-mask', 'object-select', 'quick-select', 'magic-wand'],
       ['crop', 'perspective-crop'],
-      ['slice', 'hotspot', 'artboard', 'count'],
+      ['slice', 'slice-select', 'hotspot', 'artboard', 'count'],
       ['eyedropper', 'color-sampler', 'measure'],
       ['text', 'type-mask-horizontal', 'type-mask-vertical'],
       ['pen', 'pen-freeform', 'pen-curvature'],
