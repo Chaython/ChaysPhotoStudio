@@ -90,7 +90,7 @@ export const COMMANDS: CommandDef[] = [
     run: () => { void engine.pasteIntoSelection() } },
   { id: 'fillFg', label: 'Fill with Foreground', section: 'Edit', defaultCombo: 'alt+backspace', run: () => engine.fillSelection(store().fgColor) },
   { id: 'fillBg', label: 'Fill with Background', section: 'Edit', defaultCombo: 'ctrl+backspace', run: () => engine.fillSelection(store().bgColor) },
-  { id: 'deleteLayer', label: 'Delete Layer', section: 'Edit', defaultCombo: 'delete', run: () => engine.deleteLayer() },
+  { id: 'deleteLayer', label: 'Delete Layer', section: 'Edit', defaultCombo: 'delete', run: () => engine.deleteSelectedLayers() },
   { id: 'clearSelection', label: 'Clear Selected Pixels', section: 'Edit', defaultCombo: 'backspace', run: () => { if (engine.activeDoc) engine.deleteSelectionPixels() } },
   { id: 'invert', label: 'Invert (Adjustment)', section: 'Edit', defaultCombo: 'ctrl+i', run: () => { const l = engine.activeLayer; if (l) engine.applyAdjustmentToLayer(l.id, 'invert', {}) } },
   { id: 'duplicateLayer', label: 'Layer via Copy / Duplicate Layer', section: 'Edit', defaultCombo: 'ctrl+j',
@@ -113,10 +113,10 @@ export const COMMANDS: CommandDef[] = [
   // ---- Layer ----
   { id: 'deselectLayer', label: 'Deselect Layer', section: 'Layer', defaultCombo: 'ctrl+alt+d', run: () => engine.deselectActiveLayer() },
   { id: 'toggleClipping', label: 'Create / Release Clipping Mask', section: 'Layer', defaultCombo: 'ctrl+alt+g', run: () => { const l = engine.activeLayer; if (l) engine.toggleClipping(l.id) } },
-  { id: 'bringToFront', label: 'Bring Layer to Front', section: 'Layer', defaultCombo: 'ctrl+shift+]', run: () => { const d = engine.activeDoc, l = engine.activeLayer; if (d && l) engine.reorderLayer(l.id, d.layers.length - 1) } },
-  { id: 'bringForward', label: 'Bring Layer Forward', section: 'Layer', defaultCombo: 'ctrl+]', run: () => { const l = engine.activeLayer; if (l) engine.moveLayerBy(l.id, 1) } },
-  { id: 'sendBackward', label: 'Send Layer Backward', section: 'Layer', defaultCombo: 'ctrl+[', run: () => { const l = engine.activeLayer; if (l) engine.moveLayerBy(l.id, -1) } },
-  { id: 'sendToBack', label: 'Send Layer to Back', section: 'Layer', defaultCombo: 'ctrl+shift+[', run: () => { const l = engine.activeLayer; if (l) engine.reorderLayer(l.id, 0) } },
+  { id: 'bringToFront', label: 'Bring Layers to Front', section: 'Layer', defaultCombo: 'ctrl+shift+]', run: () => engine.reorderSelectedLayers('front') },
+  { id: 'bringForward', label: 'Bring Layers Forward', section: 'Layer', defaultCombo: 'ctrl+]', run: () => engine.moveSelectedLayersBy(1) },
+  { id: 'sendBackward', label: 'Send Layers Backward', section: 'Layer', defaultCombo: 'ctrl+[', run: () => engine.moveSelectedLayersBy(-1) },
+  { id: 'sendToBack', label: 'Send Layers to Back', section: 'Layer', defaultCombo: 'ctrl+shift+[', run: () => engine.reorderSelectedLayers('back') },
   // ---- Select ----
   { id: 'selectAll', label: 'Select All', section: 'Select', defaultCombo: 'ctrl+a', run: () => engine.selectAll() },
   { id: 'deselect', label: 'Deselect', section: 'Select', defaultCombo: 'ctrl+d', run: () => engine.deselect() },
