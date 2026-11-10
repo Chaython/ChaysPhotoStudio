@@ -496,12 +496,12 @@ export function symmetricPointsInto(
   if (mode === 'mirror-x') writeSymmetryPoint(out, count++, w - x, y)
   else if (mode === 'mirror-y') writeSymmetryPoint(out, count++, x, h - y)
   else if (mode === 'point') {
-    put(w - x, y); put(x, h - y); writeSymmetryPoint(out, count++, w - x, h - y)
+    writeSymmetryPoint(out, count++, w - x, y); writeSymmetryPoint(out, count++, x, h - y); writeSymmetryPoint(out, count++, w - x, h - y)
   } else if (mode === 'mandala') {
     const n = Math.max(3, Math.round(cfg.count) || 6)
     const cx = w / 2, cy = h / 2
     const dx = x - cx, dy = y - cy
-    put(w - x, y)
+    writeSymmetryPoint(out, count++, w - x, y)
     for (let k = 1; k < n; k++) {
       const a = (Math.PI * 2 * k) / n
       const cos = Math.cos(a), sin = Math.sin(a)
