@@ -41,7 +41,7 @@ export type CommandId =
   | 'imageSize' | 'canvasSize' | 'aiUpscale' | 'liquify' | 'repeatFilter'
   | 'autoTone' | 'autoContrast' | 'autoColor'
   // Layer
-  | 'toggleClipping' | 'bringForward' | 'sendBackward' | 'bringToFront' | 'sendToBack'
+  | 'deselectLayer' | 'toggleClipping' | 'bringForward' | 'sendBackward' | 'bringToFront' | 'sendToBack'
   // Select
   | 'selectAll' | 'deselect' | 'reselect' | 'invertSelection' | 'selectMask'
   // View
@@ -111,6 +111,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'autoContrast', label: 'Auto Contrast', section: 'Image', defaultCombo: 'ctrl+alt+shift+l', run: () => void engine.autoCorrectAsync('contrast') },
   { id: 'autoColor', label: 'Auto Color', section: 'Image', defaultCombo: 'ctrl+shift+b', run: () => void engine.autoCorrectAsync('color') },
   // ---- Layer ----
+  { id: 'deselectLayer', label: 'Deselect Layer', section: 'Layer', defaultCombo: 'ctrl+alt+d', run: () => engine.deselectActiveLayer() },
   { id: 'toggleClipping', label: 'Create / Release Clipping Mask', section: 'Layer', defaultCombo: 'ctrl+alt+g', run: () => { const l = engine.activeLayer; if (l) engine.toggleClipping(l.id) } },
   { id: 'bringToFront', label: 'Bring Layer to Front', section: 'Layer', defaultCombo: 'ctrl+shift+]', run: () => { const d = engine.activeDoc, l = engine.activeLayer; if (d && l) engine.reorderLayer(l.id, d.layers.length - 1) } },
   { id: 'bringForward', label: 'Bring Layer Forward', section: 'Layer', defaultCombo: 'ctrl+]', run: () => { const l = engine.activeLayer; if (l) engine.moveLayerBy(l.id, 1) } },
