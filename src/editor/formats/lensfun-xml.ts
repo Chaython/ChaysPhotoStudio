@@ -52,6 +52,10 @@ export function isSupportedLensfunModel(kind:LensfunCalibrationKind,model:string
  * coefficients. Lensfun's model-specific attributes are required to evaluate
  * these curves; vignetting also needs its aperture and subject-distance sample. */
 export function hasRequiredLensfunCoefficients(kind:LensfunCalibrationKind,curve:LensfunCurve):boolean {
+  // Keep this validator safe as a standalone exported helper too; callers must
+  // not be able to validate a TCA model against distortion coefficients (or
+  // vice versa) merely by supplying a coincidentally complete set of fields.
+  if(!isSupportedLensfunModel(kind,curve.model))return false
   const required:readonly (keyof LensfunCurve)[]=kind==='distortion'?
     curve.model==='poly3'?['k1']:curve.model==='poly5'?['k1','k2']:['a','b','c']:
     kind==='tca'?curve.model==='linear'?['kr','kb']:['vr','br','cr','vb','bb','cb']:
