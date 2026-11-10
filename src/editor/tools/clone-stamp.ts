@@ -11,7 +11,7 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, brushSettingsFrom, walkDabs, drawCross } from './shared'
+import { getOptions, brushSettingsFrom, walkDabs, walkDabsEach, drawCross } from './shared'
 import { buildSourceDab, sourcePointFor, pressureFlow } from './dab-utils'
 import { cloneCanvas } from '../utils/canvas'
 import { getSamplingComposite } from '../engine/document'
@@ -334,10 +334,8 @@ export const cloneStampTool: Tool = {
     if (canConnect && connectFrom) {
       const settings = brushSettingsFrom(opts)
       const spacing = Math.max(1, settings.size * settings.spacing)
-      const points = walkDabs(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing)
-      for (const q of points) dab(q.x, q.y, p)
-      const tail = points[points.length - 1]
-      if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) dab(p.docX, p.docY, p)
+      const walked = walkDabsEach(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing, (x, y) => dab(x, y, p))
+      if (!walked.count || Math.hypot(walked.lastX - p.docX, walked.lastY - p.docY) > .25) dab(p.docX, p.docY, p)
     } else {
       dab(p.docX, p.docY, p)
     }
@@ -348,7 +346,7 @@ export const cloneStampTool: Tool = {
     const opts = getOptions('clone-stamp')
     const settings = brushSettingsFrom(opts)
     const spacing = Math.max(1, settings.size * settings.spacing)
-    for (const d of walkDabs(st.last.x, st.last.y, p.docX, p.docY, spacing)) dab(d.x, d.y, p)
+    walkDabsEach(st.last.x, st.last.y, p.docX, p.docY, spacing, (x, y) => dab(x, y, p))
     if (Math.hypot(p.docX - st.last.x, p.docY - st.last.y) >= spacing) st.last = { x: p.docX, y: p.docY }
   },
 
