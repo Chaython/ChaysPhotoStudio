@@ -5,7 +5,7 @@ import { createCanvas, ctx2d } from '../utils/canvas'
 import { getOptions, drawCross } from './shared'
 
 type FrameGeometry = NonNullable<Layer['frame']>
-export type FrameRef = { layerId: string; geometry: FrameGeometry }
+export type FrameRef = { docId: string; layerId: string; geometry: FrameGeometry }
 type Drag = { layerId: string | null; kind: 'new' | 'move' | 'resize'; startX: number; startY: number; original?: FrameGeometry; draft: FrameGeometry }
 let drag: Drag | null = null
 let selectedFrameId: string | null = null
@@ -22,7 +22,7 @@ export function findImageFrameAtDocPoint(x: number, y: number): FrameRef | null 
   const doc = engine.activeDoc
   if (!doc) return null
   for (const layer of [...frameLayers(doc)].reverse()) {
-    if (layer.frame && frameContains(layer.frame, x, y)) return { layerId: layer.id, geometry: structuredClone(layer.frame) }
+    if (layer.frame && frameContains(layer.frame, x, y)) return { docId: doc.id, layerId: layer.id, geometry: structuredClone(layer.frame) }
   }
   return null
 }
