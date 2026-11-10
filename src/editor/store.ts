@@ -481,7 +481,7 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
       'tool:object-select': 'w', 'tool:quick-select': 'w', 'tool:magic-wand': 'w',
       'tool:crop': 'c', 'tool:perspective-crop': 'c',
       'tool:eyedropper': 'i', 'tool:color-sampler': 'i',
-      'tool:spot-healing': 'j', 'tool:healing-brush': 'j', 'tool:patch': 'j', 'tool:red-eye': 'j',
+      'tool:remove': 'j', 'tool:spot-healing': 'j', 'tool:healing-brush': 'j', 'tool:patch': 'j', 'tool:red-eye': 'j',
       'tool:brush': 'b', 'tool:pencil': 'b', 'tool:mixer-brush': 'b', 'tool:color-replacement': 'b',
       'tool:clone-stamp': 's', 'tool:pattern-stamp': 's',
       'tool:history-brush': 'y', 'tool:art-history-brush': 'y',
@@ -586,7 +586,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['object-select', 'quick-select', 'magic-wand'],
       ['crop', 'perspective-crop', 'slice', 'slice-select', 'hotspot', 'frame'],
       ['eyedropper', 'color-sampler', 'measure', 'count'],
-      ['spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
+      ['remove', 'spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
       ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
       ['clone-stamp', 'pattern-stamp'],
       ['history-brush', 'art-history-brush'],
@@ -626,7 +626,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['type-mask-horizontal', 'type-mask-vertical', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
       // Raster cleanup and tonal tools retained for compatibility.
       ['eraser', 'background-eraser', 'magic-eraser'],
-      ['clone-stamp', 'pattern-stamp', 'healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye'],
+      ['clone-stamp', 'pattern-stamp', 'remove', 'healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye'],
       ['blur', 'sharpen', 'smudge', 'dodge', 'burn', 'sponge'],
     ],
     // GIMP-style: selection suite first (rect/ellipse/free/fuzzy), then
