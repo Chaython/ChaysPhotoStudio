@@ -213,6 +213,18 @@ const QUAD = new Float32Array([
 ])
 
 let quadBuf: WebGLBuffer | null = null
+const attribLocationCache = new WeakMap<WebGLProgram, number>()
+const uniformLocationCache = new WeakMap<WebGLProgram, Map<string, WebGLUniformLocation | null>>()
+
+/** Cache immutable shader-interface lookups; querying GL during every pass can synchronize with the driver. */
+export function cachedUniformLocation(program: WebGLProgram, name: string): WebGLUniformLocation | null {
+  let entries = uniformLocationCache.get(program)
+  if (!entries) { entries = new Map(); uniformLocationCache.set(program, entries) }
+  if (entries.has(name)) return entries.get(name) ?? null
+  const loc = getGL()?.getUniformLocation(program, name) ?? null
+  entries.set(name, loc)
+  return loc
+}
 
 /** draw a fullscreen quad with the given program (binds its aPos attribute) */
 export function drawQuad(gl: WebGL2RenderingContext, program: WebGLProgram): void {
@@ -225,7 +237,12 @@ export function drawQuad(gl: WebGL2RenderingContext, program: WebGLProgram): voi
   gl.useProgram(program)
   gl.bindVertexArray(null)
   gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf)
-  const loc = gl.getAttribLocation(program, 'aPos')
+  let loc = attribLocationCache.get(program)
+  if (loc === undefined) {
+    loc = gl.getAttribLocation(program, 'aPos')
+    attribLocationCache.set(program, loc)
+  }
+  if (loc < 0) return
   gl.enableVertexAttribArray(loc)
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
   gl.drawArrays(gl.TRIANGLES, 0, 6)
@@ -234,7 +251,7 @@ export function drawQuad(gl: WebGL2RenderingContext, program: WebGLProgram): voi
 
 // ---------------- textures ----------------
 
-interface TexEntry { tex: WebGLTexture; key: string }
+interface TexEntry { tex: WebGLTexture; key: string; w: number; h: number }
 
 /** canvas → texture cache; key should encode content version */
 const canvasTexCache = new WeakMap<HTMLCanvasElement, TexEntry>()
@@ -249,15 +266,19 @@ export function uploadCanvas(gl: WebGL2RenderingContext, canvas: HTMLCanvasEleme
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
     gl.bindTexture(gl.TEXTURE_2D, tex)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    if (hit && hit.w === canvas.width && hit.h === canvas.height) {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, canvas)
+    } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    }
   } catch {
     return null
   }
-  canvasTexCache.set(canvas, { tex, key })
+  canvasTexCache.set(canvas, { tex, key, w: canvas.width, h: canvas.height })
   return tex
 }
 
@@ -270,15 +291,19 @@ export function uploadBytes(gl: WebGL2RenderingContext, w: number, h: number, by
   try {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
     gl.bindTexture(gl.TEXTURE_2D, tex)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, bytes)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    if (cache && (cache as TexEntry).w === w && (cache as TexEntry).h === h) {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, bytes)
+    } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, bytes)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    }
   } catch {
     return null
   }
-  bytesTexCache.set(owner, { tex, key })
+  bytesTexCache.set(owner, { tex, key, w, h })
   return tex
 }
 const bytesTexCache = new WeakMap<object, TexEntry>()
@@ -301,6 +326,11 @@ export interface FBO {
 }
 
 const fboPool: FBO[] = []
+// Keep pooled render targets bounded by bytes, not just object count: four
+// 8K RGBA16F surfaces already consume ~2 GiB on their own.
+const FBO_POOL_MAX_BYTES = 128 * 1024 * 1024
+let fboPoolBytes = 0
+function fboBytes(f: FBO): number { return f.w * f.h * 4 * (f.precision === 'rgba16f' ? 2 : 1) }
 
 export function acquireFBO(
   gl: WebGL2RenderingContext,
@@ -312,6 +342,7 @@ export function acquireFBO(
     const f = fboPool[i]
     if (f.w === w && f.h === h && f.precision === precision) {
       fboPool.splice(i, 1)
+      fboPoolBytes -= fboBytes(f)
       return f
     }
   }
@@ -354,12 +385,14 @@ export function acquireFBO(
 
 export function releaseFBO(gl: WebGL2RenderingContext, f: FBO | null): void {
   if (!f) return
-  if (fboPool.length > 8) {
+  const bytes = fboBytes(f)
+  if (fboPool.length >= 8 || bytes > FBO_POOL_MAX_BYTES || fboPoolBytes + bytes > FBO_POOL_MAX_BYTES) {
     gl.deleteFramebuffer(f.fb)
     gl.deleteTexture(f.tex)
     return
   }
   fboPool.push(f)
+  fboPoolBytes += bytes
 }
 
 /** bind f as render target; viewport set to full size */
@@ -375,7 +408,7 @@ export function bindTarget(gl: WebGL2RenderingContext, f: FBO | null): void {
 
 /** bind a WebGLTexture to a sampler uniform slot */
 export function bindUniformTex(gl: WebGL2RenderingContext, program: WebGLProgram, name: string, tex: WebGLTexture, unit: number): boolean {
-  const loc = gl.getUniformLocation(program, name)
+  const loc = cachedUniformLocation(program, name)
   if (!loc) return false
   gl.activeTexture(gl.TEXTURE0 + unit)
   gl.bindTexture(gl.TEXTURE_2D, tex)
