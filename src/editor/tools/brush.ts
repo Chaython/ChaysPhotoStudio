@@ -40,7 +40,7 @@ import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import { clamp, createCanvas, ctx2d } from '../utils/canvas'
 import {
-  getOptions, brushSettingsFrom, getFgColor, getBgColor, walkDabs, softDab, pencilDab, drawBrushCursor,
+  getOptions, brushSettingsFrom, getFgColor, getBgColor, walkDabs, walkDabsEach, softDab, pencilDab, drawBrushCursor,
   symmetricPoints, drawSymmetryOverlay, ema,
 } from './shared'
 import { getActiveId, getById, getCachedStampCanvas, warmPreset } from '../plugins/brush-presets'
@@ -545,10 +545,8 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
         st.last = { ...connectFrom }
         st.filtered = { x: p.docX, y: p.docY }
         st.prevRaw = { ...connectFrom }
-        const points = walkDabs(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing)
-        for (const q of points) stampDab(q.x, q.y, p)
-        const tail = points[points.length - 1]
-        if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) stampDab(p.docX, p.docY, p)
+        const walked = walkDabsEach(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing, (x, y) => stampDab(x, y, p))
+        if (!walked.count || Math.hypot(walked.lastX - p.docX, walked.lastY - p.docY) > .25) stampDab(p.docX, p.docY, p)
         st.last = { x: p.docX, y: p.docY }
       } else {
         stampDab(p.docX, p.docY, p)
@@ -586,11 +584,10 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       const dist = Math.hypot(fx - st.last.x, fy - st.last.y)
       if (dist > 0.01) st.traveled += dist
       if (dist > 0.01) {
-        const dabs = walkDabs(st.last.x, st.last.y, fx, fy, spacing)
-        for (const d of dabs) stampDab(d.x, d.y, p)
+        const dabs = walkDabsEach(st.last.x, st.last.y, fx, fy, spacing, (x, y) => stampDab(x, y, p))
         // One composite refresh per pointer event, not one per generated dab.
         if (dist >= spacing) st.last = { x: fx, y: fy }
-        if (dabs.length) engine.requestRender()
+        if (dabs.count) engine.requestRender()
       }
       st.lastP = p
     },
