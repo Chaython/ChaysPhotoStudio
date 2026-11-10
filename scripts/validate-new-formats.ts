@@ -1,4 +1,4 @@
-import { chooseLensfunCurve, matchLensfunRecords, lensfunTcaScale, scoreLensfunModelMatch, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
+import { chooseLensfunCurve, matchLensfunRecords, lensfunDistortionScale, lensfunTcaScale, scoreLensfunModelMatch, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
@@ -916,6 +916,12 @@ check(Math.abs(lensfunTcaScale(polyTca,'blue',0.5)-(0.999-0.004*0.25+0.005*0.5))
 check(lensfunTcaScale({model:'linear',focal:50,kr:1.002,kb:0.998},'red',0.8)===1.002 &&
   lensfunTcaScale({model:'linear',focal:50,kr:1.002,kb:0.998},'blue',0.8)===0.998,
   'Lensfun linear TCA uses kr/kb rather than polynomial defaults')
+check(Math.abs(lensfunDistortionScale({model:'poly5',focal:20,k1:0.1,k2:-0.02},0.5)-
+  (1+0.1*0.25-0.02*0.0625))<1e-9,
+  'Lensfun poly5 distortion evaluates k1*r² + k2*r⁴')
+check(Math.abs(lensfunDistortionScale({model:'poly3',focal:20,k1:0.1},0.5)-
+  (0.9+0.1*0.25))<1e-9,
+  'Lensfun poly3 distortion retains its calibrated radial formula')
 const interpolatedTca=chooseLensfunCurve([
   {model:'poly3',focal:40,vr:1,br:0,cr:0, vb:1,bb:0,cb:0},
   {model:'poly3',focal:60,vr:1.002,br:0.004,cr:0.006,vb:0.998,bb:-0.004,cb:0.002},
