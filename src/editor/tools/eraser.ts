@@ -24,7 +24,7 @@ import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import { clamp, createCanvas, ctx2d } from '../utils/canvas'
 import {
-  getOptions, brushSettingsFrom, walkDabs, pencilDab,
+  getOptions, brushSettingsFrom, walkDabs, walkDabsEach, pencilDab,
   symmetricPoints, drawSymmetryOverlay, ema,
 } from './shared'
 import { getTip, drawTipCursor, tipExtentMul, ERASER_TIP_IDS } from './brush-tips'
@@ -131,10 +131,8 @@ function makeEraser(): Tool {
       if (canConnect && connectFrom) {
         const settings = brushSettingsFrom(opts)
         const spacing = Math.max(1, settings.size * settings.spacing)
-        const points = walkDabs(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing)
-        for (const q of points) dab(q.x, q.y, p)
-        const tail = points[points.length - 1]
-        if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) dab(p.docX, p.docY, p)
+        const walked = walkDabsEach(connectFrom.x, connectFrom.y, p.docX, p.docY, spacing, (x, y) => dab(x, y, p))
+        if (!walked.count || Math.hypot(walked.lastX - p.docX, walked.lastY - p.docY) > .25) dab(p.docX, p.docY, p)
       } else {
         dab(p.docX, p.docY, p)
       }
@@ -145,7 +143,7 @@ function makeEraser(): Tool {
       const opts = getOptions('eraser')
       const settings = brushSettingsFrom(opts)
       const spacing = Math.max(1, settings.size * settings.spacing)
-      for (const d of walkDabs(last.x, last.y, p.docX, p.docY, spacing)) dab(d.x, d.y, p)
+      walkDabsEach(last.x, last.y, p.docX, p.docY, spacing, (x, y) => dab(x, y, p))
       if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
     },
 
