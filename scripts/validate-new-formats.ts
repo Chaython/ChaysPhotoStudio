@@ -1,4 +1,4 @@
-import { chooseLensfunCurve, matchLensfunRecords, scoreLensfunModelMatch, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
+import { chooseLensfunCurve, matchLensfunRecords, lensfunTcaScale, scoreLensfunModelMatch, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
@@ -907,4 +907,20 @@ check(matchLensfunRecords([
   'Lensfun record matching rejects equal-best manufacturer ambiguity')
 check(matchLensfunRecords([lensfunRecord('Generic','50mm')],lensfunMeta)===null,
   'Lensfun record matching rejects generic focal-only profile names')
+const polyTca={model:'poly3',focal:50,vr:1.001,br:0.002,cr:0.003,
+  vb:0.999,bb:-0.004,cb:0.005} as const
+check(Math.abs(lensfunTcaScale(polyTca,'red',0.5)-(1.001+0.002*0.25+0.003*0.5))<1e-9,
+  'Lensfun poly3 red TCA evaluates br*r² + cr*r + vr')
+check(Math.abs(lensfunTcaScale(polyTca,'blue',0.5)-(0.999-0.004*0.25+0.005*0.5))<1e-9,
+  'Lensfun poly3 blue TCA evaluates bb*r² + cb*r + vb')
+check(lensfunTcaScale({model:'linear',focal:50,kr:1.002,kb:0.998},'red',0.8)===1.002 &&
+  lensfunTcaScale({model:'linear',focal:50,kr:1.002,kb:0.998},'blue',0.8)===0.998,
+  'Lensfun linear TCA uses kr/kb rather than polynomial defaults')
+const interpolatedTca=chooseLensfunCurve([
+  {model:'poly3',focal:40,vr:1,br:0,cr:0, vb:1,bb:0,cb:0},
+  {model:'poly3',focal:60,vr:1.002,br:0.004,cr:0.006,vb:0.998,bb:-0.004,cb:0.002},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:100})
+check(interpolatedTca?.vr===1.001 && interpolatedTca.cr===0.003 &&
+  interpolatedTca.vb===0.999 && interpolatedTca.cb===0.001,
+  'Lensfun TCA interpolation retains every red/blue polynomial coefficient')
 console.log('Scientific, DICOM-RLE, EXR, Lensfun calibration and multipage TIFF/DCX tests passed')
