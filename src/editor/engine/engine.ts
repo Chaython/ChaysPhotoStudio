@@ -172,6 +172,8 @@ export interface LayerTransformCommand {
   reference?: TransformReference
   cornerOffsets?: [Point2, Point2, Point2, Point2]
   warp?: TransformWarpSpec | null
+  /** Shared document-space bounds used as the reference frame for group transforms. */
+  referenceBounds?: { x: number; y: number; w: number; h: number }
 }
 
 /** 1×1 scratch context for measuring text (layerContentRect) — measureText
@@ -5991,7 +5993,15 @@ export class Engine {
       return out
     }
 
-    const ref = this.transformReferencePoint(base, cmd.reference ?? 'mc')
+    const referenceQuad: [Point2, Point2, Point2, Point2] = cmd.referenceBounds
+      ? [
+          { x: cmd.referenceBounds.x, y: cmd.referenceBounds.y },
+          { x: cmd.referenceBounds.x + cmd.referenceBounds.w, y: cmd.referenceBounds.y },
+          { x: cmd.referenceBounds.x + cmd.referenceBounds.w, y: cmd.referenceBounds.y + cmd.referenceBounds.h },
+          { x: cmd.referenceBounds.x, y: cmd.referenceBounds.y + cmd.referenceBounds.h },
+        ]
+      : base
+    const ref = this.transformReferencePoint(referenceQuad, cmd.reference ?? 'mc')
     const sx = cmd.mode === 'rotate' || cmd.mode === 'skew' ? 1 : Math.max(.01, Number(cmd.scaleX) || 1)
     const sy = cmd.mode === 'rotate' || cmd.mode === 'skew' ? 1 : Math.max(.01, Number(cmd.scaleY) || 1)
     const skewX = cmd.mode === 'skew' ? Math.tan(clamp(Number(cmd.skewX) || 0, -80, 80) * Math.PI / 180) : 0
@@ -6032,17 +6042,53 @@ export class Engine {
     return Math.abs(area) / 2
   }
 
+  /** Apply one shared affine transform to selected layers using their union bounds. */
+  transformSelectedLayers(ids: string[], cmd: LayerTransformCommand): boolean {
+    const doc = this.activeDoc
+    if (!doc) return false
+    if (!['free', 'scale', 'rotate', 'skew'].includes(cmd.mode)) {
+      this.ui?.toast('Distort, Perspective and Warp remain single-layer operations', 'info')
+      return false
+    }
+    const layers = [...new Set(ids)].map(id => this.layerById(id)).filter((l): l is Layer => !!l)
+    if (layers.length < 2) return false
+    if (layers.some(l => l.locked || l.kind === 'adjustment')) {
+      this.ui?.toast('Unlock all selected pixel layers before transforming the group', 'error')
+      return false
+    }
+    if (layers.some(l => l.kind === 'raster' && l.hdrPixels)) {
+      this.ui?.toast('Group transforms are not yet supported for 32-bit HDR raster layers', 'info')
+      return false
+    }
+    const rects = layers.map(l => this.layerContentRect(l.id)).filter((r): r is Rect => !!r && r.w > 0 && r.h > 0)
+    if (rects.length !== layers.length) {
+      this.ui?.toast('Every selected layer must contain transformable content', 'error')
+      return false
+    }
+    const x0 = Math.min(...rects.map(r => r.x)), y0 = Math.min(...rects.map(r => r.y))
+    const x1 = Math.max(...rects.map(r => r.x + r.w)), y1 = Math.max(...rects.map(r => r.y + r.h))
+    const sharedCommand = { ...structuredClone(cmd), referenceBounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } }
+    for (const layer of layers) this.transformLayer(layer.id, sharedCommand, false, false)
+    this.lastTransformCommand = structuredClone(cmd)
+    this.pushHistory(`Transform ${layers.length} Layers`)
+    this.emit()
+    return true
+  }
   /** Apply Photoshop-style Scale/Rotate/Skew/Distort/Perspective.
    * Smart Objects retain a projective quad; raster content is resampled once.
    * Text/shape layers remain editable for ordinary uniform Free Transform, but
    * advanced projective transforms rasterize them (with undo available). */
-  transformLayer(id: string, cmd: LayerTransformCommand, remember = true) {
+  transformLayer(id: string, cmd: LayerTransformCommand, remember = true, recordHistory = true) {
     const doc = this.activeDoc
     const layer = this.layerById(id)
     if (!doc || !layer) return
     if (layer.locked) { this.ui?.toast('Layer is locked', 'error'); return }
     if (layer.kind === 'adjustment') { this.ui?.toast('Adjustment layers have no pixels to transform', 'error'); return }
     if (layer.kind === 'raster' && layer.hdrPixels) {
+      if (cmd.referenceBounds) {
+        this.ui?.toast('Group transforms are not yet supported for 32-bit HDR raster layers', 'info')
+        return
+      }
       // Free/Scale/Rotate with uniform scaling can be computed exactly in
       // Float32. Perspective, shears and mesh warps still require dedicated
       // scene-linear inverse mapping; never round-trip them via the preview.
@@ -6077,7 +6123,7 @@ export class Engine {
         layer._v++
         invalidateFlat(doc)
         if (remember) this.lastTransformCommand = structuredClone(cmd)
-        this.pushHistory('Transform Warp')
+        if (recordHistory) this.pushHistory('Transform Warp')
         this.emit()
         return
       }
@@ -6136,7 +6182,7 @@ export class Engine {
       layer._v++
       invalidateFlat(doc)
       if (remember) this.lastTransformCommand = structuredClone(cmd)
-      this.pushHistory('Transform Warp')
+      if (recordHistory) this.pushHistory('Transform Warp')
       this.emit()
       return
     }
@@ -6152,7 +6198,7 @@ export class Engine {
       layer._v++
       invalidateFlat(doc)
       if (remember) this.lastTransformCommand = structuredClone(cmd)
-      this.pushHistory(`Transform ${cmd.mode[0].toUpperCase() + cmd.mode.slice(1)}`)
+      if (recordHistory) this.pushHistory(`Transform ${cmd.mode[0].toUpperCase() + cmd.mode.slice(1)}`)
       this.emit()
       return
     }
@@ -6160,6 +6206,7 @@ export class Engine {
     // Preserve native editable text/shape for transformations representable by
     // the existing uniform scale/rotate model.
     if (
+      !cmd.referenceBounds &&
       (layer.kind === 'text' || layer.kind === 'shape') &&
       (cmd.mode === 'free' || cmd.mode === 'scale' || cmd.mode === 'rotate') &&
       Math.abs((cmd.scaleX ?? 1) - (cmd.scaleY ?? 1)) < 1e-6
@@ -6229,7 +6276,7 @@ export class Engine {
     layer._v++
     invalidateFlat(doc)
     if (remember) this.lastTransformCommand = structuredClone(cmd)
-    this.pushHistory(`Transform ${cmd.mode[0].toUpperCase() + cmd.mode.slice(1)}`)
+    if (recordHistory) this.pushHistory(`Transform ${cmd.mode[0].toUpperCase() + cmd.mode.slice(1)}`)
     this.emit()
   }
 
