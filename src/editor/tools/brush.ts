@@ -41,7 +41,7 @@ import { engine } from '../engine/engine'
 import { clamp, createCanvas, ctx2d } from '../utils/canvas'
 import {
   getOptions, brushSettingsFrom, getFgColor, getBgColor, walkDabsEach, softDab, pencilDab, drawBrushCursor,
-  symmetricPoints, drawSymmetryOverlay, ema,
+  symmetricPointsInto, drawSymmetryOverlay, ema,
 } from './shared'
 import { getActiveId, getById, getCachedStampCanvas, warmPreset } from '../plugins/brush-presets'
 import { getTip, drawTipCursor, jitterPalette, tipExtentMul } from './brush-tips'
@@ -221,6 +221,8 @@ interface StrokeState {
   hasDir: boolean
   /** Pencil Auto Erase resolves the stroke color once at pointer-down. */
   strokeColor: string | null
+  /** Reused symmetry point buffer; no per-dab point/array allocations. */
+  symmetryPoints: { x: number; y: number }[]
 }
 
 function makeBrush(kind: 'brush' | 'pencil'): Tool {
@@ -229,7 +231,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
     active: false, last: null, filtered: null, prevRaw: null, traveled: 0, speed: 0,
     lastT: 0, lastP: null, airbrushPos: null, airbrushTimer: null, stamp: null,
     tipId: 'round-soft', palette: null, lastDab: null, dirX: 1, dirY: 0, hasDir: false,
-    strokeColor: null,
+    strokeColor: null, symmetryPoints: [],
   }
   let connectFrom: { x: number; y: number } | null = null
   let connectDocId: string | null = null
@@ -325,7 +327,8 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
         st.hasDir = true
       }
     }
-    st.lastDab = { x, y }
+    if (st.lastDab) { st.lastDab.x = x; st.lastDab.y = y }
+    else st.lastDab = { x, y }
 
     // ---- fade: effective flow multiplier over traveled stroke length ----
     const fade = clamp(opts.fade ?? 0, 0, 600)
@@ -432,7 +435,8 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       : rawDrawFn
 
     // ---- symmetry expansion (positions may land off-canvas; dabs just clip) ----
-    const pts = symmetricPoints(x, y, symmetryConfig(opts, doc.width, doc.height))
+    const pts = st.symmetryPoints
+    const pointCount = symmetricPointsInto(x, y, symmetryConfig(opts, doc.width, doc.height), pts)
 
     // ---- Photoshop-style scattering + count ----
     const scatterR = (clamp(opts.scatter ?? 0, 0, 300) / 100) * (settings.size / 2)
@@ -444,7 +448,8 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       16,
     )
 
-    for (const pt of pts) {
+    for (let pointIndex = 0; pointIndex < pointCount; pointIndex++) {
+      const pt = pts[pointIndex]
       for (let n = 0; n < count; n++) {
         let px = pt.x, py = pt.y
         if (scatterR > 0.5) {
