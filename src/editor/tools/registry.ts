@@ -31,7 +31,7 @@ import { redEyeTool } from './red-eye'
 import { blurTool, sharpenTool, smudgeTool, dodgeTool, burnTool, spongeTool } from './retouch'
 import { gradientTool, paintBucketTool } from './fill'
 import { textTool, shapeTool } from './text-shapes'
-import { cropTool, eyedropperTool, handTool, zoomTool } from './crop'
+import { cropTool, eyedropperTool, handTool, zoomTool, rotateViewTool } from './crop'
 import { perspectiveCropTool } from './perspective-crop'
 import { colorSamplerTool } from './color-sampler'
 import { sliceTool, hotspotTool } from './web-region-tools'
@@ -98,6 +98,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'shape': shapeTool,
   'hand': handTool,
   'zoom': zoomTool,
+  'rotate-view': rotateViewTool,
 }
 
 let activeToolId: ToolId = 'move'
