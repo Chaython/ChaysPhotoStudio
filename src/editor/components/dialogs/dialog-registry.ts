@@ -50,6 +50,7 @@ const HelpGuideDialog = deferredDialog(() => import('./help-guide-dialog').then(
 const ProofSetupDialog = deferredDialog(() => import('./proof-setup-dialog').then(m => ({ default: m.ProofSetupDialog })))
 const PuppetWarpDialog = deferredDialog(() => import('./puppet-warp-dialog').then(m => ({ default: m.PuppetWarpDialog })))
 const VanishingPointDialog = deferredDialog(() => import('./vanishing-point-dialog').then(m => ({ default: m.VanishingPointDialog })))
+const BlurGalleryDialog = deferredDialog(() => import('./blur-gallery-dialog').then(m => ({ default: m.BlurGalleryDialog })))
 const ColorRangeDialog = deferredDialog(() => import('./advanced-dialogs').then(m => ({ default: m.ColorRangeDialog })))
 const SelectMaskDialog = deferredDialog(() => import('./advanced-dialogs').then(m => ({ default: m.SelectMaskDialog })))
 const ContentAwareFillDialog = deferredDialog(() => import('./advanced-dialogs').then(m => ({ default: m.ContentAwareFillDialog })))
@@ -109,6 +110,7 @@ export const DIALOG_COMPONENTS: Partial<Record<DialogType, (props: DialogProps) 
   'proof-setup': ProofSetupDialog,
   'puppet-warp': PuppetWarpDialog,
   'vanishing-point': VanishingPointDialog,
+  'blur-gallery': BlurGalleryDialog,
   'transform': TransformDialog,
   'color-range': ColorRangeDialog,
   'select-mask': SelectMaskDialog,
