@@ -546,8 +546,10 @@ export function prepareLayer(doc: PsDocument, layer: Layer): HTMLCanvasElement |
   // rerender text/smart transforms or re-run smart and preview filters.
   let out: HTMLCanvasElement
   if (cachedBase) {
-    out = anyLayer._strokePreviewCanvas as HTMLCanvasElement | undefined
-    if (!out || out.width !== doc.width || out.height !== doc.height) {
+    const previewCanvas = anyLayer._strokePreviewCanvas as HTMLCanvasElement | undefined
+    if (previewCanvas && previewCanvas.width === doc.width && previewCanvas.height === doc.height) {
+      out = previewCanvas
+    } else {
       out = createCanvas(doc.width, doc.height)
       anyLayer._strokePreviewCanvas = out
     }
