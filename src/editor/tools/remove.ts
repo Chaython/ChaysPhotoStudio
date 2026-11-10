@@ -46,15 +46,17 @@ function resetPreview() {
 
 export const removeTool: Tool = {
   id: 'remove',
-  requiresLayer: true,
+  requiresLayer: false,
   cursor: 'none',
   onPointerDown(p: PointerInfo) {
     if (p.button !== 0) return
     const doc = engine.activeDoc
     const layer = engine.activeLayer
-    if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
-    if (doc.workingBitDepth === 32) {
-      engine.ui?.toast('Remove Tool currently requires an 8-bit or 16-bit document. Convert the document before removing objects.', 'error')
+    const opts = getOptions('remove')
+    const sampleAllLayers = opts.sampleAllLayers !== false
+    if (!doc || (!layer && !sampleAllLayers) || (!sampleAllLayers && (layer?.locked || layer?.kind === 'adjustment'))) return
+    if (doc.workingBitDepth !== 8) {
+      engine.ui?.toast('Remove Tool currently requires an 8-bit document to preserve pixel precision. Convert a copy to 8-bit before removing objects.', 'error')
       return
     }
     maskCanvas = toolMaskCanvas()
@@ -78,6 +80,8 @@ export const removeTool: Tool = {
     active = false
     const doc = engine.activeDoc
     const layer = engine.activeLayer
+    const opts = getOptions('remove')
+    const sampleAllLayers = opts.sampleAllLayers !== false
     const docId = doc?.id
     const layerId = layer?.id
     const token = ++generation
@@ -86,9 +90,7 @@ export const removeTool: Tool = {
     last = null
     maskCanvas = null
     bounds = null
-    if (!doc || !layer || !docId || !layerId) { resetPreview(); return }
-
-    const opts = getOptions('remove')
+    if (!doc || !docId || (!sampleAllLayers && !layerId)) { resetPreview(); return }
     const radius = clamp(Number(opts.size) || 40, 1, 1000)
     const expand = clamp(Number(opts.expand ?? 4), 0, 64)
     const pad = Math.max(32, Math.ceil(radius * 1.75), expand * 4 + 12)
@@ -105,9 +107,9 @@ export const removeTool: Tool = {
     const inpaintMask = dilateMask(rawMask, work.w, work.h, Math.round(expand))
     if (!inpaintMask.some(v => v > 0)) return
 
-    const source = opts.sampleAllLayers === false
-      ? engine.layerCanvasDocSpace(layerId)
-      : getFlatComposite(doc)
+    const source = sampleAllLayers
+      ? getFlatComposite(doc)
+      : layerId ? engine.layerCanvasDocSpace(layerId) : null
     if (!source) return
     const pixels = ctx2d(source).getImageData(x, y, work.w, work.h)
     const result = new ImageData(work.w, work.h)
@@ -166,9 +168,8 @@ export const removeTool: Tool = {
     output.canvas = patch
     output.offsetX = x
     output.offsetY = y
-    const insertion = opts.sampleAllLayers === false
-      ? Math.max(0, doc.layers.findIndex(item => item.id === layerId) + 1)
-      : doc.layers.length
+    const activeIndex = layerId ? doc.layers.findIndex(item => item.id === layerId) : -1
+    const insertion = sampleAllLayers || activeIndex < 0 ? doc.layers.length : activeIndex + 1
     doc.layers.splice(insertion, 0, output)
     doc.activeLayerId = output.id
     doc.selectedLayerIds = [output.id]
