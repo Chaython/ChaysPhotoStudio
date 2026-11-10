@@ -181,7 +181,7 @@ export function selectLensfunVignettingSamples(curves:LensfunCurve[],exif:Camera
     if(!candidates.length)continue
     const distanceScore=(sample:LensfunCurve)=>{
       const d=sample.distance
-      if(exif.distance>=100)return d===undefined||d>=100?0:d===undefined?0:1000+Math.abs(100-d)
+      if(exif.distance>=100)return d!==undefined&&d>=100?0:1000+(d===undefined?100:Math.abs(100-d))
       if(d!==undefined&&d<100)return Math.abs(d-exif.distance)
       return 1000
     }
