@@ -18,9 +18,9 @@ function mark(x: number, y: number) {
   const opts = getOptions('remove')
   const radius = clamp(Number(opts.size) || 40, 1, 1000) / 2
   const ctx = ctx2d(maskCanvas)
-  const inner = radius * clamp((Number(opts.hardness) ?? 75) / 100, 0, .98)
+  const inner = radius * clamp((Number(opts.hardness ?? 75)) / 100, 0, .98)
   const grad = ctx.createRadialGradient(x, y, inner, x, y, Math.max(.5, radius))
-  grad.addColorStop(0, 'rgba(255,255,255,1)')
+  grad.addColorStop(0, 'rgba(255,0,0,1)')
   grad.addColorStop(1, 'rgba(255,255,255,0)')
   ctx.fillStyle = grad
   ctx.beginPath()
@@ -90,7 +90,7 @@ export const removeTool: Tool = {
 
     const opts = getOptions('remove')
     const radius = clamp(Number(opts.size) || 40, 1, 1000)
-    const expand = clamp(Number(opts.expand) || 4, 0, 64)
+    const expand = clamp(Number(opts.expand ?? 4), 0, 64)
     const pad = Math.max(32, Math.ceil(radius * 1.75), expand * 4 + 12)
     const x = clamp(Math.floor(rawBounds.x - pad), 0, doc.width)
     const y = clamp(Math.floor(rawBounds.y - pad), 0, doc.height)
@@ -134,13 +134,16 @@ export const removeTool: Tool = {
       // Feather only the patch edge; preserve the original painted mask as the
       // inner footprint and soften the dilated fringe.
       const featherCanvas = createCanvas(work.w, work.h)
-      const fctx = ctx2d(featherCanvas)
-      const md = fctx.createImageData(work.w, work.h)
+      const featherCtx = ctx2d(featherCanvas)
+      const md = featherCtx.createImageData(work.w, work.h)
       for (let i = 0, j = 3; i < alpha.length; i++, j += 4) md.data[j] = alpha[i]
-      fctx.putImageData(md, 0, 0)
-      fctx.filter = `blur(${feather}px)`
-      fctx.drawImage(featherCanvas, 0, 0)
-      const softened = fctx.getImageData(0, 0, work.w, work.h).data
+      featherCtx.putImageData(md, 0, 0)
+      const blurredCanvas = createCanvas(work.w, work.h)
+      const blurredCtx = ctx2d(blurredCanvas)
+      blurredCtx.filter = `blur(${feather}px)`
+      blurredCtx.drawImage(featherCanvas, 0, 0)
+      blurredCtx.filter = 'none'
+      const softened = blurredCtx.getImageData(0, 0, work.w, work.h).data
       alpha = new Uint8ClampedArray(work.w * work.h)
       for (let i = 0, j = 3; i < alpha.length; i++, j += 4) alpha[i] = Math.max(inpaintMask[i], softened[j])
     }
