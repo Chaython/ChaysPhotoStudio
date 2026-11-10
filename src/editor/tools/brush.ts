@@ -533,7 +533,8 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
         : null
       st.filtered = { x: p.docX, y: p.docY } // reset the lazy-brush filter
       st.last = { x: p.docX, y: p.docY }
-      st.prevRaw = { x: p.docX, y: p.docY }
+      if (st.prevRaw) { st.prevRaw.x = p.docX; st.prevRaw.y = p.docY }
+      else st.prevRaw = { x: p.docX, y: p.docY }
       st.traveled = 0
       st.speed = 0
       st.lastT = performance.now()
@@ -542,7 +543,8 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       st.dirX = 1
       st.dirY = 0
       st.hasDir = false
-      st.airbrushPos = { x: p.docX, y: p.docY }
+      if (st.airbrushPos) { st.airbrushPos.x = p.docX; st.airbrushPos.y = p.docY }
+      else st.airbrushPos = { x: p.docX, y: p.docY }
 
       const canConnect = p.shift && connectFrom && connectDocId === doc.id && connectLayerId === layer.id
       if (canConnect && connectFrom) {
@@ -573,15 +575,15 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
         st.speed = ema(st.speed, inst, SPEED_EMA)
         st.lastT = now
       }
-      st.prevRaw = { x: p.docX, y: p.docY }
+      if (st.prevRaw) { st.prevRaw.x = p.docX; st.prevRaw.y = p.docY }
+      else st.prevRaw = { x: p.docX, y: p.docY }
 
       // ---- lazy-brush smoothing: filtered cursor chases the raw pointer ----
       const follow = 1 - (clamp(opts.smoothing ?? 0, 0, 100) / 100) * 0.88
-      st.filtered = {
-        x: st.filtered.x + (p.docX - st.filtered.x) * follow,
-        y: st.filtered.y + (p.docY - st.filtered.y) * follow,
-      }
-      st.airbrushPos = { x: st.filtered.x, y: st.filtered.y }
+      st.filtered.x += (p.docX - st.filtered.x) * follow
+      st.filtered.y += (p.docY - st.filtered.y) * follow
+      if (st.airbrushPos) { st.airbrushPos.x = st.filtered.x; st.airbrushPos.y = st.filtered.y }
+      else st.airbrushPos = { x: st.filtered.x, y: st.filtered.y }
 
       // ---- dabs along the filtered path (min step still honored) ----
       const fx = st.filtered.x, fy = st.filtered.y
@@ -591,7 +593,7 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       if (dist > 0.01) {
         const dabs = walkDabsEach(st.last.x, st.last.y, fx, fy, spacing, (x, y) => stampDab(x, y, p))
         // One composite refresh per pointer event, not one per generated dab.
-        if (dist >= spacing) st.last = { x: fx, y: fy }
+        if (dist >= spacing) { st.last.x = fx; st.last.y = fy }
         if (dabs.count) engine.requestRender()
       }
       st.lastP = p
