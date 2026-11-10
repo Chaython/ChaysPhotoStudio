@@ -127,6 +127,16 @@ export function chooseLensfunCurve(curves: LensfunCurve[], exif: CameraExif): Le
   if (a.distance === b.distance) result.distance = a.distance
   return result
 }
+/** Lensfun radial distortion scale at normalized source radius. */
+export function lensfunDistortionScale(curve:LensfunCurve,radius:number):number {
+  if(!Number.isFinite(radius))return 1
+  const r=Math.max(0,Math.min(2,radius)),r2=r*r
+  if(curve.model==='poly3')return 1-(curve.k1??0)+(curve.k1??0)*r2
+  if(curve.model==='poly5')return 1+(curve.k1??0)*r2+(curve.k2??0)*r2*r2
+  if(curve.model==='ptlens')return 1-(curve.a??0)-(curve.b??0)-(curve.c??0)+
+    (curve.c??0)*r+(curve.b??0)*r2+(curve.a??0)*r2*r
+  return 1
+}
 /** Lensfun TCA channel scale at normalized source radius. Linear uses kr/kb;
  * poly3 uses b*r² + c*r + v independently for red and blue. */
 export function lensfunTcaScale(curve:LensfunCurve,channel:'red'|'blue',radius:number):number {
