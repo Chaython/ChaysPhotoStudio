@@ -108,7 +108,10 @@ export function cameraExif(meta:ImageMetadata|undefined):CameraExif {
   const model=field(meta,/^(model|camera model)$/i)
   const focal=parseFloat(field(meta,/^focal length$/i))||0
   const aperture=parseFloat(field(meta,/^(f number|aperture|f-number)$/i))||0
-  const distance=parseFloat(field(meta,/^subject distance$/i))||1000
+  // Missing EXIF focus distance is unknown, not infinity. Keep zero as the
+  // explicit unavailable sentinel so vignette matching can avoid guessing.
+  const parsedDistance=parseFloat(field(meta,/^subject distance$/i))
+  const distance=Number.isFinite(parsedDistance)&&parsedDistance>0?parsedDistance:0
   return {maker,model,lens,focal,aperture,distance}
 }
 /** Select a genuine focal sample or interpolate between compatible neighbors.
@@ -176,17 +179,19 @@ export function selectLensfunVignettingSamples(curves:LensfunCurve[],exif:Camera
   const focals=[...new Set(curves.map(x=>x.focal).filter(x=>Number.isFinite(x)&&x>0))].sort((a,b)=>a-b)
   const selected:LensfunCurve[]=[]
   for(const focal of focals){
-    const candidates=curves.filter(x=>x.focal===focal&&x.aperture!==undefined&&
-      Math.abs(x.aperture-exif.aperture)<=0.35&&
-      // A near-focus EXIF distance must not silently fall back to an infinity
-      // or unspecified-distance vignette calibration.
-      (exif.distance>=100||(x.distance!==undefined&&x.distance<100)))
+    const apertureCandidates=curves.filter(x=>x.focal===focal&&x.aperture!==undefined&&
+      Math.abs(x.aperture-exif.aperture)<=0.35)
+    if(!apertureCandidates.length)continue
+    const hasDistance=Number.isFinite(exif.distance)&&exif.distance>0
+    // Without focus distance, accept only a single unambiguous aperture sample.
+    if(!hasDistance&&apertureCandidates.length!==1)continue
+    const candidates=hasDistance?apertureCandidates.filter(x=>
+      exif.distance>=100?x.distance!==undefined&&x.distance>=100:
+        x.distance!==undefined&&x.distance<100):apertureCandidates
     if(!candidates.length)continue
     const distanceScore=(sample:LensfunCurve)=>{
-      const d=sample.distance
-      if(exif.distance>=100)return d!==undefined&&d>=100?0:1000+(d===undefined?100:Math.abs(100-d))
-      if(d!==undefined&&d<100)return Math.abs(d-exif.distance)
-      return 1000
+      if(!hasDistance)return 0
+      return Math.abs((sample.distance??0)-exif.distance)
     }
     const ranked=candidates.map(sample=>({sample,aperture:Math.abs(sample.aperture!-exif.aperture),
       distance:distanceScore(sample)})).sort((a,b)=>a.aperture-b.aperture||a.distance-b.distance)
