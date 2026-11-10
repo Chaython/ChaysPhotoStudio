@@ -81,9 +81,9 @@ export function CanvasLayerMenuContent({
       </ContextMenuItem>
     ),
     'transform': (
-      <ContextMenuItem disabled={!canEdit} onClick={act(() => openDialog('transform', { layerId: layer.id }))}>
+      <ContextMenuItem disabled={!canEdit || (useGroup && selectedGroup.some(item => item.locked || item.kind === 'adjustment'))} onClick={act(() => openDialog('transform', { layerId: layer.id, ...(useGroup ? { layerIds: selectedGroup.map(item => item.id) } : {}) }))}>
         <Scaling />
-        Free Transform…
+        {useGroup ? `Free Transform ${selectedGroup.length} Layers…` : 'Free Transform…'}
         <ContextMenuShortcut>Ctrl+T</ContextMenuShortcut>
       </ContextMenuItem>
     ),
