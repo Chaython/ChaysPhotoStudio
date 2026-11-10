@@ -479,36 +479,48 @@ export interface SymmetryConfig {
  *                 (dihedral group Dₙ) → 2N dabs total.
  * Points may fall outside the canvas — dabs simply clip, so no early-out.
  */
-export function symmetricPoints(x: number, y: number, cfg: SymmetryConfig): { x: number; y: number }[] {
+/** Fill a caller-owned point buffer, reusing point objects across dabs. */
+export function symmetricPointsInto(
+  x: number, y: number, cfg: SymmetryConfig, out: { x: number; y: number }[],
+): number {
   const { mode, w, h } = cfg
-  if (!mode || mode === 'off') return [{ x, y }]
-  const out: { x: number; y: number }[] = [{ x, y }]
-  if (mode === 'mirror-x') {
-    out.push({ x: w - x, y })
-  } else if (mode === 'mirror-y') {
-    out.push({ x, y: h - y })
-  } else if (mode === 'point') {
-    out.push({ x: w - x, y }, { x, y: h - y }, { x: w - x, y: h - y })
+  let count = 0
+  const put = (px: number, py: number) => {
+    const point = out[count] ?? (out[count] = { x: px, y: py })
+    point.x = px
+    point.y = py
+    count++
+  }
+  put(x, y)
+  if (!mode || mode === 'off') return count
+  if (mode === 'mirror-x') put(w - x, y)
+  else if (mode === 'mirror-y') put(x, h - y)
+  else if (mode === 'point') {
+    put(w - x, y); put(x, h - y); put(w - x, h - y)
   } else if (mode === 'mandala') {
     const n = Math.max(3, Math.round(cfg.count) || 6)
     const cx = w / 2, cy = h / 2
     const dx = x - cx, dy = y - cy
-    // mirror of the original (k = 0 counterpart)
-    out.push({ x: w - x, y })
+    put(w - x, y)
     for (let k = 1; k < n; k++) {
       const a = (Math.PI * 2 * k) / n
       const cos = Math.cos(a), sin = Math.sin(a)
-      // rotate the offset by 2πk/N around the document center
       const rx = cx + dx * cos - dy * sin
       const ry = cy + dx * sin + dy * cos
-      out.push({ x: rx, y: ry })
-      // mirrored counterpart across the vertical axis (2cx - rx)
-      out.push({ x: 2 * cx - rx, y: ry })
+      put(rx, ry)
+      put(2 * cx - rx, ry)
     }
   }
-  return out
+  return count
 }
 
+/** Compatibility helper for consumers that need an owned point array. */
+export function symmetricPoints(x: number, y: number, cfg: SymmetryConfig): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = []
+  const count = symmetricPointsInto(x, y, cfg, out)
+  out.length = count
+  return out
+}
 /**
  * Draw the symmetry axes / sector guides in SCREEN space (call from a tool's
  * renderOverlay). Amber dashed vertical/horizontal center lines for the mirror
