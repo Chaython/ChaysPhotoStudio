@@ -228,6 +228,20 @@ const filterMenu: MenuItem[] = filterGroups.map(g => ({
   })),
 }))
 
+filterMenu.unshift({
+  id: 'fg-blur-gallery',
+  label: 'Blur Gallery',
+  submenu: [{
+    id: 'f-blur-gallery',
+    label: 'Blur Gallery…',
+    run: () => {
+      const layer = engine.activeLayer
+      if (!layer) { store().pushToast('No active layer', 'error'); return }
+      openDlg('blur-gallery', { layerId: layer.id })
+    },
+  }],
+})
+
 // ---------- Plugins (Task 7-A) ----------
 
 /** position of the Plugins menu inside MENUS (menu-bar swaps in the dynamic items) */
