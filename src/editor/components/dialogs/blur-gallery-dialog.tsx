@@ -23,7 +23,6 @@ function renderBlurGallery(
   source: HTMLCanvasElement,
   mode: Mode,
   pins: Pin[],
-  selected: number,
   settings: { maxBlur: number; focusX: number; focusY: number; focusWidth: number; focusHeight: number; feather: number; angle: number; band: number },
 ): HTMLCanvasElement {
   const width = source.width, height = source.height
@@ -126,7 +125,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     ctx2d(small).drawImage(source, 0, 0, w, h)
     const scaledPins = pins.map(p => ({ ...p, x: p.x, y: p.y }))
     const result = preview
-      ? renderBlurGallery(small, mode, scaledPins, selectedPin, { ...settings, maxBlur: Math.max(0.5, maxBlur * scale), feather: Math.max(1, feather * scale), focusX, focusY, band: band / 100 })
+      ? renderBlurGallery(small, mode, scaledPins, { ...settings, maxBlur: Math.max(0.5, maxBlur * scale), feather: Math.max(1, feather * scale), focusX, focusY, band: band / 100 })
       : small
     const canvas = previewCanvas
     canvas.width = PREVIEW_W
@@ -158,8 +157,12 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     const nx = (px - x) / w, ny = (py - y) / h
     if (nx < 0 || ny < 0 || nx > 1 || ny > 1) return
     if (mode === 'field') {
-      setPins(prev => [...prev, { x: nx, y: ny, radius: maxBlur }])
-      setSelectedPin(pins.length)
+      const nearest = pins.reduce((best, pin, i) => {
+        const distance = Math.hypot((pin.x - nx) * w, (pin.y - ny) * h)
+        return distance < best.distance ? { index: i, distance } : best
+      }, { index: -1, distance: 22 })
+      if (nearest.index >= 0) setSelectedPin(nearest.index)
+      else { setPins(prev => [...prev, { x: nx, y: ny, radius: maxBlur }]); setSelectedPin(pins.length) }
     } else {
       setFocusX(nx); setFocusY(ny)
     }
@@ -179,7 +182,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     }
     setApplying(true)
     try {
-      const output = renderBlurGallery(source, mode, pins, selectedPin, settings)
+      const output = renderBlurGallery(source, mode, pins, settings)
       if (engine.activeDoc?.id !== documentId) return
       const created = engine.addLayerFromCanvas(output, 'Blur Gallery Result', { center: false, aboveActive: true, historyLabel: 'Blur Gallery' })
       if (created) {
