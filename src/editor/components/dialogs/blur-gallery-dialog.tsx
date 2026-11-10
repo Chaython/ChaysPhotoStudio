@@ -185,7 +185,13 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     }
   }
 
-  const updatePinRadius = (radius: number) => setPins(prev => prev.map((p, i) => i === selectedPin ? { ...p, radius } : p))
+  const updateMaxBlur = (value: number) => {
+    setMaxBlur(value)
+    // Maximum Blur is a true ceiling: existing pins must not retain a radius
+    // above the new limit while the rendered mask silently clamps them.
+    setPins(prev => prev.map(pin => ({ ...pin, radius: Math.min(pin.radius, value) })))
+  }
+  const updatePinRadius = (radius: number) => setPins(prev => prev.map((p, i) => i === selectedPin ? { ...p, radius: Math.max(0, Math.min(maxBlur, radius)) } : p))
 
   const apply = async () => {
     if (applying || !source || !doc || engine.activeDoc?.id !== documentId || (mode === 'field' && pins.length === 0)) return
@@ -234,10 +240,10 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
         </div>
         <canvas ref={previewCanvasRef} width={PREVIEW_W} height={PREVIEW_H} onClick={handlePreviewClick} className="w-full rounded border border-border cursor-crosshair" aria-label="Blur Gallery focus editor" />
         <p className="text-[10px] text-muted-foreground">{mode === 'field' ? 'Click to add blur pins. Select a pin by clicking near it, then adjust its blur amount.' : mode === 'iris' ? 'Click to position the sharp elliptical focus area. Adjust its width, height and transition.' : 'Click to position the sharp focus strip. Adjust its width, angle and transition.'}</p>
-        {control('Maximum Blur', maxBlur, 1, 60, 1, setMaxBlur)}
+        {control('Maximum Blur', maxBlur, 1, 60, 1, updateMaxBlur)}
         {mode === 'field' && <>
           {control('Selected Pin', selectedPin + 1, 1, Math.max(1, pins.length), 1, v => setSelectedPin(Math.min(pins.length - 1, v - 1)))}
-          {control('Pin Blur', selected?.radius ?? maxBlur, 0, 60, 1, updatePinRadius)}
+          {control('Pin Blur', selected?.radius ?? maxBlur, 0, maxBlur, 1, updatePinRadius)}
           <div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => { setPins(prev => prev.filter((_, i) => i !== selectedPin)); setSelectedPin(Math.max(0, selectedPin - 1)) }} disabled={!pins.length}>Remove Pin</Button><Button size="sm" variant="outline" onClick={() => { setPins([]); setSelectedPin(0) }}>Clear Pins</Button></div>
         </>}
         {mode === 'iris' && <>
