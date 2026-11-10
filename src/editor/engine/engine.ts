@@ -1667,6 +1667,130 @@ export class Engine {
     return copy
   }
 
+  /** Apply a layer-property change to the current layer selection as one undo step. */
+  setSelectedLayerProps(patch: Partial<Layer>, label = 'Layer Properties'): void {
+    const doc = this.activeDoc
+    if (!doc) return
+    const ids = new Set(doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : []))
+    const targets = doc.layers.filter(layer => ids.has(layer.id))
+    if (!targets.length) return
+    for (const layer of targets) {
+      if (layer.locked) continue
+      Object.assign(layer, patch)
+      layer._v++
+      if (layer.kind === 'adjustment' && patch.adjustment) layer._v++
+      if (this.timelineActive && doc.frames?.length) {
+        const frame = doc.frames[this.activeFrameIndex]
+        if (frame) {
+          const rec = frame.layers[layer.id] ?? {}
+          if ('visible' in patch) rec.visible = patch.visible
+          if ('opacity' in patch) rec.opacity = patch.opacity
+          frame.layers[layer.id] = rec
+        }
+      }
+    }
+    invalidateFlat(doc)
+    this.pushHistory(targets.length > 1 ? label : 'Layer Properties', doc)
+    this.emit()
+  }
+
+  /** Duplicate every selected layer together, preserving their relative stack order. */
+  duplicateSelectedLayers(): Layer[] {
+    const doc = this.activeDoc
+    if (!doc) return []
+    const selected = doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : [])
+    const selectedSet = new Set(selected)
+    const sources = doc.layers.filter(layer => selectedSet.has(layer.id))
+    if (!sources.length) return []
+    const copies = new Map<string, Layer>()
+    const next: Layer[] = []
+    for (const layer of doc.layers) {
+      next.push(layer)
+      if (selectedSet.has(layer.id)) {
+        const copy = this.cloneLayerForDuplicate(layer)
+        next.push(copy)
+        copies.set(layer.id, copy)
+      }
+    }
+    doc.layers = next
+    const orderedCopies = selected.map(id => copies.get(id)).filter((layer): layer is Layer => !!layer)
+    doc.selectedLayerIds = orderedCopies.map(layer => layer.id)
+    const primaryCopy = copies.get(doc.activeLayerId ?? '') ?? orderedCopies[orderedCopies.length - 1]
+    doc.activeLayerId = primaryCopy?.id ?? null
+    invalidateFlat(doc)
+    this.pushHistory(orderedCopies.length > 1 ? 'Duplicate Layers' : 'Duplicate Layer', doc)
+    this.emit()
+    return orderedCopies
+  }
+
+  /** Remove the selected layer set in one operation, keeping a nearby survivor active. */
+  deleteSelectedLayers(): void {
+    const doc = this.activeDoc
+    if (!doc) return
+    const selected = new Set(doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : []))
+    if (!selected.size) return
+    const primaryIndex = doc.layers.findIndex(layer => layer.id === doc.activeLayerId)
+    const removedBefore = doc.layers.slice(0, Math.max(0, primaryIndex)).filter(layer => selected.has(layer.id)).length
+    const survivors = doc.layers.filter(layer => !selected.has(layer.id))
+    if (survivors.length === doc.layers.length) return
+    const nextIndex = Math.max(0, Math.min(survivors.length - 1, primaryIndex - removedBefore))
+    const nextActive = survivors[nextIndex] ?? null
+    doc.layers = survivors
+    doc.activeLayerId = nextActive?.id ?? null
+    doc.selectedLayerIds = nextActive ? [nextActive.id] : []
+    invalidateFlat(doc)
+    this.pushHistory(selected.size > 1 ? 'Delete Layers' : 'Delete Layer', doc)
+    this.emit()
+  }
+
+  /** Move the selected stack block together without changing its internal order. */
+  moveSelectedLayersBy(delta: number): void {
+    const doc = this.activeDoc
+    const steps = Math.max(-doc?.layers.length! || 0, Math.min(doc?.layers.length ?? 0, Math.trunc(delta)))
+    if (!doc || !steps) return
+    const selected = new Set(doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : []))
+    if (!selected.size) return
+    const layers = [...doc.layers]
+    const direction = Math.sign(steps)
+    for (let step = 0; step < Math.abs(steps); step++) {
+      if (direction > 0) {
+        for (let i = layers.length - 2; i >= 0; i--) {
+          if (selected.has(layers[i].id) && !selected.has(layers[i + 1].id))
+            [layers[i], layers[i + 1]] = [layers[i + 1], layers[i]]
+        }
+      } else {
+        for (let i = 1; i < layers.length; i++) {
+          if (selected.has(layers[i].id) && !selected.has(layers[i - 1].id))
+            [layers[i], layers[i - 1]] = [layers[i - 1], layers[i]]
+        }
+      }
+    }
+    if (layers.every((layer, index) => layer === doc.layers[index])) return
+    doc.layers = layers
+    invalidateFlat(doc)
+    this.pushHistory('Reorder Layers', doc)
+    this.emit()
+  }
+
+  reorderSelectedLayers(edge: 'front' | 'back'): void {
+    const doc = this.activeDoc
+    if (!doc) return
+    const selected = new Set(doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : []))
+    if (!selected.size) return
+    const moving = doc.layers.filter(layer => selected.has(layer.id))
+    const remaining = doc.layers.filter(layer => !selected.has(layer.id))
+    if (!moving.length || !remaining.length) return
+    doc.layers = edge === 'front' ? [...remaining, ...moving] : [...moving, ...remaining]
+    invalidateFlat(doc)
+    this.pushHistory('Reorder Layers', doc)
+    this.emit()
+  }
+
   deleteLayer(id?: string) {
     const doc = this.activeDoc
     const layer = id ? this.layerById(id) : this.activeLayer
