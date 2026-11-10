@@ -479,24 +479,24 @@ export interface SymmetryConfig {
  *                 (dihedral group Dₙ) → 2N dabs total.
  * Points may fall outside the canvas — dabs simply clip, so no early-out.
  */
+function writeSymmetryPoint(out: { x: number; y: number }[], index: number, x: number, y: number): void {
+  const point = out[index] ?? (out[index] = { x, y })
+  point.x = x
+  point.y = y
+}
+
 /** Fill a caller-owned point buffer, reusing point objects across dabs. */
 export function symmetricPointsInto(
   x: number, y: number, cfg: SymmetryConfig, out: { x: number; y: number }[],
 ): number {
   const { mode, w, h } = cfg
   let count = 0
-  const put = (px: number, py: number) => {
-    const point = out[count] ?? (out[count] = { x: px, y: py })
-    point.x = px
-    point.y = py
-    count++
-  }
-  put(x, y)
+  writeSymmetryPoint(out, count++, x, y)
   if (!mode || mode === 'off') return count
-  if (mode === 'mirror-x') put(w - x, y)
-  else if (mode === 'mirror-y') put(x, h - y)
+  if (mode === 'mirror-x') writeSymmetryPoint(out, count++, w - x, y)
+  else if (mode === 'mirror-y') writeSymmetryPoint(out, count++, x, h - y)
   else if (mode === 'point') {
-    put(w - x, y); put(x, h - y); put(w - x, h - y)
+    put(w - x, y); put(x, h - y); writeSymmetryPoint(out, count++, w - x, h - y)
   } else if (mode === 'mandala') {
     const n = Math.max(3, Math.round(cfg.count) || 6)
     const cx = w / 2, cy = h / 2
@@ -507,8 +507,8 @@ export function symmetricPointsInto(
       const cos = Math.cos(a), sin = Math.sin(a)
       const rx = cx + dx * cos - dy * sin
       const ry = cy + dx * sin + dy * cos
-      put(rx, ry)
-      put(2 * cx - rx, ry)
+      writeSymmetryPoint(out, count++, rx, ry)
+      writeSymmetryPoint(out, count++, 2 * cx - rx, ry)
     }
   }
   return count
