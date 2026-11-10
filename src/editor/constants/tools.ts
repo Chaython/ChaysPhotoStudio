@@ -114,6 +114,12 @@ export const TOOL_DEFS: ToolDef[] = [
 
   { id: 'measure', label: 'Measure', group: 3, shortcut: 'K', icon: 'Ruler', cursor: 'crosshair', defaults: { angleSnap: 45, showDelta: true, persist: true, chain: false, unit: 'px', useDocResolution: true, pixelsPerUnit: 1 }, options: [{ key: 'chain', label: 'Multi-segment', type: 'toggle', hint: 'Each new drag continues from the previous endpoint and reports total length' }, { key: 'angleSnap', label: 'Shift Angle', type: 'select', options: [{ label: '15°', value: 15 }, { label: '30°', value: 30 }, { label: '45°', value: 45 }, { label: '90°', value: 90 }] }, { key: 'unit', label: 'Units', type: 'select', options: [{ label: 'Pixels', value: 'px' }, { label: 'Millimeters', value: 'mm' }, { label: 'Centimeters', value: 'cm' }, { label: 'Inches', value: 'in' }] }, { key: 'useDocResolution', label: 'Use Document Resolution', type: 'toggle', hint: 'Calibrate physical units from the document PPI metadata' }, { key: 'pixelsPerUnit', label: 'Custom px / unit', type: 'number', min: 0.001, max: 100000, step: 0.01, hint: 'Used when Document Resolution is off' }, { key: 'showDelta', label: 'Show ΔX / ΔY', type: 'toggle' }, { key: 'persist', label: 'Keep Measurement', type: 'toggle', hint: 'Keep the ruler visible after switching tools' }, { key: 'measureActions', label: 'Ruler Actions', type: 'custom', customId: 'measure-actions', hint: 'Save the ruler to Info or clear it' }] },
 
+  { id: 'frame', label: 'Frame Tool', group: 3, shortcut: 'K', icon: 'Frame', cursor: 'crosshair',
+    defaults: { shape: 'rect', radius: 18 }, options: [
+      { key: 'shape', label: 'Frame Shape', type: 'select', options: [{ label: 'Rectangle', value: 'rect' }, { label: 'Ellipse', value: 'ellipse' }, { label: 'Rounded Rectangle', value: 'rounded-rect' }] },
+      { key: 'radius', label: 'Corner Radius', type: 'slider', min: 0, max: 200, step: 1, unit: 'px' },
+    ] },
+
   { id: 'artboard', label: 'Artboard', group: 3, shortcut: 'V', icon: 'PanelsTopLeft', cursor: 'crosshair',
     defaults: {}, options: [] },
   { id: 'count', label: 'Count', group: 3, shortcut: 'N', icon: 'ListOrdered', cursor: 'crosshair',
