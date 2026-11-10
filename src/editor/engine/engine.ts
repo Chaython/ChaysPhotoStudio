@@ -501,7 +501,7 @@ export class Engine {
       workingBitDepth, sourceBitDepth: workingBitDepth, workingColorSpace: profile.colorSpace,
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
-      view: { zoom: 1, panX: 0, panY: 0 },
+      view: { zoom: 1, panX: 0, panY: 0, rotation: 0 },
       history: { states: [], index: -1 },
       dirty: false,
       previewFilter: null, previewAdjustment: null,
