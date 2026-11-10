@@ -366,6 +366,15 @@ export class Engine {
    * Keep an existing multi-selection when its member is clicked; otherwise
    * select only the clicked layer. Selection changes are UI state, not History.
    */
+  /** Clear the active layer focus without changing layer contents or pixel selection. */
+  deselectActiveLayer(): void {
+    const doc = this.activeDoc
+    if (!doc || (!doc.activeLayerId && !(doc.selectedLayerIds?.length))) return
+    doc.activeLayerId = null
+    doc.selectedLayerIds = []
+    this.emit()
+  }
+
   focusLayerFromContextMenu(id: string): void {
     const doc = this.activeDoc
     if (!doc || !doc.layers.some(layer => layer.id === id)) return
