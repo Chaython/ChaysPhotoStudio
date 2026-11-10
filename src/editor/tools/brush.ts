@@ -674,9 +674,10 @@ function makeBrush(kind: 'brush' | 'pencil'): Tool {
       if (!doc || !opts.symmetry || opts.symmetry === 'off') return
       const docX = (mouse.x - view.panX) / view.zoom
       const docY = (mouse.y - view.panY) / view.zoom
-      const pts = symmetricPoints(docX, docY, symmetryConfig(opts, doc.width, doc.height))
+      const pointCount = symmetricPointsInto(docX, docY, symmetryConfig(opts, doc.width, doc.height), st.symmetryPoints)
       ctx.save()
-      for (const pt of pts) {
+      for (let i = 0; i < pointCount; i++) {
+        const pt = st.symmetryPoints[i]
         const sx = pt.x * view.zoom + view.panX
         const sy = pt.y * view.zoom + view.panY
         ctx.beginPath()
