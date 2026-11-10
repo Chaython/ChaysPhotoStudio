@@ -968,6 +968,11 @@ const infinityVignette=selectLensfunVignettingSamples([...vignetteSamples],
 check(closeFocusVignette.length===1&&closeFocusVignette[0].distance===2&&
   closeFocusVignette[0].k1===0.1,
   'Lensfun vignetting selects the matching near-focus calibration')
+check(selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,distance:100,k1:0.2},
+  {model:'pa',focal:50,aperture:4,k1:0.3},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:2}).length===0,
+  'Lensfun near-focus vignetting must not fall back to infinity or unknown-distance samples')
 check(infinityVignette.length===1&&infinityVignette[0].distance===100&&
   infinityVignette[0].k1===0.2,
   'Lensfun vignetting selects the infinity calibration for distant subjects')
