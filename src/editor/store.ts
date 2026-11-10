@@ -491,7 +491,7 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
       'tool:pen': 'p', 'tool:pen-freeform': 'p', 'tool:pen-curvature': 'p',
       'tool:text': 't', 'tool:type-mask-horizontal': 't', 'tool:type-mask-vertical': 't',
       'tool:path-select': 'a', 'tool:direct-select': 'a',
-      'tool:shape': 'u', 'tool:hand': 'h', 'tool:zoom': 'z',
+      'tool:shape': 'u', 'tool:hand': 'h', 'tool:zoom': 'z', 'tool:rotate-view': 'r',
     },
     illustrator: {
       // Illustrator uses its own Select-menu conventions for vector work.
@@ -532,7 +532,7 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
       'tool:text': 't', 'tool:pen': 'p', 'tool:pen-freeform': 'p',
       'tool:shape': 'u', 'tool:brush': 'b', 'tool:pencil': 'n',
       'tool:eyedropper': 'i', 'tool:color-sampler': 'i',
-      'tool:zoom': 'z', 'tool:hand': 'h',
+      'tool:zoom': 'z', 'tool:hand': 'h', 'tool:rotate-view': 'r',
     },
     classic: {},
   }
@@ -598,7 +598,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['text', 'type-mask-horizontal', 'type-mask-vertical'],
       ['path-select', 'direct-select'],
       ['shape'],
-      ['hand'],
+      ['hand', 'rotate-view'],
       ['zoom'],
     ],
     // Illustrator-style: selection up top, artboards next to Move, drawing
@@ -616,7 +616,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['brush', 'pencil'],
       ['eyedropper'],
       ['gradient', 'paint-bucket'],
-      ['hand'],
+      ['hand', 'rotate-view'],
       ['zoom'],
       // Additional selection tools.
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'magnetic-lasso', 'selection-brush', 'quick-mask', 'object-select', 'quick-select'],
