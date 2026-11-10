@@ -641,6 +641,23 @@ const correctedLensfun=applyLensProfile({
 check(correctedLensfun.rgba16?.length===sample16.length && correctedLensfun.sourceBitDepth===16,
   'Lensfun-calibrated RAW remap retains 16-bit geometry')
 check(sample16.every((v,i)=>v===original16[i]),'Lensfun correction does not mutate RAW samples')
+// Corrected pixels outside source bounds support extension, black, and transparent fills.
+const edge8=new Uint8ClampedArray(5*5*4),edge16=new Uint16Array(5*5*4)
+for(let y=0;y<5;y++)for(let x=0;x<5;x++){
+  const i=(y*5+x)*4
+  edge8[i]=20+x*20;edge8[i+1]=30+y*20;edge8[i+2]=90;edge8[i+3]=255
+  edge16[i]=edge8[i]*257;edge16[i+1]=edge8[i+1]*257;edge16[i+2]=edge8[i+2]*257;edge16[i+3]=65535
+}
+const edgeImage={width:5,height:5,rgba:edge8 as Uint8ClampedArray<ArrayBuffer>,rgba16:edge16,sourceBitDepth:16}
+const edgeOriginal=edge16.slice()
+const extended=applyLensProfile(edgeImage,{name:'',k1:0.5,k2:0,tca:0,vignette:0,edgeMode:'extend'})
+const blackEdges=applyLensProfile(edgeImage,{name:'',k1:0.5,k2:0,tca:0,vignette:0,edgeMode:'black'})
+const transparentEdges=applyLensProfile(edgeImage,{name:'',k1:0.5,k2:0,tca:0,vignette:0,edgeMode:'transparent'})
+check(extended.rgba16?.[0]===edge16[0]&&extended.rgba16?.[3]===65535,'Lens correction edge extension clamps samples to the source boundary')
+check(blackEdges.rgba16?.[0]===0&&blackEdges.rgba16?.[1]===0&&blackEdges.rgba16?.[2]===0&&blackEdges.rgba16?.[3]===65535,'Lens correction black edge fill is opaque black in 16-bit output')
+check(transparentEdges.rgba16?.[0]===0&&transparentEdges.rgba16?.[3]===0,'Lens correction transparent edge fill clears RGBA outside source bounds')
+check(normalizeLensProfile({edgeMode:'invalid' as never}).edgeMode==='extend'&&normalizeLensProfile({}).edgeMode==='extend','Lens edge mode safely defaults for legacy and malformed recipes')
+check(edge16.every((v,i)=>v===edgeOriginal[i]),'Lens edge fill modes never mutate source samples')
 
 // Color Mixer: true 16-bit output, neutral identity, hue bands, safe alpha.
 const mixSample={width:3,height:1,sourceBitDepth:16,
