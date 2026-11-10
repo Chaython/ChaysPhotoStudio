@@ -1777,6 +1777,25 @@ export class Engine {
     this.emit()
   }
 
+  reorderSelectedLayersAt(targetId: string): void {
+    const doc = this.activeDoc
+    if (!doc) return
+    const selected = new Set(doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : []))
+    const targetIndex = doc.layers.findIndex(layer => layer.id === targetId)
+    if (!selected.size || targetIndex < 0 || selected.has(targetId)) return
+    const moving = doc.layers.filter(layer => selected.has(layer.id))
+    const remaining = doc.layers.filter(layer => !selected.has(layer.id))
+    const targetInRemaining = remaining.findIndex(layer => layer.id === targetId)
+    if (targetInRemaining < 0) return
+    remaining.splice(targetInRemaining, 0, ...moving)
+    if (remaining.every((layer, index) => layer === doc.layers[index])) return
+    doc.layers = remaining
+    invalidateFlat(doc)
+    this.pushHistory('Reorder Layers')
+    this.emit()
+  }
+
   reorderSelectedLayers(edge: 'front' | 'back'): void {
     const doc = this.activeDoc
     if (!doc) return
