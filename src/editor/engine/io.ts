@@ -485,6 +485,10 @@ export async function placeImageAsSmartLayer(file: File, frame?: FrameRef | null
     if (settings === null) return
     const decoded = await decodeToCanvas(file, settings)
     const doc = engine.activeDoc
+    if (frame && doc?.id !== frame.docId) {
+      store.pushToast('The target frame changed while the image was loading; image placement was cancelled', 'error')
+      return
+    }
     let placeOptions: Parameters<typeof engine.placeSmartLayer>[2] | undefined
     if (frame && doc) {
       const g = frame.geometry
