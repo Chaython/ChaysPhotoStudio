@@ -6,6 +6,10 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('chaysPhotoStudio', {
   isElectron: true,
   platform: process.platform,
+  /** Set the native Windows title-bar surface to match the selected theme. */
+  setTitleBarTheme(oled) {
+    return ipcRenderer.invoke('chays:window-theme', oled === true)
+  },
   /** Subscribe to image files launched from the OS. cb({name, type, data}). Returns unsubscribe. */
   onOpenFile(cb) {
     const listener = (_event, payload) => cb(payload)
