@@ -1433,7 +1433,13 @@ export class Engine {
     doc.layers.push(layer)
     if (opts?.frame) {
       const frameLayer = doc.layers.find(item => item.id === opts.frame!.layerId)
-      if (frameLayer?.frame) { frameLayer.frame = { ...structuredClone(opts.frame.geometry), contentLayerId: layer.id }; frameLayer.visible = false; frameLayer._v++ }
+      if (frameLayer?.frame) {
+        const previousContentId = frameLayer.frame.contentLayerId
+        if (previousContentId && previousContentId !== layer.id) doc.layers = doc.layers.filter(item => item.id !== previousContentId)
+        frameLayer.frame = { ...structuredClone(opts.frame.geometry), contentLayerId: layer.id }
+        frameLayer.visible = false
+        frameLayer._v++
+      }
     }
     doc.activeLayerId = layer.id
     this.pushHistory('Place Smart Object')
