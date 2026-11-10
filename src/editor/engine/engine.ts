@@ -1669,7 +1669,7 @@ export class Engine {
   }
 
   /** Apply a layer-property change to the current layer selection as one undo step. */
-  setSelectedLayerProps(patch: Partial<Layer>, label = 'Layer Properties'): void {
+  setSelectedLayerProps(patch: Partial<Layer>, label = 'Layer Properties', opts: { history?: boolean } = {}): void {
     const doc = this.activeDoc
     if (!doc) return
     const ids = new Set(doc.selectedLayerIds?.length ? doc.selectedLayerIds
@@ -1692,7 +1692,7 @@ export class Engine {
       }
     }
     invalidateFlat(doc)
-    this.pushHistory(targets.length > 1 ? label : 'Layer Properties', doc)
+    if (opts.history !== false) this.pushHistory(targets.length > 1 ? label : 'Layer Properties', doc)
     this.emit()
   }
 
@@ -1750,7 +1750,7 @@ export class Engine {
   /** Move the selected stack block together without changing its internal order. */
   moveSelectedLayersBy(delta: number): void {
     const doc = this.activeDoc
-    const steps = Math.max(-doc?.layers.length! || 0, Math.min(doc?.layers.length ?? 0, Math.trunc(delta)))
+    const steps = doc ? Math.max(-doc.layers.length, Math.min(doc.layers.length, Math.trunc(delta))) : 0
     if (!doc || !steps) return
     const selected = new Set(doc.selectedLayerIds?.length ? doc.selectedLayerIds
       : (doc.activeLayerId ? [doc.activeLayerId] : []))
