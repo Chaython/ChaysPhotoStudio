@@ -48,6 +48,18 @@ export function isSupportedLensfunModel(kind:LensfunCalibrationKind,model:string
   return model==='pa'
 }
 
+/** Reject incomplete calibration rows instead of silently substituting identity
+ * coefficients. Lensfun's model-specific attributes are required to evaluate
+ * these curves; vignetting also needs its aperture and subject-distance sample. */
+export function hasRequiredLensfunCoefficients(kind:LensfunCalibrationKind,curve:LensfunCurve):boolean {
+  const required:readonly (keyof LensfunCurve)[]=kind==='distortion'?
+    curve.model==='poly3'?['k1']:curve.model==='poly5'?['k1','k2']:['a','b','c']:
+    kind==='tca'?curve.model==='linear'?['kr','kb']:['vr','br','cr','vb','bb','cb']:
+    ['aperture','distance','k1','k2','k3']
+  return required.every(key=>typeof curve[key]==='number'&&Number.isFinite(curve[key]))&&
+    (kind!=='vignetting'||(curve.aperture!>0&&curve.distance!>=0))
+}
+
 function parseCurve(element:Element,kind:LensfunCalibrationKind):LensfunCurve|null {
   const model=element.getAttribute('model')
   if(!isSupportedLensfunModel(kind,model))return null
@@ -58,7 +70,7 @@ function parseCurve(element:Element,kind:LensfunCalibrationKind):LensfunCurve|nu
     const n=numeric(element.getAttribute(prop))
     if(n!==undefined)result[prop]=n
   }
-  return result
+  return hasRequiredLensfunCoefficients(kind,result)?result:null
 }
 export function importLensfunXml(xml:string):number {
   if(xml.length>3*1024*1024)throw Error('Lensfun XML exceeds 3 MiB; import smaller individual database files')
