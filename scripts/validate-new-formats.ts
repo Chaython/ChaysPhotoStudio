@@ -262,7 +262,7 @@ for(let pixel=0;pixel<25;pixel++)for(let c=0;c<4;c++){
 const original16=sample16.slice()
 const corrected=applyLensProfile({
   width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
-},{name:'Test profile',k1:0.1,k2:-0.03,tca:0.005,vignette:0.1})
+},{name:'Test profile',k1:0.1,k2:-0.03,tca:0.005,vignette:0.1,edgeMode:'extend'})
 check(corrected.sourceBitDepth===16 && corrected.rgba16?.length===sample16.length,'Lens 16-bit preservation')
 check(sample16.every((value,i)=>value===original16[i]),'Lens source samples must not mutate')
 check(corrected.rgba16?.[12*4]===sample16[12*4],'Lens optical center stays fixed')
@@ -631,7 +631,7 @@ check(eightBitCurve.rgba[0]>128 && eightBitCurve.rgba[3]===192 && !eightBitCurve
 const correctedLensfun=applyLensProfile({
   width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
 },{
-  name:'Example calibrated lens',k1:0,k2:0,tca:0,vignette:0,
+  name:'Example calibrated lens',k1:0,k2:0,tca:0,vignette:0,edgeMode:'extend',
   lensfun:{source:'lensfun-xml',maker:'Example',lens:'50 mm',crop:1,focal:50,
     distortion:{model:'poly3',focal:50,k1:0.02},
     tca:{model:'poly3',focal:50,vr:1.001,vb:0.999,br:0.001,bb:-0.001},
