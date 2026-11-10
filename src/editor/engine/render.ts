@@ -87,6 +87,15 @@ function drawSavedPathOverlay(
   ctx.restore()
 }
 
+
+function rotateScreenPoint(x: number, y: number, angleDeg: number, width: number, height: number) {
+  const a = -angleDeg * Math.PI / 180
+  if (Math.abs(a) < 1e-8) return { x, y }
+  const cx = width / 2, cy = height / 2, dx = x - cx, dy = y - cy
+  const cs = Math.cos(a), sn = Math.sin(a)
+  return { x: cx + dx * cs - dy * sn, y: cy + dx * sn + dy * cs }
+}
+
 export class Viewport {
   host: HTMLElement | null = null
   canvas: HTMLCanvasElement | null = null
@@ -280,6 +289,10 @@ export class Viewport {
     ctx.fillRect(0, 0, w, h)
     if (!this.composite) return
     const v = doc.view
+    ctx.save()
+    ctx.translate(w / 2, h / 2)
+    ctx.rotate((Number(v.rotation) || 0) * Math.PI / 180)
+    ctx.translate(-w / 2, -h / 2)
     // doc rect, snapped to DEVICE pixels: at fractional zoom/pan the doc edge
     // would otherwise land between device pixels and shimmer frame-to-frame
     // while dragging along the canvas border (edges "flickering in and out")
@@ -357,6 +370,7 @@ export class Viewport {
     ctx.strokeStyle = 'rgba(255,255,255,0.25)'
     ctx.lineWidth = 1
     ctx.strokeRect(dx - 0.5, dy - 0.5, dw + 1, dh + 1)
+    ctx.restore()
   }
 
   /** 8px screen-space checkerboard as a cached pattern (≈100× faster than fillRect loops) */
@@ -385,6 +399,10 @@ export class Viewport {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
     const v = doc.view
+    ctx.save()
+    ctx.translate(w / 2, h / 2)
+    ctx.rotate((Number(v.rotation) || 0) * Math.PI / 180)
+    ctx.translate(-w / 2, -h / 2)
     const activeToolId = ((engine as any)._activeToolId ?? currentToolId()) as ToolId
     // Selection Brush mirrors current Photoshop behavior: while it is active,
     // the selection is represented by its colored paint overlay; marching ants
@@ -494,6 +512,7 @@ export class Viewport {
       ctx.fillText(text, bx + 5, by + 8)
       ctx.restore()
     }
+    ctx.restore()
   }
 
   /** the always-on-top cursor layer — brushed at input rate + every frame */
@@ -506,8 +525,13 @@ export class Viewport {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
     if (!this.lastMouse) return
+    ctx.save()
+    ctx.translate(w / 2, h / 2)
+    ctx.rotate((Number(doc.view.rotation) || 0) * Math.PI / 180)
+    ctx.translate(-w / 2, -h / 2)
     const tool = getTool(((engine as any)._activeToolId ?? currentToolId()) as ToolId)
     if (tool?.renderCursor) tool.renderCursor(ctx, doc.view, w, h, this.lastMouse)
+    ctx.restore()
   }
 
   /** immediate cursor repaint (called straight from the pointermove handler) */
@@ -530,7 +554,9 @@ export class Viewport {
   private toDocAt(sx: number, sy: number) {
     const doc = engine.activeDoc
     if (!doc) return { x: 0, y: 0 }
-    return { x: (sx - doc.view.panX) / doc.view.zoom, y: (sy - doc.view.panY) / doc.view.zoom }
+    const host = this.host
+    const p = rotateScreenPoint(sx, sy, Number(doc.view.rotation) || 0, host?.clientWidth ?? 0, host?.clientHeight ?? 0)
+    return { x: (p.x - doc.view.panX) / doc.view.zoom, y: (p.y - doc.view.panY) / doc.view.zoom }
   }
 
   private makeInfoAt(e: PointerEvent | MouseEvent, sx: number, sy: number, isStart = false, isEnd = false): PointerInfo {
@@ -583,7 +609,7 @@ export class Viewport {
     const rect = this.rect()
     if (!rect) return
     const sx = e.clientX - rect.left, sy = e.clientY - rect.top
-    this.lastMouse = { x: sx, y: sy }
+    this.lastMouse = rotateScreenPoint(sx, sy, Number(doc?.view.rotation) || 0, this.host?.clientWidth ?? 0, this.host?.clientHeight ?? 0)
 
     // ---- rulers & guides ----
     const doc = engine.activeDoc
@@ -615,7 +641,7 @@ export class Viewport {
 
   private onPointerMove = (e: PointerEvent) => {
     const rect = this.rect()
-    if (rect) this.lastMouse = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    if (rect) this.lastMouse = rotateScreenPoint(e.clientX - rect.left, e.clientY - rect.top, Number(engine.activeDoc?.view.rotation) || 0, this.host?.clientWidth ?? 0, this.host?.clientHeight ?? 0)
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
     // repaint the cursor immediately at input rate (before any heavy frame work)
     this.renderCursorNow()
@@ -751,10 +777,12 @@ export class Viewport {
     const doc = engine.activeDoc
     if (!doc) return
     const v = doc.view
+    const host = this.host
+    const anchor = rotateScreenPoint(cx, cy, Number(v.rotation) || 0, host?.clientWidth ?? 0, host?.clientHeight ?? 0)
     const nz = clamp(v.zoom * factor, 0.02, 32)
     const k = nz / v.zoom
-    v.panX = cx - (cx - v.panX) * k
-    v.panY = cy - (cy - v.panY) * k
+    v.panX = anchor.x - (anchor.x - v.panX) * k
+    v.panY = anchor.y - (anchor.y - v.panY) * k
     v.zoom = nz
     v.autoFit = false // explicit user zoom → sticky per-doc view
     this.needsDraw = true
