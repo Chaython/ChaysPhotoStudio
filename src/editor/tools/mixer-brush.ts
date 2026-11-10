@@ -6,7 +6,7 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, walkDabs } from './shared'
+import { getOptions, getFgColor, walkDabsEach } from './shared'
 import { clamp, hexToRgb, rgbToHex } from '../utils/canvas'
 import { getTip, drawTipCursor, tipExtentMul } from './brush-tips'
 
@@ -210,7 +210,7 @@ export const mixerBrushTool: Tool = {
     const opts = getOptions('mixer-brush')
     const size = Math.max(2, Number(opts.size) || 55)
     const spacing = Math.max(1, size * clamp((Number(opts.spacing) || 12) / 100, .01, 1))
-    for (const q of walkDabs(last.x, last.y, p.docX, p.docY, spacing)) mixerDab(q.x, q.y, p)
+    walkDabsEach(last.x, last.y, p.docX, p.docY, spacing, (x, y) => mixerDab(x, y, p))
     if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
   },
 
