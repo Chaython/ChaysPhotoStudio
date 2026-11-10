@@ -356,6 +356,7 @@ export const TOOL_DEFS: ToolDef[] = [
   // group 7 — view
   { id: 'slice-select', label: 'Slice Select', group: 3, shortcut: 'K', icon: 'MousePointer2', cursor: 'default', defaults: { showLabels: true }, options: [{ key: 'showLabels', label: 'Show Slice Labels', type: 'toggle' }] },
   { id: 'hand', label: 'Hand', group: 7, shortcut: 'H', icon: 'Hand', cursor: 'grab', defaults: { inertia: true, friction: 92 }, options: [{ key: 'inertia', label: 'Flick / Inertia', type: 'toggle' }, { key: 'friction', label: 'Inertia Friction', type: 'slider', min: 70, max: 98, step: 1, unit: '%' }] },
+  { id: 'rotate-view', label: 'Rotate View', group: 7, shortcut: 'R', icon: 'RotateCcw', cursor: 'grab', defaults: { angle: 0, snap: true }, options: [{ key: 'angle', label: 'View Angle', type: 'angle' }, { key: 'snap', label: 'Snap to 15°', type: 'toggle' }] },
   { id: 'zoom', label: 'Zoom', group: 7, shortcut: 'Z', icon: 'ZoomIn', cursor: 'zoom-in', defaults: { mode: 'in', scrubby: true, resizeWindowToFit: false }, options: [{ key: 'mode', label: 'Mode', type: 'select', options: [{ label: 'Zoom In', value: 'in' }, { label: 'Zoom Out', value: 'out' }] }, { key: 'scrubby', label: 'Scrubby Zoom', type: 'toggle' }, { key: 'resizeWindowToFit', label: 'Resize Window to Fit', type: 'toggle', hint: 'Desktop/windowed builds only; browsers may block programmatic window resizing' }] },
 ]
 
