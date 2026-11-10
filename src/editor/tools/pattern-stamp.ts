@@ -7,7 +7,7 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, getBgColor, walkDabs, drawBrushCursor } from './shared'
+import { getOptions, getFgColor, getBgColor, walkDabsEach, drawBrushCursor } from './shared'
 import { createCanvas, ctx2d, clamp } from '../utils/canvas'
 import { paintBuiltinPattern } from './patterns'
 
@@ -138,7 +138,7 @@ export const patternStampTool: Tool = {
     const opts = getOptions('pattern-stamp')
     const size = Math.max(1, Number(opts.size) || 60)
     const spacing = Math.max(1, size * clamp((Number(opts.spacing) || 15) / 100, .01, 2))
-    for (const q of walkDabs(last.x, last.y, p.docX, p.docY, spacing)) stampDab(q.x, q.y, p)
+    walkDabsEach(last.x, last.y, p.docX, p.docY, spacing, (x, y) => stampDab(x, y, p))
     if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
   },
 
