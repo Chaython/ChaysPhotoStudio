@@ -491,7 +491,7 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
       'tool:pen': 'p', 'tool:pen-freeform': 'p', 'tool:pen-curvature': 'p',
       'tool:text': 't', 'tool:type-mask-horizontal': 't', 'tool:type-mask-vertical': 't',
       'tool:path-select': 'a', 'tool:direct-select': 'a',
-      'tool:shape': 'u', 'tool:hand': 'h', 'tool:zoom': 'z', 'tool:rotate-view': 'r',
+      'tool:shape': 'u', 'tool:hand': 'h', 'tool:zoom': 'z', 'tool:rotate-view': 'r', 'tool:frame': 'k',
     },
     illustrator: {
       // Illustrator uses its own Select-menu conventions for vector work.
@@ -528,7 +528,7 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
       deselect: 'ctrl+d',
       invertSelection: 'ctrl+shift+i', duplicateLayer: 'ctrl+shift+d',
       'tool:move': 'v', 'tool:path-select': 'a', 'tool:direct-select': 'a',
-      'tool:crop': 'c', 'tool:slice': 'k', 'tool:slice-select': 'k', 'tool:hotspot': 'k', 'tool:quick-mask': 'q',
+      'tool:crop': 'c', 'tool:frame': 'k', 'tool:slice': 'k', 'tool:slice-select': 'k', 'tool:hotspot': 'k', 'tool:quick-mask': 'q',
       'tool:text': 't', 'tool:pen': 'p', 'tool:pen-freeform': 'p',
       'tool:shape': 'u', 'tool:brush': 'b', 'tool:pencil': 'n',
       'tool:eyedropper': 'i', 'tool:color-sampler': 'i',
@@ -584,7 +584,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
       ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'quick-mask'],
       ['object-select', 'quick-select', 'magic-wand'],
-      ['crop', 'perspective-crop', 'slice', 'slice-select', 'hotspot'],
+      ['crop', 'perspective-crop', 'slice', 'slice-select', 'hotspot', 'frame'],
       ['eyedropper', 'color-sampler', 'measure', 'count'],
       ['spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
       ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
@@ -621,7 +621,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       // Additional selection tools.
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'magnetic-lasso', 'selection-brush', 'quick-mask', 'object-select', 'quick-select'],
       // Artboard-adjacent and web/export utilities.
-      ['crop', 'perspective-crop', 'slice', 'slice-select', 'hotspot', 'measure', 'count'],
+      ['crop', 'perspective-crop', 'slice', 'slice-select', 'hotspot', 'frame', 'measure', 'count'],
       // Alternate text modes and raster paint tools.
       ['type-mask-horizontal', 'type-mask-vertical', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
       // Raster cleanup and tonal tools retained for compatibility.
@@ -639,7 +639,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['eyedropper', 'color-sampler'],
       ['zoom'],
       ['measure', 'count'],
-      ['crop', 'perspective-crop', 'artboard', 'slice', 'slice-select', 'hotspot'],
+      ['crop', 'perspective-crop', 'artboard', 'slice', 'slice-select', 'hotspot', 'frame'],
       ['text', 'type-mask-horizontal', 'type-mask-vertical'],
       ['paint-bucket', 'gradient'],
       ['pencil', 'brush', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
@@ -655,7 +655,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['move', 'path-select', 'direct-select'],
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'quick-mask', 'object-select', 'quick-select', 'magic-wand'],
       ['crop', 'perspective-crop'],
-      ['slice', 'slice-select', 'hotspot', 'artboard', 'count'],
+      ['slice', 'slice-select', 'hotspot', 'artboard', 'count', 'frame'],
       ['eyedropper', 'color-sampler', 'measure'],
       ['text', 'type-mask-horizontal', 'type-mask-vertical'],
       ['pen', 'pen-freeform', 'pen-curvature'],
