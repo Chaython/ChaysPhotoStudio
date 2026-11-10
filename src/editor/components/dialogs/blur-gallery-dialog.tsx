@@ -171,7 +171,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
   const updatePinRadius = (radius: number) => setPins(prev => prev.map((p, i) => i === selectedPin ? { ...p, radius } : p))
 
   const apply = async () => {
-    if (applying || !source || !doc || engine.activeDoc?.id !== documentId) return
+    if (applying || !source || !doc || engine.activeDoc?.id !== documentId || (mode === 'field' && pins.length === 0)) return
     if (blocked) {
       useEditorStore.getState().pushToast('Blur Gallery currently requires an 8-bit document; higher-bit-depth pixels are not modified', 'error')
       return
@@ -235,7 +235,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
       </div>
       <DialogFooter>
         <Button size="sm" variant="secondary" onClick={onClose} disabled={applying}>Cancel</Button>
-        <Button size="sm" onClick={apply} disabled={applying || blocked || !source || !layer || layer.locked}>{applying ? 'Applying…' : 'Apply to New Layer'}</Button>
+        <Button size="sm" onClick={apply} disabled={applying || blocked || !source || !layer || layer.locked || (mode === 'field' && pins.length === 0)}>{applying ? 'Applying…' : 'Apply to New Layer'}</Button>
       </DialogFooter>
     </>
   )
