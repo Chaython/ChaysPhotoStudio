@@ -118,7 +118,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
 
   useEffect(() => {
     const previewCanvas = previewCanvasRef.current
-    if (!source || !previewCanvasRef.current) return
+    if (!source || !previewCanvas) return
     const scale = Math.min(1, (PREVIEW_W - 20) / source.width, (PREVIEW_H - 20) / source.height)
     const w = Math.max(1, Math.round(source.width * scale)), h = Math.max(1, Math.round(source.height * scale))
     const small = createCanvas(w, h)
@@ -147,7 +147,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
   }, [source, mode, pins, selectedPin, preview, settings, maxBlur, feather, focusX, focusY, band])
 
   const handlePreviewClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!source || !previewCanvas) return
+    if (!source || !previewCanvasRef.current) return
     const bounds = e.currentTarget.getBoundingClientRect()
     const px = (e.clientX - bounds.left) * PREVIEW_W / bounds.width
     const py = (e.clientY - bounds.top) * PREVIEW_H / bounds.height
