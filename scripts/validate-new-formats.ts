@@ -333,6 +333,18 @@ const colorCenterLum=(sample:Uint16Array)=>(
   sample[detailCenter]*0.2126+sample[detailCenter+1]*0.7152+sample[detailCenter+2]*0.0722)
 check(Math.abs(colorCenterLum(denoiseColor.rgba16!)-colorCenterLum(chroma16))<400,
   'Chroma-only denoise preserves approximate pixel luminance')
+// Defringe removes an isolated purple fringe at a high-contrast edge.
+const fringe16=detail16.slice(),fringe8=detail8.slice()
+const fringeIndex=(2*detailW+3)*4
+fringe16[fringeIndex]=50000;fringe16[fringeIndex+1]=12000;fringe16[fringeIndex+2]=48000
+for(let c=0;c<3;c++)fringe8[fringeIndex+c]=Math.round(fringe16[fringeIndex+c]/257)
+const fringeImage={width:detailW,height:detailH,rgba:fringe8 as Uint8ClampedArray<ArrayBuffer>,rgba16:fringe16,sourceBitDepth:16}
+const defringed=applyRawDetail(fringeImage,{defringe:100})
+const fringeChromaBefore=Math.min(fringe16[fringeIndex],fringe16[fringeIndex+2])-fringe16[fringeIndex+1]
+const fringeChromaAfter=Math.min(defringed.rgba16![fringeIndex],defringed.rgba16![fringeIndex+2])-defringed.rgba16![fringeIndex+1]
+check(fringeChromaAfter<fringeChromaBefore,'RAW defringe suppresses isolated purple chroma at a luminance edge')
+check(normalizeRawDetail({defringe:Infinity}).defringe===0&&normalizeRawDetail({defringe:150}).defringe===100,
+  'RAW defringe settings clamp malformed values')
 const sharpenedDetail=applyRawDetail({width:detailW,height:detailH,
   rgba:detail8 as Uint8ClampedArray<ArrayBuffer>,rgba16:detail16,sourceBitDepth:16},{
   sharpenAmount:120,sharpenRadius:1,sharpenThreshold:0,
