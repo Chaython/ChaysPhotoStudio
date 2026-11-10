@@ -133,8 +133,8 @@ export const removeTool: Tool = {
     const feather = clamp(Number(opts.feather) || 0, 0, 32)
     let alpha = inpaintMask
     if (feather > 0) {
-      // Feather only the patch edge; preserve the original painted mask as the
-      // inner footprint and soften the dilated fringe.
+      // Blur the dilated alpha footprint so the reconstructed patch blends
+      // gradually into the untouched composite instead of leaving a hard seam.
       const featherCanvas = createCanvas(work.w, work.h)
       const featherCtx = ctx2d(featherCanvas)
       const md = featherCtx.createImageData(work.w, work.h)
@@ -147,7 +147,7 @@ export const removeTool: Tool = {
       blurredCtx.filter = 'none'
       const softened = blurredCtx.getImageData(0, 0, work.w, work.h).data
       alpha = new Uint8ClampedArray(work.w * work.h)
-      for (let i = 0, j = 3; i < alpha.length; i++, j += 4) alpha[i] = Math.max(inpaintMask[i], softened[j])
+      for (let i = 0, j = 3; i < alpha.length; i++, j += 4) alpha[i] = softened[j]
     }
     const selection = doc.selection
     let selectionPixels: Uint8ClampedArray | null = null
