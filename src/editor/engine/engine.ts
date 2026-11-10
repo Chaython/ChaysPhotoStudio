@@ -5,7 +5,7 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, SavedChannel, HistoryState, ShapeSpec, TextSpec, ImageMetadata, ProofSettings,
-  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, HistorySnapshotAutoPolicy, TransformWarpSpec,
+  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, HistorySnapshotAutoPolicy, TransformWarpSpec, TransformSpec,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
@@ -782,6 +782,7 @@ export class Engine {
       adjustment: layer.adjustment ? structuredClone(layer.adjustment) : null,
       text: layer.text ? structuredClone(layer.text) : null,
       shape: layer.shape ? structuredClone(layer.shape) : null,
+      frame: layer.frame ? structuredClone(layer.frame) : layer.frame,
       linkedDesignStyles: layer.linkedDesignStyles ? { ...layer.linkedDesignStyles } : undefined,
       blendIf: layer.blendIf ? structuredClone(layer.blendIf) : null,
       fx: layer.fx ? structuredClone(layer.fx) : null,
