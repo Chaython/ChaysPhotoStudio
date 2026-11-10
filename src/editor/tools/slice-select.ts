@@ -4,7 +4,7 @@ import type { PointerInfo, Tool } from '../types'
 import { engine } from '../engine/engine'
 import { normalizeWebRegions, type WebRegion } from '../web-assets'
 import { moveRegionRect, rectChanged, regionPoint, type RegionRect } from './web-region-geometry'
-import { drawCross } from './shared'
+import { drawCross, getOptions } from './shared'
 
 type Drag = {
   docId: string
@@ -121,7 +121,7 @@ export const sliceSelectTool: Tool = {
     const doc = engine.activeDoc
     if (!doc) return
     const selected = activeId()
-    const showLabels = true
+    const showLabels = getOptions('slice-select').showLabels !== false
     ctx.save()
     ctx.font = '11px ui-sans-serif, sans-serif'
     for (const r of regions()) {
