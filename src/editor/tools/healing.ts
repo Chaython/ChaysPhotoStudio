@@ -19,7 +19,7 @@
 // ============================================================
 import type { Tool, PointerInfo, Rect } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabs, drawCross, toolMaskCanvas } from './shared'
+import { getOptions, getFgColor, getBgColor, brushSettingsFrom, walkDabsEach, drawCross, toolMaskCanvas } from './shared'
 import { buildSourceDab, sourcePointFor, frequencyHeal, pressureFlow } from './dab-utils'
 import { createCanvas, ctx2d, getImageData, putImageData, cloneCanvas, clamp } from '../utils/canvas'
 import { dilateMask, gaussianBlurChannel } from '../image-ops/core'
@@ -184,13 +184,11 @@ export const healingBrushTool: Tool = {
     if (canConnect && healConnectFrom) {
       const settings = brushSettingsFrom(opts)
       const spacing = Math.max(1, settings.size * settings.spacing)
-      const line = walkDabs(healConnectFrom.x, healConnectFrom.y, p.docX, p.docY, spacing)
-      for (const q of line) {
-        healDab(q.x, q.y, p)
-        hst.dabs.push(q)
-      }
-      const tail = line[line.length - 1]
-      if (!tail || Math.hypot(tail.x - p.docX, tail.y - p.docY) > .25) {
+      const line = walkDabsEach(healConnectFrom.x, healConnectFrom.y, p.docX, p.docY, spacing, (x, y) => {
+        healDab(x, y, p)
+        hst.dabs.push({ x, y })
+      })
+      if (line.count === 0 || Math.hypot(line.lastX - p.docX, line.lastY - p.docY) > .25) {
         healDab(p.docX, p.docY, p)
         hst.dabs.push({ x: p.docX, y: p.docY })
       }
@@ -205,12 +203,11 @@ export const healingBrushTool: Tool = {
     const opts = getOptions('healing-brush')
     const settings = brushSettingsFrom(opts)
     const spacing = Math.max(1, settings.size * settings.spacing)
-    let stepped = false
-    for (const d of walkDabs(hst.last.x, hst.last.y, p.docX, p.docY, spacing)) {
-      healDab(d.x, d.y, p)
-      hst.dabs.push(d)
-      stepped = true
-    }
+    const line = walkDabsEach(hst.last.x, hst.last.y, p.docX, p.docY, spacing, (x, y) => {
+      healDab(x, y, p)
+      hst.dabs.push({ x, y })
+    })
+    const stepped = line.count > 0
     if (stepped || Math.hypot(p.docX - hst.last.x, p.docY - hst.last.y) >= spacing) {
       hst.last = { x: p.docX, y: p.docY }
     }
@@ -414,7 +411,7 @@ export const spotHealingTool: Tool = {
     if (!spotActive || !spotLast || !spotMask) return
     const opts = getOptions('spot-healing')
     const spacing = Math.max(1, (Number(opts.size) || 40) * Math.max(.01, (Number(opts.spacing) || 25) / 100))
-    for (const d of walkDabs(spotLast.x, spotLast.y, p.docX, p.docY, spacing)) spotMark(d.x, d.y)
+    walkDabsEach(spotLast.x, spotLast.y, p.docX, p.docY, spacing, (x, y) => spotMark(x, y))
     if (Math.hypot(p.docX - spotLast.x, p.docY - spotLast.y) >= spacing) spotLast = { x: p.docX, y: p.docY }
     engine.pokeOverlay()
   },
