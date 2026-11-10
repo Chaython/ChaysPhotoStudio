@@ -651,8 +651,8 @@ export function glCompositeDocument(doc: PsDocument, target: HTMLCanvasElement):
   const gl = getGL()
   if (!gl || !glAvailable()) return false
   if (doc.width === 0 || doc.height === 0) return false
-  const info = { max: (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number) }
-  if (doc.width > info.max || doc.height > info.max) return false
+  const maxTextureSize = glInfo().maxTextureSize
+  if (doc.width > maxTextureSize || doc.height > maxTextureSize) return false
 
   // feature gates — anything the shaders can't reproduce exactly → CPU
   if (doc.previewFilter) return false
