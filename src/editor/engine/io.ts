@@ -697,7 +697,7 @@ function serializeLayer(l: Layer, toDataURL: (c: HTMLCanvasElement) => string): 
       pdfSource: l.pdfSource ? structuredClone(l.pdfSource) : undefined,
       blendMode: l.blendMode, locked: l.locked, clipped: l.clipped, maskEnabled: l.maskEnabled,
       transform: l.transform, smartFilters: l.smartFilters,
-      adjustment: l.adjustment, text: l.text, shape: l.shape, blendIf: l.blendIf, fx: l.fx,
+      adjustment: l.adjustment, text: l.text, shape: l.shape, frame: l.frame ? structuredClone(l.frame) : undefined, blendIf: l.blendIf, fx: l.fx,
       linkedDesignStyles: normalizeLayerStyleReferences(l.linkedDesignStyles),
       vectorMask: cloneVectorMask(l.vectorMask),
       psdAdditionalInfo: Array.isArray(l.psdAdditionalInfo) ? [...l.psdAdditionalInfo] : undefined,
@@ -870,6 +870,7 @@ async function deserializeHistoryLayer(sl: SerializedLayer, width: number, heigh
     smartFilters: sl.props.smartFilters ?? [],
     adjustment: sl.props.adjustment ?? null,
     text: sl.props.text ?? null, shape: sl.props.shape ? { sides: 5, starInset: 45, ...sl.props.shape } : null,
+    frame: sl.props.frame && ['rect', 'ellipse', 'rounded-rect'].includes(sl.props.frame.shape) && [sl.props.frame.x, sl.props.frame.y, sl.props.frame.width, sl.props.frame.height].every(Number.isFinite) && sl.props.frame.width > 0 && sl.props.frame.height > 0 ? structuredClone(sl.props.frame) as Layer['frame'] : null,
     linkedDesignStyles: normalizeLayerStyleReferences(sl.props.linkedDesignStyles),
     pdfSource: sl.props.pdfSource?.sourceFormat === 'pdf' &&
       typeof sl.props.pdfSource?.pageNumber === 'number' &&
