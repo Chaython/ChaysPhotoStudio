@@ -90,58 +90,6 @@ export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
     vp?.setCursorCss(cursor)
   }, [activeTool])
 
-  // ---- OS clipboard paste (right-click → Paste, or Ctrl+V when the internal
-  // clipboard is empty and the keydown handler let the default through) ----
-  useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      const el = e.target as HTMLElement | null
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
-      const items = e.clipboardData?.items
-      if (!items) return
-      for (const it of items) {
-        if (it.kind === 'file' && it.type.startsWith('image/')) {
-          const file = it.getAsFile()
-          if (file) {
-            e.preventDefault()
-            void (async () => {
-              try {
-                const c = await fileToCanvas(file)
-                // Pasting an image into an empty workspace should behave like
-                // creating a new image document: preserve native pixel size,
-                // with transparency around the pasted layer (not a cropped
-                // or flattened image-sized background).
-                if (!engine.activeDoc) {
-                  engine.newDocument({
-                    name: 'Pasted Image',
-                    width: c.width,
-                    height: c.height,
-                    fill: 'transparent',
-                  })
-                  const layer = engine.addLayerFromCanvas(c, 'Pasted Image', {
-                    center: false,
-                    historyLabel: 'Paste Image',
-                  })
-                  if (!layer) throw new Error('Could not add pasted image to the new document')
-                  useEditorStore.getState().pushToast(
-                    `Created a ${c.width} × ${c.height} transparent document from clipboard`,
-                    'success',
-                  )
-                } else {
-                  engine.addLayerFromCanvas(c, 'Pasted Image')
-                  useEditorStore.getState().pushToast('Pasted image as a new layer', 'success')
-                }
-              } catch {
-                useEditorStore.getState().pushToast('Could not decode the pasted image', 'error')
-              }
-            })()
-            return
-          }
-        }
-      }
-    }
-    window.addEventListener('paste', onPaste)
-    return () => window.removeEventListener('paste', onPaste)
-  }, [])
   // (drag & drop lives at the app level — see editor-app.tsx: single window
   // entry point, smart-place vs open routing + the drop overlay)
 
