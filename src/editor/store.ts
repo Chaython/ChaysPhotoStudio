@@ -491,7 +491,7 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
       'tool:pen': 'p', 'tool:pen-freeform': 'p', 'tool:pen-curvature': 'p',
       'tool:text': 't', 'tool:type-mask-horizontal': 't', 'tool:type-mask-vertical': 't',
       'tool:path-select': 'a', 'tool:direct-select': 'a',
-      'tool:shape': 'u', 'tool:hand': 'h', 'tool:zoom': 'z', 'tool:rotate-view': 'r', 'tool:rotate-view': 'r',
+      'tool:shape': 'u', 'tool:hand': 'h', 'tool:zoom': 'z', 'tool:rotate-view': 'r',
     },
     illustrator: {
       // Illustrator uses its own Select-menu conventions for vector work.
