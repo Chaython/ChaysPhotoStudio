@@ -241,7 +241,7 @@ function borrowRegionBefore(source: Uint8ClampedArray): Uint8ClampedArray {
     }
     regionBeforeBusy = true
     regionBeforeScratch.set(source)
-    return regionBeforeScratch.subarray(0, source.length)
+    return regionBeforeScratch
   }
   return new Uint8ClampedArray(source)
 }
