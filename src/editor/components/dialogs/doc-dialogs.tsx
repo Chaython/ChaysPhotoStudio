@@ -674,9 +674,18 @@ type TransformCornerOffsets = [
 ]
 
 export function TransformDialog({ inst, onClose }: DialogProps) {
+  const requestedIds: string[] = Array.isArray(inst.props?.layerIds) ? inst.props.layerIds : []
   const layerId = inst.props?.layerId ?? engine.activeLayer?.id
-  const layer = layerId ? engine.layerById(layerId) : null
-  const isSmart = layer?.kind === 'smart'
+  const doc = engine.activeDoc
+  const selectedIds = requestedIds.length > 1
+    ? requestedIds
+    : (doc?.selectedLayerIds ?? []).length > 1 && doc?.selectedLayerIds?.includes(layerId ?? '')
+      ? doc.selectedLayerIds
+      : layerId ? [layerId] : []
+  const layerIds = [...new Set(selectedIds)].filter(id => !!engine.layerById(id))
+  const isGroup = layerIds.length > 1
+  const layer = layerId ? engine.layerById(layerId) : (layerIds[0] ? engine.layerById(layerIds[0]) : null)
+  const isSmart = !isGroup && layer?.kind === 'smart'
   const initialMode = (inst.props?.mode ?? 'free') as TransformMode
   const [mode, setMode] = useState<TransformMode>(initialMode)
   const [x, setX] = useState(0)
@@ -718,7 +727,7 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
 
   const apply = () => {
     if (!layerId) return
-    engine.transformLayer(layerId, {
+    const command = {
       mode,
       x, y,
       scaleX: scaleX / 100,
@@ -729,9 +738,11 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
       reference,
       cornerOffsets: [
         { ...corners[0] }, { ...corners[1] }, { ...corners[2] }, { ...corners[3] },
-      ],
+      ] as TransformCornerOffsets,
       warp: mode === 'warp' ? warpMesh : undefined,
-    })
+    }
+    if (isGroup) engine.transformSelectedLayers(layerIds, command)
+    else engine.transformLayer(layerId, command)
     onClose()
   }
 
@@ -752,7 +763,7 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{title}{isSmart ? ' — Smart Object (non-destructive)' : ''}</DialogTitle>
+        <DialogTitle>{title}{isGroup ? ` — ${layerIds.length} Layers` : isSmart ? ' — Smart Object (non-destructive)' : ''}</DialogTitle>
       </DialogHeader>
 
       <div className="space-y-3 py-1">
@@ -766,9 +777,9 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
                 <SelectItem value="scale">Scale</SelectItem>
                 <SelectItem value="rotate">Rotate</SelectItem>
                 <SelectItem value="skew">Skew</SelectItem>
-                <SelectItem value="distort">Distort</SelectItem>
-                <SelectItem value="perspective">Perspective</SelectItem>
-                <SelectItem value="warp">Warp</SelectItem>
+                <SelectItem value="distort" disabled={isGroup}>Distort{isGroup ? ' (single layer)' : ''}</SelectItem>
+                <SelectItem value="perspective" disabled={isGroup}>Perspective{isGroup ? ' (single layer)' : ''}</SelectItem>
+                <SelectItem value="warp" disabled={isGroup}>Warp{isGroup ? ' (single layer)' : ''}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -897,11 +908,19 @@ export function TransformDialog({ inst, onClose }: DialogProps) {
           </div>
         )}
 
-        {mode === 'warp' && layerId && (
+        {mode === 'warp' && layerId && !isGroup && (
           <TransformWarpEditor layerId={layerId} mesh={warpMesh} onChange={setWarpMesh} />
         )}
 
-        {!isSmart && (mode === 'skew' || mode === 'distort' || mode === 'perspective' || mode === 'warp' || ((mode === 'free' || mode === 'scale') && scaleX !== scaleY)) && layer && (layer.kind === 'text' || layer.kind === 'shape') && (
+        {isGroup && layerIds.some(id => {
+          const item = engine.layerById(id)
+          return item?.kind === 'text' || item?.kind === 'shape'
+        }) && (
+          <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[10px] text-amber-700 dark:text-amber-300">
+            Group transforms use the shared selection bounds. Editable text and shape layers in the group are rasterized so their geometry follows the same transform.
+          </div>
+        )}
+        {!isGroup && !isSmart && (mode === 'skew' || mode === 'distort' || mode === 'perspective' || mode === 'warp' || ((mode === 'free' || mode === 'scale') && scaleX !== scaleY)) && layer && (
           <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[10px] text-amber-700 dark:text-amber-300">
             This advanced transform rasterizes the editable {layer.kind} layer. Smart Objects keep Warp and projective transforms non-destructive and re-editable.
           </div>
