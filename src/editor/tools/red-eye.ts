@@ -8,7 +8,7 @@
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
 import type { DeferredRegionStroke } from './shared'
-import { getOptions, canUseByteRetouch, beginDeferredRegionStroke, deferredRegionProcess, walkDabs, drawBrushCursor } from './shared'
+import { getOptions, canUseByteRetouch, beginDeferredRegionStroke, deferredRegionProcess, walkDabsEach, drawBrushCursor } from './shared'
 import { clamp } from '../utils/canvas'
 
 let active = false
@@ -90,7 +90,7 @@ export const redEyeTool: Tool = {
     if (!active || !last) return
     const size = Math.max(8, Number(getOptions('red-eye').size) || 60)
     const spacing = Math.max(3, size * .3)
-    for (const q of walkDabs(last.x, last.y, p.docX, p.docY, spacing)) correct(q.x, q.y)
+    walkDabsEach(last.x, last.y, p.docX, p.docY, spacing, (x, y) => correct(x, y))
     if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
   },
 
