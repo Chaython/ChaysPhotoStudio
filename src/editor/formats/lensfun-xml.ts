@@ -114,17 +114,28 @@ export function chooseLensfunCurve(curves: LensfunCurve[], exif: CameraExif): Le
     if (exact.length !== 1) return undefined
     return { ...exact[0] }
   }
-  const a = sorted.filter(x => x.focal < exif.focal).at(-1)
-  const b = sorted.find(x => x.focal > exif.focal)
-  if (!a || !b || a.model !== b.model || b.focal <= a.focal) return undefined
-  const t = (exif.focal - a.focal) / (b.focal - a.focal)
-  const result: LensfunCurve = { model: a.model, focal: exif.focal }
-  for (const key of ['k1','k2','k3','a','b','c','kr','kb','vr','vb','br','bb','cr','cb'] as const) {
-    if (a[key] !== undefined && b[key] !== undefined)
-      result[key] = a[key]! * (1-t) + b[key]! * t
+  const lower=sorted.filter(x=>x.focal<exif.focal)
+  const upper=sorted.filter(x=>x.focal>exif.focal)
+  const lowerFocal=lower.at(-1)?.focal,upperFocal=upper[0]?.focal
+  if(lowerFocal===undefined||upperFocal===undefined)return undefined
+  const lowerSamples=lower.filter(x=>x.focal===lowerFocal)
+  const upperSamples=upper.filter(x=>x.focal===upperFocal)
+  // Never interpolate through duplicate focal samples: without an aperture,
+  // distance, or revision selector they are not a unique calibration endpoint.
+  if(lowerSamples.length!==1||upperSamples.length!==1)return undefined
+  const a=lowerSamples[0],b=upperSamples[0]
+  if(a.model!==b.model||b.focal<=a.focal)return undefined
+  const t=(exif.focal-a.focal)/(b.focal-a.focal)
+  const result:LensfunCurve={model:a.model,focal:exif.focal}
+  const defaults={k1:0,k2:0,k3:0,a:0,b:0,c:0,kr:1,kb:1,vr:1,vb:1,br:0,bb:0,cr:0,cb:0} as const
+  for(const key of Object.keys(defaults) as (keyof typeof defaults)[]){
+    if(a[key]!==undefined||b[key]!==undefined){
+      const av=a[key]??defaults[key],bv=b[key]??defaults[key]
+      result[key]=av*(1-t)+bv*t
+    }
   }
-  if (a.aperture === b.aperture) result.aperture = a.aperture
-  if (a.distance === b.distance) result.distance = a.distance
+  if(a.aperture===b.aperture)result.aperture=a.aperture
+  if(a.distance===b.distance)result.distance=a.distance
   return result
 }
 /** Lensfun radial distortion scale at normalized source radius. */
