@@ -1674,10 +1674,10 @@ export class Engine {
     if (!doc) return
     const ids = new Set(doc.selectedLayerIds?.length ? doc.selectedLayerIds
       : (doc.activeLayerId ? [doc.activeLayerId] : []))
-    const targets = doc.layers.filter(layer => ids.has(layer.id))
+    const targets = doc.layers.filter(layer => ids.has(layer.id) && !layer.locked
+      && Object.entries(patch).some(([key, value]) => (layer as any)[key] !== value))
     if (!targets.length) return
     for (const layer of targets) {
-      if (layer.locked) continue
       Object.assign(layer, patch)
       layer._v++
       if (layer.kind === 'adjustment' && patch.adjustment) layer._v++
@@ -1744,6 +1744,42 @@ export class Engine {
     doc.selectedLayerIds = nextActive ? [nextActive.id] : []
     invalidateFlat(doc)
     this.pushHistory(selected.size > 1 ? 'Delete Layers' : 'Delete Layer', doc)
+    this.emit()
+  }
+
+  /** Rasterize all selected editable layers with a single undo entry. */
+  rasterizeSelectedLayers(): void {
+    const doc = this.activeDoc
+    if (!doc) return
+    const ids = doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : [])
+    const targets = doc.layers.filter(layer => ids.includes(layer.id)
+      && !layer.locked && layer.kind !== 'raster' && layer.kind !== 'adjustment')
+    if (!targets.length) {
+      if (doc.layers.some(layer => ids.includes(layer.id) && layer.kind === 'adjustment'))
+        this.ui?.toast('Adjustment layers cannot be rasterized independently; use Merge Visible or Flatten explicitly', 'info')
+      return
+    }
+    for (const layer of targets) this.rasterizeLayer(layer.id, { history: false, emit: false })
+    invalidateFlat(doc)
+    this.pushHistory(targets.length > 1 ? 'Rasterize Layers' : 'Rasterize Layer', doc)
+    this.emit()
+  }
+
+  /** Toggle clipping independently on every selected layer that can be clipped. */
+  toggleSelectedClipping(): void {
+    const doc = this.activeDoc
+    if (!doc) return
+    const ids = doc.selectedLayerIds?.length ? doc.selectedLayerIds
+      : (doc.activeLayerId ? [doc.activeLayerId] : [])
+    const targets = doc.layers.filter((layer, index) => ids.includes(layer.id) && index > 0 && !layer.locked)
+    if (!targets.length) return
+    for (const layer of targets) {
+      layer.clipped = !layer.clipped
+      layer._v++
+    }
+    invalidateFlat(doc)
+    this.pushHistory(targets.length > 1 ? 'Toggle Clipping Masks' : 'Toggle Clipping Mask', doc)
     this.emit()
   }
 
