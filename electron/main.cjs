@@ -406,6 +406,10 @@ function createWindow() {
     }
     const selected = palette[theme] || palette.dark
     nativeTheme.themeSource = theme === 'light' ? 'light' : 'dark'
+    // Update both Electron's native caption overlay and the HWND backing
+    // surface. Windows can otherwise retain the launch-time gray window
+    // color behind the overlay after a theme switch.
+    mainWindow.setBackgroundColor(selected.color)
     mainWindow.setTitleBarOverlay({ ...selected, height: 32 })
     return true
   })
