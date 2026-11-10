@@ -630,6 +630,72 @@ function zoomAt(p: PointerInfo, factor: number) {
   maybeResizeWindowToFit()
 }
 
+
+// ============================================================
+// Rotate View — non-destructive canvas navigation (never rotates pixels)
+// ============================================================
+let rotateDrag: { startPointer: number; startAngle: number; centerX: number; centerY: number } | null = null
+function normalizeViewAngle(value: number) {
+  let angle = ((value % 360) + 360) % 360
+  if (angle > 180) angle -= 360
+  return Math.abs(angle) < .05 ? 0 : angle
+}
+export const rotateViewTool: Tool = {
+  id: 'rotate-view', cursor: 'grab',
+  onPointerDown(p: PointerInfo) {
+    if (p.button !== 0) return
+    const host = (window as any).__zphotoViewport?.host as HTMLElement | undefined
+    const doc = engine.activeDoc
+    if (!doc || !host) return
+    const cx = host.clientWidth / 2, cy = host.clientHeight / 2
+    rotateDrag = {
+      startPointer: Math.atan2(p.rawY - cy, p.rawX - cx),
+      startAngle: Number(doc.view.rotation) || 0,
+      centerX: cx, centerY: cy,
+    }
+  },
+  onPointerMove(p: PointerInfo) {
+    const doc = engine.activeDoc, d = rotateDrag
+    if (!doc || !d) return
+    const pointer = Math.atan2(p.rawY - d.centerY, p.rawX - d.centerX)
+    let angle = d.startAngle + (pointer - d.startPointer) * 180 / Math.PI
+    if (getOptions('rotate-view').snap !== false) angle = Math.round(angle / 15) * 15
+    doc.view.rotation = normalizeViewAngle(angle)
+    doc.view.autoFit = false
+    engine.viewChanged()
+  },
+  onPointerUp(p: PointerInfo) { this.onPointerMove?.(p); rotateDrag = null },
+  onDoubleClick() { resetRotateView() },
+  onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape') { rotateDrag = null; engine.pokeOverlay(); return true }
+    if (e.key === '0') { resetRotateView(); return true }
+    return false
+  },
+  onDeactivate() { rotateDrag = null },
+  renderOverlay(ctx, view, w, h, mouse) {
+    void view
+    const doc = engine.activeDoc
+    if (!doc || !mouse) return
+    const cx = w / 2, cy = h / 2
+    ctx.save()
+    ctx.strokeStyle = 'rgba(255,255,255,.72)'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.arc(cx, cy, 24, 0, Math.PI * 2); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(cx - 31, cy); ctx.lineTo(cx + 31, cy); ctx.moveTo(cx, cy - 31); ctx.lineTo(cx, cy + 31); ctx.stroke()
+    ctx.fillStyle = '#fff'
+    ctx.font = '11px ui-sans-serif,system-ui,sans-serif'
+    ctx.fillText((Number(doc.view.rotation) || 0).toFixed(1) + '°', cx + 34, cy - 24)
+    ctx.restore()
+  },
+}
+function resetRotateView() {
+  const doc = engine.activeDoc
+  if (!doc) return
+  doc.view.rotation = 0
+  doc.view.autoFit = false
+  engine.viewChanged()
+}
+
 export const zoomTool: Tool = {
   id: 'zoom',
   cursor: 'zoom-in',
