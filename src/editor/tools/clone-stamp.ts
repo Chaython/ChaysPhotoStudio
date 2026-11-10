@@ -11,7 +11,7 @@
 // ============================================================
 import type { Tool, PointerInfo } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, brushSettingsFrom, walkDabs, walkDabsEach, drawCross } from './shared'
+import { getOptions, brushSettingsFrom, walkDabsEach, drawCross } from './shared'
 import { buildSourceDab, sourcePointFor, pressureFlow } from './dab-utils'
 import { cloneCanvas } from '../utils/canvas'
 import { getSamplingComposite } from '../engine/document'
