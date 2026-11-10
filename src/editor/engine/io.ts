@@ -5,6 +5,7 @@ import { useEditorStore } from '../store'
 import { fileToCanvas, createCanvas, ctx2d, downloadBlob, uid, canvasProfile, canvasPixelCapabilities, getFloat16ImageData, putFloat16Pixels, setCanvasWorkingProfile, hdrFloat32ToPreviewCanvas } from '../utils/canvas'
 import { newLayer } from './document'
 import type { HistoryState, ImageMetadata, Layer, PsDocument, ShapeSpec, TextSpec } from '../types'
+import type { FrameRef } from '../tools/frame-tool'
 import { decodeFile, detectFormat, psdNativeObjectKind, psdPixelFingerprint } from '../formats'
 import type { DecodedImage, ImportFormatId, ParsedDocumentLayer } from '../formats'
 import { hasDedicatedDocumentParser, isPhotopeaPublishedExtension, isVideoImport, publishedFormatKind } from '../formats'
@@ -475,7 +476,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
   return doc
 }
 
-export async function placeImageAsSmartLayer(file: File) {
+export async function placeImageAsSmartLayer(file: File, frame?: FrameRef | null) {
   const store = useEditorStore.getState()
   try {
     const isRaw = publishedFormatKind(file.name) === 'raw'
@@ -483,7 +484,22 @@ export async function placeImageAsSmartLayer(file: File) {
     const settings = isRaw ? await chooseRawDevelopSettings(file.name,undefined,rawMetadata,file) : undefined
     if (settings === null) return
     const decoded = await decodeToCanvas(file, settings)
-    const layer = engine.placeSmartLayer(decoded.canvas, file.name.replace(/\.[^.]+$/, ''))
+    const doc = engine.activeDoc
+    let placeOptions: Parameters<typeof engine.placeSmartLayer>[2] | undefined
+    if (frame && doc) {
+      const g = frame.geometry
+      const mask = createCanvas(doc.width, doc.height)
+      const mctx = ctx2d(mask)
+      mctx.fillStyle = '#fff'
+      mctx.beginPath()
+      if (g.shape === 'ellipse') mctx.ellipse(g.x + g.width / 2, g.y + g.height / 2, g.width / 2, g.height / 2, 0, 0, Math.PI * 2)
+      else if (g.shape === 'rounded-rect' && g.radius) mctx.roundRect(g.x, g.y, g.width, g.height, Math.min(g.radius, g.width / 2, g.height / 2))
+      else mctx.rect(g.x, g.y, g.width, g.height)
+      mctx.fill()
+      const scale = Math.max(g.width / decoded.canvas.width, g.height / decoded.canvas.height)
+      placeOptions = { transform: { x: g.x + g.width / 2, y: g.y + g.height / 2, scale, rotation: 0 }, mask, frame: { layerId: frame.layerId, geometry: g } }
+    }
+    const layer = engine.placeSmartLayer(decoded.canvas, file.name.replace(/\.[^.]+$/, ''), placeOptions)
     if (!layer) {
       store.pushToast('Open a document before placing a Smart Object', 'error')
       return
