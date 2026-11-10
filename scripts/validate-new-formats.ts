@@ -2,7 +2,7 @@ import { chooseLensfunCurve, type CameraExif } from '../src/editor/formats/lensf
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
-import { applyLensProfile } from '../src/editor/formats/lens-correction'
+import { applyLensProfile, normalizeLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { applyRawDetail, normalizeRawDetail, DEFAULT_RAW_DETAIL } from '../src/editor/formats/raw-detail'
 import { catalogKeywords, catalogRating, catalogFilterPhotos, catalogFingerprint } from '../src/editor/library/photo-catalog'
