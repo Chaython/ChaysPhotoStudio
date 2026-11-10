@@ -76,6 +76,10 @@ export function LayersPanel() {
   const reorder = (id: string, displayIdx: number) => {
     // display index 0 = top → array index = len-1-displayIdx
     if (!doc) return
+    if (doc.selectedLayerIds?.includes(id) && doc.selectedLayerIds.length > 1) {
+      engine.reorderSelectedLayersAt(id)
+      return
+    }
     const arrIdx = doc.layers.length - 1 - displayIdx
     engine.reorderLayer(id, arrIdx)
   }
