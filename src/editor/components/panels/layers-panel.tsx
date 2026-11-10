@@ -106,8 +106,7 @@ export function LayersPanel() {
           value={activeLayer?.blendMode ?? 'normal'}
           onValueChange={v => {
             const targets = selectedLayers.length ? selectedLayers : (activeLayer ? [activeLayer] : [])
-            for (const l of targets) engine.setLayerProps(l.id, { blendMode: v as BlendMode }, { history: false })
-            if (targets.length) { engine.pushHistory(targets.length > 1 ? 'Layer Blend Modes' : 'Layer Blend Mode'); engine.emit() }
+            if (targets.length) engine.setSelectedLayerProps({ blendMode: v as BlendMode }, 'Layer Blend Modes')
           }}
         >
           <SelectTrigger className="h-6! flex-1 px-1.5 py-0.5 text-[11px]">
@@ -130,10 +129,10 @@ export function LayersPanel() {
           step={1}
           onValueChange={v => {
             const targets = selectedLayers.length ? selectedLayers : (activeLayer ? [activeLayer] : [])
-            for (const l of targets) engine.setLayerProps(l.id, { opacity: v[0] }, { history: false })
+            if (targets.length) engine.setSelectedLayerProps({ opacity: v[0] }, 'Layer Opacities')
           }}
           onValueCommit={() => {
-            if (selectedLayers.length || activeLayer) engine.pushHistory(selectedLayers.length > 1 ? 'Layer Opacities' : 'Layer Opacity')
+            /* setSelectedLayerProps commits one history step for the whole selection */
           }}
           className="flex-1"
         />
@@ -222,7 +221,7 @@ export function LayersPanel() {
       {/* footer buttons */}
       <div className="flex items-center gap-0.5 p-1 border-t bg-panel/50">
         <PanelBtn title="New layer" icon="Plus" onClick={() => engine.addRasterLayer()} />
-        <PanelBtn title="Duplicate" icon="Copy" onClick={() => { if (activeLayer) engine.duplicateLayer(activeLayer.id) }} />
+        <PanelBtn title="Duplicate" icon="Copy" onClick={() => { if (selectedLayers.length) engine.duplicateSelectedLayers(); else if (activeLayer) engine.duplicateLayer(activeLayer.id) }} />
         <PanelBtn title="Add mask from selection" icon="SquareDashed" onClick={() => { if (activeLayer) engine.addLayerMask(activeLayer.id, true) }} />
         <PanelBtn
           title={activeLayer?.clipped ? 'Release clipping' : 'Clip to layer below'}
@@ -233,7 +232,7 @@ export function LayersPanel() {
         <PanelBtn title="Rasterize" icon="Grid2x2" onClick={() => engine.rasterizeLayer()} />
         <PanelBtn title="Merge down" icon="Combine" onClick={() => engine.mergeDown()} />
         <span className="flex-1" />
-        <PanelBtn title="Delete layer" icon="Trash2" danger onClick={() => engine.deleteLayer()} />
+        <PanelBtn title="Delete layer" icon="Trash2" danger onClick={() => engine.deleteSelectedLayers()} />
       </div>
     </div>
   )
