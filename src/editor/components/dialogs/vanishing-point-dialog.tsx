@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { engine } from '../../engine/engine'
-import { warpCanvasQuadToQuad, type Point2 } from '../../image-ops/perspective'
+import { isValidPerspectiveQuad, warpCanvasQuadToQuad, type Point2 } from '../../image-ops/perspective'
 import { createCanvas, ctx2d } from '../../utils/canvas'
 import { useEditorStore } from '../../store'
 import type { DialogProps } from './generic-dialogs'
@@ -141,6 +141,11 @@ export function VanishingPointDialog({ inst, onClose }: DialogProps) {
     }
     if (liveLayer.locked || liveLayer.kind === 'adjustment') {
       useEditorStore.getState().pushToast('Select an unlocked pixel layer before applying Vanishing Point', 'error')
+      return
+    }
+    const invalidPlane = planes.find(p => !isValidPerspectiveQuad(p.source) || !isValidPerspectiveQuad(p.destination))
+    if (invalidPlane) {
+      useEditorStore.getState().pushToast('Each plane needs four distinct corners forming a convex quadrilateral', 'error')
       return
     }
     const output = renderResult(false)
