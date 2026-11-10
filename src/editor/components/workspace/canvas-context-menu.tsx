@@ -49,8 +49,17 @@ export function CanvasLayerMenuContent({
   const canMask = !layer.locked && !layer.mask
   const hasMask = !!layer.mask
   const hasVectorMask = !!layer.vectorMask
-  const notBottom = idx > 0
-  const notTop = idx < doc.layers.length - 1
+  const selectedIds = doc.selectedLayerIds?.length ? doc.selectedLayerIds : (doc.activeLayerId ? [doc.activeLayerId] : [])
+  const selectionSet = new Set(selectedIds)
+  const useGroup = selectionSet.size > 1 && selectionSet.has(layer.id)
+  const selectedGroup = doc.layers.filter(item => selectionSet.has(item.id))
+  const selectedIndexes = selectedGroup.map(item => doc.layers.findIndex(entry => entry.id === item.id))
+  const notBottom = useGroup ? selectedIndexes.some(index => index > 0) : idx > 0
+  const notTop = useGroup ? selectedIndexes.some(index => index < doc.layers.length - 1) : idx < doc.layers.length - 1
+  const duplicateTarget = () => useGroup ? engine.duplicateSelectedLayers() : engine.duplicateLayer(layer.id)
+  const deleteTarget = () => useGroup ? engine.deleteSelectedLayers() : engine.deleteLayer(layer.id)
+  const moveTarget = (delta: number) => useGroup ? engine.moveSelectedLayersBy(delta) : engine.moveLayerBy(layer.id, delta)
+  const arrangeTarget = (edge: 'front' | 'back') => useGroup ? engine.reorderSelectedLayers(edge) : engine.reorderLayer(layer.id, edge === 'front' ? doc.layers.length - 1 : 0)
   const act = (fn: () => void) => () => fn()
 
   const rename = () => {
@@ -121,9 +130,9 @@ export function CanvasLayerMenuContent({
       </ContextMenuSub>
     ),
     'duplicate': (
-      <ContextMenuItem onClick={act(() => engine.duplicateLayer(layer.id))}>
+      <ContextMenuItem onClick={act(duplicateTarget)}>
         <Copy />
-        Duplicate Layer
+        {useGroup ? `Duplicate ${selectedGroup.length} Layers` : 'Duplicate Layer'}
         <ContextMenuShortcut>Ctrl+J</ContextMenuShortcut>
       </ContextMenuItem>
     ),
@@ -141,9 +150,9 @@ export function CanvasLayerMenuContent({
       </ContextMenuItem>
     ),
     'delete': (
-      <ContextMenuItem variant="destructive" onClick={act(() => engine.deleteLayer(layer.id))}>
+      <ContextMenuItem variant="destructive" onClick={act(deleteTarget)}>
         <Trash2 />
-        Delete Layer
+        {useGroup ? `Delete ${selectedGroup.length} Layers` : 'Delete Layer'}
       </ContextMenuItem>
     ),
     'arrange': (
@@ -153,11 +162,11 @@ export function CanvasLayerMenuContent({
           Arrange
         </ContextMenuSubTrigger>
         <ContextMenuSubContent className="text-xs">
-          <ContextMenuItem disabled={!notTop} onClick={act(() => engine.moveLayerBy(layer.id, +1))}><ArrowUp /> Bring Forward</ContextMenuItem>
-          <ContextMenuItem disabled={!notTop} onClick={act(() => engine.reorderLayer(layer.id, doc.layers.length - 1))}><ArrowUpToLine /> Bring to Front</ContextMenuItem>
+          <ContextMenuItem disabled={!notTop} onClick={act(() => moveTarget(+1))}><ArrowUp /> {useGroup ? 'Bring Selection Forward' : 'Bring Forward'}</ContextMenuItem>
+          <ContextMenuItem disabled={!notTop} onClick={act(() => arrangeTarget('front'))}><ArrowUpToLine /> {useGroup ? 'Bring Selection to Front' : 'Bring to Front'}</ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem disabled={!notBottom} onClick={act(() => engine.moveLayerBy(layer.id, -1))}><ArrowDown /> Send Backward</ContextMenuItem>
-          <ContextMenuItem onClick={act(() => engine.reorderLayer(layer.id, 0))}><ArrowDownToLine /> Send to Back</ContextMenuItem>
+          <ContextMenuItem disabled={!notBottom} onClick={act(() => moveTarget(-1))}><ArrowDown /> {useGroup ? 'Send Selection Backward' : 'Send Backward'}</ContextMenuItem>
+          <ContextMenuItem onClick={act(() => arrangeTarget('back'))}><ArrowDownToLine /> {useGroup ? 'Send Selection to Back' : 'Send to Back'}</ContextMenuItem>
         </ContextMenuSubContent>
       </ContextMenuSub>
     ),
@@ -217,8 +226,8 @@ export function CanvasLayerMenuContent({
       </ContextMenuItem>
     ) : null),
     'clip-toggle': (
-      <ContextMenuItem disabled={!notBottom || layer.locked} onClick={() => engine.toggleClipping(layer.id)}>
-        <CornerDownRight /> {layer.clipped ? 'Release Clipping' : 'Clip to Layer Below'}
+      <ContextMenuItem disabled={!notBottom || layer.locked} onClick={() => useGroup ? engine.toggleSelectedClipping() : engine.toggleClipping(layer.id)}>
+        <CornerDownRight /> {useGroup ? 'Toggle Clipping for Selection' : layer.clipped ? 'Release Clipping' : 'Clip to Layer Below'}
       </ContextMenuItem>
     ),
     'trim': (layer.kind === 'raster' ? (
@@ -227,9 +236,9 @@ export function CanvasLayerMenuContent({
       </ContextMenuItem>
     ) : null),
     'rasterize': (layer.kind !== 'raster' && !layer.locked ? (
-      <ContextMenuItem onClick={act(() => engine.rasterizeLayer(layer.id))}>
+      <ContextMenuItem onClick={act(() => useGroup ? engine.rasterizeSelectedLayers() : engine.rasterizeLayer(layer.id))}>
           <SquareDashed />
-          Rasterize Layer
+          {useGroup ? `Rasterize ${selectedGroup.length} Layers` : 'Rasterize Layer'}
         </ContextMenuItem>
     ) : null),
   }
