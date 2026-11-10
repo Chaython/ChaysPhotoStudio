@@ -332,9 +332,8 @@ function makeRetouch(
       airPos = { x: p.docX, y: p.docY }
       airPointer = p
       const spacing = Math.max(2, (opts.size ?? 60) / 6)
-      const dabs = walkDabs(last.x, last.y, p.docX, p.docY, spacing)
-      if (!dabs.length) return
-      for (const d of dabs) op(d.x, d.y, p)
+      const dabs = walkDabsEach(last.x, last.y, p.docX, p.docY, spacing, (x, y) => op(x, y, p))
+      if (!dabs.count) return
       flushHdrPreview()
       if (Math.hypot(p.docX - last.x, p.docY - last.y) >= spacing) last = { x: p.docX, y: p.docY }
       const doc = engine.activeDoc
