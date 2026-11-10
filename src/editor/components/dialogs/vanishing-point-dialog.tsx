@@ -36,6 +36,22 @@ export function VanishingPointDialog({ inst, onClose }: DialogProps) {
     return { x: (PREVIEW_W - w) / 2, y: (PREVIEW_H - h) / 2, w, h, scale }
   }, [source])
 
+  const renderPreview = () => {
+    if (!source) return null
+    const w = Math.max(1, Math.round(view.w)), h = Math.max(1, Math.round(view.h))
+    const scaledSource = createCanvas(w, h)
+    ctx2d(scaledSource).drawImage(source, 0, 0, w, h)
+    const out = createCanvas(w, h)
+    const ctx = ctx2d(out)
+    for (const plane of planes) {
+      if (plane.source.length !== 4 || plane.destination.length !== 4) continue
+      const scaleQuad = (quad: Point2[]) => quad.map(p => ({ x: p.x * view.scale, y: p.y * view.scale }))
+      const warped = warpCanvasQuadToQuad(scaledSource, scaleQuad(plane.source), scaleQuad(plane.destination), w, h)
+      ctx.drawImage(warped, 0, 0)
+    }
+    return out
+  }
+
   const renderResult = (includeOriginal = false) => {
     if (!source || !doc) return null
     const out = createCanvas(doc.width, doc.height)
@@ -62,8 +78,8 @@ export function VanishingPointDialog({ inst, onClose }: DialogProps) {
       ctx.fillRect(x, y, tile, tile)
     }
     if (showOriginal) ctx.drawImage(source, view.x, view.y, view.w, view.h)
-    const result = renderResult(false)
-    if (result) ctx.drawImage(result, view.x, view.y, view.w, view.h)
+    const result = renderPreview()
+    if (result) ctx.drawImage(result, view.x, view.y)
     const toScreen = (p: Point2) => ({ x: view.x + p.x * view.scale, y: view.y + p.y * view.scale })
     planes.forEach((plane, index) => {
       for (const [quad, color] of [[plane.source, '#45c6ff'], [plane.destination, '#ffbd55']] as const) {
