@@ -163,26 +163,63 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     return () => { cancelled = true }
   }, [source, mode, pins, selectedPin, preview, settings, maxBlur, feather, focusX, focusY, band])
 
-  const handlePreviewClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!source || !previewCanvasRef.current) return
-    const bounds = e.currentTarget.getBoundingClientRect()
-    const px = (e.clientX - bounds.left) * PREVIEW_W / bounds.width
-    const py = (e.clientY - bounds.top) * PREVIEW_H / bounds.height
+  const previewCoordinates = (clientX: number, clientY: number) => {
+    if (!source || !previewCanvasRef.current) return null
+    const bounds = previewCanvasRef.current.getBoundingClientRect()
+    const px = (clientX - bounds.left) * PREVIEW_W / bounds.width
+    const py = (clientY - bounds.top) * PREVIEW_H / bounds.height
     const scale = Math.min(1, (PREVIEW_W - 20) / source.width, (PREVIEW_H - 20) / source.height)
     const w = source.width * scale, h = source.height * scale
     const x = (PREVIEW_W - w) / 2, y = (PREVIEW_H - h) / 2
     const nx = (px - x) / w, ny = (py - y) / h
-    if (nx < 0 || ny < 0 || nx > 1 || ny > 1) return
+    if (nx < 0 || ny < 0 || nx > 1 || ny > 1) return null
+    return { x: nx, y: ny, width: w, height: h }
+  }
+
+  const dragging = useRef<{ pointerId: number; kind: 'pin' | 'focus'; index: number } | null>(null)
+
+  const handlePreviewPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const point = previewCoordinates(e.clientX, e.clientY)
+    if (!point) return
+    e.currentTarget.setPointerCapture(e.pointerId)
     if (mode === 'field') {
       const nearest = pins.reduce((best, pin, i) => {
-        const distance = Math.hypot((pin.x - nx) * w, (pin.y - ny) * h)
+        const distance = Math.hypot((pin.x - point.x) * point.width, (pin.y - point.y) * point.height)
         return distance < best.distance ? { index: i, distance } : best
       }, { index: -1, distance: 22 })
-      if (nearest.index >= 0) setSelectedPin(nearest.index)
-      else { setPins(prev => [...prev, { x: nx, y: ny, radius: maxBlur }]); setSelectedPin(pins.length) }
+      let index = nearest.index
+      if (index >= 0) {
+        setSelectedPin(index)
+      } else {
+        index = pins.length
+        setPins(prev => [...prev, { x: point.x, y: point.y, radius: maxBlur }])
+        setSelectedPin(index)
+      }
+      dragging.current = { pointerId: e.pointerId, kind: 'pin', index }
     } else {
-      setFocusX(nx); setFocusY(ny)
+      setFocusX(point.x)
+      setFocusY(point.y)
+      dragging.current = { pointerId: e.pointerId, kind: 'focus', index: 0 }
     }
+  }
+
+  const handlePreviewPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const active = dragging.current
+    if (!active || active.pointerId !== e.pointerId) return
+    const point = previewCoordinates(e.clientX, e.clientY)
+    if (!point) return
+    if (active.kind === 'pin') {
+      setPins(prev => prev.map((pin, i) => i === active.index ? { ...pin, x: point.x, y: point.y } : pin))
+    } else {
+      setFocusX(point.x)
+      setFocusY(point.y)
+    }
+  }
+
+  const stopPreviewDrag = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (dragging.current?.pointerId !== e.pointerId) return
+    dragging.current = null
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
   }
 
   const updateMaxBlur = (value: number) => {
@@ -238,7 +275,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
           {(['field', 'iris', 'tilt-shift'] as Mode[]).map(m => <Button key={m} type="button" size="sm" variant={mode === m ? 'default' : 'outline'} onClick={() => setMode(m)}>{m === 'field' ? 'Field Blur' : m === 'iris' ? 'Iris Blur' : 'Tilt-Shift'}</Button>)}
           <label className="ml-auto flex items-center gap-1.5 text-[11px]"><input type="checkbox" checked={preview} onChange={e => setPreview(e.target.checked)} /> Preview</label>
         </div>
-        <canvas ref={previewCanvasRef} width={PREVIEW_W} height={PREVIEW_H} onClick={handlePreviewClick} className="w-full rounded border border-border cursor-crosshair" aria-label="Blur Gallery focus editor" />
+        <canvas ref={previewCanvasRef} width={PREVIEW_W} height={PREVIEW_H} onPointerDown={handlePreviewPointerDown} onPointerMove={handlePreviewPointerMove} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag} className="w-full rounded border border-border cursor-crosshair touch-none" aria-label="Blur Gallery focus editor" />
         <p className="text-[10px] text-muted-foreground">{mode === 'field' ? 'Click to add blur pins. Select a pin by clicking near it, then adjust its blur amount.' : mode === 'iris' ? 'Click to position the sharp elliptical focus area. Adjust its width, height and transition.' : 'Click to position the sharp focus strip. Adjust its width, angle and transition.'}</p>
         {control('Maximum Blur', maxBlur, 1, 60, 1, updateMaxBlur)}
         {mode === 'field' && <>
