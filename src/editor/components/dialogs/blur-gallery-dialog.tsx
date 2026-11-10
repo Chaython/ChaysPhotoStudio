@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { engine } from '../../engine/engine'
@@ -114,11 +114,11 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
   const layer = layerId ? engine.layerById(layerId) : null
   const blocked = doc?.workingBitDepth !== 8
   const settings = useMemo(() => ({ maxBlur, focusX, focusY, focusWidth: focusWidth / 100, focusHeight: focusHeight / 100, feather, angle, band: band / 100 }), [maxBlur, focusX, focusY, focusWidth, focusHeight, feather, angle, band])
-  const canvasRef = useState<HTMLCanvasElement | null>(null)
-  const [previewCanvas, setPreviewCanvas] = canvasRef
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
-    if (!source || !previewCanvas) return
+    const previewCanvas = previewCanvasRef.current
+    if (!source || !previewCanvasRef.current) return
     const scale = Math.min(1, (PREVIEW_W - 20) / source.width, (PREVIEW_H - 20) / source.height)
     const w = Math.max(1, Math.round(source.width * scale)), h = Math.max(1, Math.round(source.height * scale))
     const small = createCanvas(w, h)
@@ -144,7 +144,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     }
     if (mode === 'field') pins.forEach((p, i) => mark(p.x, p.y, String(i + 1), i === selectedPin))
     else mark(focusX, focusY, '•', true)
-  }, [source, previewCanvas, mode, pins, selectedPin, preview, settings, maxBlur, feather, focusX, focusY, band])
+  }, [source, mode, pins, selectedPin, preview, settings, maxBlur, feather, focusX, focusY, band])
 
   const handlePreviewClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!source || !previewCanvas) return
@@ -211,7 +211,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
           {(['field', 'iris', 'tilt-shift'] as Mode[]).map(m => <Button key={m} type="button" size="sm" variant={mode === m ? 'default' : 'outline'} onClick={() => setMode(m)}>{m === 'field' ? 'Field Blur' : m === 'iris' ? 'Iris Blur' : 'Tilt-Shift'}</Button>)}
           <label className="ml-auto flex items-center gap-1.5 text-[11px]"><input type="checkbox" checked={preview} onChange={e => setPreview(e.target.checked)} /> Preview</label>
         </div>
-        <canvas ref={node => setPreviewCanvas(node)} width={PREVIEW_W} height={PREVIEW_H} onClick={handlePreviewClick} className="w-full rounded border border-border cursor-crosshair" aria-label="Blur Gallery focus editor" />
+        <canvas ref={previewCanvasRef} width={PREVIEW_W} height={PREVIEW_H} onClick={handlePreviewClick} className="w-full rounded border border-border cursor-crosshair" aria-label="Blur Gallery focus editor" />
         <p className="text-[10px] text-muted-foreground">{mode === 'field' ? 'Click to add blur pins. Select a pin by clicking near it, then adjust its blur amount.' : mode === 'iris' ? 'Click to position the sharp elliptical focus area. Adjust its width, height and transition.' : 'Click to position the sharp focus strip. Adjust its width, angle and transition.'}</p>
         {control('Maximum Blur', maxBlur, 1, 60, 1, setMaxBlur)}
         {mode === 'field' && <>
