@@ -1,4 +1,4 @@
-import { chooseLensfunCurve, type CameraExif } from '../src/editor/formats/lensfun-xml'
+import { chooseLensfunCurve, scoreLensfunModelMatch, type CameraExif } from '../src/editor/formats/lensfun-xml'
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
@@ -875,4 +875,14 @@ const sampleCurve=chooseLensfunCurve([{model:'poly3',focal:20,k1:0.1},{model:'po
 check(sampleCurve && Math.abs((sampleCurve.k1??0)-0.2)<1e-8,'Lensfun focal interpolation stays finite')
 check(chooseLensfunCurve([{model:'poly3',focal:60,k1:0.3}],lensExif)===undefined,'Lensfun never extrapolates beyond known focal calibrations')
 check(chooseLensfunCurve([{model:'poly3',focal:20,k1:0.1},{model:'ptlens',focal:80,a:0.1}],lensExif)===undefined,'Lensfun does not mix incompatible curve models')
+check(scoreLensfunModelMatch('Canon EF 50mm f/1.8 STM','Canon EF 50mm f/1.8 STM')>
+  scoreLensfunModelMatch('EF 50mm f/1.8 STM','Canon EF 50mm f/1.8 STM'),
+  'Lensfun exact EXIF model match outranks a vendor-prefixed partial match')
+check(scoreLensfunModelMatch('EF 50mm f/1.8 STM','Canon EF 50mm f/1.8 STM')>0,
+  'Lensfun accepts a distinctive model embedded in a vendor-prefixed EXIF lens name')
+check(scoreLensfunModelMatch('50mm','Canon EF 50mm')===0,
+  'Lensfun never fuzzy-matches short generic focal-only lens names')
+check(scoreLensfunModelMatch('EF 50mm f/1.8','Canon EF 50mm f/1.8 STM')<
+  scoreLensfunModelMatch('EF 50mm f/1.8 STM','Canon EF 50mm f/1.8 STM'),
+  'Lensfun prefers the most specific contained model string')
 console.log('Scientific, DICOM-RLE, EXR, Lensfun calibration and multipage TIFF/DCX tests passed')
