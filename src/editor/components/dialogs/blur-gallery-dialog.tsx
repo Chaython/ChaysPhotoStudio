@@ -81,15 +81,15 @@ function renderBlurGallery(
   }
   maskCtx.putImageData(image, 0, 0)
 
-  const overlay = createCanvas(width, height)
-  const overlayCtx = ctx2d(overlay)
-  overlayCtx.drawImage(blur, 0, 0)
-  overlayCtx.globalCompositeOperation = 'destination-in'
-  overlayCtx.drawImage(mask, 0, 0)
-  overlayCtx.globalCompositeOperation = 'source-over'
+  // Clip the blurred canvas in place instead of allocating a second full-size
+  // overlay canvas. Large documents otherwise retain another full RGBA buffer
+  // for an image that is only the blurred pixels multiplied by this mask.
+  blurCtx.globalCompositeOperation = 'destination-in'
+  blurCtx.drawImage(mask, 0, 0)
+  blurCtx.globalCompositeOperation = 'source-over'
 
   outputCtx.drawImage(source, 0, 0)
-  outputCtx.drawImage(overlay, 0, 0)
+  outputCtx.drawImage(blur, 0, 0)
   return output
 }
 
