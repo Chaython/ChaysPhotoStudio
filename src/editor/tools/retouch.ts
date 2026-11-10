@@ -12,7 +12,7 @@
 // ============================================================
 import type { Tool, PointerInfo, PsDocument, Layer } from '../types'
 import { engine } from '../engine/engine'
-import { getOptions, getFgColor, canUseByteRetouch, regionProcess, drawBrushCursor, walkDabs } from './shared'
+import { getOptions, getFgColor, canUseByteRetouch, regionProcess, drawBrushCursor, walkDabsEach } from './shared'
 import { smoothstep } from './dab-utils'
 import { createCanvas, ctx2d, clamp, rgbToHsv, hsvToRgb, cloneCanvas, getImageData, putImageData, hdrFloat32ToPreviewCanvas, hexToRgb, srgbToLinear } from '../utils/canvas'
 import { getFlatComposite, newLayer, invalidateFlat } from '../engine/document'
