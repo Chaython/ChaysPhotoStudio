@@ -213,8 +213,8 @@ export function LayersPanel() {
               if (dragId.current && dragId.current !== targetId) reorder(dragId.current, idxOf(targetId))
               dragId.current = null
             }}
-            onMoveUp={displayIdx > 0 ? () => engine.moveLayerBy(meta.id, 1) : undefined}
-            onMoveDown={displayIdx < layers.length - 1 ? () => engine.moveLayerBy(meta.id, -1) : undefined}
+            onMoveUp={displayIdx > 0 ? () => selectedSet.has(meta.id) && selectedSet.size > 1 ? engine.moveSelectedLayersBy(1) : engine.moveLayerBy(meta.id, 1) : undefined}
+            onMoveDown={displayIdx < layers.length - 1 ? () => selectedSet.has(meta.id) && selectedSet.size > 1 ? engine.moveSelectedLayersBy(-1) : engine.moveLayerBy(meta.id, -1) : undefined}
             preferences={contextPreferences}
             onContextActivate={() => activateContextLayer(meta.id)}
             onCustomize={() => setEditingContextMenu(true)}
@@ -237,9 +237,9 @@ export function LayersPanel() {
           title={activeLayer?.clipped ? 'Release clipping' : 'Clip to layer below'}
           icon="ArrowDownToLine"
           active={activeLayer?.clipped}
-          onClick={() => { if (activeLayer) engine.toggleClipping(activeLayer.id) }}
+          onClick={() => selectedLayers.length > 1 ? engine.toggleSelectedClipping() : activeLayer && engine.toggleClipping(activeLayer.id)}
         />
-        <PanelBtn title="Rasterize" icon="Grid2x2" onClick={() => engine.rasterizeLayer()} />
+        <PanelBtn title="Rasterize" icon="Grid2x2" onClick={() => selectedLayers.length > 1 ? engine.rasterizeSelectedLayers() : engine.rasterizeLayer()} />
         <PanelBtn title="Merge down" icon="Combine" onClick={() => engine.mergeDown()} />
         <span className="flex-1" />
         <PanelBtn title="Delete layer" icon="Trash2" danger onClick={() => engine.deleteSelectedLayers()} />
