@@ -20,13 +20,13 @@ export interface LensfunCalibration {
   tca?: LensfunCurve
   vignetting?: LensfunCurve
 }
-interface DatabaseLens {
+export interface LensfunLensRecord {
   maker: string
   model: string
   crop: number
   curves: { distortion: LensfunCurve[]; tca: LensfunCurve[]; vignetting: LensfunCurve[] }
 }
-const database: DatabaseLens[]=[]
+const database: LensfunLensRecord[]=[]
 const canon = (v:string) => v.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ')
 const value = (node:Element, tag:string) =>
   Array.from(node.children).find(n=>n.localName===tag && !n.getAttribute('lang'))?.textContent?.trim()||''
@@ -69,7 +69,7 @@ export function importLensfunXml(xml:string):number {
     }
     if(!curves.distortion.length&&!curves.tca.length&&!curves.vignetting.length)continue
     const crop=numeric(value(lens,'cropfactor'))||1
-    const record:DatabaseLens={maker,model,crop,curves}
+    const record:LensfunLensRecord={maker,model,crop,curves}
     const existing=database.findIndex(x=>canon(x.maker)===canon(maker)&&canon(x.model)===canon(model))
     if(existing<0)database.push(record)
     else database[existing]=record
@@ -124,16 +124,25 @@ export function chooseLensfunCurve(curves: LensfunCurve[], exif: CameraExif): Le
   if (a.distance === b.distance) result.distance = a.distance
   return result
 }
-export function matchLensfun(meta:ImageMetadata|undefined):LensfunCalibration|null {
+/** Score only defensible model-string matches. Exact EXIF model matches win;
+ * longer contained model names are accepted to accommodate EXIF vendor prefixes.
+ * Short generic names are never fuzzy-matched, and equal best scores stay ambiguous. */
+export function scoreLensfunModelMatch(model:string, exifLens:string):number {
+  const candidate=canon(model),target=canon(exifLens)
+  if(!candidate||!target)return 0
+  if(candidate===target)return 10000+candidate.length
+  const shorter=Math.min(candidate.length,target.length)
+  if(shorter<12)return 0
+  if(!candidate.includes(target)&&!target.includes(candidate))return 0
+  return 1000+shorter
+}
+export function matchLensfunRecords(records:LensfunLensRecord[],meta:ImageMetadata|undefined):LensfunCalibration|null {
   const exif=cameraExif(meta)
   if(!exif.lens||!exif.focal)return null
-  const candidates=database.filter(x=>{
-    const lens=canon(x.model),target=canon(exif.lens)
-    return lens===target || (target.length>12&&(lens.includes(target)||target.includes(lens)))
-  })
-  // Ambiguous lens strings must not select a plausible but wrong calibration.
-  if(candidates.length!==1)return null
-  const lens=candidates[0]
+  const ranked=records.map(lens=>({lens,score:scoreLensfunModelMatch(lens.model,exif.lens)}))
+    .filter(x=>x.score>0).sort((a,b)=>b.score-a.score)
+  if(!ranked.length||ranked[1]?.score===ranked[0].score)return null
+  const lens=ranked[0].lens
   // Vignetting depends strongly on aperture and subject distance; unlike
   // distortion, it must never pick an arbitrary calibration when EXIF is absent.
   const closeVignettes=exif.aperture>0?
@@ -146,4 +155,7 @@ export function matchLensfun(meta:ImageMetadata|undefined):LensfunCalibration|nu
     focal:exif.focal,distortion:chooseLensfunCurve(lens.curves.distortion,exif),
     tca:chooseLensfunCurve(lens.curves.tca,exif),
     vignetting:chooseLensfunCurve(vignetteSamples,exif)}
+}
+export function matchLensfun(meta:ImageMetadata|undefined):LensfunCalibration|null {
+  return matchLensfunRecords(database,meta)
 }
