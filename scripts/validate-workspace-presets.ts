@@ -93,7 +93,7 @@ assert.deepEqual(defaultToolbarLayout('photoshop').map(s => s.kind === 'single' 
   ['object-select', 'quick-select', 'magic-wand'],
   ['crop', 'perspective-crop', 'slice', 'slice-select', 'hotspot', 'frame'],
   ['eyedropper', 'color-sampler', 'measure', 'count'],
-  ['spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
+  ['remove', 'spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
   ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
   ['clone-stamp', 'pattern-stamp'],
   ['history-brush', 'art-history-brush'],
