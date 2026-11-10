@@ -1420,14 +1420,20 @@ export class Engine {
     return layer
   }
 
-  placeSmartLayer(canvas: HTMLCanvasElement, name?: string): Layer | null {
+  placeSmartLayer(canvas: HTMLCanvasElement, name?: string, opts?: { transform?: TransformSpec; mask?: HTMLCanvasElement; frame?: { layerId: string; geometry: NonNullable<Layer['frame']> } }): Layer | null {
     const doc = this.activeDoc
     if (!doc) return null
     const layer = newLayer('smart', name || this.nextLayerName(), doc.width, doc.height)
     layer.source = canvas
-    layer.transform = { x: doc.width / 2, y: doc.height / 2, scale: Math.min(1, Math.min(doc.width / canvas.width, doc.height / canvas.height)), rotation: 0 }
+    layer.transform = opts?.transform ? structuredClone(opts.transform) : { x: doc.width / 2, y: doc.height / 2, scale: Math.min(1, Math.min(doc.width / canvas.width, doc.height / canvas.height)), rotation: 0 }
+    layer.mask = opts?.mask ?? null
+    layer.maskEnabled = true
     layer.canvas = null
     doc.layers.push(layer)
+    if (opts?.frame) {
+      const frameLayer = doc.layers.find(item => item.id === opts.frame!.layerId)
+      if (frameLayer?.frame) { frameLayer.frame = { ...structuredClone(opts.frame.geometry), contentLayerId: layer.id }; frameLayer.visible = false; frameLayer._v++ }
+    }
     doc.activeLayerId = layer.id
     this.pushHistory('Place Smart Object')
     this.emit()
