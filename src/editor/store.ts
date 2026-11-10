@@ -616,7 +616,7 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['brush', 'pencil'],
       ['eyedropper'],
       ['gradient', 'paint-bucket'],
-      ['hand', 'rotate-view'],
+      ['hand'],
       ['zoom'],
       // Additional selection tools.
       ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column', 'magnetic-lasso', 'selection-brush', 'quick-mask', 'object-select', 'quick-select'],
