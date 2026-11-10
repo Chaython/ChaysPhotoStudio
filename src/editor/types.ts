@@ -648,7 +648,7 @@ export interface ProofSettings {
 }
 
 export interface ViewportState {
-  zoom: number; panX: number; panY: number
+  zoom: number; panX: number; panY: number; rotation?: number
   /** true/undefined = never explicitly viewed (auto fit on first display);
    *  false = user zoomed/panned/fitted → view is sticky per-document */
   autoFit?: boolean
