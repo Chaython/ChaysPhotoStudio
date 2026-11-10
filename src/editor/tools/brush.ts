@@ -41,7 +41,7 @@ import { engine } from '../engine/engine'
 import { clamp, createCanvas, ctx2d } from '../utils/canvas'
 import {
   getOptions, brushSettingsFrom, getFgColor, getBgColor, walkDabsEach, softDab, pencilDab, drawBrushCursor,
-  symmetricPointsInto, drawSymmetryOverlay, ema,
+  symmetricPointsInto, symmetricPoints, drawSymmetryOverlay, ema,
 } from './shared'
 import { getActiveId, getById, getCachedStampCanvas, warmPreset } from '../plugins/brush-presets'
 import { getTip, drawTipCursor, jitterPalette, tipExtentMul } from './brush-tips'
