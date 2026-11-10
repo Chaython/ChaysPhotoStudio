@@ -6068,6 +6068,16 @@ export class Engine {
     const x0 = Math.min(...rects.map(r => r.x)), y0 = Math.min(...rects.map(r => r.y))
     const x1 = Math.max(...rects.map(r => r.x + r.w)), y1 = Math.max(...rects.map(r => r.y + r.h))
     const sharedCommand = { ...structuredClone(cmd), referenceBounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } }
+    // Validate the complete group before mutating any member. A single layer
+    // collapsing or lacking a transform quad must not leave a partial group
+    // transform or create an empty undo entry.
+    for (const layer of layers) {
+      const base = this.layerTransformQuad(layer.id)
+      if (!base || this.quadArea(this.transformedQuad(base, sharedCommand)) < 1) {
+        this.ui?.toast(`Group transform would collapse or skip "${layer.name}"`, 'error')
+        return false
+      }
+    }
     for (const layer of layers) this.transformLayer(layer.id, sharedCommand, false, false)
     this.lastTransformCommand = structuredClone(cmd)
     this.pushHistory(`Transform ${layers.length} Layers`)
