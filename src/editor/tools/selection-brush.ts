@@ -9,7 +9,7 @@
 import type { PointerInfo, Tool } from '../types'
 import { engine } from '../engine/engine'
 import { cloneCanvas, createCanvas, ctx2d } from '../utils/canvas'
-import { drawBrushCursor, getOptions, softDab, walkDabs } from './shared'
+import { drawBrushCursor, getOptions, softDab, walkDabsEach } from './shared'
 
 let liveMask: HTMLCanvasElement | null = null
 let tintMask: HTMLCanvasElement | null = null
@@ -95,9 +95,8 @@ function paintTo(p: PointerInfo) {
   }
   const size = Math.max(1, Number(getOptions('selection-brush').size) || 40)
   const spacing = Math.max(.5, size * .12)
-  const points = walkDabs(lastPoint.x, lastPoint.y, p.docX, p.docY, spacing)
-  for (const pt of points) dab(pt.x, pt.y)
-  if (!points.length) dab(p.docX, p.docY)
+  const points = walkDabsEach(lastPoint.x, lastPoint.y, p.docX, p.docY, spacing, (x, y) => dab(x, y))
+  if (!points.count) dab(p.docX, p.docY)
   lastPoint = { x: p.docX, y: p.docY }
 }
 
