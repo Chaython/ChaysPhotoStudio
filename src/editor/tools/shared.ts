@@ -381,8 +381,6 @@ export function regionProcess(
   if (rw <= 0 || rh <= 0) return false
   const c = ctx2d(canvas)
   const region = c.getImageData(x0, y0, rw, rh)
-  const before = borrowRegionBefore(region.data)
-  const ownsBeforeScratch = before.buffer === regionBeforeScratch.buffer
   const falloff = borrowRegionFalloff(rw * rh)
   const ownsScratch = falloff.buffer === regionFalloffScratch.buffer
   const inner = clamp(hardness / 100, 0, 0.98)
@@ -440,6 +438,8 @@ export function regionProcess(
     }
   }
 
+  const before = borrowRegionBefore(region.data)
+  const ownsBeforeScratch = before.buffer === regionBeforeScratch.buffer
   try {
     fn(region, falloff, rw, rh)
     const data = region.data
