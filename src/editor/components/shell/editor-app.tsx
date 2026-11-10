@@ -331,7 +331,7 @@ export function EditorApp() {
 
   return (
     <div className={cn("h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none", !mobileMode && isInspectorPreset(workspacePreset) && "zphoto-photoshop-workspace")} style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
-      {isWindowsElectron && <div aria-hidden="true" className="h-8 w-full shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />}
+      {isWindowsElectron && <div aria-hidden="true" className="h-8 w-full shrink-0" style={{ WebkitAppRegion: 'drag', backgroundColor: 'var(--background)' } as React.CSSProperties} />}
       <MenuBar theme={theme} setTheme={setTheme} mobileMode={mobileMode} setMobileMode={setMobileMode} />
       <div className={cn('flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
         {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
