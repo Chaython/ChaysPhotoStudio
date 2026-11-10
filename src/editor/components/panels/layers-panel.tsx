@@ -129,10 +129,10 @@ export function LayersPanel() {
           step={1}
           onValueChange={v => {
             const targets = selectedLayers.length ? selectedLayers : (activeLayer ? [activeLayer] : [])
-            if (targets.length) engine.setSelectedLayerProps({ opacity: v[0] }, 'Layer Opacities')
+            if (targets.length) engine.setSelectedLayerProps({ opacity: v[0] }, 'Layer Opacities', { history: false })
           }}
           onValueCommit={() => {
-            /* setSelectedLayerProps commits one history step for the whole selection */
+            if (selectedLayers.length || activeLayer) engine.pushHistory(selectedLayers.length > 1 ? 'Layer Opacities' : 'Layer Opacity')
           }}
           className="flex-1"
         />
