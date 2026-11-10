@@ -132,7 +132,7 @@ export function chooseLensfunCurve(curves: LensfunCurve[], exif: CameraExif): Le
 export function lensfunTcaScale(curve:LensfunCurve,channel:'red'|'blue',radius:number):number {
   if(!Number.isFinite(radius))return 1
   if(curve.model==='linear')return channel==='red'?(curve.kr??1):(curve.kb??1)
-  if(curve.model!=='pa'&&curve.model!=='poly3')return 1
+  if(curve.model!=='poly3')return 1
   const r=Math.max(0,Math.min(2,radius))
   return channel==='red'?
     (curve.br??0)*r*r+(curve.cr??0)*r+(curve.vr??1):
