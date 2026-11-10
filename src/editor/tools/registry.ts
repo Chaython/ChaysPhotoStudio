@@ -25,7 +25,7 @@ import { backgroundEraserTool } from './background-eraser'
 import { magicEraserTool } from './magic-eraser'
 import { cloneStampTool } from './clone-stamp'
 import { patternStampTool } from './pattern-stamp'
-import { healingBrushTool, spotHealingTool, patchTool } from './healing'
+import { healingBrushTool, spotHealingTool, patchTool } from './healing'\nimport { removeTool } from './remove'
 import { contentAwareMoveTool } from './content-aware-move'
 import { redEyeTool } from './red-eye'
 import { blurTool, sharpenTool, smudgeTool, dodgeTool, burnTool, spongeTool } from './retouch'
@@ -74,7 +74,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'clone-stamp': cloneStampTool,
   'pattern-stamp': patternStampTool,
   'healing-brush': healingBrushTool,
-  'spot-healing': spotHealingTool,
+  'spot-healing': spotHealingTool,\n  'remove': removeTool,
   'patch': patchTool,
   'content-aware-move': contentAwareMoveTool,
   'red-eye': redEyeTool,
