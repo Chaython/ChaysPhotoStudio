@@ -25,7 +25,7 @@ import { engine } from '../engine/engine'
 import { clamp, createCanvas, ctx2d } from '../utils/canvas'
 import {
   getOptions, brushSettingsFrom, walkDabsEach, pencilDab,
-  symmetricPoints, drawSymmetryOverlay, ema,
+  symmetricPointsInto, drawSymmetryOverlay, ema,
 } from './shared'
 import { getTip, drawTipCursor, tipExtentMul, ERASER_TIP_IDS } from './brush-tips'
 
@@ -34,6 +34,8 @@ const DIR_EMA = 0.35
 const RAD = Math.PI / 180
 
 let historyEraserScratch: HTMLCanvasElement | null = null
+// Reused for both stroke dabs and the cursor's symmetry markers.
+const eraserSymmetryPoints: { x: number; y: number }[] = []
 
 function getHistoryEraserScratch(side: number): HTMLCanvasElement {
   const s = Math.max(4, Math.ceil(side))
@@ -202,9 +204,10 @@ function makeEraser(): Tool {
       if (!doc || !opts.symmetry || opts.symmetry === 'off') return
       const docX = (mouse.x - view.panX) / view.zoom
       const docY = (mouse.y - view.panY) / view.zoom
-      const pts = symmetricPoints(docX, docY, symmetryConfig(opts, doc.width, doc.height))
+      const pointCount = symmetricPointsInto(docX, docY, symmetryConfig(opts, doc.width, doc.height), eraserSymmetryPoints)
       ctx.save()
-      for (const pt of pts) {
+      for (let i = 0; i < pointCount; i++) {
+        const pt = eraserSymmetryPoints[i]
         const sx = pt.x * view.zoom + view.panX
         const sy = pt.y * view.zoom + view.panY
         ctx.beginPath()
@@ -297,8 +300,9 @@ function makeEraser(): Tool {
       })
     }
 
-    const pts = symmetricPoints(x, y, symmetryConfig(opts, doc.width, doc.height))
-    for (const pt of pts) {
+    const pointCount = symmetricPointsInto(x, y, symmetryConfig(opts, doc.width, doc.height), eraserSymmetryPoints)
+    for (let i = 0; i < pointCount; i++) {
+      const pt = eraserSymmetryPoints[i]
       if (eraseToHistory && historySource) {
         const side = Math.max(4, Math.ceil(radius * 2 * extent) + 6)
         const half = side / 2
