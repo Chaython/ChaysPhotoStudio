@@ -19,6 +19,7 @@ import { openFiles, placeImageAsSmartLayer } from '../../engine/io'
 import { isVideoImport } from '../../formats/photopea-formats'
 import { startAutoSave } from '../../engine/autosave'
 import { dataUrlToCanvas } from '../../image-ops'
+import { fileToCanvas } from '../../utils/canvas'
 import { dispatchEditorKey, getViewport, setCursorCallbacks, setVirtualInputState } from '../../engine/render'
 import { TOOL_DEFS } from '../../constants/tools'
 import { setActiveTool } from '../../tools/registry'
@@ -46,6 +47,61 @@ export function EditorApp() {
   const [dropping, setDropping] = useState(false)
 
   useKeyboardShortcuts()
+
+  // Keep system-image paste mounted even on the Welcome screen. CanvasWorkspace
+  // only exists while a document is open, so a listener there can never create
+  // the first document from Ctrl+V.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      )) return
+
+      const items = event.clipboardData?.items
+      if (!items) return
+      const imageItem = Array.from(items).find(item =>
+        item.kind === 'file' && item.type.startsWith('image/'),
+      )
+      const file = imageItem?.getAsFile()
+      if (!file) return
+
+      event.preventDefault()
+      void (async () => {
+        try {
+          const canvas = await fileToCanvas(file)
+          if (!engine.activeDoc) {
+            engine.newDocument({
+              name: 'Pasted Image',
+              width: canvas.width,
+              height: canvas.height,
+              fill: 'transparent',
+            })
+            const layer = engine.addLayerFromCanvas(canvas, 'Pasted Image', {
+              center: false,
+              historyLabel: 'Paste Image',
+            })
+            if (!layer) throw new Error('Could not add pasted image to the new document')
+            useEditorStore.getState().pushToast(
+              `Created a ${canvas.width} × ${canvas.height} transparent document from clipboard`,
+              'success',
+            )
+          } else {
+            const layer = engine.addLayerFromCanvas(canvas, 'Pasted Image')
+            if (!layer) throw new Error('Could not paste image into the active document')
+            useEditorStore.getState().pushToast('Pasted image as a new layer', 'success')
+          }
+        } catch {
+          useEditorStore.getState().pushToast('Could not decode the pasted image', 'error')
+        }
+      })()
+    }
+
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [])
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme !== 'light')
