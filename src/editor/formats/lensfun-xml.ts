@@ -159,6 +159,30 @@ export function lensfunTcaScale(curve:LensfunCurve,channel:'red'|'blue',radius:n
     (curve.br??0)*r*r+(curve.cr??0)*r+(curve.vr??1):
     (curve.bb??0)*r*r+(curve.cb??0)*r+(curve.vb??1)
 }
+/** Choose one vignetting sample per focal length using EXIF aperture and
+ * focus distance. Lensfun uses >=100 m as its infinity calibration convention. */
+export function selectLensfunVignettingSamples(curves:LensfunCurve[],exif:CameraExif):LensfunCurve[] {
+  if(!Number.isFinite(exif.aperture)||exif.aperture<=0)return []
+  const focals=[...new Set(curves.map(x=>x.focal).filter(x=>Number.isFinite(x)&&x>0))].sort((a,b)=>a-b)
+  const selected:LensfunCurve[]=[]
+  for(const focal of focals){
+    const candidates=curves.filter(x=>x.focal===focal&&x.aperture!==undefined&&
+      Math.abs(x.aperture-exif.aperture)<=0.35)
+    if(!candidates.length)continue
+    const distanceScore=(sample:LensfunCurve)=>{
+      const d=sample.distance
+      if(exif.distance>=100)return d===undefined||d>=100?0:d===undefined?0:1000+Math.abs(100-d)
+      if(d!==undefined&&d<100)return Math.abs(d-exif.distance)
+      return 1000
+    }
+    const ranked=candidates.map(sample=>({sample,aperture:Math.abs(sample.aperture!-exif.aperture),
+      distance:distanceScore(sample)})).sort((a,b)=>a.aperture-b.aperture||a.distance-b.distance)
+    const best=ranked[0],next=ranked[1]
+    if(next&&next.aperture===best.aperture&&next.distance===best.distance)continue
+    selected.push({...best.sample})
+  }
+  return selected
+}
 /** Score only defensible model-string matches. Exact EXIF model matches win;
  * longer contained model names are accepted to accommodate EXIF vendor prefixes.
  * Short generic names are never fuzzy-matched, and equal best scores stay ambiguous. */
@@ -180,12 +204,7 @@ export function matchLensfunRecords(records:LensfunLensRecord[],meta:ImageMetada
   const lens=ranked[0].lens
   // Vignetting depends strongly on aperture and subject distance; unlike
   // distortion, it must never pick an arbitrary calibration when EXIF is absent.
-  const closeVignettes=exif.aperture>0?
-    lens.curves.vignetting.filter(c=>c.aperture!==undefined&&
-      Math.abs(c.aperture-exif.aperture)<=0.35):[]
-  const farDistance=closeVignettes.filter(c=>!c.distance||c.distance>=100)
-  const vignetteSamples=farDistance.length?farDistance:closeVignettes.filter(c=>
-    c.distance!==undefined && Math.abs(c.distance-exif.distance)<=Math.max(0.25,exif.distance*0.15))
+  const vignetteSamples=selectLensfunVignettingSamples(lens.curves.vignetting,exif)
   return {source:'lensfun-xml',maker:lens.maker,lens:lens.model,crop:lens.crop,
     focal:exif.focal,distortion:chooseLensfunCurve(lens.curves.distortion,exif),
     tca:chooseLensfunCurve(lens.curves.tca,exif),
