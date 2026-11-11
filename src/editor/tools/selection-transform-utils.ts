@@ -41,3 +41,11 @@ export function scaleRectAroundPivot(
     h: start.h * sy,
   }
 }
+
+/** Convert a document-space pointer to clamped normalized pivot percentages. */
+export function selectionTransformPivotPercent(bounds: Rect, point: { x: number; y: number }): { x: number; y: number } {
+  return {
+    x: bounds.w > 0 ? Math.round(Math.min(100, Math.max(0, (point.x - bounds.x) / bounds.w * 100)) * 10) / 10 : 50,
+    y: bounds.h > 0 ? Math.round(Math.min(100, Math.max(0, (point.y - bounds.y) / bounds.h * 100)) * 10) / 10 : 50,
+  }
+}
