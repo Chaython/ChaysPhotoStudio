@@ -4,7 +4,7 @@ import { newDrag, getOptions, combineMode, drawDashedRect, drawCross } from './s
 import { rectFromPoints, cloneCanvas, createCanvas, ctx2d, clamp } from '../utils/canvas'
 import { selectionFromMask } from '../engine/selection'
 import { nudgeSelectionBounds } from './selection-nudge-utils'
-import { scaleRectAroundPivot, selectionTransformPivot } from './selection-transform-utils'
+import { scaleRectAroundPivot, selectionTransformPivot, selectionTransformPivotPercent } from './selection-transform-utils'
 import { snapToGuides } from '../engine/guides'
 import { useEditorStore } from '../store'
 
@@ -332,12 +332,10 @@ function make(kind: 'rect' | 'ellipse'): Tool {
 
     onPointerMove(p: PointerInfo) {
       if (selectionPivotDrag?.toolId === id) {
-        const b = selectionPivotDrag.bounds
-        const x = b.w > 0 ? Math.max(0, Math.min(100, (p.docX - b.x) / b.w * 100)) : 50
-        const y = b.h > 0 ? Math.max(0, Math.min(100, (p.docY - b.y) / b.h * 100)) : 50
+        const pivot = selectionTransformPivotPercent(selectionPivotDrag.bounds, { x: p.docX, y: p.docY })
         const store = useEditorStore.getState()
-        store.setToolOption(id as any, 'transformPivotX', Math.round(x * 10) / 10)
-        store.setToolOption(id as any, 'transformPivotY', Math.round(y * 10) / 10)
+        store.setToolOption(id, 'transformPivotX', pivot.x)
+        store.setToolOption(id, 'transformPivotY', pivot.y)
         engine.pokeOverlay()
         return
       }
