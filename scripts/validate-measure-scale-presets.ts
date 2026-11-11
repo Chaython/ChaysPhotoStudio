@@ -51,9 +51,11 @@ store.set('zphoto-measure-scale-presets', JSON.stringify([
   { id: 'bad-number', name: 'Bad', unit: 'in', pixelsPerUnit: -4 },
 ]))
 const sanitized = loadMeasurementScalePresets()
-assert.equal(sanitized.length, 1, 'malformed, duplicate and forged built-in entries must be rejected')
+assert.equal(sanitized.length, 2, 'duplicate and forged built-in entries must be rejected; invalid numeric values should normalize safely')
 assert.equal(sanitized[0].name, 'First')
 assert.equal(sanitized[0].pixelsPerUnit, 2)
+assert.equal(sanitized[1].name, 'Bad')
+assert.equal(sanitized[1].pixelsPerUnit, 1)
 
 store.set('zphoto-measure-scale-presets', '{not json')
 assert.deepEqual(loadMeasurementScalePresets(), [])
