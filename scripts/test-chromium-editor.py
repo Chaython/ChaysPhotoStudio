@@ -1101,12 +1101,18 @@ def main():
                 }""")
                 check(radius_slider.input_value() == "1",
                       "Field Blur did not accept a distinct low-radius pin value")
-                before = page.evaluate("""() => ({
-                    count:window.__zphotoEngine.activeDoc.layers.length,
-                    sourceId:window.__blurGallerySourceId,
-                    source:Array.from(window.__zphotoEngine.layerById(window.__blurGallerySourceId)
-                      .canvas.getContext('2d').getImageData(31,32,1,1).data)
-                })""")
+                before = page.evaluate("""() => {
+                    const e=window.__zphotoEngine
+                    const intervening=document.createElement('canvas')
+                    intervening.width=64;intervening.height=64
+                    e.addLayerFromCanvas(intervening,'Intervening layer',{center:false})
+                    return {
+                      count:e.activeDoc.layers.length,
+                      sourceId:window.__blurGallerySourceId,
+                      source:Array.from(e.layerById(window.__blurGallerySourceId)
+                        .canvas.getContext('2d').getImageData(31,32,1,1).data)
+                    }
+                }""")
                 dialog.get_by_role("button",name="Apply to New Layer").click()
                 dialog.wait_for(state="hidden",timeout=20000)
                 page.wait_for_function("""before => {
@@ -1122,12 +1128,18 @@ def main():
                     const pixel=(x,y)=>Array.from(ctx.getImageData(x,y,1,1).data)
                     return {source:Array.from(source.canvas.getContext('2d').getImageData(31,32,1,1).data),
                       highRadius:pixel(30,32),lowRadius:pixel(30,58),kind:result?.kind,
-                      active:d.activeLayerId===result?.id}
+                      active:d.activeLayerId===result?.id,
+                      sourceIndex:d.layers.findIndex(l=>l.id===window.__blurGallerySourceId),
+                      resultIndex:d.layers.findIndex(l=>l.name==='Blur Gallery Result'),
+                      interveningIndex:d.layers.findIndex(l=>l.name==='Intervening layer')}
                 }""")
                 check(after["source"] == before["source"],
                       "Blur Gallery modified the original source layer")
                 check(after["kind"] == "raster" and after["active"],
                       f"Blur Gallery result was not a separate active raster layer: {after}")
+                check(after["resultIndex"] == after["sourceIndex"] + 1 and
+                      after["interveningIndex"] > after["resultIndex"],
+                      f"Blur Gallery result was not inserted immediately above its source: {after}")
                 check(after["highRadius"][0] < after["lowRadius"][0] - 20,
                       f"Field Blur did not produce a stronger spatial blur at the high-radius pin: {after}")
                 check(not errors, f"Blur Gallery browser interactions threw JS errors: {errors[:3]}")
