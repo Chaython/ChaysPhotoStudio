@@ -17,8 +17,9 @@ export function moveBlurGalleryPin(pins: BlurGalleryPin[], index: number, point:
 
 /** Removes one pin and returns a valid selection index (or zero when empty). */
 export function removeBlurGalleryPin(pins: BlurGalleryPin[], index: number): { pins: BlurGalleryPin[]; selectedIndex: number } {
-  if (!Number.isInteger(index) || index < 0 || index >= pins.length) return { pins, selectedIndex: Math.min(Math.max(0, index), Math.max(0, pins.length - 1)) }
-  const next = pins.filter((_, i) => i !== index)
-  return { pins: next, selectedIndex: Math.min(Math.max(0, index - 1), Math.max(0, next.length - 1)) }
+  const safeIndex = Number.isFinite(index) ? Math.trunc(index) : 0
+  if (safeIndex < 0 || safeIndex >= pins.length) return { pins, selectedIndex: Math.min(Math.max(0, safeIndex), Math.max(0, pins.length - 1)) }
+  const next = pins.filter((_, i) => i !== safeIndex)
+  return { pins: next, selectedIndex: Math.min(Math.max(0, safeIndex - 1), Math.max(0, next.length - 1)) }
 }
 
