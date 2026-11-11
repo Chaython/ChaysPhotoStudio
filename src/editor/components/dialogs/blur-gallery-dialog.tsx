@@ -297,7 +297,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     try {
       const output = await renderBlurGallery(source, mode, pins, settings, () => engine.activeDoc?.id !== documentId)
       if (engine.activeDoc?.id !== documentId) return
-      const created = engine.addLayerFromCanvas(output, 'Blur Gallery Result', { center: false, aboveActive: true, historyLabel: 'Blur Gallery' })
+      const created = engine.addLayerFromCanvas(output, 'Blur Gallery Result', { center: false, aboveLayerId: layerId, historyLabel: 'Blur Gallery' })
       if (created) {
         useEditorStore.getState().pushToast(`Applied ${mode === 'field' ? 'Field Blur' : mode === 'iris' ? 'Iris Blur' : 'Tilt-Shift'} to a new editable layer`, 'success')
         onClose()
