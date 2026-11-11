@@ -31,6 +31,9 @@ interface SelectionMove {
 }
 let selectionMove: SelectionMove | null = null
 
+interface SelectionPivotDrag { toolId: string; bounds: Rect }
+let selectionPivotDrag: SelectionPivotDrag | null = null
+
 type SelectionTransformHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'rotate' | 'inside'
 interface SelectionTransform {
   originalMask: HTMLCanvasElement
@@ -273,10 +276,18 @@ function make(kind: 'rect' | 'ellipse'): Tool {
       const opts = getOptions(id)
       const doc = engine.activeDoc
       if (doc?.selection && opts.transformSelection === true) {
-        const hit = hitSelectionTransform(p, doc.selection.bounds, doc.view.zoom)
+        const b = { ...doc.selection.bounds }
+        const pivot = selectionTransformPivot(b, Number(opts.transformPivotX ?? 50), Number(opts.transformPivotY ?? 50))
+        const pivotTolerance = Math.max(10 / Math.max(.02, doc.view.zoom), 2)
+        if (Math.hypot(p.docX - pivot.x, p.docY - pivot.y) <= pivotTolerance) {
+          selectionPivotDrag = { toolId: id, bounds: b }
+          drag.active = false
+          current = null
+          engine.pokeOverlay()
+          return
+        }
+        const hit = hitSelectionTransform(p, b, doc.view.zoom)
         if (hit) {
-          const b = { ...doc.selection.bounds }
-          const pivot = selectionTransformPivot(b, Number(opts.transformPivotX ?? 50), Number(opts.transformPivotY ?? 50))
           selectionTransform = {
             originalMask: cloneCanvas(doc.selection.mask),
             startRect: b,
@@ -320,6 +331,16 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onPointerMove(p: PointerInfo) {
+      if (selectionPivotDrag?.toolId === id) {
+        const b = selectionPivotDrag.bounds
+        const x = b.w > 0 ? Math.max(0, Math.min(100, (p.docX - b.x) / b.w * 100)) : 50
+        const y = b.h > 0 ? Math.max(0, Math.min(100, (p.docY - b.y) / b.h * 100)) : 50
+        const store = useEditorStore.getState()
+        store.setToolOption(id as any, 'transformPivotX', Math.round(x * 10) / 10)
+        store.setToolOption(id as any, 'transformPivotY', Math.round(y * 10) / 10)
+        engine.pokeOverlay()
+        return
+      }
       if (selectionTransform) {
         previewSelectionTransform(p)
         return
@@ -346,6 +367,7 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onPointerUp(p: PointerInfo) {
+      if (selectionPivotDrag?.toolId === id) { selectionPivotDrag = null; engine.pokeOverlay(); return }
       if (selectionTransform) { finishSelectionTransform(true); return }
       if (selectionMove) { finishSelectionMove(true); return }
       if (!drag.active) return
@@ -377,6 +399,11 @@ function make(kind: 'rect' | 'ellipse'): Tool {
           return nudgeSelection(delta[0], delta[1])
         }
       }
+      if (e.key === 'Escape' && selectionPivotDrag?.toolId === id) {
+        selectionPivotDrag = null
+        engine.pokeOverlay()
+        return true
+      }
       if (e.key === 'Escape' && selectionTransform) {
         finishSelectionTransform(false)
         return true
@@ -396,6 +423,7 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onDeactivate() {
+      if (selectionPivotDrag?.toolId === id) selectionPivotDrag = null
       if (selectionTransform) finishSelectionTransform(true)
       if (selectionMove) finishSelectionMove(true)
       drag.active = false
