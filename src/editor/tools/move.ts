@@ -9,6 +9,7 @@ import type { LiveLayerDrag } from '../types'
 import { cloneVectorMask } from '../engine/vector-mask'
 import { inferOneSidedSpacing } from './smart-spacing'
 import { formatMoveDistance } from './move-distance-utils'
+import { moveNudgeDelta } from './move-nudge-utils'
 
 let drag = newDrag()
 let live: LiveLayerDrag | null = null
@@ -751,6 +752,25 @@ export const moveTool: Tool = {
   },
 
   onKeyDown(e: KeyboardEvent) {
+    // Arrow keys nudge the selected layer set by one document pixel;
+    // Shift+Arrow uses Photoshop's accelerated ten-pixel step.
+    if (!e.altKey && !e.ctrlKey && !e.metaKey && !groupMove && !tdrag) {
+      const delta = moveNudgeDelta(e.key, e.shiftKey)
+      const doc = engine.activeDoc
+      if (delta && doc) {
+        const selected = doc.selectedLayerIds?.length
+          ? doc.selectedLayerIds
+          : (doc.activeLayerId ? [doc.activeLayerId] : [])
+        const movable = selected.filter(id => {
+          const layer = doc.layers.find(item => item.id === id)
+          return !!layer && !layer.locked && layer.kind !== 'adjustment'
+        })
+        if (movable.length) {
+          engine.translateLayers(movable, delta.dx, delta.dy, movable.length > 1 ? 'Nudge Layers' : 'Nudge Layer')
+          return true
+        }
+      }
+    }
     // Escape cancels an in-flight free-transform drag (preview only — the
     // layer was never touched)
     if (e.key === 'Escape' && groupMove) {
