@@ -147,6 +147,9 @@ jobs:
       - name: Validate marquee selection keyboard nudging
         run: bun run selection-nudge:validate
 
+      - name: Validate marquee transform pivot geometry
+        run: bun run selection-transform-pivot:validate
+
       - name: Validate asynchronous selection and locked Fill
         run: bun run selection-races:validate
 
