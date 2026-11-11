@@ -31,16 +31,6 @@ async function renderBlurGallery(
   const width = source.width, height = source.height
   const output = createCanvas(width, height)
   const outputCtx = ctx2d(output)
-  const blur = createCanvas(width, height)
-  const blurCtx = ctx2d(blur)
-  blurCtx.filter = `blur(${Math.max(0.5, settings.maxBlur)}px)`
-  blurCtx.drawImage(source, 0, 0)
-  blurCtx.filter = 'none'
-
-  const mask = createCanvas(width, height)
-  const maskCtx = ctx2d(mask)
-  const image = maskCtx.createImageData(width, height)
-  const data = image.data
   const radians = settings.angle * Math.PI / 180
   const cos = Math.cos(radians), sin = Math.sin(radians)
   const feather = Math.max(1, settings.feather)
@@ -48,17 +38,22 @@ async function renderBlurGallery(
   const rx = Math.max(2, settings.focusWidth * width / 2)
   const ry = Math.max(2, settings.focusHeight * height / 2)
 
-  for (let y = 0; y < height; y++) {
-    // Yield periodically so large-document mask generation does not monopolize
-    // the UI thread. The caller can cancel between chunks (document switch or
-    // superseded preview).
-    if (y > 0 && y % 16 === 0) {
-      await new Promise<void>(resolve => window.setTimeout(resolve, 0))
-      if (shouldCancel?.()) throw new Error('Blur Gallery render cancelled')
-    }
-    for (let x = 0; x < width; x++) {
-      let strength = 1
-      if (mode === 'field') {
+  if (mode === 'field') {
+    // Field Blur controls a spatially varying blur radius, not the opacity of
+    // one maximum-strength blur. Quantize the radius into a small set of blur
+    // passes and linearly blend adjacent passes per pixel to avoid visible bands.
+    const levels = 6
+    const radiusPrecision = 16
+    const radiusMap = new Uint8Array(width * height)
+    const maxRadius = Math.max(0.5, settings.maxBlur)
+
+    for (let y = 0; y < height; y++) {
+      if (y > 0 && y % 16 === 0) {
+        await new Promise<void>(resolve => window.setTimeout(resolve, 0))
+        if (shouldCancel?.()) throw new Error('Blur Gallery render cancelled')
+      }
+      for (let x = 0; x < width; x++) {
+        let localRadius = 0
         if (pins.length) {
           let weighted = 0, total = 0
           for (const pin of pins) {
@@ -69,10 +64,80 @@ async function renderBlurGallery(
             weighted += pin.radius * weight
             total += weight
           }
-          const localRadius = total ? weighted / total : 0
-          strength = Math.max(0, Math.min(1, localRadius / settings.maxBlur))
-        } else strength = 0
-      } else if (mode === 'iris') {
+          localRadius = total ? weighted / total : 0
+        }
+        const scaledRadius = Math.max(0, Math.min(levels, localRadius / maxRadius * levels))
+        radiusMap[y * width + x] = Math.round(scaledRadius * radiusPrecision)
+      }
+    }
+
+    const layerCanvas = createCanvas(width, height)
+    const layerCtx = ctx2d(layerCanvas)
+    const maskCanvas = createCanvas(width, height)
+    const maskCtx = ctx2d(maskCanvas)
+    const maskImage = maskCtx.createImageData(width, height)
+    const maskData = maskImage.data
+    outputCtx.clearRect(0, 0, width, height)
+    outputCtx.globalCompositeOperation = 'lighter'
+
+    for (let level = 0; level <= levels; level++) {
+      if (shouldCancel?.()) throw new Error('Blur Gallery render cancelled')
+      for (let y = 0; y < height; y++) {
+        if (y > 0 && y % 32 === 0) {
+          await new Promise<void>(resolve => window.setTimeout(resolve, 0))
+          if (shouldCancel?.()) throw new Error('Blur Gallery render cancelled')
+        }
+        for (let x = 0; x < width; x++) {
+          const scaledRadius = radiusMap[y * width + x] / radiusPrecision
+          const lower = Math.floor(scaledRadius)
+          const upperWeight = scaledRadius - lower
+          const weight = level === lower
+            ? 1 - upperWeight
+            : level === lower + 1
+              ? upperWeight
+              : 0
+          const i = (y * width + x) * 4
+          maskData[i] = maskData[i + 1] = maskData[i + 2] = 255
+          maskData[i + 3] = Math.round(weight * 255)
+        }
+      }
+      maskCtx.putImageData(maskImage, 0, 0)
+      layerCtx.clearRect(0, 0, width, height)
+      if (level === 0) {
+        layerCtx.drawImage(source, 0, 0)
+      } else {
+        layerCtx.filter = `blur(${maxRadius * level / levels}px)`
+        layerCtx.drawImage(source, 0, 0)
+        layerCtx.filter = 'none'
+      }
+      layerCtx.globalCompositeOperation = 'destination-in'
+      layerCtx.drawImage(maskCanvas, 0, 0)
+      layerCtx.globalCompositeOperation = 'source-over'
+      outputCtx.drawImage(layerCanvas, 0, 0)
+    }
+    outputCtx.globalCompositeOperation = 'source-over'
+    return output
+  }
+
+  const blur = createCanvas(width, height)
+  const blurCtx = ctx2d(blur)
+  blurCtx.filter = `blur(${Math.max(0.5, settings.maxBlur)}px)`
+  blurCtx.drawImage(source, 0, 0)
+  blurCtx.filter = 'none'
+
+  const mask = createCanvas(width, height)
+  const maskCtx = ctx2d(mask)
+  const image = maskCtx.createImageData(width, height)
+  const data = image.data
+
+  for (let y = 0; y < height; y++) {
+    if (y > 0 && y % 16 === 0) {
+      await new Promise<void>(resolve => window.setTimeout(resolve, 0))
+      if (shouldCancel?.()) throw new Error('Blur Gallery render cancelled')
+    }
+    for (let x = 0; x < width; x++) {
+      let strength = 1
+      if (mode === 'iris') {
         const dx = x - cx, dy = y - cy
         const nx = (dx * cos + dy * sin) / rx
         const ny = (-dx * sin + dy * cos) / ry
@@ -90,14 +155,9 @@ async function renderBlurGallery(
     }
   }
   maskCtx.putImageData(image, 0, 0)
-
-  // Clip the blurred canvas in place instead of allocating a second full-size
-  // overlay canvas. Large documents otherwise retain another full RGBA buffer
-  // for an image that is only the blurred pixels multiplied by this mask.
   blurCtx.globalCompositeOperation = 'destination-in'
   blurCtx.drawImage(mask, 0, 0)
   blurCtx.globalCompositeOperation = 'source-over'
-
   outputCtx.drawImage(source, 0, 0)
   outputCtx.drawImage(blur, 0, 0)
   return output
