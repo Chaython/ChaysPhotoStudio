@@ -8,15 +8,15 @@ const near = (actual: number | null, expected: number, label: string) => {
 }
 
 // Two stationary layers to the left establish a 12px gap for the moving layer.
-near(inferOneSidedSpacing(rect(80, 10), [rect(10, 10), rect(42, 10)], 'x', 'before', 20),
-  4, 'Horizontal repeated gap from left')
-near(inferOneSidedSpacing(rect(10, 10), [rect(80, 10), rect(112, 10)], 'x', 'after', 20),
+near(inferOneSidedSpacing(rect(68, 10), [rect(10, 10), rect(42, 10)], 'x', 'before', 20),
+  6, 'Horizontal repeated gap from left')
+near(inferOneSidedSpacing(rect(52, 10), [rect(80, 10), rect(112, 10)], 'x', 'after', 20),
   -4, 'Horizontal repeated gap from right')
 
 // The same inference works vertically.
-near(inferOneSidedSpacing(rect(10, 80), [rect(10, 10), rect(10, 42)], 'y', 'before', 20),
-  4, 'Vertical repeated gap from above')
-near(inferOneSidedSpacing(rect(10, 10), [rect(10, 80), rect(10, 112)], 'y', 'after', 20),
+near(inferOneSidedSpacing(rect(10, 68), [rect(10, 10), rect(10, 42)], 'y', 'before', 20),
+  6, 'Vertical repeated gap from above')
+near(inferOneSidedSpacing(rect(10, 52), [rect(10, 80), rect(10, 112)], 'y', 'after', 20),
   -4, 'Vertical repeated gap from below')
 
 // Orthogonal non-overlap must not create a false guide.
