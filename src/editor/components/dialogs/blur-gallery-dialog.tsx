@@ -7,6 +7,7 @@ import { engine } from '../../engine/engine'
 import { createCanvas, ctx2d } from '../../utils/canvas'
 import { useEditorStore } from '../../store'
 import { getBlurGalleryPreviewPoint } from '../../utils/blur-gallery-preview'
+import { findBlurGalleryPin, moveBlurGalleryPin, removeBlurGalleryPin } from '../../utils/blur-gallery-interaction'
 import type { DialogProps } from './generic-dialogs'
 
 type Mode = 'field' | 'iris' | 'tilt-shift'
@@ -179,11 +180,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     if (!point) return
     e.currentTarget.setPointerCapture(e.pointerId)
     if (mode === 'field') {
-      const nearest = pins.reduce((best, pin, i) => {
-        const distance = Math.hypot((pin.x - point.x) * point.width, (pin.y - point.y) * point.height)
-        return distance < best.distance ? { index: i, distance } : best
-      }, { index: -1, distance: 22 })
-      let index = nearest.index
+      let index = findBlurGalleryPin(pins, point)
       if (index >= 0) {
         setSelectedPin(index)
       } else {
@@ -205,7 +202,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     const point = previewCoordinates(e.clientX, e.clientY, true)
     if (!point) return
     if (active.kind === 'pin') {
-      setPins(prev => prev.map((pin, i) => i === active.index ? { ...pin, x: point.x, y: point.y } : pin))
+      setPins(prev => moveBlurGalleryPin(prev, active.index, point))
     } else {
       setFocusX(point.x)
       setFocusY(point.y)
@@ -277,7 +274,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
         {mode === 'field' && <>
           {control('Selected Pin', selectedPin + 1, 1, Math.max(1, pins.length), 1, v => setSelectedPin(Math.min(pins.length - 1, v - 1)))}
           {control('Pin Blur', selected?.radius ?? maxBlur, 0, maxBlur, 1, updatePinRadius)}
-          <div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => { setPins(prev => prev.filter((_, i) => i !== selectedPin)); setSelectedPin(Math.max(0, selectedPin - 1)) }} disabled={!pins.length}>Remove Pin</Button><Button size="sm" variant="outline" onClick={() => { setPins([]); setSelectedPin(0) }}>Clear Pins</Button></div>
+          <div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => { const result = removeBlurGalleryPin(pins, selectedPin); setPins(result.pins); setSelectedPin(result.selectedIndex) }} disabled={!pins.length}>Remove Pin</Button><Button size="sm" variant="outline" onClick={() => { setPins([]); setSelectedPin(0) }}>Clear Pins</Button></div>
         </>}
         {mode === 'iris' && <>
           {control('Focus Width', focusWidth, 5, 100, 1, setFocusWidth)}
