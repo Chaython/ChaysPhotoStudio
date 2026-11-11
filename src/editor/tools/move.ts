@@ -8,6 +8,7 @@ import { clamp } from '../utils/canvas'
 import type { LiveLayerDrag } from '../types'
 import { cloneVectorMask } from '../engine/vector-mask'
 import { inferOneSidedSpacing } from './smart-spacing'
+import { formatMoveDistance } from './move-distance-utils'
 
 let drag = newDrag()
 let live: LiveLayerDrag | null = null
@@ -945,8 +946,15 @@ function nearestMoveDistances(rect: Rect, moving: string[]): MoveDistanceMeasure
 }
 
 function distanceText(value: number): string {
-  const rounded = Math.round(value * 10) / 10
-  return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + ' px'
+  const doc = engine.activeDoc
+  const opts = getOptions('move')
+  return formatMoveDistance(
+    value,
+    String(opts.unit ?? 'px'),
+    opts.useDocResolution !== false,
+    Number(doc?.resolutionPpi),
+    Number(opts.pixelsPerUnit),
+  )
 }
 
 function drawDistanceBadge(
