@@ -1,3 +1,4 @@
+import { getBlurGalleryPreviewPoint } from '../src/editor/utils/blur-gallery-preview'
 import { findBlurGalleryPin, moveBlurGalleryPin, removeBlurGalleryPin, type BlurGalleryPin, type BlurGalleryPointerPoint } from '../src/editor/utils/blur-gallery-interaction'
 
 let passed=0,failed=0
@@ -24,5 +25,17 @@ check('removing last pin selects previous pin',lastRemoved.selectedIndex,1)
 const allRemoved=removeBlurGalleryPin(pins.slice(0,1),0)
 check('empty pin list resets selection index',allRemoved.selectedIndex,0)
 check('invalid removal does not change pin collection',removeBlurGalleryPin(pins,9).pins,pins)
-console.log('Blur Gallery pin interactions: '+passed+' passed, '+failed+' failed')
+const bounds={left:100,top:50,width:680,height:430}
+const center=getBlurGalleryPreviewPoint(440,265,bounds,640,400,680,430)
+check('maps preview center to image center',center?{x:center.x,y:center.y}:{x:null,y:null},{x:.5,y:.5})
+check('rejects pointer in letterboxed margin',getBlurGalleryPreviewPoint(105,265,bounds,640,400,680,430),null)
+const left=getBlurGalleryPreviewPoint(100,265,bounds,640,400,680,430,true)
+check('clamps captured drag to left image edge',left?{x:left.x,y:left.y}:{x:null,y:null},{x:0,y:.5})
+const right=getBlurGalleryPreviewPoint(900,265,bounds,640,400,680,430,true)
+check('clamps captured drag to right image edge',right?{x:right.x,y:right.y}:{x:null,y:null},{x:1,y:.5})
+const top=getBlurGalleryPreviewPoint(440,0,bounds,640,400,680,430,true)
+check('clamps captured drag to top image edge',top?{x:top.x,y:top.y}:{x:null,y:null},{x:.5,y:0})
+check('rejects zero-sized preview bounds',getBlurGalleryPreviewPoint(1,1,{...bounds,width:0},640,400,680,430),null)
+check('rejects invalid source dimensions',getBlurGalleryPreviewPoint(1,1,bounds,0,400,680,430),null)
+console.log('Blur Gallery interactions and pointer geometry: '+passed+' passed, '+failed+' failed')
 if(failed)process.exit(1)
