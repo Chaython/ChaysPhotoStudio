@@ -50,6 +50,7 @@
     "warp:validate": "bun scripts/validate-transform.ts",
     "smart-spacing:validate": "bun scripts/validate-smart-spacing.ts",
     "move-distance:validate": "bun scripts/validate-move-distance-units.ts",
+    "measure-scale-presets:validate": "bun scripts/validate-measure-scale-presets.ts",
     "move-nudge:validate": "bun scripts/validate-move-nudge.ts",
     "history:validate": "bun scripts/validate-history.ts",
     "preview-lifecycle:validate": "bun scripts/validate-preview-lifecycle.ts",
