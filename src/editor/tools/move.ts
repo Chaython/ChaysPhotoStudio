@@ -7,6 +7,7 @@ import { useEditorStore } from '../store'
 import { clamp } from '../utils/canvas'
 import type { LiveLayerDrag } from '../types'
 import { cloneVectorMask } from '../engine/vector-mask'
+import { inferOneSidedSpacing } from './smart-spacing'
 
 let drag = newDrag()
 let live: LiveLayerDrag | null = null
@@ -62,6 +63,30 @@ function smartSnapRect(rect: Rect, dx: number, dy: number, moving: string[], zoo
   }
   if (snapX !== null) dx += bestX
   if (snapY !== null) dy += bestY
+
+  // Repeated-spacing inference also works when both reference layers are
+  // on one side of the moving layer. This mirrors Photoshop's repeated-gap
+  // guides while preserving alignment-guide priority.
+  if (snapX === null) {
+    const current = { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h }
+    const before = inferOneSidedSpacing(current, others, 'x', 'before', tol)
+    const after = inferOneSidedSpacing(current, others, 'x', 'after', tol)
+    const correction = before ?? after
+    if (correction !== null) {
+      dx += correction
+      smartSpacingX = true
+    }
+  }
+  if (snapY === null) {
+    const current = { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h }
+    const before = inferOneSidedSpacing(current, others, 'y', 'before', tol)
+    const after = inferOneSidedSpacing(current, others, 'y', 'after', tol)
+    const correction = before ?? after
+    if (correction !== null) {
+      dy += correction
+      smartSpacingY = true
+    }
+  }
 
   // Photoshop-style equal-spacing inference: when the moving bounds are
   // already between two visible neighbors, snap to the midpoint that makes
