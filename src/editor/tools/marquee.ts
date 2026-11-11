@@ -58,9 +58,7 @@ function previewSelectionState(mask: HTMLCanvasElement, bounds: Rect): Selection
   return { mask, bounds, _v: 1, _pathsV: -1, _paths: null }
 }
 
-function rotatedBounds(r: Rect, angle: number): Rect {
-  const cx = r.x + r.w / 2
-  const cy = r.y + r.h / 2
+function rotatedBounds(r: Rect, angle: number, cx = r.x + r.w / 2, cy = r.y + r.h / 2): Rect {
   const ca = Math.cos(angle), sa = Math.sin(angle)
   const corners = [
     [r.x, r.y], [r.x + r.w, r.y],
@@ -129,7 +127,7 @@ function previewSelectionTransform(p: PointerInfo) {
     mc.translate(-cx, -cy)
     mc.drawImage(st.originalMask, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h)
     mc.setTransform(1, 0, 0, 1, 0, 0)
-    nextBounds = rotatedBounds(b, a)
+    nextBounds = rotatedBounds(b, a, cx, cy)
     st.changed = Math.abs(a) > 1e-4
   } else if (st.handle === 'inside') {
     let dx = Math.round(p.docX - st.startX)
