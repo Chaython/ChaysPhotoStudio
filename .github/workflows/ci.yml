@@ -129,6 +129,9 @@ jobs:
       - name: Validate Move Smart Guide repeated spacing
         run: bun run smart-spacing:validate
 
+      - name: Validate calibrated Move distance units
+        run: bun run move-distance:validate
+
       - name: Validate History pixel isolation
         run: bun run history:validate
 
