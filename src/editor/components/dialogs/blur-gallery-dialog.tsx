@@ -103,9 +103,12 @@ async function renderBlurGallery(
       }
       maskCtx.putImageData(maskImage, 0, 0)
       layerCtx.clearRect(0, 0, width, height)
-      if (level === 0) {
-        layerCtx.drawImage(source, 0, 0)
-      } else {
+      // Canvas blur produces partially transparent pixels near the image
+      // boundary. Composite each blurred pass over the original before
+      // applying its spatial weight so the additive blend stays opaque and
+      // actually blends RGB values instead of only varying output alpha.
+      layerCtx.drawImage(source, 0, 0)
+      if (level > 0) {
         layerCtx.filter = `blur(${maxRadius * level / levels}px)`
         layerCtx.drawImage(source, 0, 0)
         layerCtx.filter = 'none'
