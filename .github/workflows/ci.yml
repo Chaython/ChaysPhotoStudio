@@ -132,6 +132,9 @@ jobs:
       - name: Validate calibrated Move distance units
         run: bun run move-distance:validate
 
+      - name: Validate Move keyboard nudge directions
+        run: bun run move-nudge:validate
+
       - name: Validate History pixel isolation
         run: bun run history:validate
 
