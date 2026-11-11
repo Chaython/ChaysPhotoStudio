@@ -89,11 +89,11 @@ assert.deepEqual(layoutTools(defaultToolbarLayout('classic')), groupSorted,
 assert.deepEqual(defaultToolbarLayout('photoshop').map(s => s.kind === 'single' ? [s.tool] : s.tools), [
   ['move', 'artboard'],
   ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
-  ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
+  ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'quick-mask'],
   ['object-select', 'quick-select', 'magic-wand'],
-  ['crop', 'perspective-crop', 'slice', 'hotspot'],
+  ['crop', 'perspective-crop', 'slice', 'slice-select', 'hotspot', 'frame'],
   ['eyedropper', 'color-sampler', 'measure', 'count'],
-  ['spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
+  ['remove', 'spot-healing', 'healing-brush', 'patch', 'content-aware-move', 'red-eye'],
   ['brush', 'pencil', 'mixer-brush', 'color-replacement'],
   ['clone-stamp', 'pattern-stamp'],
   ['history-brush', 'art-history-brush'],
@@ -105,7 +105,7 @@ assert.deepEqual(defaultToolbarLayout('photoshop').map(s => s.kind === 'single' 
   ['text', 'type-mask-horizontal', 'type-mask-vertical'],
   ['path-select', 'direct-select'],
   ['shape'],
-  ['hand'],
+  ['hand', 'rotate-view'],
   ['zoom'],
 ], 'photoshop toolbar template must stay stable')
 

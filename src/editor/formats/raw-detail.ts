@@ -10,9 +10,10 @@ export interface RawDetailSettings {
   sharpenAmount: number // 0..200
   sharpenRadius: number // integer 1..3 px at developed resolution
   sharpenThreshold: number // 0..100 maps to 0..0.05 luminance
+  defringe: number // 0..100 selective purple/green edge-fringe suppression
 }
 export const DEFAULT_RAW_DETAIL: RawDetailSettings={
-  luminanceDenoise:0,colorDenoise:0,sharpenAmount:0,sharpenRadius:1,sharpenThreshold:0,
+  luminanceDenoise:0,colorDenoise:0,sharpenAmount:0,sharpenRadius:1,sharpenThreshold:0,defringe:0,
 }
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v))
 const number=(raw:unknown,fallback:number,min:number,max:number)=>{
@@ -26,6 +27,7 @@ export function normalizeRawDetail(raw:Partial<RawDetailSettings>|null|undefined
     sharpenAmount:number(raw?.sharpenAmount,0,0,200),
     sharpenRadius:Math.round(number(raw?.sharpenRadius,1,1,3)),
     sharpenThreshold:number(raw?.sharpenThreshold,0,0,100),
+    defringe:number(raw?.defringe,0,0,100),
   }
 }
 const luminance=(r:number,g:number,b:number)=>r*0.2126+g*0.7152+b*0.0722
@@ -40,7 +42,7 @@ const viewAt=(x:number,y:number,width:number)=>((y*width+x)*4)
  */
 export function applyRawDetail(image:RawImage,input:Partial<RawDetailSettings>|null|undefined):RawImage {
   const settings=normalizeRawDetail(input)
-  if(settings.luminanceDenoise===0&&settings.colorDenoise===0&&settings.sharpenAmount===0)
+  if(settings.luminanceDenoise===0&&settings.colorDenoise===0&&settings.sharpenAmount===0&&settings.defringe===0)
     return image
   if(image.rgbaFloat||image.sourceColorSpace==='linear-srgb')return image
   const {width,height}=image,count=width*height
@@ -87,7 +89,43 @@ export function applyRawDetail(image:RawImage,input:Partial<RawDetailSettings>|n
       mid[idx+2]=Math.round(nb*scale);mid[idx+3]=src[idx+3]
     }
   }
-  let dest:Uint16Array|Uint8ClampedArray=mid
+  let detailed:Uint16Array|Uint8ClampedArray=mid
+  if(settings.defringe>0&&width>2&&height>2){
+    // Target isolated purple/green chroma spikes that coincide with a luminance edge.
+    detailed=high?new Uint16Array(src.length):new Uint8ClampedArray(src.length)
+    const amount=settings.defringe/100
+    const scoreAt=(x:number,y:number)=>{
+      const i=viewAt(x,y,width),r=mid[i]/scale,g=mid[i+1]/scale,b=mid[i+2]/scale
+      return {purple:Math.max(0,Math.min(r,b)-g),green:Math.max(0,g-Math.max(r,b))}
+    }
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const i=viewAt(x,y,width),r=mid[i]/scale,g=mid[i+1]/scale,b=mid[i+2]/scale
+      if(mid[i+3]===0){for(let c=0;c<4;c++)detailed[i+c]=mid[i+c];continue}
+      const center=scoreAt(x,y),purple:number[]=[],green:number[]=[]
+      let minY=1,maxY=0
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+        if(dx===0&&dy===0)continue
+        const nx=clamp(x+dx,0,width-1),ny=clamp(y+dy,0,height-1),ni=viewAt(nx,ny,width)
+        const nr=mid[ni]/scale,ng=mid[ni+1]/scale,nb=mid[ni+2]/scale
+        const nyLum=luminance(nr,ng,nb)
+        minY=Math.min(minY,nyLum);maxY=Math.max(maxY,nyLum)
+        const score=scoreAt(nx,ny);purple.push(score.purple);green.push(score.green)
+      }
+      purple.sort((a,b)=>a-b);green.sort((a,b)=>a-b)
+      const localMedianPurple=purple[3],localMedianGreen=green[3]
+      const edgeGate=clamp((maxY-minY-0.025)/0.12,0,1)
+      const excess=Math.max(center.purple-localMedianPurple-0.025,center.green-localMedianGreen-0.025)
+      const fringe=Math.max(center.purple,center.green)
+      const strength=amount*edgeGate*clamp(excess/Math.max(0.04,fringe),0,0.9)
+      const yLum=luminance(r,g,b)
+      for(let channel=0;channel<3;channel++){
+        const value=channel===0?r:channel===1?g:b
+        detailed[i+channel]=Math.round(clamp(yLum+(value-yLum)*(1-strength),0,1)*scale)
+      }
+      detailed[i+3]=mid[i+3]
+    }
+  }
+  let dest:Uint16Array|Uint8ClampedArray=detailed
   if(settings.sharpenAmount>0){
     dest=high?new Uint16Array(src.length):new Uint8ClampedArray(src.length)
     const amount=settings.sharpenAmount/100
@@ -95,10 +133,10 @@ export function applyRawDetail(image:RawImage,input:Partial<RawDetailSettings>|n
     const threshold=settings.sharpenThreshold/2000
     for(let y=0;y<height;y++)for(let x=0;x<width;x++){
       const idx=viewAt(x,y,width)
-      const r=mid[idx]/scale,g=mid[idx+1]/scale,b=mid[idx+2]/scale
+      const r=detailed[idx]/scale,g=detailed[idx+1]/scale,b=detailed[idx+2]/scale
       const center=luminance(r,g,b)
-      if(mid[idx+3]===0){
-        for(let c=0;c<4;c++)dest[idx+c]=mid[idx+c]
+      if(detailed[idx+3]===0){
+        for(let c=0;c<4;c++)dest[idx+c]=detailed[idx+c]
         continue
       }
       let sum=center*4,weights=4
@@ -106,9 +144,9 @@ export function applyRawDetail(image:RawImage,input:Partial<RawDetailSettings>|n
         const ix=side<2?clamp(x+(side===0?-radius:radius),0,width-1):x
         const iy=side>=2?clamp(y+(side===2?-radius:radius),0,height-1):y
         const neighbor=viewAt(ix,iy,width)
-        const w=mid[neighbor+3]/scale
+        const w=detailed[neighbor+3]/scale
         if(w===0)continue
-        sum+=luminance(mid[neighbor]/scale,mid[neighbor+1]/scale,mid[neighbor+2]/scale)*w
+        sum+=luminance(detailed[neighbor]/scale,detailed[neighbor+1]/scale,detailed[neighbor+2]/scale)*w
         weights+=w
       }
       const difference=center-sum/weights
@@ -118,7 +156,7 @@ export function applyRawDetail(image:RawImage,input:Partial<RawDetailSettings>|n
       dest[idx]=Math.round(clamp(r+result,0,1)*scale)
       dest[idx+1]=Math.round(clamp(g+result,0,1)*scale)
       dest[idx+2]=Math.round(clamp(b+result,0,1)*scale)
-      dest[idx+3]=mid[idx+3]
+      dest[idx+3]=detailed[idx+3]
     }
   }
   if(high){

@@ -1,7 +1,7 @@
 // Non-destructive *parameters* stored with camera RAW Smart Objects.
 // Explicit user-calibrated coefficients, NOT a substitute for calibrated Lensfun profiles.
 import type { RawImage } from './decoders'
-import type { LensfunCalibration } from './lensfun-xml'
+import { lensfunDistortionScale, lensfunTcaScale, type LensfunCalibration } from './lensfun-xml'
 
 export interface LensProfile {
   /** User supplied identity, e.g. camera/lens + focal length; never auto-claimed. */
@@ -13,11 +13,13 @@ export interface LensProfile {
   tca: number
   /** Radial exposure compensation strength. */
   vignette: number
+  /** How pixels outside corrected source bounds are filled. */
+  edgeMode: 'extend' | 'black' | 'transparent'
   /** Matched, source-identified Lensfun calibration (optional). */
   lensfun?: LensfunCalibration
 }
 
-export const DEFAULT_LENS_PROFILE: LensProfile = { name: '', k1: 0, k2: 0, tca: 0, vignette: 0 }
+export const DEFAULT_LENS_PROFILE: LensProfile = { name: '', k1: 0, k2: 0, tca: 0, vignette: 0, edgeMode: 'extend' }
 
 const finite = (value:unknown,min:number,max:number) => {
   const n=Number(value)
@@ -30,6 +32,7 @@ export function normalizeLensProfile(value:Partial<LensProfile>|null|undefined):
     k2:finite(value?.k2,-0.25,0.25),
     tca:finite(value?.tca,-0.05,0.05),
     vignette:finite(value?.vignette,-0.6,0.6),
+    edgeMode:value?.edgeMode==='black'||value?.edgeMode==='transparent'?value.edgeMode:'extend',
     lensfun:value?.lensfun?.source==='lensfun-xml'?structuredClone(value.lensfun):undefined,
   }
 }
@@ -49,6 +52,7 @@ export function applyLensProfile(image:RawImage,input:LensProfile):RawImage {
   const dstFloat=srcFloat?new Float32Array(pixels*4):undefined
   const out8=new Uint8ClampedArray(pixels*4)
   const cx=(w-1)/2,cy=(h-1)/2,norm=Math.max(cx,cy)
+  const outside=(x:number,y:number)=>x<0||y<0||x>w-1||y>h-1
   const read=(array:Uint8ClampedArray|Uint16Array|Float32Array,x:number,y:number,c:number):number=>{
     // Edge clamp is preferable to black wedges for small profile corrections.
     const px=Math.max(0,Math.min(w-1,x)),py=Math.max(0,Math.min(h-1,y))
@@ -66,9 +70,7 @@ export function applyLensProfile(image:RawImage,input:LensProfile):RawImage {
     if(cal?.distortion){
       const d=cal.distortion
       // Lensfun polynomial correction maps; input stays untouched.
-      if(d.model==='poly3')radial*=1-(d.k1??0)+(d.k1??0)*r2
-      if(d.model==='ptlens')radial*=1-(d.a??0)-(d.b??0)-(d.c??0)+
-        (d.c??0)*r+(d.b??0)*r2+(d.a??0)*r2*r
+      radial*=lensfunDistortionScale(d,r)
     }
     let gain=Math.max(0.1,Math.min(4,1+p.vignette*r2))
     if(cal?.vignetting?.model==='pa'){
@@ -77,21 +79,33 @@ export function applyLensProfile(image:RawImage,input:LensProfile):RawImage {
       gain*=Math.max(0.1,Math.min(4,1/Math.max(0.1,attenuation)))
     }
     const dst=(y*w+x)*4
+    const alphaX=cx+(x-cx)*radial,alphaY=cy+(y-cy)*radial
+    const redX=cx+(x-cx)*(radial+p.tca*r2),redY=cy+(y-cy)*(radial+p.tca*r2)
+    const blueX=cx+(x-cx)*(radial-p.tca*r2),blueY=cy+(y-cy)*(radial-p.tca*r2)
+    const redOutside=outside(redX,redY),greenOutside=outside(alphaX,alphaY)
+    const blueOutside=outside(blueX,blueY),alphaOutside=outside(alphaX,alphaY)
+    if(p.edgeMode==='transparent'&&(redOutside||greenOutside||blueOutside||alphaOutside)){
+      for(let c=0;c<4;c++){if(dst16)dst16[dst+c]=0;if(dstFloat)dstFloat[dst+c]=0;out8[dst+c]=0}
+      continue
+    }
     for(let c=0;c<4;c++){
       const shift=c===0?p.tca:c===2?-p.tca:0
       let magnification=c===3?radial:radial+shift*r2
       if(c!==3&&cal?.tca){
         const t=cal.tca
-        const factor=c===0?(t.vr??1)+(t.br??0)*r2:
-          c===2?(t.vb??1)+(t.bb??0)*r2:1
+        const factor=c===0?lensfunTcaScale(t,'red',r):
+          c===2?lensfunTcaScale(t,'blue',r):1
         magnification*=factor
       }
       const sx=cx+(x-cx)*magnification
       const sy=cy+(y-cy)*magnification
+      const channelOutside=c===0?redOutside:c===1?greenOutside:c===2?blueOutside:alphaOutside
       const correction=c===3?1:gain
-      if(dst16)dst16[dst+c]=Math.max(0,Math.min(65535,Math.round(read(src16!,sx,sy,c)*correction)))
-      if(dstFloat)dstFloat[dst+c]=read(srcFloat!,sx,sy,c)*correction
-      const v=dst16?dst16[dst+c]/257:dstFloat?dstFloat[dst+c]*255:read(image.rgba,sx,sy,c)*correction
+      const edgeBlack=p.edgeMode==='black'&&channelOutside
+      const sample=edgeBlack?(c===3?(src16?65535:srcFloat?1:255):0):read(src16??srcFloat??image.rgba,sx,sy,c)*correction
+      if(dst16)dst16[dst+c]=Math.max(0,Math.min(65535,Math.round(sample)))
+      if(dstFloat)dstFloat[dst+c]=sample
+      const v=dst16?dst16[dst+c]/257:dstFloat?dstFloat[dst+c]*255:sample
       out8[dst+c]=Math.max(0,Math.min(255,Math.round(v)))
     }
   }

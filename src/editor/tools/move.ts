@@ -7,6 +7,9 @@ import { useEditorStore } from '../store'
 import { clamp } from '../utils/canvas'
 import type { LiveLayerDrag } from '../types'
 import { cloneVectorMask } from '../engine/vector-mask'
+import { inferOneSidedSpacing } from './smart-spacing'
+import { formatMoveDistance } from './move-distance-utils'
+import { moveNudgeDelta } from './move-nudge-utils'
 
 let drag = newDrag()
 let live: LiveLayerDrag | null = null
@@ -62,6 +65,30 @@ function smartSnapRect(rect: Rect, dx: number, dy: number, moving: string[], zoo
   }
   if (snapX !== null) dx += bestX
   if (snapY !== null) dy += bestY
+
+  // Repeated-spacing inference also works when both reference layers are
+  // on one side of the moving layer. This mirrors Photoshop's repeated-gap
+  // guides while preserving alignment-guide priority.
+  if (snapX === null) {
+    const current = { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h }
+    const before = inferOneSidedSpacing(current, others, 'x', 'before', tol)
+    const after = inferOneSidedSpacing(current, others, 'x', 'after', tol)
+    const correction = before ?? after
+    if (correction !== null) {
+      dx += correction
+      smartSpacingX = true
+    }
+  }
+  if (snapY === null) {
+    const current = { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h }
+    const before = inferOneSidedSpacing(current, others, 'y', 'before', tol)
+    const after = inferOneSidedSpacing(current, others, 'y', 'after', tol)
+    const correction = before ?? after
+    if (correction !== null) {
+      dy += correction
+      smartSpacingY = true
+    }
+  }
 
   // Photoshop-style equal-spacing inference: when the moving bounds are
   // already between two visible neighbors, snap to the midpoint that makes
@@ -725,6 +752,25 @@ export const moveTool: Tool = {
   },
 
   onKeyDown(e: KeyboardEvent) {
+    // Arrow keys nudge the selected layer set by one document pixel;
+    // Shift+Arrow uses Photoshop's accelerated ten-pixel step.
+    if (!e.altKey && !e.ctrlKey && !e.metaKey && !groupMove && !tdrag) {
+      const delta = moveNudgeDelta(e.key, e.shiftKey)
+      const doc = engine.activeDoc
+      if (delta && doc) {
+        const selected = doc.selectedLayerIds?.length
+          ? doc.selectedLayerIds
+          : (doc.activeLayerId ? [doc.activeLayerId] : [])
+        const movable = selected.filter(id => {
+          const layer = doc.layers.find(item => item.id === id)
+          return !!layer && !layer.locked && layer.kind !== 'adjustment'
+        })
+        if (movable.length) {
+          engine.translateLayers(movable, delta.dx, delta.dy, movable.length > 1 ? 'Nudge Layers' : 'Nudge Layer')
+          return true
+        }
+      }
+    }
     // Escape cancels an in-flight free-transform drag (preview only — the
     // layer was never touched)
     if (e.key === 'Escape' && groupMove) {
@@ -920,8 +966,15 @@ function nearestMoveDistances(rect: Rect, moving: string[]): MoveDistanceMeasure
 }
 
 function distanceText(value: number): string {
-  const rounded = Math.round(value * 10) / 10
-  return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + ' px'
+  const doc = engine.activeDoc
+  const opts = getOptions('move')
+  return formatMoveDistance(
+    value,
+    String(opts.unit ?? 'px'),
+    opts.useDocResolution !== false,
+    Number(doc?.resolutionPpi),
+    Number(opts.pixelsPerUnit),
+  )
 }
 
 function drawDistanceBadge(

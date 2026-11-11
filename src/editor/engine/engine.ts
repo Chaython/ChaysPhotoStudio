@@ -5,7 +5,7 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, SavedChannel, HistoryState, ShapeSpec, TextSpec, ImageMetadata, ProofSettings,
-  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, HistorySnapshotAutoPolicy, TransformWarpSpec,
+  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, HistorySnapshotAutoPolicy, TransformWarpSpec, TransformSpec,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
@@ -501,7 +501,7 @@ export class Engine {
       workingBitDepth, sourceBitDepth: workingBitDepth, workingColorSpace: profile.colorSpace,
       layers: [], activeLayerId: null,
       selection: null, channelView: 'rgb', savedChannels: [],
-      view: { zoom: 1, panX: 0, panY: 0 },
+      view: { zoom: 1, panX: 0, panY: 0, rotation: 0 },
       history: { states: [], index: -1 },
       dirty: false,
       previewFilter: null, previewAdjustment: null,
@@ -782,6 +782,7 @@ export class Engine {
       adjustment: layer.adjustment ? structuredClone(layer.adjustment) : null,
       text: layer.text ? structuredClone(layer.text) : null,
       shape: layer.shape ? structuredClone(layer.shape) : null,
+      frame: layer.frame ? structuredClone(layer.frame) : layer.frame,
       linkedDesignStyles: layer.linkedDesignStyles ? { ...layer.linkedDesignStyles } : undefined,
       blendIf: layer.blendIf ? structuredClone(layer.blendIf) : null,
       fx: layer.fx ? structuredClone(layer.fx) : null,
@@ -1323,7 +1324,7 @@ export class Engine {
     return layer
   }
 
-  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array; aboveActive?: boolean; historyLabel?: string }): Layer | null {
+  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array; aboveActive?: boolean; aboveLayerId?: string; historyLabel?: string }): Layer | null {
     const doc = this.activeDoc
     if (!doc) return null
     const centeredNativeSize = opts?.center !== false &&
@@ -1354,8 +1355,9 @@ export class Engine {
       layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
       layer._hdrPreviewBefore = null
     }
-    const activeIndex = doc.layers.findIndex(item => item.id === doc.activeLayerId)
-    if (opts?.aboveActive && activeIndex >= 0) doc.layers.splice(activeIndex + 1, 0, layer)
+    const referenceLayerId = opts?.aboveLayerId ?? (opts?.aboveActive ? doc.activeLayerId : null)
+    const referenceIndex = referenceLayerId ? doc.layers.findIndex(item => item.id === referenceLayerId) : -1
+    if (referenceIndex >= 0) doc.layers.splice(referenceIndex + 1, 0, layer)
     else doc.layers.push(layer)
     doc.activeLayerId = layer.id
     doc.selectedLayerIds = [layer.id]
@@ -1420,14 +1422,26 @@ export class Engine {
     return layer
   }
 
-  placeSmartLayer(canvas: HTMLCanvasElement, name?: string): Layer | null {
+  placeSmartLayer(canvas: HTMLCanvasElement, name?: string, opts?: { transform?: TransformSpec; mask?: HTMLCanvasElement; frame?: { layerId: string; geometry: NonNullable<Layer['frame']> } }): Layer | null {
     const doc = this.activeDoc
     if (!doc) return null
     const layer = newLayer('smart', name || this.nextLayerName(), doc.width, doc.height)
     layer.source = canvas
-    layer.transform = { x: doc.width / 2, y: doc.height / 2, scale: Math.min(1, Math.min(doc.width / canvas.width, doc.height / canvas.height)), rotation: 0 }
+    layer.transform = opts?.transform ? structuredClone(opts.transform) : { x: doc.width / 2, y: doc.height / 2, scale: Math.min(1, Math.min(doc.width / canvas.width, doc.height / canvas.height)), rotation: 0 }
+    layer.mask = opts?.mask ?? null
+    layer.maskEnabled = true
     layer.canvas = null
     doc.layers.push(layer)
+    if (opts?.frame) {
+      const frameLayer = doc.layers.find(item => item.id === opts.frame!.layerId)
+      if (frameLayer?.frame) {
+        const previousContentId = frameLayer.frame.contentLayerId
+        if (previousContentId && previousContentId !== layer.id) doc.layers = doc.layers.filter(item => item.id !== previousContentId)
+        frameLayer.frame = { ...structuredClone(opts.frame.geometry), contentLayerId: layer.id }
+        frameLayer.visible = false
+        frameLayer._v++
+      }
+    }
     doc.activeLayerId = layer.id
     this.pushHistory('Place Smart Object')
     this.emit()
@@ -1489,6 +1503,8 @@ export class Engine {
       ...src,
       id: uid(),
       name: `${src.name} copy`,
+      visible: src.frame ? true : src.visible,
+      frame: src.frame ? { ...structuredClone(src.frame), contentLayerId: undefined } : src.frame,
       canvas: src.canvas ? cloneCanvas(src.canvas) : null,
       hdrPixels: src.hdrPixels ? new Float32Array(src.hdrPixels) : src.hdrPixels,
       _hdrPreviewBefore: src._hdrPreviewBefore ? new Float32Array(src._hdrPreviewBefore) : src._hdrPreviewBefore,
@@ -6324,8 +6340,14 @@ export class Engine {
   fitToScreen(viewW: number, viewH: number) {
     const doc = this.activeDoc
     if (!doc) return
-    const z = Math.min((viewW - 80) / doc.width, (viewH - 80) / doc.height, 8)
+    const angle = (Number(doc.view.rotation) || 0) * Math.PI / 180
+    const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle))
+    const boundsW = doc.width * cos + doc.height * sin
+    const boundsH = doc.width * sin + doc.height * cos
+    const z = Math.min((viewW - 80) / Math.max(1, boundsW), (viewH - 80) / Math.max(1, boundsH), 8)
     doc.view.zoom = clamp(z, 0.02, 32)
+    // The renderer rotates around the viewport center, so center the unrotated
+    // document rectangle there; its rotated bounds then fit symmetrically.
     doc.view.panX = (viewW - doc.width * doc.view.zoom) / 2
     doc.view.panY = (viewH - doc.height * doc.view.zoom) / 2
     doc.view.autoFit = false // concrete view assigned → sticky from now on

@@ -14,11 +14,11 @@ export type BlendMode =
 
 // ---------- Tools ----------
 export type ToolId =
-  | 'move' | 'marquee-rect' | 'marquee-ellipse' | 'marquee-row' | 'marquee-column' | 'lasso' | 'polygon-lasso' | 'magnetic-lasso' | 'selection-brush'
-  | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'perspective-crop' | 'eyedropper' | 'color-sampler' | 'measure' | 'artboard' | 'count' | 'slice' | 'hotspot'
-  | 'brush' | 'pencil' | 'mixer-brush' | 'color-replacement' | 'history-brush' | 'art-history-brush' | 'clone-stamp' | 'pattern-stamp' | 'healing-brush' | 'spot-healing' | 'patch' | 'content-aware-move' | 'red-eye'
+  | 'move' | 'marquee-rect' | 'marquee-ellipse' | 'marquee-row' | 'marquee-column' | 'lasso' | 'polygon-lasso' | 'magnetic-lasso' | 'selection-brush' | 'quick-mask'
+  | 'object-select' | 'quick-select' | 'magic-wand' | 'crop' | 'perspective-crop' | 'eyedropper' | 'color-sampler' | 'measure' | 'artboard' | 'count' | 'slice' | 'slice-select' | 'hotspot'
+  | 'remove' | 'brush' | 'pencil' | 'mixer-brush' | 'color-replacement' | 'history-brush' | 'art-history-brush' | 'clone-stamp' | 'pattern-stamp' | 'healing-brush' | 'spot-healing' | 'patch' | 'content-aware-move' | 'red-eye'
   | 'eraser' | 'background-eraser' | 'magic-eraser' | 'gradient' | 'paint-bucket' | 'blur' | 'sharpen' | 'smudge'
-  | 'dodge' | 'burn' | 'sponge' | 'text' | 'type-mask-horizontal' | 'type-mask-vertical' | 'shape' | 'pen' | 'pen-freeform' | 'pen-curvature' | 'path-select' | 'direct-select' | 'hand' | 'zoom'
+  | 'dodge' | 'burn' | 'sponge' | 'text' | 'type-mask-horizontal' | 'type-mask-vertical' | 'shape' | 'pen' | 'pen-freeform' | 'pen-curvature' | 'path-select' | 'direct-select' | 'hand' | 'zoom' | 'rotate-view' | 'frame'
 
 export type SelectionCombine = 'new' | 'add' | 'subtract' | 'intersect'
 
@@ -322,6 +322,8 @@ export interface LayerFX {
 }
 
 export interface Layer {
+  /** Photoshop Frame Tool placeholder; content is a separately editable masked Smart Object. */
+  frame?: { shape: 'rect' | 'ellipse' | 'rounded-rect'; x: number; y: number; width: number; height: number; radius?: number; contentLayerId?: string } | null
   /** PDF import provenance retained for native layer editing and project round trips. */
   pdfSource?: Record<string, unknown>
   /** Document-scoped reusable color / text-style references. */
@@ -648,7 +650,7 @@ export interface ProofSettings {
 }
 
 export interface ViewportState {
-  zoom: number; panX: number; panY: number
+  zoom: number; panX: number; panY: number; rotation?: number
   /** true/undefined = never explicitly viewed (auto fit on first display);
    *  false = user zoomed/panned/fitted → view is sticky per-document */
   autoFit?: boolean

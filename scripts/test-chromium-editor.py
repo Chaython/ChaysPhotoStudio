@@ -1010,6 +1010,140 @@ def main():
                 check(value["afterRedo"] == value["added"], "redo did not restore added layer")
                 check(not errors, f"image import/history threw uncaught errors: {errors[:3]}")
 
+            def blur_gallery_browser_pointer_and_apply():
+                _, page, errors = app_page(browser)
+                page.evaluate("""() => {
+                    const e = window.__zphotoEngine
+                    e.newDocument({name:'Blur Gallery pointer E2E',width:64,height:64,fill:'#ffffff'})
+                    const source = document.createElement('canvas')
+                    source.width = 64; source.height = 64
+                    const ctx = source.getContext('2d')
+                    ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,64,64)
+                    ctx.fillStyle = '#000000'; ctx.fillRect(32,0,32,64)
+                    e.addLayerFromCanvas(source,'Blur Gallery source',{center:false})
+                    window.__blurGallerySourceId = e.activeLayer.id
+                    window.__blurGallerySourceBefore = Array.from(
+                      e.activeLayer.canvas.getContext('2d').getImageData(31,32,1,1).data)
+                    window.__zphotoStore.getState().openDialog('blur-gallery',{layerId:e.activeLayer.id})
+                }""")
+                dialog = page.get_by_role("dialog", name="Blur Gallery")
+                dialog.wait_for(state="visible", timeout=15000)
+                preview = dialog.locator('canvas[aria-label="Blur Gallery focus editor"]')
+                preview.wait_for(state="visible", timeout=15000)
+                page.wait_for_function("""() => {
+                    const c = document.querySelector('canvas[aria-label="Blur Gallery focus editor"]')
+                    return !!c && c.width === 680 && c.height === 430
+                }""", timeout=15000)
+
+                def preview_point(x, y):
+                    return preview.evaluate("""(canvas, point) => {
+                        const r = canvas.getBoundingClientRect()
+                        // The 64x64 source is centered at native resolution in the
+                        // fixed 680x430 preview backing canvas.
+                        return {
+                          x:r.left + r.width * ((680-64)/2 + point[0]*64) / 680,
+                          y:r.top + r.height * ((430-64)/2 + point[1]*64) / 430
+                        }
+                    }""", [x,y])
+
+                # Drag the initial center pin, add another pin, then drag it.
+                start = preview_point(.5,.5)
+                end = preview_point(.62,.58)
+                page.mouse.move(start["x"],start["y"])
+                page.mouse.down()
+                page.mouse.move(end["x"],end["y"],steps=6)
+                page.mouse.up()
+                added = preview_point(.24,.24)
+                page.mouse.click(added["x"],added["y"])
+                added_end = preview_point(.76,.72)
+                page.mouse.move(added["x"],added["y"])
+                page.mouse.down()
+                page.mouse.move(added_end["x"],added_end["y"],steps=6)
+                page.mouse.up()
+                check(dialog.get_by_role("button",name="Remove Pin").is_enabled(),
+                      "Field Blur did not expose the selected added pin")
+                # Remove Pin must update the actual control state and remain usable.
+                dialog.get_by_role("button",name="Remove Pin").click()
+                check(dialog.get_by_role("button",name="Clear Pins").is_enabled(),
+                      "Field Blur pin controls became unavailable after removal")
+
+                # Switch modes and drag their focus centers to exercise each
+                # pointer-capture path in the real React dialog.
+                dialog.get_by_role("button",name="Iris Blur").click()
+                iris_start = preview_point(.5,.5)
+                iris_end = preview_point(.68,.38)
+                page.mouse.move(iris_start["x"],iris_start["y"])
+                page.mouse.down()
+                page.mouse.move(iris_end["x"],iris_end["y"],steps=5)
+                page.mouse.up()
+                dialog.get_by_role("button",name="Tilt-Shift").click()
+                tilt_start = preview_point(.68,.38)
+                tilt_end = preview_point(.34,.62)
+                page.mouse.move(tilt_start["x"],tilt_start["y"])
+                page.mouse.down()
+                page.mouse.move(tilt_end["x"],tilt_end["y"],steps=5)
+                page.mouse.up()
+                dialog.get_by_role("button",name="Field Blur").click()
+
+                # Build a deliberately different pair of pin radii. The
+                # rendered edge must be softer near the large-radius pin and
+                # sharper near the small-radius pin (not merely lower opacity).
+                dialog.get_by_role("button",name="Clear Pins").click()
+                high_pin = preview_point(.5,.5)
+                low_pin = preview_point(.5,.9)
+                page.mouse.click(high_pin["x"],high_pin["y"])
+                page.mouse.click(low_pin["x"],low_pin["y"])
+                radius_slider = dialog.get_by_role("slider",name="Pin Blur")
+                radius_slider.evaluate("""el => {
+                    el.value = '1'
+                    el.dispatchEvent(new Event('input',{bubbles:true}))
+                    el.dispatchEvent(new Event('change',{bubbles:true}))
+                }""")
+                check(radius_slider.input_value() == "1",
+                      "Field Blur did not accept a distinct low-radius pin value")
+                before = page.evaluate("""() => {
+                    const e=window.__zphotoEngine
+                    const intervening=document.createElement('canvas')
+                    intervening.width=64;intervening.height=64
+                    e.addLayerFromCanvas(intervening,'Intervening layer',{center:false})
+                    return {
+                      count:e.activeDoc.layers.length,
+                      sourceId:window.__blurGallerySourceId,
+                      source:Array.from(e.layerById(window.__blurGallerySourceId)
+                        .canvas.getContext('2d').getImageData(31,32,1,1).data)
+                    }
+                }""")
+                dialog.get_by_role("button",name="Apply to New Layer").click()
+                dialog.wait_for(state="hidden",timeout=20000)
+                page.wait_for_function("""before => {
+                    const d=window.__zphotoEngine.activeDoc
+                    return d.layers.length===before.count+1 &&
+                      d.layers.some(l=>l.name==='Blur Gallery Result')
+                }""",arg=before,timeout=20000)
+                after = page.evaluate("""() => {
+                    const e=window.__zphotoEngine,d=e.activeDoc
+                    const source=e.layerById(window.__blurGallerySourceId)
+                    const result=d.layers.find(l=>l.name==='Blur Gallery Result')
+                    const ctx=result.canvas.getContext('2d')
+                    const pixel=(x,y)=>Array.from(ctx.getImageData(x,y,1,1).data)
+                    return {source:Array.from(source.canvas.getContext('2d').getImageData(31,32,1,1).data),
+                      highRadius:pixel(30,32),lowRadius:pixel(30,58),kind:result?.kind,
+                      active:d.activeLayerId===result?.id,
+                      sourceIndex:d.layers.findIndex(l=>l.id===window.__blurGallerySourceId),
+                      resultIndex:d.layers.findIndex(l=>l.name==='Blur Gallery Result'),
+                      interveningIndex:d.layers.findIndex(l=>l.name==='Intervening layer')}
+                }""")
+                check(after["source"] == before["source"],
+                      "Blur Gallery modified the original source layer")
+                check(after["kind"] == "raster" and after["active"],
+                      f"Blur Gallery result was not a separate active raster layer: {after}")
+                check(after["resultIndex"] == after["sourceIndex"] + 1 and
+                      after["interveningIndex"] > after["resultIndex"],
+                      f"Blur Gallery result was not inserted immediately above its source: {after}")
+                check(after["highRadius"][0] < after["lowRadius"][0] - 20,
+                      f"Field Blur did not produce a stronger spatial blur at the high-radius pin: {after}")
+                check(not errors, f"Blur Gallery browser interactions threw JS errors: {errors[:3]}")
+
             def video_frame_picker():
                 _, page, errors = app_page(browser)
                 upload = {"name": "two-tone.webm", "mimeType": "video/webm",
@@ -1529,6 +1663,7 @@ def main():
                 ("artboard_and_count_canvas_tools", artboard_and_count_canvas_tools),
                 ("canvas_web_region_tools", canvas_web_region_tools),
                 ("color_sampler_info_panel", color_sampler_info_panel),
+                ("blur_gallery_browser_pointer_and_apply", blur_gallery_browser_pointer_and_apply),
                 ("png_import_layer_undo_redo", png_import_undo_redo),
                 ("video_frame_picker_real_webm", video_frame_picker),
                 ("real_psd_chromium_import", real_psd_browser_import),

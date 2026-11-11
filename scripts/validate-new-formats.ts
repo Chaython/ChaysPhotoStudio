@@ -1,8 +1,8 @@
-import { chooseLensfunCurve, type CameraExif } from '../src/editor/formats/lensfun-xml'
+import { chooseLensfunCurve, matchLensfunRecords, lensfunDistortionScale, lensfunTcaScale, scoreLensfunModelMatch, selectLensfunVignettingSamples, isSupportedLensfunModel, type CameraExif, type LensfunLensRecord } from '../src/editor/formats/lensfun-xml'
 import { decodeFits } from '../src/editor/formats/scientific-fits'
 import { decodeDicom } from '../src/editor/formats/scientific-dicom'
 import { decodeExr, decodeExrParts } from '../src/editor/formats/openexr'
-import { applyLensProfile } from '../src/editor/formats/lens-correction'
+import { applyLensProfile, normalizeLensProfile } from '../src/editor/formats/lens-correction'
 import { applyRawTone, normalizeRawTone } from '../src/editor/formats/raw-tone'
 import { applyRawDetail, normalizeRawDetail, DEFAULT_RAW_DETAIL } from '../src/editor/formats/raw-detail'
 import { catalogKeywords, catalogRating, catalogFilterPhotos, catalogFingerprint } from '../src/editor/library/photo-catalog'
@@ -262,7 +262,7 @@ for(let pixel=0;pixel<25;pixel++)for(let c=0;c<4;c++){
 const original16=sample16.slice()
 const corrected=applyLensProfile({
   width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
-},{name:'Test profile',k1:0.1,k2:-0.03,tca:0.005,vignette:0.1})
+},{name:'Test profile',k1:0.1,k2:-0.03,tca:0.005,vignette:0.1,edgeMode:'extend'})
 check(corrected.sourceBitDepth===16 && corrected.rgba16?.length===sample16.length,'Lens 16-bit preservation')
 check(sample16.every((value,i)=>value===original16[i]),'Lens source samples must not mutate')
 check(corrected.rgba16?.[12*4]===sample16[12*4],'Lens optical center stays fixed')
@@ -333,6 +333,18 @@ const colorCenterLum=(sample:Uint16Array)=>(
   sample[detailCenter]*0.2126+sample[detailCenter+1]*0.7152+sample[detailCenter+2]*0.0722)
 check(Math.abs(colorCenterLum(denoiseColor.rgba16!)-colorCenterLum(chroma16))<400,
   'Chroma-only denoise preserves approximate pixel luminance')
+// Defringe removes an isolated purple fringe at a high-contrast edge.
+const fringe16=detail16.slice(),fringe8=detail8.slice()
+const fringeIndex=(2*detailW+3)*4
+fringe16[fringeIndex]=50000;fringe16[fringeIndex+1]=12000;fringe16[fringeIndex+2]=48000
+for(let c=0;c<3;c++)fringe8[fringeIndex+c]=Math.round(fringe16[fringeIndex+c]/257)
+const fringeImage={width:detailW,height:detailH,rgba:fringe8 as Uint8ClampedArray<ArrayBuffer>,rgba16:fringe16,sourceBitDepth:16}
+const defringed=applyRawDetail(fringeImage,{defringe:100})
+const fringeChromaBefore=Math.min(fringe16[fringeIndex],fringe16[fringeIndex+2])-fringe16[fringeIndex+1]
+const fringeChromaAfter=Math.min(defringed.rgba16![fringeIndex],defringed.rgba16![fringeIndex+2])-defringed.rgba16![fringeIndex+1]
+check(fringeChromaAfter<fringeChromaBefore,'RAW defringe suppresses isolated purple chroma at a luminance edge')
+check(normalizeRawDetail({defringe:Infinity}).defringe===0&&normalizeRawDetail({defringe:150}).defringe===100,
+  'RAW defringe settings clamp malformed values')
 const sharpenedDetail=applyRawDetail({width:detailW,height:detailH,
   rgba:detail8 as Uint8ClampedArray<ArrayBuffer>,rgba16:detail16,sourceBitDepth:16},{
   sharpenAmount:120,sharpenRadius:1,sharpenThreshold:0,
@@ -619,7 +631,7 @@ check(eightBitCurve.rgba[0]>128 && eightBitCurve.rgba[3]===192 && !eightBitCurve
 const correctedLensfun=applyLensProfile({
   width:5,height:5,rgba:sample8 as Uint8ClampedArray<ArrayBuffer>,rgba16:sample16,sourceBitDepth:16,
 },{
-  name:'Example calibrated lens',k1:0,k2:0,tca:0,vignette:0,
+  name:'Example calibrated lens',k1:0,k2:0,tca:0,vignette:0,edgeMode:'extend',
   lensfun:{source:'lensfun-xml',maker:'Example',lens:'50 mm',crop:1,focal:50,
     distortion:{model:'poly3',focal:50,k1:0.02},
     tca:{model:'poly3',focal:50,vr:1.001,vb:0.999,br:0.001,bb:-0.001},
@@ -629,6 +641,23 @@ const correctedLensfun=applyLensProfile({
 check(correctedLensfun.rgba16?.length===sample16.length && correctedLensfun.sourceBitDepth===16,
   'Lensfun-calibrated RAW remap retains 16-bit geometry')
 check(sample16.every((v,i)=>v===original16[i]),'Lensfun correction does not mutate RAW samples')
+// Corrected pixels outside source bounds support extension, black, and transparent fills.
+const edge8=new Uint8ClampedArray(5*5*4),edge16=new Uint16Array(5*5*4)
+for(let y=0;y<5;y++)for(let x=0;x<5;x++){
+  const i=(y*5+x)*4
+  edge8[i]=20+x*20;edge8[i+1]=30+y*20;edge8[i+2]=90;edge8[i+3]=255
+  edge16[i]=edge8[i]*257;edge16[i+1]=edge8[i+1]*257;edge16[i+2]=edge8[i+2]*257;edge16[i+3]=65535
+}
+const edgeImage={width:5,height:5,rgba:edge8 as Uint8ClampedArray<ArrayBuffer>,rgba16:edge16,sourceBitDepth:16}
+const edgeOriginal=edge16.slice()
+const extended=applyLensProfile(edgeImage,{name:'',k1:0.5,k2:0,tca:0,vignette:0,edgeMode:'extend'})
+const blackEdges=applyLensProfile(edgeImage,{name:'',k1:0.5,k2:0,tca:0,vignette:0,edgeMode:'black'})
+const transparentEdges=applyLensProfile(edgeImage,{name:'',k1:0.5,k2:0,tca:0,vignette:0,edgeMode:'transparent'})
+check(extended.rgba16?.[0]===edge16[0]&&extended.rgba16?.[3]===65535,'Lens correction edge extension clamps samples to the source boundary')
+check(blackEdges.rgba16?.[0]===0&&blackEdges.rgba16?.[1]===0&&blackEdges.rgba16?.[2]===0&&blackEdges.rgba16?.[3]===65535,'Lens correction black edge fill is opaque black in 16-bit output')
+check(transparentEdges.rgba16?.[0]===0&&transparentEdges.rgba16?.[3]===0,'Lens correction transparent edge fill clears RGBA outside source bounds')
+check(normalizeLensProfile({edgeMode:'invalid' as never}).edgeMode==='extend'&&normalizeLensProfile({}).edgeMode==='extend','Lens edge mode safely defaults for legacy and malformed recipes')
+check(edge16.every((v,i)=>v===edgeOriginal[i]),'Lens edge fill modes never mutate source samples')
 
 // Color Mixer: true 16-bit output, neutral identity, hue bands, safe alpha.
 const mixSample={width:3,height:1,sourceBitDepth:16,
@@ -846,4 +875,130 @@ const sampleCurve=chooseLensfunCurve([{model:'poly3',focal:20,k1:0.1},{model:'po
 check(sampleCurve && Math.abs((sampleCurve.k1??0)-0.2)<1e-8,'Lensfun focal interpolation stays finite')
 check(chooseLensfunCurve([{model:'poly3',focal:60,k1:0.3}],lensExif)===undefined,'Lensfun never extrapolates beyond known focal calibrations')
 check(chooseLensfunCurve([{model:'poly3',focal:20,k1:0.1},{model:'ptlens',focal:80,a:0.1}],lensExif)===undefined,'Lensfun does not mix incompatible curve models')
+check(scoreLensfunModelMatch('Canon EF 50mm f/1.8 STM','Canon EF 50mm f/1.8 STM')>
+  scoreLensfunModelMatch('EF 50mm f/1.8 STM','Canon EF 50mm f/1.8 STM'),
+  'Lensfun exact EXIF model match outranks a vendor-prefixed partial match')
+check(scoreLensfunModelMatch('EF 50mm f/1.8 STM','Canon EF 50mm f/1.8 STM')>0,
+  'Lensfun accepts a distinctive model embedded in a vendor-prefixed EXIF lens name')
+check(scoreLensfunModelMatch('50mm','Canon EF 50mm')===0,
+  'Lensfun never fuzzy-matches short generic focal-only lens names')
+check(scoreLensfunModelMatch('EF 50mm f/1.8','Canon EF 50mm f/1.8 STM')<
+  scoreLensfunModelMatch('EF 50mm f/1.8 STM','Canon EF 50mm f/1.8 STM'),
+  'Lensfun prefers the most specific contained model string')
+const lensfunMeta={fields:[
+  {group:'EXIF',tag:'LensModel',label:'Lens Model',value:'Canon EF 50mm f/1.8 STM'},
+  {group:'EXIF',tag:'FocalLength',label:'Focal Length',value:'50 mm'},
+  {group:'EXIF',tag:'FNumber',label:'F Number',value:'4'},
+]} as never
+const lensfunRecord=(maker:string,model:string):LensfunLensRecord=>({
+  maker,model,crop:1.5,curves:{distortion:[{model:'poly3',focal:50,k1:0.1}],tca:[],vignetting:[]},
+})
+const preciseLensMatch=matchLensfunRecords([
+  lensfunRecord('Canon','EF 50mm f/1.8 STM'),
+  lensfunRecord('Third Party','Canon EF 50mm f/1.8 STM'),
+],lensfunMeta)
+check(preciseLensMatch?.maker==='Third Party' &&
+  preciseLensMatch.distortion?.k1===0.1,
+  'Lensfun record matching selects the unique exact model over a contained partial match')
+check(matchLensfunRecords([
+  lensfunRecord('Canon','Canon EF 50mm f/1.8 STM'),
+  lensfunRecord('Third Party','Canon EF 50mm f/1.8 STM'),
+],lensfunMeta)===null,
+  'Lensfun record matching rejects equal-best manufacturer ambiguity')
+check(matchLensfunRecords([lensfunRecord('Generic','50mm')],lensfunMeta)===null,
+  'Lensfun record matching rejects generic focal-only profile names')
+check(isSupportedLensfunModel('distortion','poly3') &&
+  isSupportedLensfunModel('distortion','poly5') &&
+  isSupportedLensfunModel('distortion','ptlens') &&
+  !isSupportedLensfunModel('distortion','linear') &&
+  isSupportedLensfunModel('tca','linear') &&
+  isSupportedLensfunModel('tca','poly3') &&
+  !isSupportedLensfunModel('tca','poly5') &&
+  isSupportedLensfunModel('vignetting','pa') &&
+  !isSupportedLensfunModel('vignetting','poly3') &&
+  !isSupportedLensfunModel('distortion','acm'),
+  'Lensfun XML only accepts documented supported models for each calibration kind')
+const polyTca={model:'poly3',focal:50,vr:1.001,br:0.002,cr:0.003,
+  vb:0.999,bb:-0.004,cb:0.005} as const
+check(Math.abs(lensfunTcaScale(polyTca,'red',0.5)-(1.001+0.002*0.25+0.003*0.5))<1e-9,
+  'Lensfun poly3 red TCA evaluates br*r² + cr*r + vr')
+check(Math.abs(lensfunTcaScale(polyTca,'blue',0.5)-(0.999-0.004*0.25+0.005*0.5))<1e-9,
+  'Lensfun poly3 blue TCA evaluates bb*r² + cb*r + vb')
+check(lensfunTcaScale({model:'linear',focal:50,kr:1.002,kb:0.998},'red',0.8)===1.002 &&
+  lensfunTcaScale({model:'linear',focal:50,kr:1.002,kb:0.998},'blue',0.8)===0.998,
+  'Lensfun linear TCA uses kr/kb rather than polynomial defaults')
+check(Math.abs(lensfunDistortionScale({model:'poly5',focal:20,k1:0.1,k2:-0.02},0.5)-
+  (1+0.1*0.25-0.02*0.0625))<1e-9,
+  'Lensfun poly5 distortion evaluates k1*r² + k2*r⁴')
+check(Math.abs(lensfunDistortionScale({model:'poly3',focal:20,k1:0.1},0.5)-
+  (0.9+0.1*0.25))<1e-9,
+  'Lensfun poly3 distortion retains its calibrated radial formula')
+const interpolatedTca=chooseLensfunCurve([
+  {model:'poly3',focal:40,vr:1,br:0,cr:0, vb:1,bb:0,cb:0},
+  {model:'poly3',focal:60,vr:1.002,br:0.004,cr:0.006,vb:0.998,bb:-0.004,cb:0.002},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:100})
+check(interpolatedTca?.vr===1.001 && interpolatedTca.cr===0.003 &&
+  interpolatedTca.vb===0.999 && interpolatedTca.cb===0.001,
+  'Lensfun TCA interpolation retains every red/blue polynomial coefficient')
+check(chooseLensfunCurve([
+  {model:'poly3',focal:40,k1:0.1},{model:'poly3',focal:40,k1:0.2},
+  {model:'poly3',focal:60,k1:0.3},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:100})===undefined,
+  'Lensfun interpolation rejects duplicate lower-focal calibration endpoints')
+check(chooseLensfunCurve([
+  {model:'poly3',focal:40,k1:0.1},
+  {model:'poly3',focal:60,k1:0.3},{model:'poly3',focal:60,k1:0.4},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:100})===undefined,
+  'Lensfun interpolation rejects duplicate upper-focal calibration endpoints')
+const defaultedTca=chooseLensfunCurve([
+  {model:'poly3',focal:40,vr:1, vb:1},
+  {model:'poly3',focal:60,vr:1.002, br:0.004, vb:0.998, bb:-0.006},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:100})
+check(defaultedTca?.br===0.002 && defaultedTca.bb===-0.003,
+  'Lensfun interpolation blends omitted polynomial coefficients using their model defaults')
+const vignetteSamples=[
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.1},
+  {model:'pa',focal:50,aperture:4,distance:100,k1:0.2},
+  {model:'pa',focal:50,aperture:5.6,distance:2,k1:0.3},
+] as const
+const closeFocusVignette=selectLensfunVignettingSamples([...vignetteSamples],
+  {maker:'',model:'',lens:'',focal:50,aperture:4,distance:2})
+const infinityVignette=selectLensfunVignettingSamples([...vignetteSamples],
+  {maker:'',model:'',lens:'',focal:50,aperture:4,distance:1000})
+check(closeFocusVignette.length===1&&closeFocusVignette[0].distance===2&&
+  closeFocusVignette[0].k1===0.1,
+  'Lensfun vignetting selects the matching near-focus calibration')
+check(selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,distance:100,k1:0.2},
+  {model:'pa',focal:50,aperture:4,k1:0.3},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:2}).length===0,
+  'Lensfun near-focus vignetting must not fall back to infinity or unknown-distance samples')
+check(infinityVignette.length===1&&infinityVignette[0].distance===100&&
+  infinityVignette[0].k1===0.2,
+  'Lensfun vignetting selects the infinity calibration for distant subjects')
+const unknownDistanceVignette=selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,k1:0.3},
+  {model:'pa',focal:50,aperture:4,distance:100,k1:0.2},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:1000})
+check(unknownDistanceVignette.length===1&&unknownDistanceVignette[0].distance===100&&
+  unknownDistanceVignette[0].k1===0.2,
+  'Lensfun vignetting does not mistake a missing focus distance for an infinity calibration')
+check(selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.1},
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.2},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:2}).length===0,
+  'Lensfun vignetting rejects equally ranked duplicate calibration samples')
+check(selectLensfunVignettingSamples([...vignetteSamples],
+  {maker:'',model:'',lens:'',focal:50,aperture:0,distance:2}).length===0,
+  'Lensfun vignetting remains disabled without a valid EXIF aperture')
+check(selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.1},
+  {model:'pa',focal:50,aperture:4,distance:100,k1:0.2},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:0}).length===0,
+  'Lensfun vignetting rejects ambiguous focus-distance samples when EXIF distance is missing')
+const singleUnknownDistanceVignette=selectLensfunVignettingSamples([
+  {model:'pa',focal:50,aperture:4,distance:2,k1:0.1},
+],{maker:'',model:'',lens:'',focal:50,aperture:4,distance:0})
+check(singleUnknownDistanceVignette.length===1&&singleUnknownDistanceVignette[0].k1===0.1,
+  'Lensfun vignetting can use one unique aperture sample when focus distance is unavailable')
 console.log('Scientific, DICOM-RLE, EXR, Lensfun calibration and multipage TIFF/DCX tests passed')

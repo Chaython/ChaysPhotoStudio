@@ -337,6 +337,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
       ['sharpenAmount','Sharpen amount',0,200,1],
       ['sharpenRadius','Sharpen radius (developed pixels)',1,3,1],
       ['sharpenThreshold','Sharpen noise threshold',0,100,1],
+      ['defringe','Purple / green fringe removal',0,100,1],
     ] as [keyof RawDetailSettings,string,number,number,number][]){
       const input=field(label,'number',String(current.detail[key]),undefined,detail.grid) as HTMLInputElement
       input.min=String(min);input.max=String(max);input.step=String(step)
@@ -345,7 +346,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     }
     const detailNote=document.createElement('p')
     detailNote.style.cssText='grid-column:1/-1;opacity:.8;font-size:12px'
-    detailNote.textContent='16-bit display-referred, edge-aware noise reduction and sharpening. Preview operates on a downsampled image, so inspect full-resolution output at 100% for accurate detail.'
+    detailNote.textContent='16-bit edge-aware noise reduction, selective purple/green edge defringing and sharpening. Defringe targets isolated color spikes at contrast edges rather than globally desaturating the image. Preview is downsampled; inspect full-resolution output at 100%.'
     const detailReset=document.createElement('button')
     detailReset.type='button';detailReset.textContent='Reset detail'
     detailReset.style.cssText='grid-column:1/-1;padding:7px 10px;border:1px solid var(--border);border-radius:6px'
@@ -537,6 +538,8 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     tca.step='0.0001';tca.min='-0.05';tca.max='0.05'
     const vignette=field('Vignette correction (-0.6…0.6)','number',String(current.lensProfile.vignette),undefined,optics.grid) as HTMLInputElement
     vignette.step='0.01';vignette.min='-0.6';vignette.max='0.6'
+    const edgeMode=field('Corrected image edges','select',current.lensProfile.edgeMode,
+      ['extend|Extend edge pixels','black|Fill outside with black','transparent|Make outside transparent'],optics.grid) as HTMLSelectElement
     const lensStatus=document.createElement('p')
     lensStatus.style.cssText='font-size:12px;overflow-wrap:anywhere;opacity:.85;margin-top:10px'
     const camera=cameraExif(metadata)
@@ -671,7 +674,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
         channel,curveInputs[channel].map(input=>input.valueAsNumber),
       ]))),
       lensProfile:{name:lensName.value,k1:k1.valueAsNumber,k2:k2.valueAsNumber,
-        tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,lensfun:chosenLensfun},
+        tca:tca.valueAsNumber,vignette:vignette.valueAsNumber,edgeMode:edgeMode.value as LensProfile['edgeMode'],lensfun:chosenLensfun},
       localMasks:normalizeRawLocalMasks(localMasks),
       detail:normalizeRawDetail(Object.fromEntries(Object.entries(detailInputs).map(([key,input])=>[key,input.valueAsNumber]))),
     })
@@ -924,7 +927,7 @@ export async function chooseRawDevelopSettings(fileName:string, initial?:RawDeve
     for(const band of RAW_MIX_BANDS)
       for(const property of mixProperties)mixInputs[band][property].addEventListener('input',schedulePreview)
     const sensorInputs=[exposure,whiteBalance,matrixMode,...multiplierInputs,interpolation,highlight,denoise,
-      k1,k2,tca,vignette,lensName]
+      k1,k2,tca,vignette,edgeMode,lensName]
     for(const input of sensorInputs){
       input.addEventListener('input',schedulePreview)
       input.addEventListener('change',schedulePreview)

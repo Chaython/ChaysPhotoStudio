@@ -2,13 +2,16 @@
 // Users import license-cleared Lensfun XML, and matching is deliberately conservative.
 import type { ImageMetadata } from '../types'
 export interface LensfunCurve {
-  model: 'poly3' | 'ptlens' | 'linear' | 'pa'
+  model: 'poly3' | 'poly5' | 'ptlens' | 'linear' | 'pa'
   focal: number
   aperture?: number
   distance?: number
   k1?: number; k2?: number; k3?: number
   a?: number; b?: number; c?: number
-  vr?: number; vb?: number; br?: number; bb?: number
+  /** Linear TCA channel scale factors. */
+  kr?: number; kb?: number
+  /** Polynomial TCA coefficients (red/blue). */
+  vr?: number; vb?: number; br?: number; bb?: number; cr?: number; cb?: number
 }
 export interface LensfunCalibration {
   source: 'lensfun-xml'
@@ -20,13 +23,13 @@ export interface LensfunCalibration {
   tca?: LensfunCurve
   vignetting?: LensfunCurve
 }
-interface DatabaseLens {
+export interface LensfunLensRecord {
   maker: string
   model: string
   crop: number
   curves: { distortion: LensfunCurve[]; tca: LensfunCurve[]; vignetting: LensfunCurve[] }
 }
-const database: DatabaseLens[]=[]
+const database: LensfunLensRecord[]=[]
 const canon = (v:string) => v.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ')
 const value = (node:Element, tag:string) =>
   Array.from(node.children).find(n=>n.localName===tag && !n.getAttribute('lang'))?.textContent?.trim()||''
@@ -35,17 +38,43 @@ const numeric = (text:string|null):number|undefined => {
   const n=Number(text)
   return Number.isFinite(n)?n:undefined
 }
-function parseCurve(element:Element):LensfunCurve|null {
+export type LensfunCalibrationKind='distortion'|'tca'|'vignetting'
+
+/** Keep calibration models scoped to the Lensfun XML element that defines them.
+ * Unsupported ACM variants and cross-kind models are deliberately not imported. */
+export function isSupportedLensfunModel(kind:LensfunCalibrationKind,model:string|null):boolean {
+  if(kind==='distortion')return model==='poly3'||model==='poly5'||model==='ptlens'
+  if(kind==='tca')return model==='linear'||model==='poly3'
+  return model==='pa'
+}
+
+/** Reject incomplete calibration rows instead of silently substituting identity
+ * coefficients. Lensfun's model-specific attributes are required to evaluate
+ * these curves; vignetting also needs its aperture and subject-distance sample. */
+export function hasRequiredLensfunCoefficients(kind:LensfunCalibrationKind,curve:LensfunCurve):boolean {
+  // Keep this validator safe as a standalone exported helper too; callers must
+  // not be able to validate a TCA model against distortion coefficients (or
+  // vice versa) merely by supplying a coincidentally complete set of fields.
+  if(!isSupportedLensfunModel(kind,curve.model))return false
+  const required:readonly (keyof LensfunCurve)[]=kind==='distortion'?
+    curve.model==='poly3'?['k1']:curve.model==='poly5'?['k1','k2']:['a','b','c']:
+    kind==='tca'?curve.model==='linear'?['kr','kb']:['vr','br','cr','vb','bb','cb']:
+    ['aperture','distance','k1','k2','k3']
+  return required.every(key=>typeof curve[key]==='number'&&Number.isFinite(curve[key]))&&
+    (kind!=='vignetting'||(curve.aperture!>0&&curve.distance!>=0))
+}
+
+function parseCurve(element:Element,kind:LensfunCalibrationKind):LensfunCurve|null {
   const model=element.getAttribute('model')
-  if(!['poly3','ptlens','linear','pa'].includes(model||''))return null
+  if(!isSupportedLensfunModel(kind,model))return null
   const focal=numeric(element.getAttribute('focal'))
   if(focal===undefined||focal<=0)return null
   const result:LensfunCurve={model:model as LensfunCurve['model'],focal}
-  for(const prop of ['aperture','distance','k1','k2','k3','a','b','c','vr','vb','br','bb'] as const){
+  for(const prop of ['aperture','distance','k1','k2','k3','a','b','c','kr','kb','vr','vb','br','bb','cr','cb'] as const){
     const n=numeric(element.getAttribute(prop))
     if(n!==undefined)result[prop]=n
   }
-  return result
+  return hasRequiredLensfunCoefficients(kind,result)?result:null
 }
 export function importLensfunXml(xml:string):number {
   if(xml.length>3*1024*1024)throw Error('Lensfun XML exceeds 3 MiB; import smaller individual database files')
@@ -63,13 +92,13 @@ export function importLensfunXml(xml:string):number {
     const curves={distortion:[] as LensfunCurve[],tca:[] as LensfunCurve[],vignetting:[] as LensfunCurve[]}
     for(const node of Array.from(calibration.children)){
       if(node.localName==='distortion'||node.localName==='tca'||node.localName==='vignetting'){
-        const curve=parseCurve(node)
+        const curve=parseCurve(node,node.localName as LensfunCalibrationKind)
         if(curve)curves[node.localName].push(curve)
       }
     }
     if(!curves.distortion.length&&!curves.tca.length&&!curves.vignetting.length)continue
     const crop=numeric(value(lens,'cropfactor'))||1
-    const record:DatabaseLens={maker,model,crop,curves}
+    const record:LensfunLensRecord={maker,model,crop,curves}
     const existing=database.findIndex(x=>canon(x.maker)===canon(maker)&&canon(x.model)===canon(model))
     if(existing<0)database.push(record)
     else database[existing]=record
@@ -95,7 +124,10 @@ export function cameraExif(meta:ImageMetadata|undefined):CameraExif {
   const model=field(meta,/^(model|camera model)$/i)
   const focal=parseFloat(field(meta,/^focal length$/i))||0
   const aperture=parseFloat(field(meta,/^(f number|aperture|f-number)$/i))||0
-  const distance=parseFloat(field(meta,/^subject distance$/i))||1000
+  // Missing EXIF focus distance is unknown, not infinity. Keep zero as the
+  // explicit unavailable sentinel so vignette matching can avoid guessing.
+  const parsedDistance=parseFloat(field(meta,/^subject distance$/i))
+  const distance=Number.isFinite(parsedDistance)&&parsedDistance>0?parsedDistance:0
   return {maker,model,lens,focal,aperture,distance}
 }
 /** Select a genuine focal sample or interpolate between compatible neighbors.
@@ -111,39 +143,107 @@ export function chooseLensfunCurve(curves: LensfunCurve[], exif: CameraExif): Le
     if (exact.length !== 1) return undefined
     return { ...exact[0] }
   }
-  const a = sorted.filter(x => x.focal < exif.focal).at(-1)
-  const b = sorted.find(x => x.focal > exif.focal)
-  if (!a || !b || a.model !== b.model || b.focal <= a.focal) return undefined
-  const t = (exif.focal - a.focal) / (b.focal - a.focal)
-  const result: LensfunCurve = { model: a.model, focal: exif.focal }
-  for (const key of ['k1','k2','k3','a','b','c','vr','vb','br','bb'] as const) {
-    if (a[key] !== undefined && b[key] !== undefined)
-      result[key] = a[key]! * (1-t) + b[key]! * t
+  const lower=sorted.filter(x=>x.focal<exif.focal)
+  const upper=sorted.filter(x=>x.focal>exif.focal)
+  const lowerFocal=lower.at(-1)?.focal,upperFocal=upper[0]?.focal
+  if(lowerFocal===undefined||upperFocal===undefined)return undefined
+  const lowerSamples=lower.filter(x=>x.focal===lowerFocal)
+  const upperSamples=upper.filter(x=>x.focal===upperFocal)
+  // Never interpolate through duplicate focal samples: without an aperture,
+  // distance, or revision selector they are not a unique calibration endpoint.
+  if(lowerSamples.length!==1||upperSamples.length!==1)return undefined
+  const a=lowerSamples[0],b=upperSamples[0]
+  if(a.model!==b.model||b.focal<=a.focal)return undefined
+  const t=(exif.focal-a.focal)/(b.focal-a.focal)
+  const result:LensfunCurve={model:a.model,focal:exif.focal}
+  const defaults={k1:0,k2:0,k3:0,a:0,b:0,c:0,kr:1,kb:1,vr:1,vb:1,br:0,bb:0,cr:0,cb:0} as const
+  for(const key of Object.keys(defaults) as (keyof typeof defaults)[]){
+    if(a[key]!==undefined||b[key]!==undefined){
+      const av=a[key]??defaults[key],bv=b[key]??defaults[key]
+      result[key]=av*(1-t)+bv*t
+    }
   }
-  if (a.aperture === b.aperture) result.aperture = a.aperture
-  if (a.distance === b.distance) result.distance = a.distance
+  if(a.aperture===b.aperture)result.aperture=a.aperture
+  if(a.distance===b.distance)result.distance=a.distance
   return result
 }
-export function matchLensfun(meta:ImageMetadata|undefined):LensfunCalibration|null {
+/** Lensfun radial distortion scale at normalized source radius. */
+export function lensfunDistortionScale(curve:LensfunCurve,radius:number):number {
+  if(!Number.isFinite(radius))return 1
+  const r=Math.max(0,Math.min(2,radius)),r2=r*r
+  if(curve.model==='poly3')return 1-(curve.k1??0)+(curve.k1??0)*r2
+  if(curve.model==='poly5')return 1+(curve.k1??0)*r2+(curve.k2??0)*r2*r2
+  if(curve.model==='ptlens')return 1-(curve.a??0)-(curve.b??0)-(curve.c??0)+
+    (curve.c??0)*r+(curve.b??0)*r2+(curve.a??0)*r2*r
+  return 1
+}
+/** Lensfun TCA channel scale at normalized source radius. Linear uses kr/kb;
+ * poly3 uses b*r² + c*r + v independently for red and blue. */
+export function lensfunTcaScale(curve:LensfunCurve,channel:'red'|'blue',radius:number):number {
+  if(!Number.isFinite(radius))return 1
+  if(curve.model==='linear')return channel==='red'?(curve.kr??1):(curve.kb??1)
+  if(curve.model!=='poly3')return 1
+  const r=Math.max(0,Math.min(2,radius))
+  return channel==='red'?
+    (curve.br??0)*r*r+(curve.cr??0)*r+(curve.vr??1):
+    (curve.bb??0)*r*r+(curve.cb??0)*r+(curve.vb??1)
+}
+/** Choose one vignetting sample per focal length using EXIF aperture and
+ * focus distance. Lensfun uses >=100 m as its infinity calibration convention. */
+export function selectLensfunVignettingSamples(curves:LensfunCurve[],exif:CameraExif):LensfunCurve[] {
+  if(!Number.isFinite(exif.aperture)||exif.aperture<=0)return []
+  const focals=[...new Set(curves.map(x=>x.focal).filter(x=>Number.isFinite(x)&&x>0))].sort((a,b)=>a-b)
+  const selected:LensfunCurve[]=[]
+  for(const focal of focals){
+    const apertureCandidates=curves.filter(x=>x.focal===focal&&x.aperture!==undefined&&
+      Math.abs(x.aperture-exif.aperture)<=0.35)
+    if(!apertureCandidates.length)continue
+    const hasDistance=Number.isFinite(exif.distance)&&exif.distance>0
+    // Without focus distance, accept only a single unambiguous aperture sample.
+    if(!hasDistance&&apertureCandidates.length!==1)continue
+    const candidates=hasDistance?apertureCandidates.filter(x=>
+      exif.distance>=100?x.distance!==undefined&&x.distance>=100:
+        x.distance!==undefined&&x.distance<100):apertureCandidates
+    if(!candidates.length)continue
+    const distanceScore=(sample:LensfunCurve)=>{
+      if(!hasDistance)return 0
+      return Math.abs((sample.distance??0)-exif.distance)
+    }
+    const ranked=candidates.map(sample=>({sample,aperture:Math.abs(sample.aperture!-exif.aperture),
+      distance:distanceScore(sample)})).sort((a,b)=>a.aperture-b.aperture||a.distance-b.distance)
+    const best=ranked[0],next=ranked[1]
+    if(next&&next.aperture===best.aperture&&next.distance===best.distance)continue
+    selected.push({...best.sample})
+  }
+  return selected
+}
+/** Score only defensible model-string matches. Exact EXIF model matches win;
+ * longer contained model names are accepted to accommodate EXIF vendor prefixes.
+ * Short generic names are never fuzzy-matched, and equal best scores stay ambiguous. */
+export function scoreLensfunModelMatch(model:string, exifLens:string):number {
+  const candidate=canon(model),target=canon(exifLens)
+  if(!candidate||!target)return 0
+  if(candidate===target)return 10000+candidate.length
+  const shorter=Math.min(candidate.length,target.length)
+  if(shorter<12)return 0
+  if(!candidate.includes(target)&&!target.includes(candidate))return 0
+  return 1000+shorter
+}
+export function matchLensfunRecords(records:LensfunLensRecord[],meta:ImageMetadata|undefined):LensfunCalibration|null {
   const exif=cameraExif(meta)
   if(!exif.lens||!exif.focal)return null
-  const candidates=database.filter(x=>{
-    const lens=canon(x.model),target=canon(exif.lens)
-    return lens===target || (target.length>12&&(lens.includes(target)||target.includes(lens)))
-  })
-  // Ambiguous lens strings must not select a plausible but wrong calibration.
-  if(candidates.length!==1)return null
-  const lens=candidates[0]
+  const ranked=records.map(lens=>({lens,score:scoreLensfunModelMatch(lens.model,exif.lens)}))
+    .filter(x=>x.score>0).sort((a,b)=>b.score-a.score)
+  if(!ranked.length||ranked[1]?.score===ranked[0].score)return null
+  const lens=ranked[0].lens
   // Vignetting depends strongly on aperture and subject distance; unlike
   // distortion, it must never pick an arbitrary calibration when EXIF is absent.
-  const closeVignettes=exif.aperture>0?
-    lens.curves.vignetting.filter(c=>c.aperture!==undefined&&
-      Math.abs(c.aperture-exif.aperture)<=0.35):[]
-  const farDistance=closeVignettes.filter(c=>!c.distance||c.distance>=100)
-  const vignetteSamples=farDistance.length?farDistance:closeVignettes.filter(c=>
-    c.distance!==undefined && Math.abs(c.distance-exif.distance)<=Math.max(0.25,exif.distance*0.15))
+  const vignetteSamples=selectLensfunVignettingSamples(lens.curves.vignetting,exif)
   return {source:'lensfun-xml',maker:lens.maker,lens:lens.model,crop:lens.crop,
     focal:exif.focal,distortion:chooseLensfunCurve(lens.curves.distortion,exif),
     tca:chooseLensfunCurve(lens.curves.tca,exif),
     vignetting:chooseLensfunCurve(vignetteSamples,exif)}
+}
+export function matchLensfun(meta:ImageMetadata|undefined):LensfunCalibration|null {
+  return matchLensfunRecords(database,meta)
 }

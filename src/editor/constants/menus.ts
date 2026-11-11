@@ -228,6 +228,20 @@ const filterMenu: MenuItem[] = filterGroups.map(g => ({
   })),
 }))
 
+filterMenu.unshift({
+  id: 'fg-blur-gallery',
+  label: 'Blur Gallery',
+  submenu: [{
+    id: 'f-blur-gallery',
+    label: 'Blur Gallery…',
+    run: () => {
+      const layer = engine.activeLayer
+      if (!layer) { store().pushToast('No active layer', 'error'); return }
+      openDlg('blur-gallery', { layerId: layer.id })
+    },
+  }],
+})
+
 // ---------- Plugins (Task 7-A) ----------
 
 /** position of the Plugins menu inside MENUS (menu-bar swaps in the dynamic items) */
@@ -371,6 +385,7 @@ export const MENUS: MenuItem[][] = [
     { id: 'edit-transform', label: 'Free Transform…', shortcut: sc('transform'), run: () => openDlg('transform', { layerId: engine.activeLayer?.id, mode: 'free' }) },
     { id: 'edit-transform-submenu', label: 'Transform', submenu: transformItems },
     { id: 'edit-puppet-warp', label: 'Puppet Warp…', enabled: () => !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment', run: () => openDlg('puppet-warp', { layerId: engine.activeLayer?.id }) },
+    { id: 'edit-vanishing-point', label: 'Vanishing Point…', enabled: () => !!engine.activeLayer && engine.activeLayer.kind !== 'adjustment', run: () => openDlg('vanishing-point', { layerId: engine.activeLayer?.id }) },
     S(),
     { id: 'edit-caf', label: 'Content-Aware Fill…', run: () => openDlg('content-aware-fill') },
     S(),

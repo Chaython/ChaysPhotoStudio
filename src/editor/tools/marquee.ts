@@ -3,6 +3,8 @@ import { engine } from '../engine/engine'
 import { newDrag, getOptions, combineMode, drawDashedRect, drawCross } from './shared'
 import { rectFromPoints, cloneCanvas, createCanvas, ctx2d, clamp } from '../utils/canvas'
 import { selectionFromMask } from '../engine/selection'
+import { nudgeSelectionBounds } from './selection-nudge-utils'
+import { scaleRectAroundPivot, selectionTransformPivot, selectionTransformPivotPercent } from './selection-transform-utils'
 import { snapToGuides } from '../engine/guides'
 import { useEditorStore } from '../store'
 
@@ -29,6 +31,9 @@ interface SelectionMove {
 }
 let selectionMove: SelectionMove | null = null
 
+interface SelectionPivotDrag { toolId: string; bounds: Rect }
+let selectionPivotDrag: SelectionPivotDrag | null = null
+
 type SelectionTransformHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'rotate' | 'inside'
 interface SelectionTransform {
   originalMask: HTMLCanvasElement
@@ -37,6 +42,8 @@ interface SelectionTransform {
   startX: number
   startY: number
   startAngle: number
+  pivotX: number
+  pivotY: number
   changed: boolean
   previewMask: HTMLCanvasElement
 }
@@ -54,9 +61,7 @@ function previewSelectionState(mask: HTMLCanvasElement, bounds: Rect): Selection
   return { mask, bounds, _v: 1, _pathsV: -1, _paths: null }
 }
 
-function rotatedBounds(r: Rect, angle: number): Rect {
-  const cx = r.x + r.w / 2
-  const cy = r.y + r.h / 2
+function rotatedBounds(r: Rect, angle: number, cx = r.x + r.w / 2, cy = r.y + r.h / 2): Rect {
   const ca = Math.cos(angle), sa = Math.sin(angle)
   const corners = [
     [r.x, r.y], [r.x + r.w, r.y],
@@ -94,40 +99,12 @@ function hitSelectionTransform(p: PointerInfo, r: Rect, zoom: number): Selection
   return null
 }
 
-function transformedRect(start: Rect, handle: SelectionTransformHandle, p: PointerInfo, sx: number, sy: number): Rect {
+function transformedRect(start: Rect, handle: SelectionTransformHandle, p: PointerInfo, pivotX: number, pivotY: number): Rect {
   if (handle === 'inside' || handle === 'rotate') return { ...start }
-  let x0 = start.x, y0 = start.y, x1 = start.x + start.w, y1 = start.y + start.h
-  if (handle.includes('w')) x0 = p.docX
-  if (handle.includes('e')) x1 = p.docX
-  if (handle.includes('n')) y0 = p.docY
-  if (handle.includes('s')) y1 = p.docY
-  let r = rectFromPoints(x0, y0, x1, y1)
-
-  if (p.shift) {
-    const ratio = start.w / Math.max(.001, start.h)
-    const wantH = r.w / ratio
-    const wantW = r.h * ratio
-    if (Math.abs(wantH - r.h) <= Math.abs(wantW - r.w)) {
-      if (handle.includes('n')) r.y = start.y + start.h - wantH
-      r.h = wantH
-    } else {
-      if (handle.includes('w')) r.x = start.x + start.w - wantW
-      r.w = wantW
-    }
-  }
-  if (p.alt) {
-    const cx = start.x + start.w / 2, cy = start.y + start.h / 2
-    if (handle.includes('w') || handle.includes('e')) {
-      const half = Math.abs((handle.includes('w') ? r.x : r.x + r.w) - cx)
-      r.x = cx - half; r.w = half * 2
-    }
-    if (handle.includes('n') || handle.includes('s')) {
-      const half = Math.abs((handle.includes('n') ? r.y : r.y + r.h) - cy)
-      r.y = cy - half; r.h = half * 2
-    }
-  }
-  void sx; void sy
-  return r
+  const pivot = p.alt
+    ? { x: start.x + start.w / 2, y: start.y + start.h / 2 }
+    : { x: pivotX, y: pivotY }
+  return scaleRectAroundPivot(start, handle, { x: p.docX, y: p.docY }, pivot, p.shift)
 }
 
 function previewSelectionTransform(p: PointerInfo) {
@@ -142,7 +119,7 @@ function previewSelectionTransform(p: PointerInfo) {
   let nextBounds = { ...b }
 
   if (st.handle === 'rotate') {
-    const cx = b.x + b.w / 2, cy = b.y + b.h / 2
+    const cx = st.pivotX, cy = st.pivotY
     let a = Math.atan2(p.docY - cy, p.docX - cx) - st.startAngle
     if (p.shift) {
       const step = Math.PI / 12
@@ -153,7 +130,7 @@ function previewSelectionTransform(p: PointerInfo) {
     mc.translate(-cx, -cy)
     mc.drawImage(st.originalMask, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h)
     mc.setTransform(1, 0, 0, 1, 0, 0)
-    nextBounds = rotatedBounds(b, a)
+    nextBounds = rotatedBounds(b, a, cx, cy)
     st.changed = Math.abs(a) > 1e-4
   } else if (st.handle === 'inside') {
     let dx = Math.round(p.docX - st.startX)
@@ -166,7 +143,7 @@ function previewSelectionTransform(p: PointerInfo) {
     nextBounds = { x: b.x + dx, y: b.y + dy, w: b.w, h: b.h }
     st.changed = !!(dx || dy)
   } else {
-    const r = transformedRect(b, st.handle, p, st.startX, st.startY)
+    const r = transformedRect(b, st.handle, p, st.pivotX, st.pivotY)
     nextBounds = r
     if (r.w > .5 && r.h > .5) {
       mc.imageSmoothingEnabled = true
@@ -235,6 +212,21 @@ function finishSelectionMove(commit: boolean) {
   selectionMove = null
 }
 
+function nudgeSelection(dx: number, dy: number) {
+  const doc = engine.activeDoc
+  const selection = doc?.selection
+  if (!doc || !selection || (!dx && !dy)) return false
+  const mask = createCanvas(doc.width, doc.height)
+  const mc = ctx2d(mask)
+  mc.drawImage(selection.mask, dx, dy)
+  const bounds = nudgeSelectionBounds(selection.bounds, dx, dy, doc.width, doc.height)
+  doc.selection = selectionFromMask(mask)
+  if (doc.selection) doc.selection.bounds = bounds
+  engine.pushHistory('Nudge Selection')
+  engine.pokeOverlay()
+  return true
+}
+
 function ratioFrom(opts: Record<string, any>): number {
   return Math.max(0.001, (Number(opts.ratioW) || 1) / Math.max(0.001, Number(opts.ratioH) || 1))
 }
@@ -284,17 +276,27 @@ function make(kind: 'rect' | 'ellipse'): Tool {
       const opts = getOptions(id)
       const doc = engine.activeDoc
       if (doc?.selection && opts.transformSelection === true) {
-        const hit = hitSelectionTransform(p, doc.selection.bounds, doc.view.zoom)
+        const b = { ...doc.selection.bounds }
+        const pivot = selectionTransformPivot(b, Number(opts.transformPivotX ?? 50), Number(opts.transformPivotY ?? 50))
+        const pivotTolerance = Math.max(10 / Math.max(.02, doc.view.zoom), 2)
+        if (Math.hypot(p.docX - pivot.x, p.docY - pivot.y) <= pivotTolerance) {
+          selectionPivotDrag = { toolId: id, bounds: b }
+          drag.active = false
+          current = null
+          engine.pokeOverlay()
+          return
+        }
+        const hit = hitSelectionTransform(p, b, doc.view.zoom)
         if (hit) {
-          const b = { ...doc.selection.bounds }
-          const cx = b.x + b.w / 2, cy = b.y + b.h / 2
           selectionTransform = {
             originalMask: cloneCanvas(doc.selection.mask),
             startRect: b,
             handle: hit,
             startX: p.docX,
             startY: p.docY,
-            startAngle: Math.atan2(p.docY - cy, p.docX - cx),
+            startAngle: Math.atan2(p.docY - pivot.y, p.docX - pivot.x),
+            pivotX: pivot.x,
+            pivotY: pivot.y,
             changed: false,
             previewMask: createCanvas(doc.width, doc.height),
           }
@@ -329,6 +331,14 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onPointerMove(p: PointerInfo) {
+      if (selectionPivotDrag?.toolId === id) {
+        const pivot = selectionTransformPivotPercent(selectionPivotDrag.bounds, { x: p.docX, y: p.docY })
+        const store = useEditorStore.getState()
+        store.setToolOption(id, 'transformPivotX', pivot.x)
+        store.setToolOption(id, 'transformPivotY', pivot.y)
+        engine.pokeOverlay()
+        return
+      }
       if (selectionTransform) {
         previewSelectionTransform(p)
         return
@@ -355,6 +365,7 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onPointerUp(p: PointerInfo) {
+      if (selectionPivotDrag?.toolId === id) { selectionPivotDrag = null; engine.pokeOverlay(); return }
       if (selectionTransform) { finishSelectionTransform(true); return }
       if (selectionMove) { finishSelectionMove(true); return }
       if (!drag.active) return
@@ -375,6 +386,22 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onKeyDown(e: KeyboardEvent) {
+      if (!drag.active && !selectionMove && !selectionTransform && engine.activeDoc?.selection) {
+        const step = e.shiftKey ? 10 : 1
+        const delta = e.key === 'ArrowLeft' ? [-step, 0]
+          : e.key === 'ArrowRight' ? [step, 0]
+          : e.key === 'ArrowUp' ? [0, -step]
+          : e.key === 'ArrowDown' ? [0, step] : null
+        if (delta) {
+          e.preventDefault()
+          return nudgeSelection(delta[0], delta[1])
+        }
+      }
+      if (e.key === 'Escape' && selectionPivotDrag?.toolId === id) {
+        selectionPivotDrag = null
+        engine.pokeOverlay()
+        return true
+      }
       if (e.key === 'Escape' && selectionTransform) {
         finishSelectionTransform(false)
         return true
@@ -394,6 +421,7 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onDeactivate() {
+      if (selectionPivotDrag?.toolId === id) selectionPivotDrag = null
       if (selectionTransform) finishSelectionTransform(true)
       if (selectionMove) finishSelectionMove(true)
       drag.active = false
@@ -445,6 +473,11 @@ function make(kind: 'rect' | 'ellipse'): Tool {
           }
           ctx.fillStyle = '#e8a33d'; ctx.strokeStyle = '#111'
           ctx.beginPath(); ctx.arc(rotX, rotY, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+          const pivot = selectionTransformPivot(b, Number(opts.transformPivotX ?? 50), Number(opts.transformPivotY ?? 50))
+          const px = pivot.x * view.zoom + view.panX, py = pivot.y * view.zoom + view.panY
+          ctx.strokeStyle = '#e8a33d'; ctx.lineWidth = 1.5
+          ctx.beginPath(); ctx.moveTo(px - 7, py); ctx.lineTo(px + 7, py); ctx.moveTo(px, py - 7); ctx.lineTo(px, py + 7); ctx.stroke()
+          ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.stroke()
           ctx.restore()
         } else drawCross(ctx, mouse)
       }

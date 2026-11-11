@@ -10,6 +10,7 @@ import { magneticLassoTool } from './magnetic-lasso'
 import { measureTool } from './measure'
 import { objectSelectTool, quickSelectTool } from './select-tools'
 import { selectionBrushTool } from './selection-brush'
+import { quickMaskTool } from './quick-mask'
 import { magicWandTool } from './wand'
 import { brushTool, pencilTool } from './brush'
 import { mixerBrushTool } from './mixer-brush'
@@ -25,17 +26,20 @@ import { magicEraserTool } from './magic-eraser'
 import { cloneStampTool } from './clone-stamp'
 import { patternStampTool } from './pattern-stamp'
 import { healingBrushTool, spotHealingTool, patchTool } from './healing'
+import { removeTool } from './remove'
 import { contentAwareMoveTool } from './content-aware-move'
 import { redEyeTool } from './red-eye'
 import { blurTool, sharpenTool, smudgeTool, dodgeTool, burnTool, spongeTool } from './retouch'
 import { gradientTool, paintBucketTool } from './fill'
 import { textTool, shapeTool } from './text-shapes'
-import { cropTool, eyedropperTool, handTool, zoomTool } from './crop'
+import { cropTool, eyedropperTool, handTool, zoomTool, rotateViewTool } from './crop'
 import { perspectiveCropTool } from './perspective-crop'
 import { colorSamplerTool } from './color-sampler'
 import { sliceTool, hotspotTool } from './web-region-tools'
+import { sliceSelectTool } from './slice-select'
 import { artboardTool } from './artboard-tool'
 import { countTool } from './count'
+import { frameTool } from './frame-tool'
 
 export const TOOLS: Record<ToolId, Tool> = {
   'move': moveTool,
@@ -47,6 +51,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'polygon-lasso': polygonLassoTool,
   'magnetic-lasso': magneticLassoTool,
   'selection-brush': selectionBrushTool,
+  'quick-mask': quickMaskTool,
   'measure': measureTool,
   'object-select': objectSelectTool,
   'quick-select': quickSelectTool,
@@ -56,8 +61,10 @@ export const TOOLS: Record<ToolId, Tool> = {
   'eyedropper': eyedropperTool,
   'color-sampler': colorSamplerTool,
   'slice': sliceTool,
+  'slice-select': sliceSelectTool,
   'hotspot': hotspotTool,
   'artboard': artboardTool,
+  'frame': frameTool,
   'count': countTool,
   'brush': brushTool,
   'pencil': pencilTool,
@@ -69,6 +76,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'pattern-stamp': patternStampTool,
   'healing-brush': healingBrushTool,
   'spot-healing': spotHealingTool,
+  'remove': removeTool,
   'patch': patchTool,
   'content-aware-move': contentAwareMoveTool,
   'red-eye': redEyeTool,
@@ -94,6 +102,7 @@ export const TOOLS: Record<ToolId, Tool> = {
   'shape': shapeTool,
   'hand': handTool,
   'zoom': zoomTool,
+  'rotate-view': rotateViewTool,
 }
 
 let activeToolId: ToolId = 'move'
