@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { engine } from '../../engine/engine'
 import { createCanvas, ctx2d } from '../../utils/canvas'
 import { useEditorStore } from '../../store'
+import { getBlurGalleryPreviewPoint } from '../../utils/blur-gallery-preview'
 import type { DialogProps } from './generic-dialogs'
 
 type Mode = 'field' | 'iris' | 'tilt-shift'
@@ -163,17 +164,12 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
     return () => { cancelled = true }
   }, [source, mode, pins, selectedPin, preview, settings, maxBlur, feather, focusX, focusY, band])
 
-  const previewCoordinates = (clientX: number, clientY: number) => {
+  const previewCoordinates = (clientX: number, clientY: number, clamp = false) => {
     if (!source || !previewCanvasRef.current) return null
-    const bounds = previewCanvasRef.current.getBoundingClientRect()
-    const px = (clientX - bounds.left) * PREVIEW_W / bounds.width
-    const py = (clientY - bounds.top) * PREVIEW_H / bounds.height
-    const scale = Math.min(1, (PREVIEW_W - 20) / source.width, (PREVIEW_H - 20) / source.height)
-    const w = source.width * scale, h = source.height * scale
-    const x = (PREVIEW_W - w) / 2, y = (PREVIEW_H - h) / 2
-    const nx = (px - x) / w, ny = (py - y) / h
-    if (nx < 0 || ny < 0 || nx > 1 || ny > 1) return null
-    return { x: nx, y: ny, width: w, height: h }
+    return getBlurGalleryPreviewPoint(
+      clientX, clientY, previewCanvasRef.current.getBoundingClientRect(),
+      source.width, source.height, PREVIEW_W, PREVIEW_H, clamp,
+    )
   }
 
   const dragging = useRef<{ pointerId: number; kind: 'pin' | 'focus'; index: number } | null>(null)
