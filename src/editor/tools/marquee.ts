@@ -235,6 +235,26 @@ function finishSelectionMove(commit: boolean) {
   selectionMove = null
 }
 
+function nudgeSelection(dx: number, dy: number) {
+  const doc = engine.activeDoc
+  const selection = doc?.selection
+  if (!doc || !selection || (!dx && !dy)) return false
+  const mask = createCanvas(doc.width, doc.height)
+  const mc = ctx2d(mask)
+  mc.drawImage(selection.mask, dx, dy)
+  const bounds = clipSelectionBounds({
+    x: selection.bounds.x + dx,
+    y: selection.bounds.y + dy,
+    w: selection.bounds.w,
+    h: selection.bounds.h,
+  }, doc.width, doc.height)
+  doc.selection = selectionFromMask(mask)
+  if (doc.selection) doc.selection.bounds = bounds
+  engine.pushHistory('Nudge Selection')
+  engine.pokeOverlay()
+  return true
+}
+
 function ratioFrom(opts: Record<string, any>): number {
   return Math.max(0.001, (Number(opts.ratioW) || 1) / Math.max(0.001, Number(opts.ratioH) || 1))
 }
@@ -375,6 +395,17 @@ function make(kind: 'rect' | 'ellipse'): Tool {
     },
 
     onKeyDown(e: KeyboardEvent) {
+      if (!drag.active && !selectionMove && !selectionTransform && engine.activeDoc?.selection) {
+        const step = e.shiftKey ? 10 : 1
+        const delta = e.key === 'ArrowLeft' ? [-step, 0]
+          : e.key === 'ArrowRight' ? [step, 0]
+          : e.key === 'ArrowUp' ? [0, -step]
+          : e.key === 'ArrowDown' ? [0, step] : null
+        if (delta) {
+          e.preventDefault()
+          return nudgeSelection(delta[0], delta[1])
+        }
+      }
       if (e.key === 'Escape' && selectionTransform) {
         finishSelectionTransform(false)
         return true
