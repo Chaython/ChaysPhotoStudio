@@ -4,7 +4,7 @@ import { newDrag, getOptions, combineMode, drawDashedRect, drawCross } from './s
 import { rectFromPoints, cloneCanvas, createCanvas, ctx2d, clamp } from '../utils/canvas'
 import { selectionFromMask } from '../engine/selection'
 import { nudgeSelectionBounds } from './selection-nudge-utils'
-import { selectionTransformPivot } from './selection-transform-utils'
+import { scaleRectAroundPivot, selectionTransformPivot } from './selection-transform-utils'
 import { snapToGuides } from '../engine/guides'
 import { useEditorStore } from '../store'
 
@@ -98,40 +98,12 @@ function hitSelectionTransform(p: PointerInfo, r: Rect, zoom: number): Selection
   return null
 }
 
-function transformedRect(start: Rect, handle: SelectionTransformHandle, p: PointerInfo, sx: number, sy: number): Rect {
+function transformedRect(start: Rect, handle: SelectionTransformHandle, p: PointerInfo, pivotX: number, pivotY: number): Rect {
   if (handle === 'inside' || handle === 'rotate') return { ...start }
-  let x0 = start.x, y0 = start.y, x1 = start.x + start.w, y1 = start.y + start.h
-  if (handle.includes('w')) x0 = p.docX
-  if (handle.includes('e')) x1 = p.docX
-  if (handle.includes('n')) y0 = p.docY
-  if (handle.includes('s')) y1 = p.docY
-  let r = rectFromPoints(x0, y0, x1, y1)
-
-  if (p.shift) {
-    const ratio = start.w / Math.max(.001, start.h)
-    const wantH = r.w / ratio
-    const wantW = r.h * ratio
-    if (Math.abs(wantH - r.h) <= Math.abs(wantW - r.w)) {
-      if (handle.includes('n')) r.y = start.y + start.h - wantH
-      r.h = wantH
-    } else {
-      if (handle.includes('w')) r.x = start.x + start.w - wantW
-      r.w = wantW
-    }
-  }
-  if (p.alt) {
-    const cx = start.x + start.w / 2, cy = start.y + start.h / 2
-    if (handle.includes('w') || handle.includes('e')) {
-      const half = Math.abs((handle.includes('w') ? r.x : r.x + r.w) - cx)
-      r.x = cx - half; r.w = half * 2
-    }
-    if (handle.includes('n') || handle.includes('s')) {
-      const half = Math.abs((handle.includes('n') ? r.y : r.y + r.h) - cy)
-      r.y = cy - half; r.h = half * 2
-    }
-  }
-  void sx; void sy
-  return r
+  const pivot = p.alt
+    ? { x: start.x + start.w / 2, y: start.y + start.h / 2 }
+    : { x: pivotX, y: pivotY }
+  return scaleRectAroundPivot(start, handle, { x: p.docX, y: p.docY }, pivot, p.shift)
 }
 
 function previewSelectionTransform(p: PointerInfo) {
@@ -170,7 +142,7 @@ function previewSelectionTransform(p: PointerInfo) {
     nextBounds = { x: b.x + dx, y: b.y + dy, w: b.w, h: b.h }
     st.changed = !!(dx || dy)
   } else {
-    const r = transformedRect(b, st.handle, p, st.startX, st.startY)
+    const r = transformedRect(b, st.handle, p, st.pivotX, st.pivotY)
     nextBounds = r
     if (r.w > .5 && r.h > .5) {
       mc.imageSmoothingEnabled = true
