@@ -18,4 +18,6 @@ assert.deepEqual(scaleRectAroundPivot(start, 'e', { x: 130, y: 40 }, center), { 
 assert.deepEqual(scaleRectAroundPivot(start, 'se', { x: 130, y: 60 }, center, true), { x: 0, y: 0, w: 160, h: 80 })
 const offCenter = scaleRectAroundPivot(start, 'se', { x: 170, y: 100 }, { x: 10, y: 20 })
 assert.deepEqual(offCenter, { x: 10, y: 20, w: 160, h: 80 })
+// A handle coincident with the pivot cannot change that axis and must not explode in size.
+assert.deepEqual(scaleRectAroundPivot(start, 'nw', { x: -100, y: -100 }, { x: 10, y: 20 }), start)
 console.log('Marquee transform pivot validation passed')
