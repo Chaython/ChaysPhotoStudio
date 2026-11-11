@@ -78,11 +78,14 @@ const paintBlendOptions = [
 
 export const TOOL_DEFS: ToolDef[] = [
   // group 0 — navigation / arrangement
-  { id: 'move', label: 'Move', group: 0, shortcut: 'V', icon: 'Move', defaults: { autoSelect: true, showTransformControls: true, smartGuides: true, showDistances: true, alignTo: 'selection' } as any, options: [
+  { id: 'move', label: 'Move', group: 0, shortcut: 'V', icon: 'Move', defaults: { autoSelect: true, showTransformControls: true, smartGuides: true, showDistances: true, unit: 'px', useDocResolution: true, pixelsPerUnit: 1, alignTo: 'selection' } as any, options: [
     { key: 'autoSelect', label: 'Auto-select layer', type: 'toggle' },
     { key: 'showTransformControls', label: 'Show Transform Controls', type: 'toggle' },
     { key: 'smartGuides', label: 'Smart Guides', type: 'toggle', hint: 'Snap layer edges/centers and infer equal gaps between neighboring layers' },
-    { key: 'showDistances', label: 'Distance Labels', type: 'toggle', hint: 'Show live pixel gaps to the nearest overlapping layers or canvas edges while dragging' },
+    { key: 'showDistances', label: 'Distance Labels', type: 'toggle', hint: 'Show live gap measurements to the nearest overlapping layers or canvas edges while dragging' },
+    { key: 'unit', label: 'Distance Units', type: 'select', options: [{ label: 'Pixels', value: 'px' }, { label: 'Millimeters', value: 'mm' }, { label: 'Centimeters', value: 'cm' }, { label: 'Inches', value: 'in' }] },
+    { key: 'useDocResolution', label: 'Use Document Resolution', type: 'toggle', hint: 'Calibrate physical distance units from the document PPI metadata' },
+    { key: 'pixelsPerUnit', label: 'Custom px / unit', type: 'number', min: 0.001, max: 100000, step: 0.01, hint: 'Used when document resolution is disabled' },
     { key: 'alignTo', label: 'Align To', type: 'select', options: [{ label: 'Selected Layers', value: 'selection' }, { label: 'Primary Layer', value: 'primary' }, { label: 'Canvas', value: 'canvas' }] },
   ]},
   // group 1 — selections
