@@ -19,9 +19,14 @@ export function scaleRectAroundPivot(
   const vertical = handle.includes('n') || handle.includes('s')
   const handleX = handle.includes('w') ? start.x : start.x + start.w
   const handleY = handle.includes('n') ? start.y : start.y + start.h
-  const safeRatio = (current: number, origin: number) => Math.max(0.01, Math.abs(current - origin) / Math.max(0.001, Math.abs(origin)))
-  let sx = horizontal ? safeRatio(pointer.x, pivot.x) / safeRatio(handleX, pivot.x) : 1
-  let sy = vertical ? safeRatio(pointer.y, pivot.y) / safeRatio(handleY, pivot.y) : 1
+  const axisScale = (current: number, initial: number, origin: number) => {
+    const initialDistance = Math.abs(initial - origin)
+    // A handle sitting on the pivot cannot scale along that axis.
+    if (initialDistance < 0.001) return 1
+    return Math.max(0.01, Math.abs(current - origin) / initialDistance)
+  }
+  let sx = horizontal ? axisScale(pointer.x, handleX, pivot.x) : 1
+  let sy = vertical ? axisScale(pointer.y, handleY, pivot.y) : 1
 
   if (constrainProportions && horizontal && vertical) {
     const scale = Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy
