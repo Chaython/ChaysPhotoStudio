@@ -1324,7 +1324,7 @@ export class Engine {
     return layer
   }
 
-  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array; aboveActive?: boolean; historyLabel?: string }): Layer | null {
+  addLayerFromCanvas(canvas: HTMLCanvasElement, name?: string, opts?: { center?: boolean; hdrPixels?: Float32Array; aboveActive?: boolean; aboveLayerId?: string; historyLabel?: string }): Layer | null {
     const doc = this.activeDoc
     if (!doc) return null
     const centeredNativeSize = opts?.center !== false &&
@@ -1355,8 +1355,9 @@ export class Engine {
       layer.canvas = hdrFloat32ToPreviewCanvas(layer.hdrPixels, layer.canvas.width, layer.canvas.height, 'srgb')
       layer._hdrPreviewBefore = null
     }
-    const activeIndex = doc.layers.findIndex(item => item.id === doc.activeLayerId)
-    if (opts?.aboveActive && activeIndex >= 0) doc.layers.splice(activeIndex + 1, 0, layer)
+    const referenceLayerId = opts?.aboveLayerId ?? (opts?.aboveActive ? doc.activeLayerId : null)
+    const referenceIndex = referenceLayerId ? doc.layers.findIndex(item => item.id === referenceLayerId) : -1
+    if (referenceIndex >= 0) doc.layers.splice(referenceIndex + 1, 0, layer)
     else doc.layers.push(layer)
     doc.activeLayerId = layer.id
     doc.selectedLayerIds = [layer.id]
