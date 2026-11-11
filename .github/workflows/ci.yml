@@ -132,6 +132,9 @@ jobs:
       - name: Validate calibrated Move distance units
         run: bun run move-distance:validate
 
+      - name: Validate named measurement scale presets
+        run: bun run measure-scale-presets:validate
+
       - name: Validate Move keyboard nudge directions
         run: bun run move-nudge:validate
 
