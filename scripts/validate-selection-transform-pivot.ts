@@ -12,7 +12,7 @@ assert.deepEqual(selectionTransformPivot(bounds, Number.NaN, Number.POSITIVE_INF
 
 const start = { x: 10, y: 20, w: 80, h: 40 }
 const center = { x: 50, y: 40 }
-assert.deepEqual(scaleRectAroundPivot(start, 'se', { x: 130, y: 80 }, center), { x: 0, y: 0, w: 160, h: 80 })
+assert.deepEqual(scaleRectAroundPivot(start, 'se', { x: 130, y: 80 }, center), { x: -30, y: 0, w: 160, h: 80 })
 assert.deepEqual(scaleRectAroundPivot(start, 'nw', { x: 30, y: 30 }, center), { x: 30, y: 30, w: 40, h: 20 })
 assert.deepEqual(scaleRectAroundPivot(start, 'e', { x: 130, y: 40 }, center), { x: 10, y: 20, w: 160, h: 40 })
 assert.deepEqual(scaleRectAroundPivot(start, 'se', { x: 130, y: 60 }, center, true), { x: 0, y: 0, w: 160, h: 80 })
