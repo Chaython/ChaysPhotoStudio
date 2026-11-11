@@ -202,7 +202,7 @@ export function BlurGalleryDialog({ inst, onClose }: DialogProps) {
   const handlePreviewPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const active = dragging.current
     if (!active || active.pointerId !== e.pointerId) return
-    const point = previewCoordinates(e.clientX, e.clientY)
+    const point = previewCoordinates(e.clientX, e.clientY, true)
     if (!point) return
     if (active.kind === 'pin') {
       setPins(prev => prev.map((pin, i) => i === active.index ? { ...pin, x: point.x, y: point.y } : pin))
