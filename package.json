@@ -48,6 +48,7 @@
     "gimp:validate": "bun scripts/validate-gimp-compatibility.ts",
     "retouch-safety:validate": "bun scripts/validate-retouch-safety.ts",
     "warp:validate": "bun scripts/validate-transform.ts",
+    "smart-spacing:validate": "bun scripts/validate-smart-spacing.ts",
     "history:validate": "bun scripts/validate-history.ts",
     "preview-lifecycle:validate": "bun scripts/validate-preview-lifecycle.ts",
     "selection-races:validate": "bun scripts/validate-selection-races.ts",
