@@ -4,6 +4,7 @@ import { newDrag, getOptions, combineMode, drawDashedRect, drawCross } from './s
 import { rectFromPoints, cloneCanvas, createCanvas, ctx2d, clamp } from '../utils/canvas'
 import { selectionFromMask } from '../engine/selection'
 import { nudgeSelectionBounds } from './selection-nudge-utils'
+import { selectionTransformPivot } from './selection-transform-utils'
 import { snapToGuides } from '../engine/guides'
 import { useEditorStore } from '../store'
 
@@ -38,6 +39,8 @@ interface SelectionTransform {
   startX: number
   startY: number
   startAngle: number
+  pivotX: number
+  pivotY: number
   changed: boolean
   previewMask: HTMLCanvasElement
 }
@@ -143,7 +146,7 @@ function previewSelectionTransform(p: PointerInfo) {
   let nextBounds = { ...b }
 
   if (st.handle === 'rotate') {
-    const cx = b.x + b.w / 2, cy = b.y + b.h / 2
+    const cx = st.pivotX, cy = st.pivotY
     let a = Math.atan2(p.docY - cy, p.docX - cx) - st.startAngle
     if (p.shift) {
       const step = Math.PI / 12
@@ -303,14 +306,16 @@ function make(kind: 'rect' | 'ellipse'): Tool {
         const hit = hitSelectionTransform(p, doc.selection.bounds, doc.view.zoom)
         if (hit) {
           const b = { ...doc.selection.bounds }
-          const cx = b.x + b.w / 2, cy = b.y + b.h / 2
+          const pivot = selectionTransformPivot(b, Number(opts.transformPivotX ?? 50), Number(opts.transformPivotY ?? 50))
           selectionTransform = {
             originalMask: cloneCanvas(doc.selection.mask),
             startRect: b,
             handle: hit,
             startX: p.docX,
             startY: p.docY,
-            startAngle: Math.atan2(p.docY - cy, p.docX - cx),
+            startAngle: Math.atan2(p.docY - pivot.y, p.docX - pivot.x),
+            pivotX: pivot.x,
+            pivotY: pivot.y,
             changed: false,
             previewMask: createCanvas(doc.width, doc.height),
           }
@@ -472,6 +477,11 @@ function make(kind: 'rect' | 'ellipse'): Tool {
           }
           ctx.fillStyle = '#e8a33d'; ctx.strokeStyle = '#111'
           ctx.beginPath(); ctx.arc(rotX, rotY, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+          const pivot = selectionTransformPivot(b, Number(opts.transformPivotX ?? 50), Number(opts.transformPivotY ?? 50))
+          const px = pivot.x * view.zoom + view.panX, py = pivot.y * view.zoom + view.panY
+          ctx.strokeStyle = '#e8a33d'; ctx.lineWidth = 1.5
+          ctx.beginPath(); ctx.moveTo(px - 7, py); ctx.lineTo(px + 7, py); ctx.moveTo(px, py - 7); ctx.lineTo(px, py + 7); ctx.stroke()
+          ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.stroke()
           ctx.restore()
         } else drawCross(ctx, mouse)
       }
