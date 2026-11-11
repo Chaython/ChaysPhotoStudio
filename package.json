@@ -56,6 +56,7 @@
     "preview-lifecycle:validate": "bun scripts/validate-preview-lifecycle.ts",
     "selection-races:validate": "bun scripts/validate-selection-races.ts",
     "selection-nudge:validate": "bun scripts/validate-selection-nudge.ts",
+    "selection-transform-pivot:validate": "bun scripts/validate-selection-transform-pivot.ts",
     "autosave:validate": "bun scripts/validate-autosave.ts",
     "worker:validate": "bun scripts/validate-worker-error.ts",
     "worker-timeout:validate": "bun scripts/validate-worker-timeout.ts",
