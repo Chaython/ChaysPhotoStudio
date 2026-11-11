@@ -1085,10 +1085,22 @@ def main():
                 page.mouse.up()
                 dialog.get_by_role("button",name="Field Blur").click()
 
-                # Re-add a pin and apply. The original layer must remain intact;
-                # output is committed as a separate editable raster layer.
-                add_again = preview_point(.5,.5)
-                page.mouse.click(add_again["x"],add_again["y"])
+                # Build a deliberately different pair of pin radii. The
+                # rendered edge must be softer near the large-radius pin and
+                # sharper near the small-radius pin (not merely lower opacity).
+                dialog.get_by_role("button",name="Clear Pins").click()
+                high_pin = preview_point(.5,.5)
+                low_pin = preview_point(.5,.9)
+                page.mouse.click(high_pin["x"],high_pin["y"])
+                page.mouse.click(low_pin["x"],low_pin["y"])
+                radius_slider = dialog.get_by_role("slider",name="Pin Blur")
+                radius_slider.evaluate("""el => {
+                    el.value = '1'
+                    el.dispatchEvent(new Event('input',{bubbles:true}))
+                    el.dispatchEvent(new Event('change',{bubbles:true}))
+                }""")
+                check(radius_slider.input_value() == "1",
+                      "Field Blur did not accept a distinct low-radius pin value")
                 before = page.evaluate("""() => ({
                     count:window.__zphotoEngine.activeDoc.layers.length,
                     sourceId:window.__blurGallerySourceId,
@@ -1106,16 +1118,18 @@ def main():
                     const e=window.__zphotoEngine,d=e.activeDoc
                     const source=e.layerById(window.__blurGallerySourceId)
                     const result=d.layers.find(l=>l.name==='Blur Gallery Result')
-                    const pixel=(layer)=>Array.from(layer.canvas.getContext('2d').getImageData(31,32,1,1).data)
-                    return {source:pixel(source),result:pixel(result),kind:result?.kind,
+                    const ctx=result.canvas.getContext('2d')
+                    const pixel=(x,y)=>Array.from(ctx.getImageData(x,y,1,1).data)
+                    return {source:Array.from(source.canvas.getContext('2d').getImageData(31,32,1,1).data),
+                      highRadius:pixel(30,32),lowRadius:pixel(30,58),kind:result?.kind,
                       active:d.activeLayerId===result?.id}
                 }""")
                 check(after["source"] == before["source"],
                       "Blur Gallery modified the original source layer")
                 check(after["kind"] == "raster" and after["active"],
                       f"Blur Gallery result was not a separate active raster layer: {after}")
-                check(after["result"] != after["source"],
-                      f"Blur Gallery result did not alter the high-contrast edge: {after}")
+                check(after["highRadius"][0] < after["lowRadius"][0] - 20,
+                      f"Field Blur did not produce a stronger spatial blur at the high-radius pin: {after}")
                 check(not errors, f"Blur Gallery browser interactions threw JS errors: {errors[:3]}")
 
             def video_frame_picker():
