@@ -3,6 +3,7 @@ import { engine } from '../engine/engine'
 import { newDrag, getOptions, combineMode, drawDashedRect, drawCross } from './shared'
 import { rectFromPoints, cloneCanvas, createCanvas, ctx2d, clamp } from '../utils/canvas'
 import { selectionFromMask } from '../engine/selection'
+import { nudgeSelectionBounds } from './selection-nudge-utils'
 import { snapToGuides } from '../engine/guides'
 import { useEditorStore } from '../store'
 
@@ -242,12 +243,7 @@ function nudgeSelection(dx: number, dy: number) {
   const mask = createCanvas(doc.width, doc.height)
   const mc = ctx2d(mask)
   mc.drawImage(selection.mask, dx, dy)
-  const bounds = clipSelectionBounds({
-    x: selection.bounds.x + dx,
-    y: selection.bounds.y + dy,
-    w: selection.bounds.w,
-    h: selection.bounds.h,
-  }, doc.width, doc.height)
+  const bounds = nudgeSelectionBounds(selection.bounds, dx, dy, doc.width, doc.height)
   doc.selection = selectionFromMask(mask)
   if (doc.selection) doc.selection.bounds = bounds
   engine.pushHistory('Nudge Selection')
