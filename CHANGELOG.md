@@ -18,6 +18,8 @@ Notable changes to Chay's Photo Studio. Versions follow semantic versioning.
 
 - Added **paint into saved channels**: Saved alpha channels can be targeted as a grayscale editing target from the Channels panel (click the edit icon on a saved channel row). When a saved channel is the editing target, painting tools and Fill write into that channel's mask instead of layer pixels, with selection constraints and eraser background-colour semantics intact. Added `bun run paint-into-saved-channel:validate`.
 
+- Added **artboard-specific layer assignment**: Layers can be assigned to individual artboards from the Layers panel (artboard selector on each layer row) so they only appear in that artboard's preview and export. Layers without an artboard assignment appear in all artboards. Added `bun run artboard-layer-assignment:validate`.
+
 ## 1.3.0
 
 - Added **Illustrator-style, GIMP-style and Fireworks-style workspace templates** alongside Photoshop-style and Classic. Each template reorders the complete registered tool set into familiar flyout groupings (nothing is hidden) and arranges its own inspector stacks: Illustrator emphasizes Properties with Layers/Paths; GIMP mirrors the Layers/Channels/Paths/Undo dock; Fireworks docks the Properties panel as a bottom strip under the canvas. Workspaces keep independent tool/panel layouts, locks and reset templates, the inspector reset button restores the active template's tab groups, and portable saved layouts remain workspace-independent.

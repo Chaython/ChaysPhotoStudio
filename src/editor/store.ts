@@ -15,6 +15,8 @@ export interface LayerMeta {
   blendMode: string
   locked: boolean
   clipped: boolean
+  /** Optional artboard this layer belongs to; undefined = appears in all artboards. */
+  artboardId?: string
   hasMask: boolean
   maskEnabled: boolean
   hasVectorMask: boolean
@@ -1725,6 +1727,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       layers: doc ? doc.layers.slice().reverse().map(l => ({
         id: l.id, name: l.name, kind: l.kind, visible: l.visible, opacity: l.opacity,
         blendMode: l.blendMode, locked: l.locked, clipped: l.clipped,
+        artboardId: l.artboardId,
         hasMask: !!l.mask, maskEnabled: l.maskEnabled,
         hasVectorMask: !!l.vectorMask, vectorMaskEnabled: l.vectorMask?.enabled !== false,
         smartFilterCount: l.smartFilters?.length ?? 0,

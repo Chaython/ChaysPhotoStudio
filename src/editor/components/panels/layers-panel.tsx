@@ -14,6 +14,7 @@ import { useEditorStore, type LayerMeta } from '../../store'
 import { engine } from '../../engine/engine'
 import { prepareLayer } from '../../engine/document'
 import type { BlendMode } from '../../types'
+import type { Artboard } from '../../artboards'
 import { cn } from '@/lib/utils'
 import { ADJUSTMENT_ICONS } from '../../constants/tools'
 import { FancyScroll } from '@/components/ui/fancy-scroll'
@@ -306,6 +307,9 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
   const AdjIcon = adjIcon ? ((Icons as any)[adjIcon] ?? Icons.Sliders) : null
   const kind = kindBadge(meta)
   const KindIcon = (Icons as any)[kind.icon] ?? Icons.Image
+  const artboards = engine.activeDoc?.artboards ?? []
+  const activeArtboardId = meta.artboardId
+  const activeArtboard = artboards.find(a => a.id === activeArtboardId)
 
   return (
     <ContextMenu onOpenChange={setContextOpen}>
@@ -404,6 +408,25 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
                   </button>
                 )}
                 {meta.locked && <Icons.Lock size={10} className="text-muted-foreground shrink-0" />}
+                {artboards.length > 0 && (
+                  <Select
+                    value={meta.artboardId ?? ''}
+                    onValueChange={v => {
+                      if (!doc) return
+                      engine.setLayerProps(meta.id, { artboardId: v || undefined }, { label: `Artboard ${v || 'all'}` })
+                    }}
+                  >
+                    <SelectTrigger className="h-6 w-20 px-1 py-0 text-[9px]">
+                      <SelectValue>{activeArtboard?.name ?? 'All'}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="z-50 min-w-[24px] text-[10px]">
+                      <SelectItem value="" className="text-[10px]">All</SelectItem>
+                      {artboards.map(a => (
+                        <SelectItem key={a.id} value={a.id} className="text-[10px]">{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <span className={cn('text-[11px] truncate', !meta.visible && 'text-muted-foreground/50')}>{meta.name}</span>
               </div>
             )}
