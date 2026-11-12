@@ -828,6 +828,32 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
     write: p => makeDescriptor('Pstr', [['Lvls', psInt(p.levels ?? 6)]]),
   },
   {
+    // Photoshop Levels. Keys: InBk (input black), Gam (gamma), InWh (input white),
+    // OutBk (output black), OutWh (output white).
+    code: 'Lvls', names: ['Lvls'], op: 'applyAdjustment', type: 'levels',
+    classId: 'Lvls', label: 'Levels', keys: ['InBk', 'Gam', 'InWh', 'OutBk', 'OutWh'],
+    read: d => {
+      const inBlack = valueNumber(atnGet(d, 'InBk'))
+      const gamma = valueNumber(atnGet(d, 'Gam'))
+      const inWhite = valueNumber(atnGet(d, 'InWh'))
+      const outBlack = valueNumber(atnGet(d, 'OutBk'))
+      const outWhite = valueNumber(atnGet(d, 'OutWh'))
+      if (inBlack === undefined || inWhite === undefined) return null
+      const out: Record<string, any> = { inBlack, inWhite }
+      if (gamma !== undefined) out.gamma = gamma
+      if (outBlack !== undefined) out.outBlack = outBlack
+      if (outWhite !== undefined) out.outWhite = outWhite
+      return out
+    },
+    write: p => makeDescriptor('Lvls', [
+      ['InBk', psInt(p.inBlack ?? 0)],
+      ['Gam', psDbl(p.gamma ?? 1)],
+      ['InWh', psInt(p.inWhite ?? 255)],
+      ['OutBk', psInt(p.outBlack ?? 0)],
+      ['OutWh', psInt(p.outWhite ?? 255)],
+    ]),
+  },
+  {
     code: 'Thrs', names: ['Thrs'], op: 'applyAdjustment', type: 'threshold',
     classId: 'Thrs', label: 'Threshold', keys: ['Lvl '],
     read: d => {

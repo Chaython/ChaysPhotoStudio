@@ -140,4 +140,23 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import color-balance target r passed')
 }
 
+// ---------------------------------------------------------------- levels with target
+
+{
+  const step = adjustmentStep('levels', { inBlack: 10, gamma: 1.2, inWhite: 240, outBlack: 5, outWhite: 250 }, 'gb')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'levels step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'gb', 'target restored on import')
+  assert.equal(importedStep.args.params.inBlack, 10, 'inBlack restored on import')
+  assert.equal(importedStep.args.params.gamma, 1.2, 'gamma restored on import')
+  assert.equal(importedStep.args.params.inWhite, 240, 'inWhite restored on import')
+  assert.equal(importedStep.args.params.outBlack, 5, 'outBlack restored on import')
+  assert.equal(importedStep.args.params.outWhite, 250, 'outWhite restored on import')
+  console.log('.atn export/import levels target gb passed')
+}
+
 console.log('.atn channel-target round-trip: all checks passed')
