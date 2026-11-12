@@ -1186,6 +1186,33 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
     ]),
   },
   {
+    // HDR Toning. Event code `HdTn`. Keys: `Mthd` method (0=Exposure/Gamma, 1=Local Adaptation),
+    // `Exp` exposure, `Gm` gamma, `Det` detail, `Str` saturation, `Vib` vibrance.
+    code: 'HdTn', names: ['hdrToning'], op: 'applyAdjustment', type: 'hdr-toning',
+    classId: 'null', label: 'HDR Toning', keys: ['Mthd', 'Exp', 'Gm', 'Det', 'Str', 'Vib'],
+    read: d => {
+      const method = valueNumber(atnGet(d, 'Mthd'))
+      const exposure = valueNumber(atnGet(d, 'Exp'))
+      const gamma = valueNumber(atnGet(d, 'Gm'))
+      const detail = valueNumber(atnGet(d, 'Det'))
+      const saturation = valueNumber(atnGet(d, 'Str'))
+      const vibrance = valueNumber(atnGet(d, 'Vib'))
+      if (method === undefined || exposure === undefined) return null
+      const out: Record<string, any> = { method, exposure, gamma }
+      if (detail !== undefined) out.detail = detail
+      if (saturation !== undefined) out.saturation = saturation
+      if (vibrance !== undefined) out.vibrance = vibrance
+      return out
+    },
+    write: p => {
+      const items: [string, AtnValue][] = [['Mthd', psInt(p.method ?? 0)], ['Exp', psDbl(p.exposure ?? 0)], ['Gm', psDbl(p.gamma ?? 1)]]
+      if (typeof p.detail === 'number') items.push(['Det', psDbl(p.detail)])
+      if (typeof p.saturation === 'number') items.push(['Str', psInt(p.saturation)])
+      if (typeof p.vibrance === 'number') items.push(['Vib', psInt(p.vibrance)])
+      return makeDescriptor('HdTn', items)
+    },
+  },
+  {
     // Color Lookup. Event code `ClrL`. Keys: `LutN` LUT name, `Opct` opacity.
     code: 'ClrL', names: ['colorLookup'], op: 'applyAdjustment', type: 'color-lookup',
     classId: 'null', label: 'Color Lookup', keys: ['LutN', 'Opct'],

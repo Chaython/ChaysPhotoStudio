@@ -317,4 +317,26 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import color-lookup target rg passed')
 }
 
+// ---------------------------------------------------------------- hdr-toning with target
+
+{
+  const step = adjustmentStep('hdr-toning', {
+    method: 0, exposure: 1.5, gamma: 1.0, detail: 20, saturation: 30, vibrance: 40
+  }, 'r')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'hdr-toning step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'r', 'target restored on import')
+  assert.equal(importedStep.args.params.method, 0, 'method restored')
+  assert.equal(importedStep.args.params.exposure, 1.5, 'exposure restored')
+  assert.equal(importedStep.args.params.gamma, 1.0, 'gamma restored')
+  assert.equal(importedStep.args.params.detail, 20, 'detail restored')
+  assert.equal(importedStep.args.params.saturation, 30, 'saturation restored')
+  assert.equal(importedStep.args.params.vibrance, 40, 'vibrance restored')
+  console.log('.atn export/import hdr-toning target r passed')
+}
+
 console.log('.atn channel-target round-trip: all checks passed')
