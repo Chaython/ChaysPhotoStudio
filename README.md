@@ -22,14 +22,14 @@ A source-available, browser-first photo editor with layered editing, Photoshop-i
 | **61 registered tools** | Move/transform, rectangular/elliptical/single-row/single-column marquee; Lasso/Polygonal/Magnetic; Object/Quick/Brush selection; Magic Wand; crop/perspective crop; painting, erasers, healing, retouching, Pen/Path tools, editable Type/Shapes, Hand/Zoom |
 | **Selections** | New/Add/Subtract/Intersect, Color Range, Select Subject, Focus Area, Grow/Similar, Select & Mask edge refinement, channels and luminosity selections, feather/smooth/contract/expand |
 | **Layers & masks** | Raster, native text/shape, adjustments, Smart Objects with Smart Filters, alpha/vector masks, clipping, blending, Layer Styles, alignment, layer duplication into another document, Layer Comps |
-| **History & automation** | Undo/redo, durable snapshots and snapshot notes, Actions recording/playback, Batch / Image Processor, scripting console and portable recovery snapshot exports |
+| **History & automation** | Undo/redo, durable snapshots and snapshot notes, Actions recording/playback with Photoshop `.atn` import/export, Batch / Image Processor, scripting console and portable recovery snapshot exports |
 | **CSV Bulk Create** | File → Bulk Create from CSV: merge {{Column}} placeholders in editable text layers with up to 100 CSV rows, preview input, select output format and export independent PNG/JPEG/WebP designs without modifying source layers. Local only; no image placeholders or advanced automatic layouts. |
 | **Offline design templates and brand kits** | File → Design Templates & Brand Kits: save current layered project as a categorized, previewable editable template; open new document from template; local IndexedDB library, portable template/brand-kit JSON import/export. Apply saved hex swatches and font families to editable shapes/text; place imported logos as Smart Objects. Linked color/font token references on editable layers propagate updates from saved kits into open documents, with Undo/Redo, project persistence and offline last-value fallback. No stock library, shared cloud tokens, publishing or template marketplace. |
 | **Web assets (Fireworks-inspired)** | File → Web Slices & Hotspots: draw/edit rectangular slices and rect/circle/polygon hotspots in a preview or with the canvas Slice/Hotspot tools, preserve regions in native project saves, and export cropped images plus an HTML image map with `rect`/`circle`/`poly` areas. Native Fireworks project and page/state parity are not provided. |
 | **Artboards / pages (initial)** | File → Artboards / Pages: named artboards, grid layouts, individual layer selection, Undo/Redo and PNG/JPEG/WebP export. Optional Normal/Hover/Pressed Layer Comp snapshots export images and a CSS-only rollover HTML preview. Project saves retain metadata. No independent page trees or native Fireworks states. |
 | **Retouching** | Healing and Spot Healing, Patch, Content-Aware Move/Fill, Clone/Pattern Stamps and source transforms, Mixer/History Brushes, Dodge/Burn/Sponge, Blur/Sharpen/Smudge, red-eye correction |
 | **Transforms** | Free Transform, editable Transform/Split Warp, Puppet Warp, crop/perspective crop, smart guides and distance labels; Liquify |
-| **Color** | RGB/HSL/Lab and related adjustments, curves, gradient controls, HDR-aware operations where supported, proof-color preview and gamut warnings, PPI/rulers/guides/grid |
+| **Color** | RGB/HSL/Lab and related adjustments, curves, gradient controls, HDR-aware operations where supported, proof-color preview and gamut warnings, PPI/rulers/guides/grid; Color Lookup imports `.cube`, `.3dl` and `.look` LUTs; HDR Toning and Desaturate adjustment layers |
 | **File information** | EXIF, XMP/IPTC, camera and GPS metadata inspection; editable File Info and metadata-aware export/sidecar workflows where supported |
 | **Interface** | Classic/custom plus Photoshop-, Illustrator-, GIMP- and Fireworks-style workspaces, themes including OLED black, floating panels, eight desktop dock locations (left, right, top, bottom and four corners), touch-first mode, keyboard shortcut customization, lazy-loaded panels and dialogs |
 
@@ -124,6 +124,7 @@ bun run dist:all         # Shared icons, web build, Electron & extensions (not T
 | [**Feature & Format Reference**](docs/FEATURES_AND_FORMATS.md) | Formats, bit depth, runtime limitations and feature overview |
 | [**Tool Parity Audit**](TOOL_PARITY.md) | Photoshop-style tool audit and remaining tool work |
 | [**Cross-app Parity Matrix**](docs/COMPETITOR_PARITY.md) | Photoshop, GIMP, Fireworks CS6, Illustrator and PhotoCraft; status, priorities and fidelity limits |
+| [**Attributions**](docs/ATTRIBUTIONS.md) | Inspiration credits, provenance notes and where this project deliberately differs from the projects it draws ideas from |
 | [**Canva and Creative-Suite Comparison**](docs/CREATIVE_SUITE_PARITY.md) | Canva, Adobe Express, Figma, Affinity, Photopea, Pixlr, Krita, Inkscape and Clip Studio; missing and partial features |
 | [**Distribution Guide**](DISTRIBUTION.md) | Native builds, release artifacts, optional configuration and packaging |
 | [**Development & Testing**](docs/DEVELOPMENT_AND_TESTING.md) | Source-of-truth files, validation scripts, CI and release smoke tests |
@@ -134,6 +135,8 @@ bun run dist:all         # Shared icons, web build, Electron & extensions (not T
 ## Licensing
 
 Free for personal and educational use under a **non-commercial, source-available license**; commercial use requires licensing, and redistribution/modifications have additional restrictions. This is **not an OSI-approved open-source license**. See [LICENSE](LICENSE) for the authoritative terms. Commercial contact: **chaython@live.ca** · [Support development](https://github.com/sponsors/Chaython). The project is not affiliated with Adobe, GIMP or Photopea.
+
+Work in this repository is original. Other open-source projects — PhotoCraft in particular — are credited as **inspiration**, never as a source of code; see [Attributions](docs/ATTRIBUTIONS.md).
 
 <!-- chaython-funding:start -->
 ## Support development

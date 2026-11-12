@@ -15,7 +15,7 @@ The current tool registry has **52 tools** across Move, Selection, Sampling, Cro
 | Retouch | Clone/Pattern stamps, Healing/Spot Healing, Patch, Content-Aware Move/Fill, Red Eye, Color Replacement, Blur/Sharpen/Smudge, Dodge/Burn/Sponge | 16/32-bit destructive edits can require guarded paths; unsupported combinations should refuse rather than quantize |
 | Compositing | Layers, masks, adjustment layers, clipping, Blend-If/Layer Styles, groups, Smart Objects/Filters, Layer Comps, vector paths | Not every imported PSD/PSB live effect maps exactly onto the editor |
 | Layout and transform | Free Transform, Warp/Split Warp, Puppet Warp, crop/perspective crop, Smart Guides, rulers, canvas/layer alignment and distribution | 32-bit geometry and compound layer interactions have conservative safety restrictions |
-| Color | Histogram/info readouts, adjustment and channel workflows, proof colors/gamut warnings, supported high-depth/HDR operations, resolution metadata | HDR operation support depends on working-pixel representation; ICC/CMYK proofing is approximate |
+| Color | Histogram/info readouts, adjustment and channel workflows, proof colors/gamut warnings, supported high-depth/HDR operations, resolution metadata; Color Lookup imports `.cube`, `.3dl` and `.look` tables; HDR Toning and Desaturate adjustment layers | HDR operation support depends on working-pixel representation; ICC/CMYK proofing is approximate |
 | File Info | Searchable EXIF/IPTC/XMP/ICC metadata with supported editable descriptive fields, metadata-conscious exports/sidecars | Not all vendor-specific tags are editable or round-tripped |
 | CSV-driven designs | File → Bulk Create from CSV maps {{Header}} placeholders in editable text layers to literal CSV cells; supports UTF-8 quoted cells/newlines, previews up to four rows and exports up to 100 designs as PNG/JPEG/WebP. Uses detached rendering, preserving the source document | No CSV-to-image/shape/style bindings or new layered project per row, no Canva publishing; file capped at 1 MiB and 64 columns; browser-download fallback limited to 20 rows |
 | Design templates and brand kits | Local File → Design Templates & Brand Kits: editable layered-project template gallery with thumbnail/category/search, duplicate-new-document opening and import/export; saved brand palettes, installed font references and bounded logo assets, with direct application and persistent linked color/font IDs on editable shape/text, Smart Object logo placement and kit-update propagation | IndexedDB storage is per browser/device and may be erased by site-data removal; export JSON for backup. Templates capped at 32 MiB; font names do not install fonts. Linked color/font style IDs are embedded in Studio documents, and saved kit updates propagate to open linked documents. No automatic propagation into closed files, approvals, collaboration, stock marketplace or Canva native project import | 
@@ -29,6 +29,42 @@ Use separate layers for painting and imported assets. **Layer → New Adjustment
 **History:** one-step undo/redo is not a replacement for named snapshots. The **History** panel can save durable snapshots with notes; restore or compare them independently from recent undo. **Layer Comps** store layer-state variants and provide export workflows.
 
 **Selection cleanup:** **Select → Modify** includes Border, Smooth, Expand, Contract and Feather; **Select → Grow (Similar Colors)** expands connected similar-color regions, while **Similar** finds disconnected matching colors. **Select and Mask** allows edge refinement and mask-oriented output. **Edit → Stroke Selection…** adds the selection boundary to a separate layer.
+
+### Color Lookup LUT interchange
+
+**Image → Adjustments → Color Lookup…** (and **Layer → New Adjustment Layer → Color Lookup**) accepts three interchange formats. The reader picks the format from the file extension and falls back to sniffing the content, so a misnamed file still loads:
+
+| Format | Producer | What is read |
+|---|---|---|
+| `.cube` | Adobe, DaVinci Resolve | `LUT_3D_SIZE` 8–65, `LUT_1D_SIZE` (baked to a diagonal 3D), `TITLE`, `DOMAIN_MIN`/`DOMAIN_MAX`, `#` comments |
+| `.3dl` | Autodesk Lustre / Flame | Optional `3DMESH` magic, the `Mesh <inBits> <outBits>` declaration (cube edge `2^inBits + 1`, output code range `2^outBits - 1`), an optional **shaper** input row, and blue-fastest node order. Without a declaration the cube edge is read from the row count and the code range from the largest node value |
+| `.look` | SpeedGrade | XML `<size>` and `<data>`: little-endian float32 RGB triplets (four floats per entry — RGBA — are also accepted, the alpha is dropped), red-fastest |
+
+Files written as **UTF-16** with a byte-order mark are decoded correctly; UTF-8 is the default.
+
+The `.3dl` **shaper** row is a 1-D input curve. It is kept exact and applied to each channel ahead of the 3-D lookup rather than baked onto the cube grid — a bake would have to resample the curve onto the cube's node spacing and would bend its breakpoints. A shaper that is a plain even ramp is dropped, because it bends nothing.
+
+Sampling is **tetrahedral** (four corner fetches, six tetrahedra), which is sharper than trilinear on saturated LUTs. Imported tables are held in a session registry rather than in layer parameters, so an adjustment layer's parameters stay JSON-serializable — `{ lutId, strength }` only.
+
+### HDR Toning and Desaturate
+
+**HDR Toning** is available as a destructive adjustment and as an adjustment layer, with two methods:
+
+- **Exposure / Gamma** — an exposure and gamma curve applied in linear light. At neutral settings it changes nothing.
+- **Local Adaptation** — the scene's log luminance is split into a blurred **base** layer (the overall shape of the scene) and **detail**. The base is compressed toward its own mean, the detail is boosted, and the scene is re-keyed to the middle grey that its geometric mean luminance defines. Shadow/highlight lift, saturation and vibrance follow.
+
+The operation works on 8-bit sRGB documents and on 32-bit scene-linear Float32 buffers; a scene-linear buffer is read as linear rather than decoded from sRGB, and the result is a display-range image because a tone mapper compresses highlights rather than preserving them.
+
+**Desaturate** is available as a destructive adjustment and as an adjustment layer, with two genuinely different neutral definitions:
+
+- **Luminance** — keeps the pixel's Rec.709 luminance. A saturated green stays bright.
+- **Lightness (HSL)** — keeps the HSL lightness `(max + min) / 2`. A saturated green becomes a mid-grey.
+
+### Photoshop Actions (`.atn`) interchange
+
+The **Actions** panel loads and writes Photoshop action files. **Load Photoshop actions (.atn)** reads version 16 (Photoshop 6 and later) and the version 12 (Photoshop 5) legacy dialect; **Save all actions as Photoshop .atn** writes version 16. The reader and writer implement the Action Descriptor binary vocabulary in full — references, descriptors, lists, unit floats, text, enumerations, integers, booleans, classes, aliases, paths, raw data and object arrays — with bounds, item-count and nesting limits, and a file Photoshop wrote round-trips byte for byte.
+
+Thirty-three Photoshop events map onto studio operations: Gaussian, Box, Motion and Radial blur, Add Noise, Unsharp Mask, Median, Dust & Scratches, High Pass, Minimum/Maximum, Offset, Wind, Twirl, Spherize, Wave, Pinch, ZigZag, Crystallize, Mosaic, Emboss, Average, Find Edges, Brightness/Contrast, Hue/Saturation, Posterize, Threshold, Vibrance, Invert, Desaturate, Equalize, Flatten Image and Image Size. Numeric parameters are clamped to the studio's own control ranges, and an event whose settings the studio cannot express exactly — a different blur method, a colour-range Hue/Saturation, a multi-generator Wave — stays a **kept step**: stored verbatim, visible in the panel and skipped on playback, so importing and saving again writes the original bytes back. Studio operations Photoshop has no event for export as visible placeholder steps Photoshop skips rather than being dropped silently.
 
 ### High-bit-depth/HDR behavior
 

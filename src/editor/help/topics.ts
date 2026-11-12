@@ -154,7 +154,9 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Use a new Adjustment Layer for editable tonal or color corrections."
     ],
     "tips": [
-      "Some effects are not supported in 32-bit HDR and may refuse the operation rather than reduce precision."
+      "Some effects are not supported in 32-bit HDR and may refuse the operation rather than reduce precision.",
+      "Blur, Box Blur and Gaussian Blur share a fast core that is bit-identical to earlier releases — existing filters and saved recipes do not change.",
+      "Color Lookup, HDR Toning and Desaturate are available both as destructive adjustments and as adjustment layers; see Color Lookup, HDR Toning and Desaturate."
     ]
   },
   {
@@ -304,6 +306,27 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     ]
   },
   {
+    "id": "color-lookup-toning",
+    "title": "Color Lookup, HDR Toning and Desaturate",
+    "category": "Color & files",
+    "path": "Image → Adjustments → Color Lookup… / HDR Toning… / Desaturate…",
+    "summary": "Apply a 3D lookup table, tone-map a high dynamic range scene, or flatten colour to a neutral grey.",
+    "steps": [
+      "Open Image → Adjustments → Color Lookup…, or Layer → New Adjustment Layer → Color Lookup to keep the table editable.",
+      "Pick a built-in look, or press the LUT button beside the list to import an Adobe/Resolve .cube, an Autodesk Lustre/Flame .3dl or a SpeedGrade .look file.",
+      "Open Image → Adjustments → HDR Toning… to compress a high dynamic range scene. Choose Exposure / Gamma for a straight tone curve, or Local Adaptation to re-key the scene to its own middle grey.",
+      "Open Image → Adjustments → Desaturate… to flatten colour. Luminance keeps the pixel's perceived brightness; Lightness (HSL) keeps the HSL lightness instead.",
+      "Adjust the Strength slider for Color Lookup, then confirm to apply the adjustment."
+    ],
+    "tips": [
+      "Imported LUT tables live in the current session; saving the project records which table was used, so keep the original .cube/.3dl/.look file if you may reopen the project later.",
+      "A .3dl file's shaper row is applied ahead of the 3D lookup and is kept exact, so its curve is not bent by the cube's node spacing.",
+      "HDR Toning is one of the adjustments that works on 32-bit scene-linear documents; it reads them as linear light rather than decoding them from sRGB.",
+      "HDR Toning is a tone mapper: highlights above display white are compressed into the display range, not preserved.",
+      "Desaturate's two methods differ most on saturated colors — a vivid green stays bright under Luminance and becomes a mid-grey under Lightness (HSL)."
+    ]
+  },
+  {
     "id": "hdr-fill",
     "title": "HDR Fill and feathered selections",
     "category": "Color & files",
@@ -377,6 +400,27 @@ export const HELP_TOPICS: readonly HelpTopic[] =
     "tips": [
       "Autosave and recovery depend on local storage retention; clearing browser data may delete them.",
       "Recovery exports are available after merged PR #86, but these are manual backups; profile deletion can still erase snapshots not copied elsewhere."
+    ]
+  },
+  {
+    "id": "actions-atn",
+    "title": "Actions and Photoshop .atn files",
+    "category": "Workspace",
+    "path": "Window → Actions → Load/Save Photoshop .atn",
+    "summary": "Record replayable edits and exchange them with Photoshop through binary .atn action files.",
+    "steps": [
+      "Open the Actions panel and press Record new action to capture your edits as replayable steps, then play them back on any image.",
+      "Press Load Photoshop actions (.atn) to read an action set recorded in Photoshop; version 16 files (Photoshop 6 and later) and the version 12 (Photoshop 5) legacy layout are both read.",
+      "Steps the studio can perform play as ordinary studio operations; steps it cannot perform faithfully are kept verbatim, stay visible in the list and are skipped on playback.",
+      "Press Save all actions as Photoshop .atn to write every action as a version 16 .atn file Photoshop can load and play.",
+      "The .json import/export buttons beside them move actions between browsers and profiles."
+    ],
+    "tips": [
+      "33 Photoshop events map onto studio operations: the blur family, Add Noise, Unsharp Mask, Median, Dust & Scratches, High Pass, Minimum/Maximum, Offset, Wind, Twirl, Spherize, Wave, Pinch, ZigZag, Crystallize, Mosaic, Emboss, Average, Find Edges, Brightness/Contrast, Hue/Saturation, Posterize, Threshold, Vibrance, Invert, Desaturate, Equalize, Flatten Image and Image Size.",
+      "Numeric parameters are clamped to the studio's own control ranges, so an out-of-range radius from Photoshop still plays at the widest value the studio offers.",
+      "A kept step is stored exactly as Photoshop recorded it; importing a file and saving it again writes the original bytes back.",
+      "Studio operations Photoshop has no event for (for example Crop) are exported as visible placeholder steps that Photoshop shows but skips on playback.",
+      "Actions persist with the profile like other panel state; export .atn or JSON copies to keep or move them."
     ]
   },
   {

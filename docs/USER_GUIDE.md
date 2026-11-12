@@ -47,6 +47,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 ### Color & files
 
 - [Color depth, HDR and proofing](#color-depth-hdr-and-proofing)
+- [Color Lookup, HDR Toning and Desaturate](#color-lookup-hdr-toning-and-desaturate)
 - [HDR Fill and feathered selections](#hdr-fill-and-feathered-selections)
 - [Match Color between documents](#match-color-between-documents)
 - [Saving, exporting and metadata](#saving-exporting-and-metadata)
@@ -63,6 +64,7 @@ For technical parity details, see [TOOL_PARITY.md](../TOOL_PARITY.md). For devel
 ### Workspace
 
 - [Undo, snapshots and recovery](#undo-snapshots-and-recovery)
+- [Actions and Photoshop .atn files](#actions-and-photoshop-atn-files)
 - [Keyboard shortcuts and mobile](#keyboard-shortcuts-and-mobile)
 - [Shared canvas and Layers panel right-click menus](#shared-canvas-and-layers-panel-right-click-menus)
 - [Customize the canvas right-click menu](#customize-the-canvas-right-click-menu)
@@ -213,6 +215,8 @@ Blur, sharpen, recolor and stylize artwork.
 **Notes and tips:**
 
 - Some effects are not supported in 32-bit HDR and may refuse the operation rather than reduce precision.
+- Blur, Box Blur and Gaussian Blur share a fast core that is bit-identical to earlier releases — existing filters and saved recipes do not change.
+- Color Lookup, HDR Toning and Desaturate are available both as destructive adjustments and as adjustment layers; see Color Lookup, HDR Toning and Desaturate.
 
 ## Layers, masks and clipping
 
@@ -352,6 +356,26 @@ Work at appropriate precision and simulate output colors.
 - 16-bit float editing requires native float16 Canvas2D readback and writeback. If a browser lacks either, the affected operation is stopped rather than converted silently to 8-bit.
 - High precision varies by operation and runtime; unsupported destructive high-depth edits should refuse rather than silently quantize.
 
+## Color Lookup, HDR Toning and Desaturate
+
+Apply a 3D lookup table, tone-map a high dynamic range scene, or flatten colour to a neutral grey.
+
+**Where:** Image → Adjustments → Color Lookup… / HDR Toning… / Desaturate…
+
+1. Open Image → Adjustments → Color Lookup…, or Layer → New Adjustment Layer → Color Lookup to keep the table editable.
+2. Pick a built-in look, or press the LUT button beside the list to import an Adobe/Resolve .cube, an Autodesk Lustre/Flame .3dl or a SpeedGrade .look file.
+3. Open Image → Adjustments → HDR Toning… to compress a high dynamic range scene. Choose Exposure / Gamma for a straight tone curve, or Local Adaptation to re-key the scene to its own middle grey.
+4. Open Image → Adjustments → Desaturate… to flatten colour. Luminance keeps the pixel's perceived brightness; Lightness (HSL) keeps the HSL lightness instead.
+5. Adjust the Strength slider for Color Lookup, then confirm to apply the adjustment.
+
+**Notes and tips:**
+
+- Imported LUT tables live in the current session; saving the project records which table was used, so keep the original .cube/.3dl/.look file if you may reopen the project later.
+- A .3dl file's shaper row is applied ahead of the 3D lookup and is kept exact, so its curve is not bent by the cube's node spacing.
+- HDR Toning is one of the adjustments that works on 32-bit scene-linear documents; it reads them as linear light rather than decoding them from sRGB.
+- HDR Toning is a tone mapper: highlights above display white are compressed into the display range, not preserved.
+- Desaturate's two methods differ most on saturated colors — a vivid green stays bright under Luminance and becomes a mid-grey under Lightness (HSL).
+
 ## HDR Fill and feathered selections
 
 Fill a selected area with a color without clipping HDR highlights or flattening image precision.
@@ -423,6 +447,26 @@ Review earlier versions and recover unsaved work.
 
 - Autosave and recovery depend on local storage retention; clearing browser data may delete them.
 - Recovery exports are available after merged PR #86, but these are manual backups; profile deletion can still erase snapshots not copied elsewhere.
+
+## Actions and Photoshop .atn files
+
+Record replayable edits and exchange them with Photoshop through binary .atn action files.
+
+**Where:** Window → Actions → Load/Save Photoshop .atn
+
+1. Open the Actions panel and press Record new action to capture your edits as replayable steps, then play them back on any image.
+2. Press Load Photoshop actions (.atn) to read an action set recorded in Photoshop; version 16 files (Photoshop 6 and later) and the version 12 (Photoshop 5) legacy layout are both read.
+3. Steps the studio can perform play as ordinary studio operations; steps it cannot perform faithfully are kept verbatim, stay visible in the list and are skipped on playback.
+4. Press Save all actions as Photoshop .atn to write every action as a version 16 .atn file Photoshop can load and play.
+5. The .json import/export buttons beside them move actions between browsers and profiles.
+
+**Notes and tips:**
+
+- 33 Photoshop events map onto studio operations: the blur family, Add Noise, Unsharp Mask, Median, Dust & Scratches, High Pass, Minimum/Maximum, Offset, Wind, Twirl, Spherize, Wave, Pinch, ZigZag, Crystallize, Mosaic, Emboss, Average, Find Edges, Brightness/Contrast, Hue/Saturation, Posterize, Threshold, Vibrance, Invert, Desaturate, Equalize, Flatten Image and Image Size.
+- Numeric parameters are clamped to the studio's own control ranges, so an out-of-range radius from Photoshop still plays at the widest value the studio offers.
+- A kept step is stored exactly as Photoshop recorded it; importing a file and saving it again writes the original bytes back.
+- Studio operations Photoshop has no event for (for example Crop) are exported as visible placeholder steps that Photoshop shows but skips on playback.
+- Actions persist with the profile like other panel state; export .atn or JSON copies to keep or move them.
 
 ## Keyboard shortcuts and mobile
 
