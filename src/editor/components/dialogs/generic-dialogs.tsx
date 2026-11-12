@@ -23,6 +23,9 @@ export function GenericAdjustmentDialog({ inst, onClose }: DialogProps) {
   const mode = inst.props?.mode ?? 'direct'
   const layerId = inst.props?.layerId ?? engine.activeLayer?.id
   const def = imageOps.ADJUSTMENTS[type]
+  // Capture the channel editing target when the dialog opens — Photoshop
+  // semantics: dialogs capture their target at open time.
+  const capturedTarget = engine.activeDoc?.channelTarget ?? 'composite'
   const [params, setParams] = useState<Record<string, any>>(() => {
     if (mode === 'adjust-layer') {
       const layer = engine.layerById(layerId ?? '')
@@ -50,16 +53,17 @@ export function GenericAdjustmentDialog({ inst, onClose }: DialogProps) {
     setApplying(true)
     engine.clearPreviewAdjustment(previewOwner.current, previewDoc.current)
     try {
+      const applyParams = { ...params, target: capturedTarget }
       if (mode === 'adjust-layer') {
         engine.setLayerAdjustment(layerId, type, params)
       } else if (type === 'color-lookup' && imageOps.getLut(String(params.lutId ?? ''))?.builtin === false) {
         // custom .cube tables exist only in the main-thread LUT registry —
         // the pixel worker would no-op on them, so commit synchronously here
         // (builtin ids bake deterministically in the worker, async is fine)
-        engine.applyAdjustmentToLayer(layerId, type, params)
+        engine.applyAdjustmentToLayer(layerId, type, applyParams)
       } else {
         // heavy one-shot op — pixel math off the main thread (worker pool); identical history flow
-        await engine.applyAdjustmentToLayerAsync(layerId, type, params)
+        await engine.applyAdjustmentToLayerAsync(layerId, type, applyParams)
       }
     } finally {
       onClose()
@@ -97,6 +101,9 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
   const openHelp = useEditorStore(s => s.openDialog)
   const layer = layerId ? engine.layerById(layerId) : null
   const def = imageOps.FILTERS[type]
+  // Capture the channel editing target when the dialog opens — Photoshop
+  // semantics: dialogs capture their target at open time.
+  const capturedTarget = engine.activeDoc?.channelTarget ?? 'composite'
   const [params, setParams] = useState<Record<string, any>>(() => {
     if (smartFilterId) {
       const sf = layer?.smartFilters.find(f => f.id === smartFilterId)
@@ -175,7 +182,7 @@ export function GenericFilterDialog({ inst, onClose }: DialogProps) {
       } else {
         engine.clearPreviewFilter(previewOwner.current, previewDoc.current)
         // heavy one-shot op — pixel math off the main thread (worker pool); identical history flow
-        await engine.applyFilterToLayerAsync(layerId, type, params)
+        await engine.applyFilterToLayerAsync(layerId, type, { ...params, target: capturedTarget })
       }
     } finally {
       onClose()

@@ -4321,7 +4321,9 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment' || !imageOps.ADJUSTMENTS[type]) return false
-    if (this.refusePartialChannelTarget(`${typeLabel(type)} adjustments`)) return false
+    // Camera Raw and HDR Toning need the composite; everything else honours the channel target.
+    if ((type === 'camera-raw' || type === 'hdr-toning') &&
+        this.refusePartialChannelTarget(`${typeLabel(type)} adjustments`)) return false
     if (!this.canCommitHdrRasterOp(doc, layer, typeLabel(type))) return false
     if (doc.workingBitDepth === 32 && !imageOps.HDR_SAFE_ADJUSTMENTS.has(type)) {
       this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
@@ -4331,7 +4333,7 @@ export class Engine {
       const img = this.processingCopyForLayer(doc, layer)
       if (!img) return false
       imageOps.applyAdjustment(img, type, params)
-      if (!this.commitComputedPixelOp(layer, img)) return false
+      if (!this.commitComputedPixelOp(layer, img, params.target)) return false
     } catch (err) {
       this.ui?.toast(err instanceof Error ? `Adjustment failed: ${err.message}` : 'Adjustment failed', 'error')
       return false
@@ -4347,7 +4349,6 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment' || !imageOps.FILTERS[type]) return false
-    if (this.refusePartialChannelTarget(`${filterLabel(type)} filters`)) return false
     if (doc.workingBitDepth === 32 && layer.kind !== 'smart' && !imageOps.HDR_SAFE_FILTERS.has(type)) {
       this.ui?.toast(`${filterLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
       return false
@@ -4361,7 +4362,7 @@ export class Engine {
       const img = this.processingCopyForLayer(doc, layer)
       if (!img) return false
       imageOps.applyFilter(img, type, params)
-      if (!this.commitComputedPixelOp(layer, img)) return false
+      if (!this.commitComputedPixelOp(layer, img, params.target)) return false
     } catch (err) {
       this.ui?.toast(err instanceof Error ? `Filter failed: ${err.message}` : 'Filter failed', 'error')
       return false
@@ -4556,7 +4557,7 @@ export class Engine {
 
   /** COW/rasterization happens only after asynchronous computation succeeded,
    * and after the target document and History have been revalidated. */
-  private commitComputedPixelOp(layer: Layer, output: PixelImage): boolean {
+  private commitComputedPixelOp(layer: Layer, output: PixelImage, argTarget?: unknown): boolean {
     const doc = this.activeDoc
     if (!doc || !doc.layers.includes(layer) || layer.locked ||
         (doc.workingBitDepth === 32 && layer.kind !== 'raster')) return false
@@ -4564,6 +4565,21 @@ export class Engine {
     if (layer.kind === 'raster') {
       if (!layer.canvas || layer.canvas.width !== output.width || layer.canvas.height !== output.height) return false
     } else if (doc.width !== output.width || doc.height !== output.height) return false
+
+    // Channel editing target: snapshot protected planes before the write so
+    // only the targeted colour components change on commit.
+    const { target, restrict } = resolveChannelTarget(doc, argTarget)
+    let planes: CanvasPlaneSnapshot | null = null
+    let hdrPlanes: PlaneSnapshotF32 | null = null
+    const fullRect: Rect = { x: 0, y: 0, w: output.width, h: output.height }
+    if (restrict) {
+      if (layer.kind === 'raster' && layer.canvas) {
+        planes = captureCanvasPlanes(layer.canvas, fullRect, target)
+      }
+      if (layer.hdrPixels && layer.hdrPixels.length === output.width * output.height * 4) {
+        hdrPlanes = captureHdrPlanes(layer.hdrPixels, output.width, fullRect, target)
+      }
+    }
 
     if (doc.workingBitDepth === 16) {
       // Stage float16 writeback before ANY modification to the original.
@@ -4577,6 +4593,7 @@ export class Engine {
         if (canvasProfile(staging).bitDepth !== 16)
           throw new Error('Native float16 canvas unavailable')
         putProcessingPixelData(staging, output)
+        if (planes) restoreCanvasPlanes(staging, planes)
         const wasRaster = layer.kind === 'raster'
         if (!wasRaster) this.rasterizeLayer(layer.id, { history: false, emit: false })
         const live = this.layerById(layer.id)
@@ -4602,6 +4619,8 @@ export class Engine {
     const live = this.mutateLayerPixels(layer.id)
     if (!live?.canvas) return false
     this.commitProcessingPixelsForLayer(live, output)
+    if (planes) restoreCanvasPlanes(live.canvas, planes)
+    if (live.hdrPixels && hdrPlanes) restoreHdrPlanes(live.hdrPixels, hdrPlanes)
     return true
   }
 
@@ -4648,7 +4667,9 @@ export class Engine {
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
     if (!this.canCommitHdrRasterOp(doc, layer, typeLabel(type))) return
-    if (this.refusePartialChannelTarget(`${typeLabel(type)} adjustments`)) return
+    // Camera Raw and HDR Toning need the composite; everything else honours the channel target.
+    if ((type === 'camera-raw' || type === 'hdr-toning') &&
+        this.refusePartialChannelTarget(`${typeLabel(type)} adjustments`)) return
     if (doc.workingBitDepth === 32 && !imageOps.HDR_SAFE_ADJUSTMENTS.has(type)) {
       this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
       return
@@ -4668,7 +4689,7 @@ export class Engine {
     if (this.activeDoc !== doc || !doc.layers.includes(layer) || layer._v !== layerVersion ||
         layer.locked || doc.history.states[doc.history.index] !== historyAnchor ||
         doc._epoch !== sourceEpoch) return
-    if (!this.commitComputedPixelOp(layer, out)) return
+    if (!this.commitComputedPixelOp(layer, out, params.target)) return
     invalidateFlat(doc)
     this.pushHistory(typeLabel(type), doc)
     this.recordStep({ op: 'applyAdjustment', args: { layerId, type, params: { ...params } }, label: typeLabel(type) })
@@ -4680,7 +4701,6 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
-    if (this.refusePartialChannelTarget(`${filterLabel(type)} filters`)) return
     if (doc.workingBitDepth === 32 && layer.kind !== 'smart' && !imageOps.HDR_SAFE_FILTERS.has(type)) {
       this.ui?.toast(`${filterLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
       return
@@ -4710,7 +4730,7 @@ export class Engine {
     if (this.activeDoc !== doc || !doc.layers.includes(layer) || layer._v !== layerVersion ||
         layer.locked || doc.history.states[doc.history.index] !== historyAnchor ||
         doc._epoch !== sourceEpoch) return
-    if (!this.commitComputedPixelOp(layer, out)) return
+    if (!this.commitComputedPixelOp(layer, out, params.target)) return
     invalidateFlat(doc)
     this.pushHistory(filterLabel(type), doc)
     this.rememberLastFilter(doc, type, params)

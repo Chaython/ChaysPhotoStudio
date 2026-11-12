@@ -462,4 +462,80 @@ function makeDoc(w = 8, h = 8, bitDepth: number = 8, channelTarget: ChannelTarge
   console.log('history channelTarget round trip passed')
 }
 
+// ---------------------------------------------------------------- engine: adjustments/filters honour channel target
+
+{
+  const raw = new Engine()
+  const doc = makeDoc(8, 8, 8, 'r') // target red only
+  raw.docs.push(doc)
+  raw.setActiveDocument(doc.id)
+  const l = doc.layers[0] as any
+  const before = l.canvas.ctx.buf.slice()
+  // Invert under target 'r': only R should invert
+  assert.equal(raw.applyAdjustmentToLayer('l1', 'invert', {}), true)
+  const after = l.canvas.ctx.buf.slice()
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      assert.equal(after[i], 255 - before[i], `R inverted at ${x},${y}`)
+      assert.equal(after[i + 1], before[i + 1], `G preserved at ${x},${y}`)
+      assert.equal(after[i + 2], before[i + 2], `B preserved at ${x},${y}`)
+      assert.equal(after[i + 3], before[i + 3], `A preserved at ${x},${y}`)
+    }
+  }
+  console.log('engine applyAdjustmentToLayer honours target (r) passed')
+}
+
+{
+  const raw = new Engine()
+  const doc = makeDoc(8, 8, 8, 'b') // target blue only
+  raw.docs.push(doc)
+  raw.setActiveDocument(doc.id)
+  const l = doc.layers[0] as any
+  // Fill with a varying pattern so blur actually changes values
+  const ctx = l.canvas.ctx
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      ctx.buf[i] = x * 32       // R gradient
+      ctx.buf[i + 1] = y * 32   // G gradient
+      ctx.buf[i + 2] = (x + y) * 16 // B gradient
+      ctx.buf[i + 3] = 255
+    }
+  }
+  const before = l.canvas.ctx.buf.slice()
+  // Gaussian blur under target 'b': only B should change
+  assert.equal(raw.applyFilterToLayer('l1', 'gaussian-blur', { radius: 2 }), true)
+  const after = l.canvas.ctx.buf.slice()
+  let bChanged = false
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      assert.equal(after[i], before[i], `R preserved at ${x},${y}`)
+      assert.equal(after[i + 1], before[i + 1], `G preserved at ${x},${y}`)
+      assert.equal(after[i + 3], before[i + 3], `A preserved at ${x},${y}`)
+      if (after[i + 2] !== before[i + 2]) bChanged = true
+    }
+  }
+  assert.ok(bChanged, 'B channel changed by blur')
+  console.log('engine applyFilterToLayer honours target (b) passed')
+}
+
+// camera-raw and hdr-toning must refuse under a channel target
+{
+  for (const [fn, args, type] of [
+    ['applyAdjustmentToLayer', ['l1', 'camera-raw', {}], 'camera-raw'] as const,
+    ['applyAdjustmentToLayer', ['l1', 'hdr-toning', {}], 'hdr-toning'] as const,
+  ]) {
+    const raw = new Engine()
+    const doc = makeDoc(8, 8, 8, 'rb')
+    raw.docs.push(doc)
+    raw.setActiveDocument(doc.id)
+    const before = JSON.stringify(doc.layers[0].canvas.ctx.buf)
+    assert.equal(raw[fn](...args), false, `${type} refused under channel target`)
+    assert.equal(JSON.stringify(doc.layers[0].canvas.ctx.buf), before, `${type}: no pixel change`)
+  }
+  console.log('camera-raw/hdr-toning refused under channel target passed')
+}
+
 console.log('validate-channel-editing: all checks passed')
