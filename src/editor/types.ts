@@ -488,6 +488,9 @@ export interface HistoryState {
   channelView: ChannelView
   /** Editing target from the Channels panel; 'composite' edits everything. */
   channelTarget: ChannelTarget
+  /** When set to a saved channel ID, painting/fill writes into that channel's
+   *  mask instead of layer pixels (Photoshop-style channel editing). */
+  channelEditingTarget: string | null
   savedChannels: SavedChannel[]
   savedPaths?: SavedPath[]
   /** Extra document-space geometry (optional for older serialized Snapshots). */
@@ -749,6 +752,9 @@ export interface PsDocument {
   channelView: ChannelView
   /** Editing target from the Channels panel; 'composite' edits everything. */
   channelTarget: ChannelTarget
+  /** When set to a saved channel ID, painting/fill writes into that channel's
+   *  mask instead of layer pixels (Photoshop-style channel editing). */
+  channelEditingTarget: string | null
   savedChannels: SavedChannel[]
   view: ViewportState
   history: { states: HistoryState[]; index: number }

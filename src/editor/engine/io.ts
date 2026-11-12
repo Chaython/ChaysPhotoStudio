@@ -329,7 +329,7 @@ function addStructuredDocument(name: string, decoded: DecodedImage, metadata?: I
     workingColorSpace: 'srgb',
     metadata: metadata ? structuredClone(metadata) : undefined,
     layers: [], activeLayerId: null,
-    selection: null, channelView: 'rgb', channelTarget: 'composite', savedChannels: [],
+    selection: null, channelView: 'rgb', channelTarget: 'composite', channelEditingTarget: null, savedChannels: [],
     guides: [],
     view: { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
@@ -374,7 +374,7 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     metadata: metadata ? structuredClone(metadata) : undefined,
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
-    selection: null, channelView: 'rgb', channelTarget: 'composite', savedChannels: [],
+    selection: null, channelView: 'rgb', channelTarget: 'composite', channelEditingTarget: null, savedChannels: [],
     guides: (decoded.psdGuides ?? []).map(g => ({ ...g, id: uid() })),
     view: { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
@@ -584,6 +584,7 @@ interface SerializedHistoryState {
   activeLayerId: string | null
   channelView: string
   channelTarget?: string
+  channelEditingTarget?: string | null
   layers: SerializedLayer[]
   selection?: { bounds: any; mask: string } | null
   savedChannels?: { id: string; name: string; mask: string }[]
@@ -612,6 +613,7 @@ export interface SerializedProject {
     height: number
     channelView?: string
     channelTarget?: string
+    channelEditingTarget?: string | null
     guides?: any[]
     view?: { zoom: number; panX: number; panY: number }
     frames?: any[]
@@ -737,6 +739,7 @@ function serializeHistoryState(st: HistoryState, toDataURL: (c: HTMLCanvasElemen
     activeLayerId: st.activeLayerId,
     channelView: st.channelView,
     channelTarget: st.channelTarget ?? 'composite',
+    channelEditingTarget: st.channelEditingTarget ?? null,
     layers: st.layers.map(l => serializeLayer(l, toDataURL)),
     selection: st.selection ? { bounds: { ...st.selection.bounds }, mask: toDataURL(st.selection.mask) } : null,
     savedChannels: st.savedChannels.map(ch => ({ id: ch.id, name: ch.name, mask: toDataURL(ch.mask) })),
@@ -971,6 +974,7 @@ async function deserializeHistoryState(st: SerializedHistoryState): Promise<Hist
     resolutionPpi: Number.isFinite(st.resolutionPpi) ? Math.max(1, Number(st.resolutionPpi)) : 72,
     channelView: (st.channelView ?? 'rgb') as HistoryState['channelView'],
     channelTarget: (st.channelTarget ?? 'composite') as HistoryState['channelTarget'],
+    channelEditingTarget: (st.channelEditingTarget ?? null) as HistoryState['channelEditingTarget'],
     savedChannels,
     savedPaths: Array.isArray(st.savedPaths)
       ? st.savedPaths.map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) }))
@@ -1033,6 +1037,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
     layers: [], activeLayerId: null, selection: null,
     channelView: (channelView ?? 'rgb') as PsDocument['channelView'],
     channelTarget: (project.doc.channelTarget ?? 'composite') as PsDocument['channelTarget'],
+    channelEditingTarget: (project.doc.channelEditingTarget ?? null) as PsDocument['channelEditingTarget'],
     savedChannels: [],
     guides: Array.isArray(project.doc.guides) ? project.doc.guides : [],
     view: project.doc.view && Number.isFinite(project.doc.view.zoom)

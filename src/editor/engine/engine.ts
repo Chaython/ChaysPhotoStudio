@@ -506,7 +506,7 @@ export class Engine {
       resolutionPpi: clamp(Number(opts.resolutionPpi) || 72, 1, 12000),
       workingBitDepth, sourceBitDepth: workingBitDepth, workingColorSpace: profile.colorSpace,
       layers: [], activeLayerId: null,
-      selection: null, channelView: 'rgb', channelTarget: 'composite', savedChannels: [],
+      selection: null, channelView: 'rgb', channelTarget: 'composite', channelEditingTarget: null, savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0, rotation: 0 },
       history: { states: [], index: -1 },
       dirty: false,
@@ -567,7 +567,7 @@ export class Engine {
       workingColorSpace: profile.colorSpace,
       metadata: meta.metadata ? structuredClone(meta.metadata) : undefined,
       layers: [], activeLayerId: null,
-      selection: null, channelView: 'rgb', channelTarget: 'composite', savedChannels: [],
+      selection: null, channelView: 'rgb', channelTarget: 'composite', channelEditingTarget: null, savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0 },
       history: { states: [], index: -1 },
       dirty: false,
@@ -700,6 +700,7 @@ export class Engine {
       selection: this.cloneHistorySelection(src.selection),
       channelView: src.channelView,
       channelTarget: src.channelTarget,
+      channelEditingTarget: src.channelEditingTarget,
       savedChannels: this.cloneHistoryChannels(src.savedChannels).map(c => ({ ...c, id: uid() })),
       savedPaths: src.savedPaths?.map(path => ({ ...structuredClone(path), id: uid() })),
       guides: src.guides.map(guide => ({ ...guide, id: uid() })),
@@ -844,6 +845,7 @@ export class Engine {
       resolutionPpi: doc.resolutionPpi ?? 72,
       channelView: doc.channelView,
       channelTarget: doc.channelTarget ?? 'composite',
+      channelEditingTarget: doc.channelEditingTarget,
       savedChannels: this.cloneHistoryChannels(doc.savedChannels, previous?.savedChannels),
       savedPaths: (doc.savedPaths ?? []).map(path => structuredClone(path)),
       guides: (doc.guides ?? []).map(guide => ({ ...guide })),
@@ -871,6 +873,7 @@ export class Engine {
     doc.resolutionPpi = Number.isFinite(st.resolutionPpi) ? Math.max(1, Number(st.resolutionPpi)) : 72
     doc.channelView = st.channelView
     doc.channelTarget = st.channelTarget ?? 'composite'
+    doc.channelEditingTarget = st.channelEditingTarget
     doc.savedChannels = this.cloneHistoryChannels(st.savedChannels)
     doc.savedPaths = Array.isArray(st.savedPaths) ? st.savedPaths.map(path => structuredClone(path)) : []
     // Older serialized snapshots lack these optional properties; preserve their
@@ -4219,6 +4222,37 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.activeLayer
     if (!doc || !layer) return
+    // Saved channel editing target: fill the channel's mask instead of layer
+    // pixels. The mask is doc-space grayscale (alpha carries the value).
+    if (doc.channelEditingTarget) {
+      const saved = doc.savedChannels.find(c => c.id === doc.channelEditingTarget)
+      if (!saved?.mask) { this.ui?.toast('No saved channel to fill', 'error'); return }
+      const c = ctx2d(saved.mask)
+      c.save()
+      if (doc.selection) {
+        const region = this.selectedPixelRegion(doc, layer)
+        if (region) {
+          const tmp = createCanvas(region.w, region.h)
+          const tc = ctx2d(tmp)
+          tc.fillStyle = color
+          tc.fillRect(0, 0, region.w, region.h)
+          tc.globalCompositeOperation = 'destination-in'
+          tc.drawImage(doc.selection.mask, -region.x, -region.y)
+          c.drawImage(tmp, region.x, region.y)
+        }
+      } else {
+        c.fillStyle = color
+        c.fillRect(0, 0, c.canvas.width, c.canvas.height)
+      }
+      c.restore()
+      saved._v++
+      invalidateFlat(doc)
+      this.pushHistory('Fill')
+      this.recordStep({ op: 'fill', args: { color, target: doc.channelEditingTarget }, label: 'Fill' })
+      this.emit()
+      return
+    }
+
     if (layer.locked || layer.kind === 'adjustment') {
       this.ui?.toast('Unlock a pixel-capable layer before filling', 'error')
       return
@@ -5053,6 +5087,43 @@ export class Engine {
     const doc = this.activeDoc
     if (!doc?._stroke || !doc._strokeLayerId) { this._clearStroke(); return }
     const layerId = doc._strokeLayerId
+    // Saved channel editing target: paint into the channel's mask instead of
+    // layer pixels. The mask is doc-space grayscale (alpha carries the value),
+    // so the stroke buffer draws directly into it with selection + eraser
+    // semantics identical to layer painting.
+    if (doc.channelEditingTarget) {
+      const saved = doc.savedChannels.find(c => c.id === doc.channelEditingTarget)
+      if (saved?.mask) {
+        const c = ctx2d(saved.mask)
+        const sx = 0, sy = 0 // mask is doc-space, no layer offset
+        let stroke = doc._stroke
+        if (doc.selection) {
+          const tmp = cloneCanvas(doc._stroke)
+          const tc = ctx2d(tmp)
+          tc.globalCompositeOperation = 'destination-in'
+          tc.drawImage(doc.selection.mask, 0, 0)
+          stroke = tmp
+        }
+        c.save()
+        c.globalAlpha = doc._strokeOpacity
+        if (doc._strokeErase) {
+          // Erasing paints the background colour into the mask
+          stroke = translateEraseStrokeToColor(stroke, doc._strokeBgColor || '#ffffff')
+          c.globalCompositeOperation = 'source-over'
+        } else {
+          try { c.globalCompositeOperation = BLEND_GCO[doc._strokeBlendMode] || 'source-over' } catch { /* noop */ }
+        }
+        c.drawImage(stroke, sx, sy)
+        c.restore()
+        saved._v++
+        invalidateFlat(doc)
+      }
+      this._clearStroke()
+      this.pushHistory(label)
+      this.emit()
+      return
+    }
+
     const l = this.mutateLayerPixels(layerId)
     if (l?.canvas) {
       const c = ctx2d(l.canvas)
@@ -6480,6 +6551,18 @@ export class Engine {
     if (!doc) return
     if (doc.channelTarget === t) return
     doc.channelTarget = t
+    invalidateFlat(doc)
+    this.emit()
+  }
+
+  /** Set the saved channel being edited as a grayscale target. When set,
+   *  painting/fill writes into that channel's mask instead of layer pixels.
+   *  Passing null returns to layer-pixel editing. */
+  setChannelEditingTarget(channelId: string | null) {
+    const doc = this.activeDoc
+    if (!doc) return
+    if (doc.channelEditingTarget === channelId) return
+    doc.channelEditingTarget = channelId
     invalidateFlat(doc)
     this.emit()
   }

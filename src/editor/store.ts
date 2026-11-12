@@ -907,6 +907,7 @@ interface EditorStore {
   historyLabels: string[]
   channelView: ChannelView
   channelTarget: ChannelTarget
+  channelEditingTarget: string | null
   savedChannels: { id: string; name: string }[]
   hasSelection: boolean
   recording: boolean
@@ -1066,6 +1067,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   historyLabels: [],
   channelView: 'rgb',
   channelTarget: 'composite',
+  channelEditingTarget: null,
   savedChannels: [],
   hasSelection: false,
   recording: false,
@@ -1741,6 +1743,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       historyLabels: doc?.history.states.map(h => h.label) ?? [],
       channelView: doc?.channelView ?? 'rgb',
       channelTarget: doc?.channelTarget ?? 'composite',
+      channelEditingTarget: doc?.channelEditingTarget ?? null,
       savedChannels: doc?.savedChannels.map(c => ({ id: c.id, name: c.name })) ?? [],
       hasSelection: !!doc?.selection,
       recording: engine.isRecording,

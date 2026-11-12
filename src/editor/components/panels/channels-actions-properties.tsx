@@ -57,6 +57,7 @@ export function ChannelsPanel() {
   const tick = useEditorStore(s => s.renderTick)
   const channelView = useEditorStore(s => s.channelView)
   const channelTarget = useEditorStore(s => s.channelTarget)
+  const channelEditingTarget = useEditorStore(s => s.channelEditingTarget)
   const savedChannels = useEditorStore(s => s.savedChannels)
   const hasSelection = useEditorStore(s => s.hasSelection)
   const refs = useRef<Record<string, HTMLCanvasElement | null>>({})
@@ -227,22 +228,34 @@ export function ChannelsPanel() {
         {savedChannels.length > 0 && (
           <div className="px-2 pt-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">Alpha</div>
         )}
-        {savedChannels.map(ch => (
-          <div key={ch.id} className="flex items-center gap-2 px-2 py-1.5 border-b border-border/30 hover:bg-accent/25 group">
-            <SavedChannelThumb id={ch.id} />
-            <span className="text-[11px] flex-1 truncate">{ch.name}</span>
-            <button
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground p-1"
-              title="Load channel as selection"
-              onClick={() => engine.loadChannelAsSelection(ch.id)}
-            ><Icons.MousePointerClick size={12} /></button>
-            <button
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive p-1"
-              title="Delete channel"
-              onClick={() => engine.deleteSavedChannel(ch.id)}
-            ><Icons.Trash2 size={12} /></button>
-          </div>
-        ))}
+        {savedChannels.map(ch => {
+          const isEditing = channelEditingTarget === ch.id
+          return (
+            <div key={ch.id} className="flex items-center gap-2 px-2 py-1.5 border-b border-border/30 hover:bg-accent/25 group">
+              <SavedChannelThumb id={ch.id} />
+              <span className="text-[11px] flex-1 truncate">{ch.name}</span>
+              {isEditing && (
+                <span className="text-[9px] text-primary/80 font-mono mr-1">EDIT</span>
+              )}
+              <button
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground p-1"
+                title="Load channel as selection"
+                onClick={() => engine.loadChannelAsSelection(ch.id)}
+              ><Icons.MousePointerClick size={12} /></button>
+              <button
+                className={cn('opacity-0 group-hover:opacity-100 p-1 rounded',
+                  isEditing ? 'bg-primary/20 text-primary border border-primary/40' : 'bg-accent/10 text-accent hover:text-destructive')}
+                title={isEditing ? 'Stop editing channel' : 'Edit channel (paint into mask)'}
+                onClick={e => { e.stopPropagation(); engine.setChannelEditingTarget(isEditing ? null : ch.id) }}
+              ><Icons.Edit size={12} /></button>
+              <button
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive p-1"
+                title="Delete channel"
+                onClick={() => engine.deleteSavedChannel(ch.id)}
+              ><Icons.Trash2 size={12} /></button>
+            </div>
+          )
+        })}
       </FancyScroll>
 
       {/* footer */}
