@@ -272,4 +272,49 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import black-white target b passed')
 }
 
+// ---------------------------------------------------------------- lens-flare with target
+
+{
+  const step = filterStep('lens-flare', { brightness: 150 }, 'rb')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'lens-flare step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyFilter', 'step is applyFilter')
+  assert.equal(importedStep.args.target, 'rb', 'target restored on import')
+  assert.equal(importedStep.args.params.brightness, 150, 'brightness restored')
+  console.log('.atn export/import lens-flare target rb passed')
+}
+
+// ---------------------------------------------------------------- clouds with target
+
+{
+  const step = filterStep('clouds', {}, 'r')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'clouds step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyFilter', 'step is applyFilter')
+  assert.equal(importedStep.args.target, 'r', 'target restored on import')
+  console.log('.atn export/import clouds target r passed')
+}
+
+// ---------------------------------------------------------------- color-lookup with target
+
+{
+  const step = adjustmentStep('color-lookup', { lutId: 'someLut', opacity: 80 }, 'rg')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'color-lookup step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'rg', 'target restored on import')
+  assert.equal(importedStep.args.params.lutId, 'someLut', 'lutId restored')
+  assert.equal(importedStep.args.params.opacity, 80, 'opacity restored')
+  console.log('.atn export/import color-lookup target rg passed')
+}
+
 console.log('.atn channel-target round-trip: all checks passed')

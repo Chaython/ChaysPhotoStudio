@@ -597,6 +597,33 @@ const FILTER_MAPPINGS: AtnMapping[] = [
     },
   },
   {
+    // Lens Flare. Event code `LnsF`. Keys: `Rds ` radius, `Lgt` light source type
+    // (0=50-300mm, 1=35mm, 2=105mm, 3=Prime), `Br` brightness.
+    code: 'LnsF', names: ['lensFlare'], op: 'applyFilter', type: 'lens-flare',
+    classId: 'null', label: 'Lens Flare', keys: ['Rds ', 'Lgt', 'Br'],
+    read: d => {
+      const radius = valueNumber(atnGet(d, 'Rds '))
+      const light = valueNumber(atnGet(d, 'Lgt'))
+      const brightness = valueNumber(atnGet(d, 'Br'))
+      if (radius === undefined || brightness === undefined) return null
+      const out: Record<string, any> = { radius, brightness }
+      if (light !== undefined) out.lightType = light
+      return out
+    },
+    write: p => {
+      const items: [string, AtnValue][] = [['Rds ', psInt(p.radius ?? 4)], ['Br', psInt(p.brightness ?? 100)]]
+      if (typeof p.lightType === 'number') items.push(['Lgt', psInt(p.lightType)])
+      return makeDescriptor('null', items)
+    },
+  },
+  {
+    // Clouds. Event code `Clrs`. No keys — just renders clouds.
+    code: 'Clrs', names: ['clouds'], op: 'applyFilter', type: 'clouds',
+    classId: 'null', label: 'Clouds', keys: [],
+    read: () => ({}),
+    write: () => makeDescriptor('null'),
+  },
+  {
     code: 'Mnm ', names: ['minimum'], op: 'applyFilter', type: 'minimum',
     classId: 'null', label: 'Minimum', keys: ['Rds '],
     read: d => readRadius(d),
@@ -1157,6 +1184,25 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
       ['Blues', psInt(p.blues ?? 20)],
       ['Magentas', psInt(p.magentas ?? 80)],
     ]),
+  },
+  {
+    // Color Lookup. Event code `ClrL`. Keys: `LutN` LUT name, `Opct` opacity.
+    code: 'ClrL', names: ['colorLookup'], op: 'applyAdjustment', type: 'color-lookup',
+    classId: 'null', label: 'Color Lookup', keys: ['LutN', 'Opct'],
+    read: d => {
+      const lutId = valueEnum(atnGet(d, 'LutN'))
+      const opacity = valueNumber(atnGet(d, 'Opct'))
+      if (!lutId) return null
+      const out: Record<string, any> = { lutId }
+      if (opacity !== undefined) out.opacity = opacity
+      return out
+    },
+    write: p => {
+      const items: [string, AtnValue][] = []
+      if (typeof p.lutId === 'string') items.push(['LutN', psEnum('LutN', p.lutId)])
+      if (typeof p.opacity === 'number') items.push(['Opct', psInt(p.opacity)])
+      return items.length ? makeDescriptor('ClrL', items) : makeDescriptor('ClrL')
+    },
   },
   {
     // Photoshop Curves. Event code `Crv `. Key `CrvP` holds an array of curve
