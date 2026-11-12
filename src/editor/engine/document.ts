@@ -939,9 +939,10 @@ export function getSamplingComposite(
   return out
 }
 
-export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement): HTMLCanvasElement {
+export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement, opts?: { applyChannelTarget?: boolean }): HTMLCanvasElement {
   const out = target ?? createCanvas(doc.width, doc.height)
   if (out.width !== doc.width || out.height !== doc.height) { out.width = doc.width; out.height = doc.height }
+  const applyTarget = opts?.applyChannelTarget ?? true
 
   // LIVE LAYER-DRAG fast path: 3 drawImages from the cached split instead of
   // the full (allocation-heavy) pipeline — checked BEFORE the GL path because
@@ -1010,8 +1011,37 @@ export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement): 
 
   renderLayerRange(doc, 0, doc.layers.length, acc, accCtx)
 
-  // channel view
-  if (doc.channelView !== 'rgb') {
+  // channel target (editing target) takes precedence for display; if composite,
+  // fall back to channelView (solo view). Subsets render targeted components
+  // in colour, others as grayscale.
+  if (applyTarget) {
+    const target = (doc.channelTarget ?? 'composite') as string
+    if (target !== 'composite') {
+      const comps = target.split('')
+      const rOn = comps.includes('r'), gOn = comps.includes('g'), bOn = comps.includes('b')
+      if (!(rOn && gOn && bOn)) {
+        const img = getProcessingPixelData(acc)
+        const d = img.data
+        for (let k = 0; k < d.length; k += 4) {
+          const v = 0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2]
+          d[k] = rOn ? d[k] : v
+          d[k + 1] = gOn ? d[k + 1] : v
+          d[k + 2] = bOn ? d[k + 2] : v
+        }
+        putProcessingPixelData(acc, img)
+      }
+    } else if (doc.channelView !== 'rgb') {
+      const img = getProcessingPixelData(acc)
+      const d = img.data
+      const ch = doc.channelView === 'r' ? 0 : doc.channelView === 'g' ? 1 : 2
+      for (let k = 0; k < d.length; k += 4) {
+        const v = d[k + ch]
+        d[k] = v; d[k + 1] = v; d[k + 2] = v
+      }
+      putProcessingPixelData(acc, img)
+    }
+  } else if (doc.channelView !== 'rgb') {
+    // getFlatComposite still honours channelView for thumbnails/sampling
     const img = getProcessingPixelData(acc)
     const d = img.data
     const ch = doc.channelView === 'r' ? 0 : doc.channelView === 'g' ? 1 : 2
@@ -1037,14 +1067,14 @@ export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement): 
 export function getFlatComposite(doc: PsDocument): HTMLCanvasElement {
   const anyDoc = doc as any
   if (anyDoc._flatCacheKey === flatKey(doc) && anyDoc._flatCache) return anyDoc._flatCache
-  const c = compositeDocument(doc)
+  const c = compositeDocument(doc, undefined, { applyChannelTarget: false })
   anyDoc._flatCache = c
   anyDoc._flatCacheKey = flatKey(doc)
   return c
 }
 
 function flatKey(doc: PsDocument): string {
-  let k = `${doc._epoch}|${doc.channelView}|${doc.previewAdjustment ? JSON.stringify(doc.previewAdjustment) : ''}|${doc._strokeLayerId ?? ''}.${doc._strokeV ?? 0}|${doc.layers.map(l => `${l._v}.${l._mv}.${l.visible ? 1 : 0}.${l.opacity}.${l.blendMode}.${l.maskEnabled ? 1 : 0}${l.clipped ? 'c' : ''}`).join(',')}`
+  let k = `${doc._epoch}|${doc.channelView}|${doc.channelTarget}|${doc.previewAdjustment ? JSON.stringify(doc.previewAdjustment) : ''}|${doc._strokeLayerId ?? ''}.${doc._strokeV ?? 0}|${doc.layers.map(l => `${l._v}.${l._mv}.${l.visible ? 1 : 0}.${l.opacity}.${l.blendMode}.${l.maskEnabled ? 1 : 0}${l.clipped ? 'c' : ''}`).join(',')}`
   return k
 }
 

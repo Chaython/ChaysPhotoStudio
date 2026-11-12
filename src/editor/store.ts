@@ -1,7 +1,7 @@
 'use client'
 // Zustand store — UI state + lightweight mirrors of engine state
 import { create } from 'zustand'
-import type { DialogInstance, DialogType, ToolId, PsAction, ChannelView, ToolbarSection } from './types'
+import type { DialogInstance, DialogType, ToolId, PsAction, ChannelView, ChannelTarget, ToolbarSection } from './types'
 import { TOOL_DEFS, TOOL_MAP } from './constants/tools'
 import { DOCKABLE_PANEL_IDS, isDockablePanelId } from './constants/panel-ids'
 import { engine } from './engine/engine'
@@ -906,6 +906,7 @@ interface EditorStore {
   historyIndex: number
   historyLabels: string[]
   channelView: ChannelView
+  channelTarget: ChannelTarget
   savedChannels: { id: string; name: string }[]
   hasSelection: boolean
   recording: boolean
@@ -1064,6 +1065,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   historyIndex: -1,
   historyLabels: [],
   channelView: 'rgb',
+  channelTarget: 'composite',
   savedChannels: [],
   hasSelection: false,
   recording: false,
@@ -1738,6 +1740,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       historyIndex: doc?.history.index ?? -1,
       historyLabels: doc?.history.states.map(h => h.label) ?? [],
       channelView: doc?.channelView ?? 'rgb',
+      channelTarget: doc?.channelTarget ?? 'composite',
       savedChannels: doc?.savedChannels.map(c => ({ id: c.id, name: c.name })) ?? [],
       hasSelection: !!doc?.selection,
       recording: engine.isRecording,

@@ -486,6 +486,8 @@ export interface HistoryState {
   /** Physical document resolution metadata in pixels per inch. */
   resolutionPpi?: number
   channelView: ChannelView
+  /** Editing target from the Channels panel; 'composite' edits everything. */
+  channelTarget: ChannelTarget
   savedChannels: SavedChannel[]
   savedPaths?: SavedPath[]
   /** Extra document-space geometry (optional for older serialized Snapshots). */
@@ -551,6 +553,12 @@ export interface LayerComp {
 }
 
 export type ChannelView = 'rgb' | 'r' | 'g' | 'b'
+
+/** Photoshop-style editing target built from the Channels panel. 'composite'
+ *  edits every component; a subset constrains pixel writes to those colour
+ *  components while all others (including alpha) are preserved byte-for-byte.
+ *  Canonical subset spelling is alphabetical: r < g < b ('rg', 'rb', 'gb'). */
+export type ChannelTarget = 'composite' | 'r' | 'g' | 'b' | 'rg' | 'rb' | 'gb'
 
 export interface SavedChannel {
   id: string
@@ -739,6 +747,8 @@ export interface PsDocument {
   selectedLayerIds?: string[]
   selection: SelectionState | null
   channelView: ChannelView
+  /** Editing target from the Channels panel; 'composite' edits everything. */
+  channelTarget: ChannelTarget
   savedChannels: SavedChannel[]
   view: ViewportState
   history: { states: HistoryState[]; index: number }
@@ -779,6 +789,10 @@ export interface PsDocument {
    * previewed and committed. Erasers still force destination-out. */
   _strokeBlendMode: BlendMode
   _strokeBbox: Rect | null
+  /** Toolbox background colour captured when an eraser stroke begins — an
+   *  eraser under a colour editing target paints it into the targeted
+   *  components instead of subtracting alpha. */
+  _strokeBgColor: string | null
   /** stroke content version — bumped per dab so live preview cache keys stay fresh */
   _strokeV: number
   /** LIVE layer-drag state (move tool): while set, compositeDocument renders a

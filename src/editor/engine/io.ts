@@ -329,13 +329,13 @@ function addStructuredDocument(name: string, decoded: DecodedImage, metadata?: I
     workingColorSpace: 'srgb',
     metadata: metadata ? structuredClone(metadata) : undefined,
     layers: [], activeLayerId: null,
-    selection: null, channelView: 'rgb', savedChannels: [],
+    selection: null, channelView: 'rgb', channelTarget: 'composite', savedChannels: [],
     guides: [],
     view: { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
     historyBrushSourceIndex: 0,
     dirty: false, previewFilter: null, previewAdjustment: null,
-    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeBgColor: null, _strokeV: 0, _liveDrag: null,
   }
   for (const parsed of decoded.documentLayers ?? []) {
     const layer = layerFromParsed(parsed, width, height)
@@ -374,13 +374,13 @@ function addPsdDocument(name: string, decoded: DecodedImage, metadata?: ImageMet
     metadata: metadata ? structuredClone(metadata) : undefined,
     workingColorSpace: 'srgb',
     layers: [], activeLayerId: null,
-    selection: null, channelView: 'rgb', savedChannels: [],
+    selection: null, channelView: 'rgb', channelTarget: 'composite', savedChannels: [],
     guides: (decoded.psdGuides ?? []).map(g => ({ ...g, id: uid() })),
     view: { zoom: 1, panX: 0, panY: 0 },
     history: { states: [], index: -1 },
     historyBrushSourceIndex: 0,
     dirty: false, previewFilter: null, previewAdjustment: null,
-    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeBgColor: null, _strokeV: 0, _liveDrag: null,
   }
   for (const psd of decoded.psdLayers ?? []) {
     const layer = newLayer('raster', psd.name || 'Layer', width, height)
@@ -583,6 +583,7 @@ interface SerializedHistoryState {
   resolutionPpi?: number
   activeLayerId: string | null
   channelView: string
+  channelTarget?: string
   layers: SerializedLayer[]
   selection?: { bounds: any; mask: string } | null
   savedChannels?: { id: string; name: string; mask: string }[]
@@ -610,6 +611,7 @@ export interface SerializedProject {
     width: number
     height: number
     channelView?: string
+    channelTarget?: string
     guides?: any[]
     view?: { zoom: number; panX: number; panY: number }
     frames?: any[]
@@ -734,6 +736,7 @@ function serializeHistoryState(st: HistoryState, toDataURL: (c: HTMLCanvasElemen
     resolutionPpi: st.resolutionPpi,
     activeLayerId: st.activeLayerId,
     channelView: st.channelView,
+    channelTarget: st.channelTarget ?? 'composite',
     layers: st.layers.map(l => serializeLayer(l, toDataURL)),
     selection: st.selection ? { bounds: { ...st.selection.bounds }, mask: toDataURL(st.selection.mask) } : null,
     savedChannels: st.savedChannels.map(ch => ({ id: ch.id, name: ch.name, mask: toDataURL(ch.mask) })),
@@ -967,6 +970,7 @@ async function deserializeHistoryState(st: SerializedHistoryState): Promise<Hist
     height,
     resolutionPpi: Number.isFinite(st.resolutionPpi) ? Math.max(1, Number(st.resolutionPpi)) : 72,
     channelView: (st.channelView ?? 'rgb') as HistoryState['channelView'],
+    channelTarget: (st.channelTarget ?? 'composite') as HistoryState['channelTarget'],
     savedChannels,
     savedPaths: Array.isArray(st.savedPaths)
       ? st.savedPaths.map(p => ({ ...p, anchors: p.anchors.map(a => ({ ...a })) }))
@@ -1027,7 +1031,9 @@ export async function openSerializedProject(project: SerializedProject, label = 
     proof: project.doc.proof && typeof project.doc.proof === 'object' ? structuredClone(project.doc.proof) : undefined,
     resolutionPpi: Math.max(1, Math.min(12000, Number(project.doc.resolutionPpi) || 72)),
     layers: [], activeLayerId: null, selection: null,
-    channelView: (channelView ?? 'rgb') as PsDocument['channelView'], savedChannels: [],
+    channelView: (channelView ?? 'rgb') as PsDocument['channelView'],
+    channelTarget: (project.doc.channelTarget ?? 'composite') as PsDocument['channelTarget'],
+    savedChannels: [],
     guides: Array.isArray(project.doc.guides) ? project.doc.guides : [],
     view: project.doc.view && Number.isFinite(project.doc.view.zoom)
       ? { ...project.doc.view }
@@ -1103,7 +1109,7 @@ export async function openSerializedProject(project: SerializedProject, label = 
       : [],
     dirty: false, previewFilter: null, previewAdjustment: null,
     frames: Array.isArray(project.doc.frames) ? structuredClone(project.doc.frames) : undefined,
-    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+    _epoch: 1, _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeBgColor: null, _strokeV: 0, _liveDrag: null,
   }
   const layerIds = new Set<string>()
   for (const sl of project.layers ?? []) {

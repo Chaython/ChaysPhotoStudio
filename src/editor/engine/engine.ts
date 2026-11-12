@@ -5,7 +5,7 @@
 import type {
   AdjustmentType, AnimFrame, BlendIfSettings, DialogType, ExportOptions, FilterType, Layer, LayerFX, LayerKind,
   PsDocument, PsAction, ActionStep, Rect, SelectionCombine, SelectionState, SavedChannel, HistoryState, ShapeSpec, TextSpec, ImageMetadata, ProofSettings,
-  ChannelView, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, HistorySnapshotAutoPolicy, TransformWarpSpec, TransformSpec,
+  ChannelView, ChannelTarget, BrushSettings, BlendMode, SavedPath, PathAnchor, LayerComp, LayerCompOptions, LayerCompLayerState, HistorySnapshot, HistorySnapshotAutoPolicy, TransformWarpSpec, TransformSpec,
 } from '../types'
 import { TOOL_MAP, BLEND_GCO } from '../constants/tools'
 import {
@@ -46,6 +46,12 @@ import { rasterTransparencyAlpha } from '../image-ops/layer-transparency'
 import { applyHdrRasterMask, createLayerMaskAlpha, type LayerMaskCreationMode } from '../image-ops/layer-mask'
 import { layerContentForRasterization } from './rasterize-layer'
 import { compositeHdrRasters, type HdrCompositeLayer } from '../image-ops/hdr-composite'
+import { docRectToLayerRect } from '../image-ops/channel-restrict'
+import type { PlaneSnapshotF32 } from '../image-ops/channel-restrict'
+import {
+  captureCanvasPlanes, restoreCanvasPlanes, captureHdrPlanes, restoreHdrPlanes,
+  resolveChannelTarget, translateEraseStrokeToColor, type CanvasPlaneSnapshot,
+} from './channel-target'
 
 export const MAX_HISTORY = 50
 
@@ -500,12 +506,12 @@ export class Engine {
       resolutionPpi: clamp(Number(opts.resolutionPpi) || 72, 1, 12000),
       workingBitDepth, sourceBitDepth: workingBitDepth, workingColorSpace: profile.colorSpace,
       layers: [], activeLayerId: null,
-      selection: null, channelView: 'rgb', savedChannels: [],
+      selection: null, channelView: 'rgb', channelTarget: 'composite', savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0, rotation: 0 },
       history: { states: [], index: -1 },
       dirty: false,
       previewFilter: null, previewAdjustment: null,
-      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeBgColor: null, _strokeV: 0, _liveDrag: null,
     }
     const bg = newLayer('raster', 'Background', width, height)
     if (opts.fill && opts.fill !== 'transparent') {
@@ -561,12 +567,12 @@ export class Engine {
       workingColorSpace: profile.colorSpace,
       metadata: meta.metadata ? structuredClone(meta.metadata) : undefined,
       layers: [], activeLayerId: null,
-      selection: null, channelView: 'rgb', savedChannels: [],
+      selection: null, channelView: 'rgb', channelTarget: 'composite', savedChannels: [],
       view: { zoom: 1, panX: 0, panY: 0 },
       history: { states: [], index: -1 },
       dirty: false,
       previewFilter: null, previewAdjustment: null,
-      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+      _epoch: 1, guides: [], _stroke: null, _strokeLayerId: null, _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal', _strokeBbox: null, _strokeBgColor: null, _strokeV: 0, _liveDrag: null,
     }
     const layer = newLayer('raster', name.replace(/\.[^.]+$/, ''), canvas.width, canvas.height)
     ctx2d(layer.canvas!).drawImage(canvas, 0, 0)
@@ -693,6 +699,7 @@ export class Engine {
       selectedLayerIds: (src.selectedLayerIds ?? []).map(id => layerIds.get(id)).filter((id): id is string => !!id),
       selection: this.cloneHistorySelection(src.selection),
       channelView: src.channelView,
+      channelTarget: src.channelTarget,
       savedChannels: this.cloneHistoryChannels(src.savedChannels).map(c => ({ ...c, id: uid() })),
       savedPaths: src.savedPaths?.map(path => ({ ...structuredClone(path), id: uid() })),
       guides: src.guides.map(guide => ({ ...guide, id: uid() })),
@@ -717,7 +724,7 @@ export class Engine {
       previewFilter: null, previewAdjustment: null,
       _epoch: 1, _stroke: null, _strokeLayerId: null,
       _strokeErase: false, _strokeOpacity: 1, _strokeBlendMode: 'normal',
-      _strokeBbox: null, _strokeV: 0, _liveDrag: null,
+      _strokeBbox: null, _strokeBgColor: null, _strokeV: 0, _liveDrag: null,
     }
     this.docs.push(doc)
     this._activeId = doc.id
@@ -836,6 +843,7 @@ export class Engine {
       width: doc.width, height: doc.height,
       resolutionPpi: doc.resolutionPpi ?? 72,
       channelView: doc.channelView,
+      channelTarget: doc.channelTarget ?? 'composite',
       savedChannels: this.cloneHistoryChannels(doc.savedChannels, previous?.savedChannels),
       savedPaths: (doc.savedPaths ?? []).map(path => structuredClone(path)),
       guides: (doc.guides ?? []).map(guide => ({ ...guide })),
@@ -862,6 +870,7 @@ export class Engine {
     doc.width = st.width; doc.height = st.height
     doc.resolutionPpi = Number.isFinite(st.resolutionPpi) ? Math.max(1, Number(st.resolutionPpi)) : 72
     doc.channelView = st.channelView
+    doc.channelTarget = st.channelTarget ?? 'composite'
     doc.savedChannels = this.cloneHistoryChannels(st.savedChannels)
     doc.savedPaths = Array.isArray(st.savedPaths) ? st.savedPaths.map(path => structuredClone(path)) : []
     // Older serialized snapshots lack these optional properties; preserve their
@@ -877,6 +886,7 @@ export class Engine {
     if ('showArtboardOutlines' in st) doc.showArtboardOutlines = st.showArtboardOutlines !== false
     if ('linkedDesignStyles' in st) doc.linkedDesignStyles = st.linkedDesignStyles?.map(t => structuredClone(t))
     doc._stroke = null; doc._strokeLayerId = null; doc._strokeBlendMode = 'normal'; doc._strokeBbox = null
+    doc._strokeBgColor = null
     doc.previewFilter = null; doc.previewAdjustment = null
     doc._epoch++
     invalidateFlat(doc)
@@ -2191,6 +2201,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(id)
     if (!doc || !layer) return
+    if (this.refusePartialChannelTarget('Moving layers')) return
     if (layer.kind === 'smart' && layer.transform) {
       layer.transform.x += dx; layer.transform.y += dy
       layer._v++
@@ -3420,6 +3431,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(id)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    if (this.refusePartialChannelTarget(`${filterLabel(type)} filters`)) return
     // Runtime scripting/action imports can supply names that evade TS enums.
     // Do not persist unknown Smart Filter nodes or append phantom History.
     if (!imageOps.FILTERS[type]) {
@@ -4127,6 +4139,7 @@ export class Engine {
       this.ui?.toast('Make a selection before using Stroke', 'info')
       return false
     }
+    if (this.refusePartialChannelTarget('Stroke Selection')) return false
     if (!Number.isInteger(options.width) || options.width < 1 || options.width > 200 ||
         !Number.isFinite(options.opacity) || options.opacity < 0 || options.opacity > 100 ||
         !/^#[0-9a-f]{6}$/i.test(options.color) ||
@@ -4163,7 +4176,7 @@ export class Engine {
     }
   }
 
-  fillSelection(color: string) {
+  fillSelection(color: string, argTarget?: string) {
     const doc = this.activeDoc
     const layer = this.activeLayer
     if (!doc || !layer) return
@@ -4171,6 +4184,14 @@ export class Engine {
       this.ui?.toast('Unlock a pixel-capable layer before filling', 'error')
       return
     }
+    // An explicit target (e.g. a recorded action) wins over the panel state;
+    // invalid values abort before any mutation.
+    let target: ChannelTarget = doc.channelTarget ?? 'composite'
+    if (argTarget !== undefined && argTarget !== null) {
+      try { target = resolveChannelTarget(doc, argTarget).target }
+      catch { this.ui?.toast('Unknown channel editing target', 'error'); return }
+    }
+    const restrict = target !== 'composite'
     if (doc.workingBitDepth === 32) {
       if (layer.kind !== 'raster' || !layer.canvas) {
         this.ui?.toast('Rasterize the layer before 32-bit HDR Fill', 'error')
@@ -4188,15 +4209,27 @@ export class Engine {
       const live = this.mutateLayerPixels(layer.id)
       if (!live?.canvas) return
       const pixels = live.hdrPixels ?? hdrPixelsFromCanvas(live.canvas)
+      // Channel target: snapshot the protected planes of the affected
+      // region, fill, then restore them byte-exact (alpha included).
+      let planes: PlaneSnapshotF32 | null = null
+      if (restrict) {
+        const layerRect = docRectToLayerRect(
+          { x: 0, y: 0, w: doc.width, h: doc.height },
+          live.canvas.width, live.canvas.height, ox, oy)
+        if (layerRect && pixels.length === live.canvas.width * live.canvas.height * 4) {
+          planes = captureHdrPlanes(pixels, live.canvas.width, layerRect, target)
+        }
+      }
       paintHdrRasterFill(pixels, live.canvas.width, live.canvas.height,
         ox, oy, doc.width, doc.height, mask, color)
+      if (planes) restoreHdrPlanes(pixels, planes)
       live.hdrPixels = pixels
       live.hdrColorSpace = 'linear-srgb'
       live.canvas = hdrFloat32ToPreviewCanvas(pixels, live.canvas.width, live.canvas.height, 'srgb')
       live._hdrPreviewBefore = null
       invalidateFlat(doc)
       this.pushHistory('Fill', doc)
-      this.recordStep({ op: 'fill', args: { color }, label: 'Fill' })
+      this.recordStep({ op: 'fill', args: restrict ? { color, target } : { color }, label: 'Fill' })
       this.emit()
       return
     }
@@ -4211,6 +4244,15 @@ export class Engine {
     if (!l?.canvas) return
     const c = ctx2d(l.canvas)
     const sx = -(l.offsetX ?? 0), sy = -(l.offsetY ?? 0)
+    // Channel target: snapshot the protected planes over the affected region
+    // so the fill rewrites only the targeted colour components.
+    let planes: CanvasPlaneSnapshot | null = null
+    if (restrict) {
+      const layerRect = docRectToLayerRect(
+        region ?? { x: 0, y: 0, w: doc.width, h: doc.height },
+        l.canvas.width, l.canvas.height, l.offsetX ?? 0, l.offsetY ?? 0)
+      if (layerRect) planes = captureCanvasPlanes(l.canvas, layerRect, target)
+    }
     c.save()
     if (doc.selection && region) {
       // Clip the scratch image to the selection rather than allocating
@@ -4227,9 +4269,10 @@ export class Engine {
       c.fillRect(sx, sy, doc.width, doc.height)
     }
     c.restore()
+    if (planes) restoreCanvasPlanes(l.canvas, planes)
     invalidateFlat(doc)
     this.pushHistory('Fill')
-    this.recordStep({ op: 'fill', args: { color }, label: 'Fill' })
+    this.recordStep({ op: 'fill', args: restrict ? { color, target } : { color }, label: 'Fill' })
     this.emit()
   }
 
@@ -4237,6 +4280,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.activeLayer
     if (!doc?.selection || !layer) return
+    if (this.refusePartialChannelTarget('Edit > Clear')) return
     if (layer.locked || layer.kind !== 'raster' || !layer.canvas) {
       this.ui?.toast('Clear Selected Pixels requires an unlocked raster layer', 'error')
       return
@@ -4277,6 +4321,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment' || !imageOps.ADJUSTMENTS[type]) return false
+    if (this.refusePartialChannelTarget(`${typeLabel(type)} adjustments`)) return false
     if (!this.canCommitHdrRasterOp(doc, layer, typeLabel(type))) return false
     if (doc.workingBitDepth === 32 && !imageOps.HDR_SAFE_ADJUSTMENTS.has(type)) {
       this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
@@ -4302,6 +4347,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment' || !imageOps.FILTERS[type]) return false
+    if (this.refusePartialChannelTarget(`${filterLabel(type)} filters`)) return false
     if (doc.workingBitDepth === 32 && layer.kind !== 'smart' && !imageOps.HDR_SAFE_FILTERS.has(type)) {
       this.ui?.toast(`${filterLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
       return false
@@ -4340,6 +4386,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.activeLayer
     if (!doc || !layer) return
+    if (this.refusePartialChannelTarget('Content-Aware Fill')) return
     if (layer.locked || layer.kind === 'adjustment') {
       this.ui?.toast('Unlock a pixel-capable layer before Content-Aware Fill', 'error')
       return
@@ -4430,6 +4477,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return false
+    if (this.refusePartialChannelTarget(label)) return false
     if (doc.workingBitDepth !== 8) {
       this.ui?.toast(`${label} requires an 8-bit document to preserve pixel precision`, 'error')
       return false
@@ -4563,6 +4611,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.kind === 'adjustment' || layer.locked) return false
+    if (this.refusePartialChannelTarget(label)) return false
     if (!this.canCommitHdrRasterOp(doc, layer, label)) return false
     if (doc.workingBitDepth !== 8 &&
         (spec.kind === 'auto-tone' || spec.kind === 'auto-contrast' || spec.kind === 'auto-color')) {
@@ -4599,6 +4648,7 @@ export class Engine {
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
     if (!this.canCommitHdrRasterOp(doc, layer, typeLabel(type))) return
+    if (this.refusePartialChannelTarget(`${typeLabel(type)} adjustments`)) return
     if (doc.workingBitDepth === 32 && !imageOps.HDR_SAFE_ADJUSTMENTS.has(type)) {
       this.ui?.toast(`${typeLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
       return
@@ -4630,6 +4680,7 @@ export class Engine {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
     if (!doc || !layer || layer.locked || layer.kind === 'adjustment') return
+    if (this.refusePartialChannelTarget(`${filterLabel(type)} filters`)) return
     if (doc.workingBitDepth === 32 && layer.kind !== 'smart' && !imageOps.HDR_SAFE_FILTERS.has(type)) {
       this.ui?.toast(`${filterLabel(type)} is not yet supported for 32-bit HDR layers`, 'error')
       return
@@ -4670,6 +4721,7 @@ export class Engine {
   /** Async auto-correction (Image menu / shortcuts) — autoTone/autoContrast/autoColor in the worker. */
   async autoCorrectAsync(kind: 'tone' | 'contrast' | 'color'): Promise<void> {
     const layer = this.activeLayer
+    if (this.refusePartialChannelTarget('Automatic corrections')) return
     if (this.activeDoc?.workingBitDepth !== 8) {
       this.ui?.toast('Automatic histogram corrections currently require an 8-bit document', 'error')
       return
@@ -4891,7 +4943,7 @@ export class Engine {
   }
 
   // ================================================== stroke engine (brush/eraser/clone/heal)
-  beginStroke(layerId: string, opts: { opacity?: number; erase?: boolean; blendMode?: BlendMode | string } = {}) {
+  beginStroke(layerId: string, opts: { opacity?: number; erase?: boolean; blendMode?: BlendMode | string; bgColor?: string } = {}) {
     const doc = this.activeDoc
     if (!doc) return
     let layer = this.layerById(layerId)
@@ -4907,6 +4959,7 @@ export class Engine {
     doc._strokeErase = !!opts.erase
     doc._strokeOpacity = (opts.opacity ?? 100) / 100
     doc._strokeBlendMode = (opts.blendMode && BLEND_GCO[opts.blendMode as BlendMode] ? opts.blendMode : 'normal') as BlendMode
+    doc._strokeBgColor = opts.bgColor ?? null
     doc._strokeBbox = null
     doc._strokeV = (doc._strokeV || 0) + 1
     this.requestRender()
@@ -4954,14 +5007,51 @@ export class Engine {
         tc.drawImage(doc.selection.mask, 0, 0)
         stroke = tmp
       }
+      // Channel editing target: run the composite normally, then restore the
+      // protected planes so only the targeted colour components change. An
+      // eraser paints the background colour into the targeted components
+      // instead of subtracting alpha, preserving the layer's transparency.
+      const target = doc.channelTarget ?? 'composite'
+      const restrict = target !== 'composite'
+      let planes: CanvasPlaneSnapshot | null = null
+      let hdrPlanes: PlaneSnapshotF32 | null = null
+      let translatedErase = false
+      if (restrict && doc._strokeBbox) {
+        const bb = doc._strokeBbox
+        const docRect: Rect = {
+          x: Math.max(0, bb.x), y: Math.max(0, bb.y),
+          w: Math.min(doc.width, bb.x + bb.w) - Math.max(0, bb.x),
+          h: Math.min(doc.height, bb.y + bb.h) - Math.max(0, bb.y),
+        }
+        const layerRect = docRect.w > 0 && docRect.h > 0
+          ? docRectToLayerRect(docRect, l.canvas.width, l.canvas.height, l.offsetX ?? 0, l.offsetY ?? 0)
+          : null
+        if (layerRect) {
+          planes = captureCanvasPlanes(l.canvas, layerRect, target)
+          if (l.hdrPixels && l.hdrPixels.length === l.canvas.width * l.canvas.height * 4) {
+            hdrPlanes = captureHdrPlanes(l.hdrPixels, l.canvas.width, layerRect, target)
+          }
+        }
+        if (doc._strokeErase) {
+          stroke = translateEraseStrokeToColor(stroke, doc._strokeBgColor || '#ffffff')
+          translatedErase = true
+        }
+      }
       c.save()
       c.globalAlpha = doc._strokeOpacity
-      if (doc._strokeErase) c.globalCompositeOperation = 'destination-out'
+      if (doc._strokeErase && !translatedErase) c.globalCompositeOperation = 'destination-out'
       else {
         try { c.globalCompositeOperation = BLEND_GCO[doc._strokeBlendMode] || 'source-over' } catch { /* noop */ }
       }
       c.drawImage(stroke, sx, sy)
       c.restore()
+      if (planes) restoreCanvasPlanes(l.canvas, planes)
+      if (l.hdrPixels && hdrPlanes) {
+        // Absorb the stroke into the authoritative Float32 pixels now (the
+        // canvas diff merge), then put the protected planes back byte-exact.
+        this.mergeHdrCanvasEdits(l)
+        restoreHdrPlanes(l.hdrPixels, hdrPlanes)
+      }
     }
     this._clearStroke()
     this.pushHistory(label)
@@ -6323,6 +6413,28 @@ export class Engine {
     this.emit()
   }
 
+  /** Photoshop-style editing target from the Channels panel. A subset makes
+   *  pixel writes constrain to those colour components; 'composite' clears
+   *  the restriction. Targeting a channel shows exactly that set on canvas. */
+  setChannelTarget(t: ChannelTarget) {
+    const doc = this.activeDoc
+    if (!doc) return
+    if (doc.channelTarget === t) return
+    doc.channelTarget = t
+    invalidateFlat(doc)
+    this.emit()
+  }
+
+  /** Phase guard: commands that cannot honour a partial colour target yet are
+   *  refused transactionally — before any pixel, history or clipboard change.
+   *  Returns true when the caller must abort. */
+  refusePartialChannelTarget(label: string): boolean {
+    const doc = this.activeDoc
+    if (!doc || doc.channelTarget === 'composite') return false
+    this.ui?.toast(`${label} requires the Composite channel editing target`, 'info')
+    return true
+  }
+
   setZoom(z: number) {
     const doc = this.activeDoc
     if (!doc) return
@@ -6512,7 +6624,7 @@ export class Engine {
     switch (step.op) {
       case 'applyFilter': if (layerId) this.applyFilterToLayer(layerId, a.type, a.params); break
       case 'applyAdjustment': if (layerId) this.applyAdjustmentToLayer(layerId, a.type, a.params); break
-      case 'fill': this.fillSelection(a.color); break
+      case 'fill': this.fillSelection(a.color, a.target); break
       case 'crop': this.cropTo(
         { x: a.x, y: a.y, w: a.w, h: a.h },
         {
