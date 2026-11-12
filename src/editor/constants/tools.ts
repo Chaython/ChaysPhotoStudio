@@ -438,4 +438,9 @@ export const ADJUSTMENT_ICONS: Record<string, string> = {
   'threshold': 'Activity',
   'invert': 'FlipHorizontal2',
   'camera-raw': 'Sliders',
+  'desaturate': 'CircleDashed',
+  'hdr-toning': 'SunMedium',
+  'color-lookup': 'Layers',
+  'equalize': 'ChartBar',
+  'shadow-highlight': 'CloudSun',
 }

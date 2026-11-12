@@ -263,6 +263,8 @@ const QUICK_ADJUSTMENTS: { type: AdjustmentType; label: string }[] = [
   { type: 'threshold', label: 'Threshold' },
   { type: 'invert', label: 'Invert' },
   { type: 'camera-raw', label: 'Camera Raw' },
+  { type: 'desaturate', label: 'Desaturate' },
+  { type: 'hdr-toning', label: 'HDR Toning' },
 ]
 
 export function AdjustmentsPanel() {

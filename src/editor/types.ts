@@ -36,7 +36,7 @@ export type AdjustmentType =
   | 'hue-saturation' | 'color-balance' | 'black-white' | 'photo-filter'
   | 'channel-mixer' | 'selective-color' | 'gradient-map' | 'posterize'
   | 'threshold' | 'invert' | 'camera-raw' | 'shadow-highlight'
-  | 'color-lookup' | 'equalize'
+  | 'color-lookup' | 'equalize' | 'desaturate' | 'hdr-toning'
 
 export type FilterType =
   | 'gaussian-blur' | 'motion-blur' | 'radial-blur' | 'box-blur' | 'smart-sharpen'
@@ -876,6 +876,7 @@ export type DialogType =
   | 'hue-saturation' | 'color-balance' | 'black-white' | 'photo-filter'
   | 'channel-mixer' | 'selective-color' | 'gradient-map' | 'posterize'
   | 'threshold' | 'camera-raw' | 'invert' | 'shadow-highlight'
+  | 'color-lookup' | 'equalize' | 'desaturate' | 'hdr-toning'
   | 'gaussian-blur' | 'motion-blur' | 'radial-blur' | 'box-blur' | 'smart-sharpen'
   | 'add-noise' | 'median' | 'dust-scratches' | 'mosaic' | 'crystallize'
   | 'find-edges' | 'emboss' | 'wind' | 'oil-paint' | 'high-pass'

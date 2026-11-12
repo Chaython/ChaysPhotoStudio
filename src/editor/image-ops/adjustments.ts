@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { AdjustmentDef, AdjustmentType } from '../types'
-import { clamp } from '../utils/canvas'
+import { clamp, linearToSrgb, srgbToLinear } from '../utils/canvas'
 import { computeHistogram } from './core'
 import {
   hexToRgbTriple, hslToRgb, hueFamilyWeight, labToRgb, luma,
@@ -15,7 +15,8 @@ import {
 import { buildCurveLUT, smoothRamp } from './interp'
 import { blurImageData } from './blur'
 import { applyLUT as applyColorLUT } from './lut'
-import { createPixelImageLike, sampleLut256 } from './pixel-data'
+import { applyHdrToning, HDR_TONING_DEFAULTS } from './hdr-toning'
+import { createPixelImageLike, sampleLut256, type PixelImage } from './pixel-data'
 
 const D = (img: ImageData) => img.data
 
@@ -872,6 +873,80 @@ const equalizeAdj: AdjustmentDef = {
   },
 }
 
+// ------------------------------------------------------------------ desaturate
+const desaturateAdj: AdjustmentDef = {
+  type: 'desaturate', label: 'Desaturate',
+  controls: [
+    // The two neutral definitions differ in which "lightness" they keep:
+    //
+    //  - luminance keeps the pixel's Rec.709 luminance, so the grey is
+    //    as bright as the original was perceived to be.
+    //  - lightness keeps the pixel's HSL lightness (max+min)/2, which
+    //    is how a saturation-to-zero conversion behaves and which
+    //    keeps a saturated green far brighter than its luminance
+    //    would.
+    { key: 'method', label: 'Method', type: 'select', options: [
+      { label: 'Luminance', value: 'luminance' },
+      { label: 'Lightness (HSL)', value: 'lightness' },
+    ] },
+  ],
+  defaults: { method: 'luminance' },
+  apply(img, p) {
+    const d = D(img)
+    const byLightness = p.method === 'lightness'
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 8) continue
+      let g: number
+      if (byLightness) {
+        const mx = Math.max(d[i], d[i + 1], d[i + 2])
+        const mn = Math.min(d[i], d[i + 1], d[i + 2])
+        g = (mx + mn) / 2
+      } else {
+        const y = 0.2126 * srgbToLinear(d[i]) + 0.7152 * srgbToLinear(d[i + 1]) + 0.0722 * srgbToLinear(d[i + 2])
+        g = linearToSrgb(y)
+      }
+      d[i] = g
+      d[i + 1] = g
+      d[i + 2] = g
+    }
+  },
+}
+
+// ------------------------------------------------------------------ HDR toning
+const hdrToningAdj: AdjustmentDef = {
+  type: 'hdr-toning', label: 'HDR Toning', icon: 'Layers',
+  controls: [
+    { key: 'method', label: 'Method', type: 'select', options: [
+      { label: 'Exposure / Gamma', value: 'exposure-gamma' },
+      { label: 'Local Adaptation', value: 'local-adaptation' },
+    ], hint: 'Local Adaptation re-keys the scene to its own middle grey' },
+    { key: 'exposure', label: 'Exposure', type: 'slider', min: -5, max: 5, step: 0.05, unit: 'EV' },
+    { key: 'gamma', label: 'Gamma', type: 'slider', min: 0.1, max: 2, step: 0.01, hint: 'Lower values mean more contrast' },
+    { key: 'radius', label: 'Base Radius', type: 'slider', min: 1, max: 200, step: 1, unit: 'px' },
+    { key: 'strength', label: 'Base Strength', type: 'slider', min: 0, max: 4, step: 0.01 },
+    { key: 'detail', label: 'Detail', type: 'slider', min: -100, max: 300, step: 1, unit: '%' },
+    { key: 'shadow', label: 'Shadow', type: 'slider', min: -100, max: 100, step: 1 },
+    { key: 'highlight', label: 'Highlight', type: 'slider', min: -100, max: 100, step: 1 },
+    { key: 'saturation', label: 'Saturation', type: 'slider', min: -100, max: 100, step: 1 },
+    { key: 'vibrance', label: 'Vibrance', type: 'slider', min: -100, max: 100, step: 1 },
+  ],
+  defaults: { ...HDR_TONING_DEFAULTS },
+  apply(img, p) {
+    applyHdrToning(img as unknown as PixelImage, {
+      method: p.method === 'local-adaptation' ? 'local-adaptation' : 'exposure-gamma',
+      exposure: Number(p.exposure ?? 0),
+      gamma: Number(p.gamma ?? 1),
+      radius: Number(p.radius ?? 30),
+      strength: Number(p.strength ?? 0.5),
+      detail: Number(p.detail ?? 30),
+      shadow: Number(p.shadow ?? 0),
+      highlight: Number(p.highlight ?? 0),
+      saturation: Number(p.saturation ?? 20),
+      vibrance: Number(p.vibrance ?? 0),
+    })
+  },
+}
+
 // ------------------------------------------------------------------ registry
 export const ADJUSTMENTS: Record<AdjustmentType, AdjustmentDef> = {
   'curves': curvesAdj,
@@ -893,4 +968,6 @@ export const ADJUSTMENTS: Record<AdjustmentType, AdjustmentDef> = {
   'shadow-highlight': shadowHighlight,
   'color-lookup': colorLookupAdj,
   'equalize': equalizeAdj,
+  'desaturate': desaturateAdj,
+  'hdr-toning': hdrToningAdj,
 }

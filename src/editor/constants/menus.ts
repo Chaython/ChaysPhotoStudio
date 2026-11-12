@@ -72,7 +72,7 @@ const adjustmentItems: MenuItem[] = ([
   'brightness-contrast', 'levels', 'exposure', 'vibrance', 'hue-saturation',
   'color-balance', 'black-white', 'photo-filter', 'channel-mixer', 'selective-color',
   'curves', 'gradient-map', 'posterize', 'threshold', 'camera-raw', 'shadow-highlight',
-  'color-lookup', 'equalize',
+  'color-lookup', 'equalize', 'desaturate', 'hdr-toning',
 ] as AdjustmentType[]).map(t => ({
   id: `adj-${t}`,
   label: adjLabel(t),
@@ -102,6 +102,7 @@ function adjLabel(t: string): string {
     'selective-color': 'Selective Color…', curves: 'Curves…', 'gradient-map': 'Gradient Map…',
     posterize: 'Posterize…', threshold: 'Threshold…', 'camera-raw': 'Camera Raw Basic…',
     'shadow-highlight': 'Shadow/Highlight…', 'color-lookup': 'Color Lookup…', equalize: 'Equalize…',
+    desaturate: 'Desaturate…', 'hdr-toning': 'HDR Toning…',
   }
   return map[t] ?? t
 }
@@ -111,7 +112,7 @@ const newAdjLayerItems: MenuItem[] = ([
   'curves', 'levels', 'brightness-contrast', 'exposure', 'vibrance', 'hue-saturation',
   'color-balance', 'black-white', 'photo-filter', 'channel-mixer', 'selective-color',
   'gradient-map', 'posterize', 'threshold', 'camera-raw', 'shadow-highlight',
-  'color-lookup',
+  'color-lookup', 'equalize', 'desaturate', 'hdr-toning',
 ] as AdjustmentType[]).map(t => ({
   id: `al-${t}`,
   label: adjLabel(t),

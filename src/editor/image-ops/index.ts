@@ -65,7 +65,7 @@ void _filtersComplete
 
 export { ADJUSTMENTS, FILTERS }
 
-export const HDR_SAFE_ADJUSTMENTS = new Set<AdjustmentType>(['exposure'])
+export const HDR_SAFE_ADJUSTMENTS = new Set<AdjustmentType>(['exposure', 'hdr-toning'])
 export const HDR_SAFE_FILTERS = new Set<FilterType>(['gaussian-blur', 'box-blur', 'motion-blur', 'radial-blur', 'offset'])
 
 export function applyAdjustment(img: PixelImage, type: AdjustmentType, params: Record<string, any>) {
@@ -126,6 +126,12 @@ export {
 
 // ---- auto corrections & match color (PS Image menu) ----
 export { autoTone, autoContrast, autoColor, matchColor, type MatchColorOptions } from './auto'
+
+// ---- HDR tone mapping ----
+export {
+  applyHdrToning, HDR_TONING_DEFAULTS,
+  type HdrToningOptions,
+} from './hdr-toning'
 
 // ---- content-aware scale (seam carving) ----
 export { seamCarve, boxResampleMask, type SeamCarveOptions, type SeamCarveResult } from './seam-carve'

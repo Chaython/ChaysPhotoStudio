@@ -62,6 +62,7 @@ const ADJUSTMENT_TYPES: DialogType[] = [
   'curves', 'levels', 'brightness-contrast', 'exposure', 'vibrance', 'hue-saturation',
   'color-balance', 'black-white', 'photo-filter', 'channel-mixer', 'selective-color',
   'gradient-map', 'posterize', 'threshold', 'camera-raw', 'invert', 'shadow-highlight',
+  'desaturate', 'hdr-toning',
 ]
 
 const FILTER_TYPES: DialogType[] = [
