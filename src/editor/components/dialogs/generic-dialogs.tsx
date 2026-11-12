@@ -499,14 +499,17 @@ function LutPickerControl({ control, params, setParams }: { control: ControlDef;
     e.target.value = '' // allow re-selecting the same file
     if (!f) return
     try {
-      const text = await f.text()
-      const lut = imageOps.parseCube(text, f.name.replace(/\.cube$/i, ''))
+      const bytes = new Uint8Array(await f.arrayBuffer())
+      // .cube, Lustre .3dl and SpeedGrade .look are all accepted; the
+      // reader picks the format from the extension and falls back to
+      // sniffing the content.
+      const lut = imageOps.parseLutFile(f.name, bytes)
       setLoadError(null)
       setParams({ ...params, [key]: lut.id })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'parse failed'
       setLoadError(msg)
-      useEditorStore.getState().pushToast(`Invalid .cube file: ${msg}`, 'error')
+      useEditorStore.getState().pushToast(`Invalid LUT file: ${msg}`, 'error')
     }
   }
 
@@ -530,11 +533,11 @@ function LutPickerControl({ control, params, setParams }: { control: ControlDef;
           variant="secondary" size="sm"
           className="h-6 px-2 text-[10px] gap-1 shrink-0"
           onClick={() => fileRef.current?.click()}
-          title="Import an Adobe .cube LUT file"
+          title="Import a .cube, .3dl or .look LUT file"
         >
-          <Upload size={10} /> .cube
+          <Upload size={10} /> LUT
         </Button>
-        <input ref={fileRef} type="file" accept=".cube,text/plain" className="hidden" onChange={onFile} aria-label="Load .cube LUT file" />
+        <input ref={fileRef} type="file" accept=".cube,.3dl,.look,text/plain" className="hidden" onChange={onFile} aria-label="Load a LUT file" />
       </div>
       {/* tone preview: black / 33% / 66% / white / amber pushed through the LUT */}
       <div className="flex gap-0.5 h-5 rounded border overflow-hidden" aria-hidden>

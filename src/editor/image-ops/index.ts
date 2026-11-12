@@ -88,11 +88,15 @@ export function applyFilter(img: PixelImage, type: FilterType, params: Record<st
   def.apply(img as ImageData, merged)
 }
 
-// ---- LUT engine (color-lookup adjustment + .cube import) ----
+// ---- LUT engine (color-lookup adjustment + .cube/.3dl/.look import) ----
 export {
   LUT_REGISTRY, listLuts, getLut, parseCube, applyLUT, sampleLUT,
   type LutDef,
 } from './lut'
+export {
+  parseLutFile, parse3dl, parseLook, detectLutFormat, decodeLutText,
+  type LutFileFormat,
+} from './lut-formats'
 
 // ---- filters2 registry (direct access for tooling that wants only the
 //      Task 9-b half — the merged FILTERS above is the public surface) ----

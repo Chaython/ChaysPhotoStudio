@@ -7,34 +7,35 @@
 //  - tetrahedral-interpolated apply (sharper gradients than
 //    trilinear) with a strength lerp toward the original
 //
+// The table type, the session registry and the registration helper
+// live in lut-core.ts so the Lustre `.3dl` and SpeedGrade `.look`
+// readers (lut-formats.ts) can share them. This file owns the
+// built-in looks, the `.cube` reader and the sampler.
+//
 // SERIALIZATION CONTRACT (critical): history snapshots / action
 // steps JSON-ify layer params, so an adjustment layer only ever
 // stores { lutId: string, strength: number } — the Float32Array
-// tables live HERE, in the module-level registry, never inside
-// params. Built-ins bake deterministically in every module
-// instance (main thread AND the pixel worker — same code), so
-// built-in ids resolve everywhere. Imported .cube tables are
-// registered on the main thread only; the generic dialog routes
-// custom-LUT commits through the synchronous main-thread engine
-// path for exactly that reason (see generic-dialogs.tsx).
+// tables live in the module-level registry, never inside params.
+// Built-ins bake deterministically in every module instance (main
+// thread AND the pixel worker — same code), so built-in ids resolve
+// everywhere. Imported tables are registered on the main thread
+// only; the generic dialog routes custom-LUT commits through the
+// synchronous main-thread engine path for exactly that reason (see
+// generic-dialogs.tsx).
 // Pure functions + module state — no DOM / engine imports.
 // ============================================================
 
 import { clamp } from '../utils/canvas'
 import { smoothRamp } from './interp'
 import type { PixelImage } from './pixel-data'
+import {
+  LUT_REGISTRY,
+  registerCustomLut,
+  sampleShaper,
+  type LutDef,
+} from './lut-core'
 
-export interface LutDef {
-  id: string
-  name: string
-  /** grid edge length N — table.length === N*N*N*3 */
-  size: number
-  /** 0..1 rgb triples in cube order: idx = (b*N + g)*N + r (r varies fastest) */
-  table: Float32Array
-  builtin: boolean
-}
-
-export const LUT_REGISTRY = new Map<string, LutDef>()
+export { LUT_REGISTRY, type LutDef }
 
 /** built-in bake resolution */
 const BAKE_SIZE = 33
@@ -58,6 +59,15 @@ type RgbFn = (r: number, g: number, b: number, out: number[]) => void
 export function sampleLUT(lut: LutDef, r: number, g: number, b: number, out: number[]): void {
   const N = lut.size
   const t = lut.table
+  // A Lustre `.3dl` may carry a "shaper" row: a 1-D input curve that
+  // bends every channel before the cube is addressed. Applying it
+  // here (rather than baking it into the grid) keeps the curve's own
+  // breakpoints intact.
+  if (lut.shaper) {
+    r = sampleShaper(lut.shaper, r)
+    g = sampleShaper(lut.shaper, g)
+    b = sampleShaper(lut.shaper, b)
+  }
   const x = clamp(r, 0, 1) * (N - 1)
   const y = clamp(g, 0, 1) * (N - 1)
   const z = clamp(b, 0, 1) * (N - 1)
@@ -316,24 +326,8 @@ export function getLut(id: string): LutDef | undefined {
 
 // ---------------------------------------------------------------- .cube parser
 
-let cubeSeq = 0
-
-function tablesClose(a: Float32Array, b: Float32Array): boolean {
-  // strided compare (stride 97 ≈ coprime with 3) — enough to dedupe
-  // re-imports of the same file without a 100k-float walk
-  if (a.length !== b.length || a.length === 0) return a.length === b.length
-  for (let i = 0; i < a.length; i += 97) if (a[i] !== b[i]) return false
-  return a[a.length - 1] === b[b.length - 1]
-}
-
 function registerCustom(table: Float32Array, size: number, name: string): LutDef {
-  for (const l of LUT_REGISTRY.values()) {
-    if (l.builtin || l.name !== name || l.size !== size) continue
-    if (tablesClose(l.table, table)) return l
-  }
-  const def: LutDef = { id: `cube-${++cubeSeq}`, name, size, table, builtin: false }
-  LUT_REGISTRY.set(def.id, def)
-  return def
+  return registerCustomLut(table, size, name, 'cube')
 }
 
 /**

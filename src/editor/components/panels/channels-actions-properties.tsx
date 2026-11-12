@@ -12,7 +12,7 @@ import { useEditorStore } from '../../store'
 import { getFlatComposite, invalidateFlat } from '../../engine/document'
 import { ADJUSTMENT_ICONS } from '../../constants/tools'
 import { getImageData, uid, downloadBlob, clamp } from '../../utils/canvas'
-import { ADJUSTMENTS, FILTERS, listLuts, getLut, parseCube, sampleLUT } from '../../image-ops'
+import { ADJUSTMENTS, FILTERS, listLuts, getLut, parseLutFile, sampleLUT } from '../../image-ops'
 import { PanelBtn } from './layers-panel'
 import { ControlRenderer } from '../toolbar/tool-options-bar'
 import { cn } from '@/lib/utils'
@@ -1187,12 +1187,13 @@ function LutInlineControl({ value, onChange }: { value: string; onChange: (v: st
     e.target.value = '' // allow re-selecting the same file
     if (!f) return
     try {
-      const text = await f.text()
-      const lut = parseCube(text, f.name.replace(/\.cube$/i, ''))
+      const bytes = new Uint8Array(await f.arrayBuffer())
+      // .cube, Lustre .3dl and SpeedGrade .look are all accepted
+      const lut = parseLutFile(f.name, bytes)
       onChange(lut.id)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'parse failed'
-      useEditorStore.getState().pushToast(`Invalid .cube file: ${msg}`, 'error')
+      useEditorStore.getState().pushToast(`Invalid LUT file: ${msg}`, 'error')
     }
   }
 
@@ -1213,11 +1214,11 @@ function LutInlineControl({ value, onChange }: { value: string; onChange: (v: st
         <button
           className="h-5 px-1.5 rounded border text-[10px] text-muted-foreground hover:text-primary hover:border-primary/40 hover:bg-accent shrink-0 flex items-center gap-1"
           onClick={() => fileRef.current?.click()}
-          title="Import an Adobe .cube LUT file"
+          title="Import a .cube, .3dl or .look LUT file"
         >
-          <Icons.Upload size={9} /> .cube
+          <Icons.Upload size={9} /> LUT
         </button>
-        <input ref={fileRef} type="file" accept=".cube,text/plain" className="hidden" onChange={onFile} aria-label="Load .cube LUT file" />
+        <input ref={fileRef} type="file" accept=".cube,.3dl,.look,text/plain" className="hidden" onChange={onFile} aria-label="Load a LUT file" />
       </div>
       {/* tone preview: black / 33% / 66% / white / amber pushed through the LUT */}
       <div className="flex gap-0.5 h-3.5 rounded border overflow-hidden" aria-hidden>
