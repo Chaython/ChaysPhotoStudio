@@ -86,7 +86,8 @@
     "lensfun:validate": "bun scripts/validate-lensfun-xml.ts",
     "blur-gallery:validate": "bun scripts/validate-blur-gallery-preview.ts",
     "lut-formats:validate": "bun scripts/validate-lut-formats.ts",
-    "hdr-toning:validate": "bun scripts/validate-hdr-toning.ts"
+    "hdr-toning:validate": "bun scripts/validate-hdr-toning.ts",
+    "blur-core:validate": "bun scripts/validate-blur-core.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
