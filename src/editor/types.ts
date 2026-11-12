@@ -336,6 +336,10 @@ export interface Layer {
   blendMode: BlendMode
   locked: boolean
   clipped: boolean         // clipped to layer(s) below
+  /** Optional artboard this layer belongs to. When set, the layer is only
+   *  rendered and editable while that artboard is active. Layers without an
+   *  artboardId appear in all artboards (the default behavior). */
+  artboardId?: string
   /** raster pixels (raster/text/shape cache), canvas-space — top-left sits at
    *  (offsetX, offsetY) in doc space. 0/undefined = canvas IS doc space.
    *  Moving a raster layer only shifts these (non-destructive: pixels that

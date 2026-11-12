@@ -716,9 +716,10 @@ function getScratch(w: number, h: number): HTMLCanvasElement {
  *  pipeline logic: clipping stacks, adjustment layers, blend-if). Shared by
  *  compositeDocument and the live-drag split builder. */
 function renderLayerRange(
-  doc: PsDocument, start: number, end: number, acc: HTMLCanvasElement, accCtx: CanvasRenderingContext2D
+  doc: PsDocument, start: number, end: number, acc: HTMLCanvasElement, accCtx: CanvasRenderingContext2D,
+  layersOverride?: readonly Layer[]
 ) {
-  const layers = doc.layers
+  const layers = layersOverride ?? doc.layers
   let i = start
   while (i < end) {
     const base = layers[i]
@@ -944,6 +945,12 @@ export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement, o
   if (out.width !== doc.width || out.height !== doc.height) { out.width = doc.width; out.height = doc.height }
   const applyTarget = opts?.applyChannelTarget ?? true
 
+  // When an artboard is active, only render layers assigned to that artboard
+  // (artboardId matches) plus layers with no artboardId (appear in all).
+  const renderLayers = doc.activeArtboardId
+    ? doc.layers.filter(l => l.artboardId === undefined || l.artboardId === doc.activeArtboardId)
+    : doc.layers
+
   // LIVE LAYER-DRAG fast path: 3 drawImages from the cached split instead of
   // the full (allocation-heavy) pipeline — checked BEFORE the GL path because
   // it is faster on both software and hardware GL. Blend-if and preview
@@ -1009,7 +1016,7 @@ export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement, o
   const accCtx = ctx2d(acc)
   accCtx.clearRect(0, 0, doc.width, doc.height)
 
-  renderLayerRange(doc, 0, doc.layers.length, acc, accCtx)
+  renderLayerRange(doc, 0, renderLayers.length, acc, accCtx, renderLayers)
 
   // channel target (editing target) takes precedence for display; if composite,
   // fall back to channelView (solo view). Subsets render targeted components

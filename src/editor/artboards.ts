@@ -155,12 +155,15 @@ export function normalizeArtboardLayerIds(value: unknown): string[] | undefined 
 
 /** Preserve the document's z-order and layer metadata while selecting only
  * page-specific content. This function must not mutate source layer objects. */
-export function layersForArtboard<T extends { id: string }>(
+export function layersForArtboard<T extends { id: string; artboardId?: string }>(
   layers: readonly T[], artboard: Artboard,
 ): T[] {
-  if (artboard.visibleLayerIds === undefined) return Array.from(layers)
+  let result = layers.filter(layer =>
+    layer.artboardId === undefined || layer.artboardId === artboard.id
+  )
+  if (artboard.visibleLayerIds === undefined) return result
   const include = new Set(artboard.visibleLayerIds)
-  return layers.filter(layer => include.has(layer.id))
+  return result.filter(layer => include.has(layer.id))
 }
 
 
