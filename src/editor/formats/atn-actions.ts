@@ -575,6 +575,28 @@ const FILTER_MAPPINGS: AtnMapping[] = [
     write: p => writeRadius(p, 3),
   },
   {
+    // Oil Paint. Photoshop records this by name in some versions; keys:
+    // `Rds ` radius, `StyL` stylization, `Cln ` cleanliness.
+    code: '', names: ['oilPaint'], op: 'applyFilter', type: 'oil-paint',
+    classId: 'null', label: 'Oil Paint', keys: ['Rds ', 'StyL', 'Cln '],
+    read: d => {
+      const radius = valueNumber(atnGet(d, 'Rds '))
+      const style = valueNumber(atnGet(d, 'StyL'))
+      const clean = valueNumber(atnGet(d, 'Cln '))
+      if (radius === undefined) return null
+      const out: Record<string, any> = { radius }
+      if (style !== undefined) out.brush = style
+      if (clean !== undefined) out.style = clean
+      return out
+    },
+    write: p => {
+      const items: [string, AtnValue][] = [['Rds ', psInt(p.radius ?? 4)]]
+      if (typeof p.brush === 'number') items.push(['StyL', psInt(p.brush)])
+      if (typeof p.style === 'number') items.push(['Cln ', psInt(p.style)])
+      return makeDescriptor('null', items)
+    },
+  },
+  {
     code: 'Mnm ', names: ['minimum'], op: 'applyFilter', type: 'minimum',
     classId: 'null', label: 'Minimum', keys: ['Rds '],
     read: d => readRadius(d),
