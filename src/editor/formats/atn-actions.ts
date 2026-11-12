@@ -1215,6 +1215,13 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
     read: () => ({}),
     write: () => makeDescriptor('null'),
   },
+  {
+    // Photoshop Last Filter. Event code `LstF`. Re-applies the last filter.
+    code: 'LstF', names: ['lastFilter'], op: 'applyFilter', type: 'last-filter',
+    classId: 'null', label: 'Last Filter', keys: [],
+    read: () => ({}),
+    write: () => makeDescriptor('null'),
+  },
 ]
 
 const DOCUMENT_MAPPINGS: AtnMapping[] = [

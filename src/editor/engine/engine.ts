@@ -6809,6 +6809,13 @@ export class Engine {
       case 'applyFilter': if (layerId) this.applyFilterToLayer(layerId, a.type, a.params); break
       case 'applyAdjustment': if (layerId) this.applyAdjustmentToLayer(layerId, a.type, a.params); break
       case 'fill': this.fillSelection(a.color, a.target); break
+      case 'filter.lastFilter': {
+        const doc = this.activeDoc
+        if (!doc) break
+        const last = this.lastAppliedFilters.get(doc)
+        if (last && layerId) this.applyFilterToLayer(layerId, last.type, last.params)
+        break
+      }
       case 'crop': this.cropTo(
         { x: a.x, y: a.y, w: a.w, h: a.h },
         {
