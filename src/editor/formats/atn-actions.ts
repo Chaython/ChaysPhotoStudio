@@ -1158,6 +1158,63 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
       ['Magentas', psInt(p.magentas ?? 80)],
     ]),
   },
+  {
+    // Photoshop Curves. Event code `Crv `. Key `CrvP` holds an array of curve
+    // descriptors: each has `CrvI` (channel index: 0=composite, 1=red,
+    // 2=green, 3=blue) and `CrvP` (array of {CrvI=input, CrvO=output} point pairs).
+    code: 'Crv ', names: ['Curves'], op: 'applyAdjustment', type: 'curves',
+    classId: 'null', label: 'Curves', keys: ['CrvP'],
+    read: d => {
+      const list = atnGet(d, 'CrvP')
+      if (!list || list.type !== 'list') return null
+      const channelMap: Record<string, number> = { composite: 0, r: 1, g: 2, b: 3 }
+      for (const item of list.items) {
+        if (item.type !== 'descriptor') continue
+        const ch = valueEnum(atnGet(item.descriptor, 'CrvI'))
+        if (ch === undefined) continue
+        const pts = atnGet(item.descriptor, 'CrvP')
+        if (!pts || pts.type !== 'list') continue
+        const points: { x: number; y: number }[] = []
+        for (const pt of pts.items) {
+          if (pt.type !== 'descriptor') continue
+          const x = valueNumber(atnGet(pt.descriptor, 'CrvI'))
+          const y = valueNumber(atnGet(pt.descriptor, 'CrvO'))
+          if (x === undefined || y === undefined) continue
+          points.push({ x, y })
+        }
+        if (points.length === 0) continue
+        const channel = ch === '0' ? 'rgb' : ch === '1' ? 'r' : ch === '2' ? 'g' : ch === '3' ? 'b' : 'rgb'
+        return { channel, points }
+      }
+      return null
+    },
+    write: p => {
+      const points = p.points ?? [{ x: 0, y: 0 }, { x: 255, y: 255 }]
+      const channel = p.channel ?? 'rgb'
+      const chIdx = channel === 'rgb' ? 0 : channel === 'r' ? 1 : channel === 'g' ? 2 : 3
+      const crvP: AtnValue[] = points.map(pt => ({
+        type: 'descriptor',
+        descriptor: {
+          name: { units: [] },
+          classId: atnId('null'),
+          items: [
+            ['CrvI', psDbl(pt.x)],
+            ['CrvO', psDbl(pt.y)],
+          ],
+        },
+      }))
+      return makeDescriptor('null', [
+        ['CrvP', { type: 'list', items: crvP }],
+      ])
+    },
+  },
+  {
+    // Photoshop Equalize. Event code `Eqla`. No keys — empty descriptor.
+    code: 'Eqla', names: ['Eqla'], op: 'applyAdjustment', type: 'equalize',
+    classId: 'null', label: 'Equalize', keys: [],
+    read: () => ({}),
+    write: () => makeDescriptor('null'),
+  },
 ]
 
 const DOCUMENT_MAPPINGS: AtnMapping[] = [
