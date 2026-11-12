@@ -72,6 +72,8 @@ Thirty-three Photoshop events map onto studio operations: Gaussian, Box, Motion 
 
 **Refusals:** Move/transforms, Camera Raw (`camera-raw`), HDR Toning (`hdr-toning`) and new-layer render options are refused transactionally when a colour subset is targeted. RGB only today; CMYK/Lab stay at Composite until a channel model exists for them. With no target (`composite`, the default), behaviour is unchanged and there is no overhead.
 
+**Paint into saved channels:** Saved alpha channels can be targeted as a grayscale editing target from the Channels panel. When a saved channel is the editing target, painting tools (brush/pencil/erasers) and Fill write into that channel's mask instead of layer pixels, with selection constraints and eraser background-colour semantics intact. See [MULTI_CHANNEL_EDITING.md](MULTI_CHANNEL_EDITING.md).
+
 See [MULTI_CHANNEL_EDITING.md](MULTI_CHANNEL_EDITING.md) for the design, commit-site mapping, phased milestones and validator.
 
 ### High-bit-depth/HDR behavior

@@ -11,5 +11,8 @@
     "outDir": "/tmp/validate-artboards",
     "rootDir": "."
   },
-  "include": ["scripts/validate-artboards-offcanvas.ts"]
+  "include": [
+    "scripts/validate-artboards-offcanvas.ts",
+    "scripts/validate-paint-into-saved-channel.ts"
+  ]
 }

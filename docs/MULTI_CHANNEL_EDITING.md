@@ -46,8 +46,11 @@ A targeted subset renders targeted components in colour and protected components
 
 `scripts/validate-channel-editing.ts` — headless regression groups mirroring the behaviour matrix: set membership/transactionality, per-depth byte-exactness of unselected planes (8/16/32), eraser transparency preservation, fill/bucket subsets, adjustment/filter equivalence vs composite-run plus undo/redo, transactional refusals, Actions replay with/without target, feathered-selection interplay, Curves/Levels combined channel entries.
 
+`scripts/validate-paint-into-saved-channel.ts` — headless test for paint-into-saved-channel: setChannelEditingTarget set/clear, endStroke writes to the saved channel mask instead of layer pixels, fillSelection fills the saved channel mask, layer pixels preserved when targeting a saved channel.
+
 Run with:
 
 ```
 node --import "file:///C:/Users/Chay/AppData/Local/Temp/opencode/ts-register.mjs" scripts/validate-channel-editing.ts
+node --import "file:///C:/Users/Chay/AppData/Local/Temp/opencode/ts-register.mjs" scripts/validate-paint-into-saved-channel.ts
 ```
