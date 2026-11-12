@@ -1232,6 +1232,51 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
     },
   },
   {
+    // Camera Raw. Event code `CmRa`. Photoshop stores many parameters; we
+    // store the ones Studio supports: exposure, contrast, highlights, shadows,
+    // whites, blacks, clarity, dehaze, vibrance, saturation.
+    code: 'CmRa', names: ['cameraRaw'], op: 'applyAdjustment', type: 'camera-raw',
+    classId: 'null', label: 'Camera Raw', keys: ['Exp', 'Con', 'Shdw', 'Hghl', 'Whites', 'Blks', 'Clarity', 'Dhaze', 'Sat', 'Vibrance'],
+    read: d => {
+      const out: Record<string, any> = {}
+      const exposure = valueNumber(atnGet(d, 'Exp'))
+      const contrast = valueNumber(atnGet(d, 'Con'))
+      const shadows = valueNumber(atnGet(d, 'Shdw'))
+      const highlights = valueNumber(atnGet(d, 'Hghl'))
+      const whites = valueNumber(atnGet(d, 'Whites'))
+      const blacks = valueNumber(atnGet(d, 'Blks'))
+      const clarity = valueNumber(atnGet(d, 'Clarity'))
+      const dehaze = valueNumber(atnGet(d, 'Dhaze'))
+      const saturation = valueNumber(atnGet(d, 'Sat'))
+      const vibrance = valueNumber(atnGet(d, 'Vibrance'))
+      if (exposure !== undefined) out.exposure = exposure
+      if (contrast !== undefined) out.contrast = contrast
+      if (shadows !== undefined) out.shadows = shadows
+      if (highlights !== undefined) out.highlights = highlights
+      if (whites !== undefined) out.whites = whites
+      if (blacks !== undefined) out.blacks = blacks
+      if (clarity !== undefined) out.clarity = clarity
+      if (dehaze !== undefined) out.dehaze = dehaze
+      if (saturation !== undefined) out.saturation = saturation
+      if (vibrance !== undefined) out.vibrance = vibrance
+      return out
+    },
+    write: p => {
+      const items: [string, AtnValue][] = []
+      if (typeof p.exposure === 'number') items.push(['Exp', psDbl(p.exposure)])
+      if (typeof p.contrast === 'number') items.push(['Con', psInt(p.contrast)])
+      if (typeof p.shadows === 'number') items.push(['Shdw', psInt(p.shadows)])
+      if (typeof p.highlights === 'number') items.push(['Hghl', psInt(p.highlights)])
+      if (typeof p.whites === 'number') items.push(['Whites', psInt(p.whites)])
+      if (typeof p.blacks === 'number') items.push(['Blks', psInt(p.blacks)])
+      if (typeof p.clarity === 'number') items.push(['Clarity', psInt(p.clarity)])
+      if (typeof p.dehaze === 'number') items.push(['Dhaze', psInt(p.dehaze)])
+      if (typeof p.saturation === 'number') items.push(['Sat', psInt(p.saturation)])
+      if (typeof p.vibrance === 'number') items.push(['Vibrance', psInt(p.vibrance)])
+      return items.length ? makeDescriptor('CmRa', items) : makeDescriptor('CmRa')
+    },
+  },
+  {
     // Photoshop Curves. Event code `Crv `. Key `CrvP` holds an array of curve
     // descriptors: each has `CrvI` (channel index: 0=composite, 1=red,
     // 2=green, 3=blue) and `CrvP` (array of {CrvI=input, CrvO=output} point pairs).

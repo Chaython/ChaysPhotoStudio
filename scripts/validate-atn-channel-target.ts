@@ -339,4 +339,31 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import hdr-toning target r passed')
 }
 
+// ---------------------------------------------------------------- camera-raw with target
+
+{
+  const step = adjustmentStep('camera-raw', {
+    exposure: 0.5, contrast: 10, shadows: 20, highlights: -10,
+    whites: 5, blacks: -5, clarity: 15, dehaze: 5, saturation: 10, vibrance: 5
+  }, 'rb')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'camera-raw step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'rb', 'target restored on import')
+  assert.equal(importedStep.args.params.exposure, 0.5, 'exposure restored')
+  assert.equal(importedStep.args.params.contrast, 10, 'contrast restored')
+  assert.equal(importedStep.args.params.shadows, 20, 'shadows restored')
+  assert.equal(importedStep.args.params.highlights, -10, 'highlights restored')
+  assert.equal(importedStep.args.params.whites, 5, 'whites restored')
+  assert.equal(importedStep.args.params.blacks, -5, 'blacks restored')
+  assert.equal(importedStep.args.params.clarity, 15, 'clarity restored')
+  assert.equal(importedStep.args.params.dehaze, 5, 'dehaze restored')
+  assert.equal(importedStep.args.params.saturation, 10, 'saturation restored')
+  assert.equal(importedStep.args.params.vibrance, 5, 'vibrance restored')
+  console.log('.atn export/import camera-raw target rb passed')
+}
+
 console.log('.atn channel-target round-trip: all checks passed')
