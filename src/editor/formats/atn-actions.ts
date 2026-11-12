@@ -990,6 +990,149 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
       return items.length ? makeDescriptor('vibrance', items) : makeDescriptor('vibrance')
     },
   },
+  {
+    // Channel Mixer. Keys: `CnMz` has nested per-output-channel descriptors
+    // (`Chnl` selects output channel: red/green/monochrome; each contains
+    // `Rd`, `Grn`, `Bl`, `Cnst` percentage values).
+    code: 'CnMz', names: ['channelMixer'], op: 'applyAdjustment', type: 'channel-mixer',
+    classId: 'CnMz', label: 'Channel Mixer', keys: ['CnMz', 'Mono'],
+    read: d => {
+      const mono = valueBool(atnGet(d, 'Mono'))
+      const list = atnGet(d, 'CnMz')
+      if (!list || list.type !== 'list') return null
+      const channels: Record<string, Record<string, number>> = {}
+      for (const item of list.items) {
+        if (item.type !== 'descriptor') continue
+        const ch = valueEnum(atnGet(item.descriptor, 'Chnl'))
+        const out = valueNumber(atnGet(item.descriptor, 'Rd'))
+        const ing = valueNumber(atnGet(item.descriptor, 'Grn'))
+        const blu = valueNumber(atnGet(item.descriptor, 'Bl'))
+        const cnst = valueNumber(atnGet(item.descriptor, 'Cnst'))
+        if (ch !== undefined && out !== undefined && ing !== undefined && blu !== undefined) {
+          channels[ch] = { red: out, green: ing, blue: blu, constant: cnst ?? 0 }
+        }
+      }
+      if (Object.keys(channels).length === 0) return null
+      return { monochrome: mono === true, ...channels }
+    },
+    write: p => {
+      const items: [string, AtnValue][] = [['Mono', psBool(p.monochrome === true)]]
+      const channelMap: Record<string, [string, string, string]> = {
+        red: ['redRed', 'redGreen', 'redBlue'],
+        green: ['greenRed', 'greenGreen', 'greenBlue'],
+        blue: ['blueRed', 'blueGreen', 'blueBlue'],
+      }
+      for (const [ch, keys] of Object.entries(channelMap)) {
+        const [rk, gk, bk] = keys
+        const r = p[rk] ?? (ch === 'red' ? 100 : 0)
+        const g = p[gk] ?? (ch === 'green' ? 100 : 0)
+        const b = p[bk] ?? (ch === 'blue' ? 100 : 0)
+        const cnst = p.constant ?? 0
+        items.push(['CnMz', {
+          type: 'descriptor',
+          descriptor: makeDescriptor('null', [
+            ['Chnl', psEnum('Chnl', ch)],
+            ['Rd', psInt(r)],
+            ['Grn', psInt(g)],
+            ['Bl', psInt(b)],
+            ['Cnst', psInt(cnst)],
+          ]),
+        } as AtnValue])
+      }
+      return makeDescriptor('CnMz', items)
+    },
+  },
+  {
+    // Selective Color. Keys: `StrC` has nested per-plate descriptors
+    // (`Plate` selects plate; `Cyn`, `Mgnt`, `Ylw`, `Blck` percentage values).
+    code: 'StrC', names: ['selectiveColor'], op: 'applyAdjustment', type: 'selective-color',
+    classId: 'StrC', label: 'Selective Color', keys: ['StrC', 'Abso'],
+    read: d => {
+      const list = atnGet(d, 'StrC')
+      if (!list || list.type !== 'list') return null
+      const plates: Record<string, Record<string, number>> = {}
+      for (const item of list.items) {
+        if (item.type !== 'descriptor') continue
+        const plate = valueEnum(atnGet(item.descriptor, 'Plate'))
+        const cyn = valueNumber(atnGet(item.descriptor, 'Cyn'))
+        const mag = valueNumber(atnGet(item.descriptor, 'Mgnt'))
+        const yel = valueNumber(atnGet(item.descriptor, 'Ylw'))
+        const blk = valueNumber(atnGet(item.descriptor, 'Blck'))
+        if (plate !== undefined && cyn !== undefined && mag !== undefined && yel !== undefined && blk !== undefined) {
+          plates[plate] = { cyan: cyn, magenta: mag, yellow: yel, black: blk }
+        }
+      }
+      if (Object.keys(plates).length === 0) return null
+      return { ...plates, absolute: valueBool(atnGet(d, 'Abso')) === true }
+    },
+    write: p => {
+      const items: [string, AtnValue][] = [['Abso', psBool(p.absolute === true)]]
+      const plateMap: Record<string, [string, string, string, string]> = {
+        reds: ['cyan', 'magenta', 'yellow', 'black'],
+        yellows: ['cyan', 'magenta', 'yellow', 'black'],
+        greens: ['cyan', 'magenta', 'yellow', 'black'],
+        cyans: ['cyan', 'magenta', 'yellow', 'black'],
+        blues: ['cyan', 'magenta', 'yellow', 'black'],
+        magentas: ['cyan', 'magenta', 'yellow', 'black'],
+        whites: ['cyan', 'magenta', 'yellow', 'black'],
+        neutrals: ['cyan', 'magenta', 'yellow', 'black'],
+        blacks: ['cyan', 'magenta', 'yellow', 'black'],
+      }
+      for (const [plate, keys] of Object.entries(plateMap)) {
+        const [ck, mk, yk, bk] = keys
+        const c = p[plate + ck.charAt(0)] ?? 0
+        items.push(['StrC', {
+          type: 'descriptor',
+          descriptor: makeDescriptor('null', [
+            ['Plate', psEnum('Plate', plate)],
+            ['Cyn', psInt(c)],
+            ['Mgnt', psInt(p[mk] ?? 0)],
+            ['Ylw', psInt(p[yk] ?? 0)],
+            ['Blck', psInt(p[bk] ?? 0)],
+          ]),
+        } as AtnValue])
+      }
+      return makeDescriptor('StrC', items)
+    },
+  },
+  {
+    // Gradient Map. Keys: `GrMp` has nested stop descriptors (`Pst` position,
+    // `Clr` color value).
+    code: 'GrMp', names: ['gradientMap'], op: 'applyAdjustment', type: 'gradient-map',
+    classId: 'GrMp', label: 'Gradient Map', keys: ['GrMp'],
+    read: d => {
+      const list = atnGet(d, 'GrMp')
+      if (!list || list.type !== 'list') return null
+      const stops: { pos: number; color: string }[] = []
+      for (const item of list.items) {
+        if (item.type !== 'descriptor') continue
+        const pos = valueNumber(atnGet(item.descriptor, 'Pst'))
+        const color = valueEnum(atnGet(item.descriptor, 'Clr'))
+        if (pos !== undefined && color !== undefined) {
+          stops.push({ pos, color })
+        }
+      }
+      if (stops.length === 0) return null
+      return { stops, dither: true, reverse: false }
+    },
+    write: p => {
+      const stops = p.stops ?? [{ pos: 0, color: '#000000' }, { pos: 1, color: '#ffffff' }]
+      const items: AtnValue[] = stops.map((s) => ({
+        type: 'descriptor',
+        descriptor: {
+          name: { units: [] },
+          classId: atnId('null'),
+          items: [
+            ['Pst', psDbl(s.pos)],
+            ['Clr', psEnum('Clr', s.color)],
+          ],
+        },
+      }))
+      return makeDescriptor('GrMp', [
+        ['GrMp', { type: 'list', items: items }]
+      ])
+    },
+  },
 ]
 
 const DOCUMENT_MAPPINGS: AtnMapping[] = [

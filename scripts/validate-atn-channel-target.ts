@@ -176,4 +176,78 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import photo-filter target r passed')
 }
 
+// ---------------------------------------------------------------- channel-mixer with target
+
+{
+  const step = adjustmentStep('channel-mixer', {
+    monochrome: false,
+    redRed: 110, redGreen: 10, redBlue: 5,
+    greenRed: 5, greenGreen: 100, greenBlue: 15,
+    blueRed: 0, blueGreen: 20, blueBlue: 90,
+    constant: 0,
+  }, 'rb')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'channel-mixer step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'rb', 'target restored on import')
+  assert.equal(importedStep.args.params.monochrome, false, 'monochrome restored')
+  assert.equal(importedStep.args.params.redRed, 110, 'redRed restored')
+  assert.equal(importedStep.args.params.greenGreen, 100, 'greenGreen restored')
+  assert.equal(importedStep.args.params.blueBlue, 90, 'blueBlue restored')
+  console.log('.atn export/import channel-mixer target rb passed')
+}
+
+// ---------------------------------------------------------------- selective-color with target
+
+{
+  const step = adjustmentStep('selective-color', {
+    plate: 'reds', cyan: 20, magenta: -10, yellow: 5, black: 0, absolute: false
+  }, 'g')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'selective-color step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'g', 'target restored on import')
+  assert.equal(importedStep.args.params.plate, 'reds', 'plate restored')
+  assert.equal(importedStep.args.params.cyan, 20, 'cyan restored')
+  assert.equal(importedStep.args.params.magenta, -10, 'magenta restored')
+  console.log('.atn export/import selective-color target g passed')
+}
+
+// ---------------------------------------------------------------- gradient-map with target
+
+{
+  const step = adjustmentStep('gradient-map', {
+    stops: [
+      { pos: 0, color: '#0000ff' },
+      { pos: 0.5, color: '#00ffff' },
+      { pos: 1, color: '#ffff00' },
+    ],
+    dither: false,
+    reverse: true,
+  }, 'b')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'gradient-map step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'b', 'target restored on import')
+  assert.equal(importedStep.args.params.stops.length, 3, 'stops count restored')
+  assert.equal(importedStep.args.params.stops[0].pos, 0, 'stop 0 pos restored')
+  assert.equal(importedStep.args.params.stops[0].color, '#0000ff', 'stop 0 color restored')
+  assert.equal(importedStep.args.params.stops[1].pos, 0.5, 'stop 1 pos restored')
+  assert.equal(importedStep.args.params.stops[1].color, '#00ffff', 'stop 1 color restored')
+  assert.equal(importedStep.args.params.stops[2].pos, 1, 'stop 2 pos restored')
+  assert.equal(importedStep.args.params.stops[2].color, '#ffff00', 'stop 2 color restored')
+  assert.equal(importedStep.args.params.dither, false, 'dither restored')
+  assert.equal(importedStep.args.params.reverse, true, 'reverse restored')
+  console.log('.atn export/import gradient-map target b passed')
+}
+
 console.log('.atn channel-target round-trip: all checks passed')
