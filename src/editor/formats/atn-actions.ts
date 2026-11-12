@@ -926,6 +926,45 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
     },
   },
   {
+    // Shadows/Highlights. Keys: `Shdw` (shadows amount 0-100), `Hghl` (highlights 0-100),
+    // `MidT` (midtone contrast 0-100).
+    code: 'Shdw', names: ['shadowsHighlights'], op: 'applyAdjustment', type: 'shadow-highlight',
+    classId: 'Shdw', label: 'Shadows/Highlights', keys: ['Shdw', 'Hghl', 'MidT'],
+    read: d => {
+      const shadows = valueNumber(atnGet(d, 'Shdw'))
+      const highlights = valueNumber(atnGet(d, 'Hghl'))
+      const midtone = valueNumber(atnGet(d, 'MidT'))
+      if (shadows === undefined || highlights === undefined) return null
+      const out: Record<string, any> = { shadows, highlights }
+      if (midtone !== undefined) out.midtone = midtone
+      return out
+    },
+    write: p => makeDescriptor('Shdw', [
+      ['Shdw', psInt(p.shadows ?? 0)],
+      ['Hghl', psInt(p.highlights ?? 0)],
+      ['MidT', psInt(p.midtone ?? 0)],
+    ]),
+  },
+  {
+    // Photo Filter. Keys: `Clr` (color as enum), `Dns` (density 0-100), `Lght` (luminosity 0-100).
+    code: 'Photo', names: ['photoFilter'], op: 'applyAdjustment', type: 'photo-filter',
+    classId: 'Photo', label: 'Photo Filter', keys: ['Clr', 'Dns', 'Lght'],
+    read: d => {
+      const color = valueEnum(atnGet(d, 'Clr'))
+      const density = valueNumber(atnGet(d, 'Dns'))
+      const luminosity = valueNumber(atnGet(d, 'Lght'))
+      if (!color || density === undefined) return null
+      const out: Record<string, any> = { color, density }
+      if (luminosity !== undefined) out.luminosity = luminosity
+      return out
+    },
+    write: p => makeDescriptor('Photo', [
+      ['Clr', psEnum('Clr', p.color ?? 'Custom')],
+      ['Dns', psInt(p.density ?? 25)],
+      ['Lght', psInt(p.luminosity ?? 0)],
+    ]),
+  },
+  {
     code: 'Eqlz', names: ['equalize'], op: 'applyAdjustment', type: 'equalize',
     classId: 'Eqlz', label: 'Equalize', keys: [],
     read: () => ({}),

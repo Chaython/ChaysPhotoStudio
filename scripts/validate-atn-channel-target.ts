@@ -159,4 +159,21 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import levels target gb passed')
 }
 
+// ---------------------------------------------------------------- photo-filter with target
+
+{
+  const step = adjustmentStep('photo-filter', { color: 'Custom', density: 50, luminosity: 30 }, 'r')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'photo-filter step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'r', 'target restored on import')
+  assert.equal(importedStep.args.params.color, 'Custom', 'color restored on import')
+  assert.equal(importedStep.args.params.density, 50, 'density restored on import')
+  assert.equal(importedStep.args.params.luminosity, 30, 'luminosity restored on import')
+  console.log('.atn export/import photo-filter target r passed')
+}
+
 console.log('.atn channel-target round-trip: all checks passed')
