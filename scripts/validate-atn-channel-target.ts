@@ -339,6 +339,22 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import hdr-toning target r passed')
 }
 
+// ---------------------------------------------------------------- bloom with target
+
+{
+  const step = filterStep('bloom', { radius: 50, intensity: 60 }, 'g')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'bloom step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyFilter', 'step is applyFilter')
+  assert.equal(importedStep.args.target, 'g', 'target restored on import')
+  assert.equal(importedStep.args.params.radius, 50, 'radius restored')
+  assert.equal(importedStep.args.params.intensity, 60, 'intensity restored')
+  console.log('.atn export/import bloom target g passed')
+}
+
 // ---------------------------------------------------------------- camera-raw with target
 
 {
@@ -364,6 +380,37 @@ function findChnT(descriptor: any): string | null {
   assert.equal(importedStep.args.params.saturation, 10, 'saturation restored')
   assert.equal(importedStep.args.params.vibrance, 5, 'vibrance restored')
   console.log('.atn export/import camera-raw target rb passed')
+}
+
+// ---------------------------------------------------------------- vignette with target
+
+{
+  const step = filterStep('vignette', { amount: 0.4, radius: 60 }, 'g')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'vignette step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyFilter', 'step is applyFilter')
+  assert.equal(importedStep.args.target, 'g', 'target restored on import')
+  assert.equal(importedStep.args.params.amount, 0.4, 'amount restored')
+  assert.equal(importedStep.args.params.radius, 60, 'radius restored')
+  console.log('.atn export/import vignette target g passed')
+}
+
+// ---------------------------------------------------------------- newsprint with target
+
+{
+  const step = filterStep('newsprint', { amount: 0.8 }, 'b')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'newsprint step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyFilter', 'step is applyFilter')
+  assert.equal(importedStep.args.target, 'b', 'target restored on import')
+  assert.equal(importedStep.args.params.amount, 0.8, 'amount restored')
+  console.log('.atn export/import newsprint target b passed')
 }
 
 console.log('.atn channel-target round-trip: all checks passed')

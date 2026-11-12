@@ -1277,6 +1277,49 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
     },
   },
   {
+    // Vignette. Event code `Vgnt`. Keys: `Amnt` amount, `Rds ` radius.
+    code: '', names: ['vignette'], op: 'applyFilter', type: 'vignette',
+    classId: 'null', label: 'Vignette', keys: ['Amnt', 'Rds '],
+    read: d => {
+      const amount = valueNumber(atnGet(d, 'Amnt'))
+      const radius = valueNumber(atnGet(d, 'Rds '))
+      if (amount === undefined || radius === undefined) return null
+      return { amount: amount / 100, radius }
+    },
+    write: p => makeDescriptor('null', [
+      ['Amnt', psInt(Math.round((p.amount ?? 0.3) * 100))],
+      ['Rds ', psInt(p.radius ?? 50)],
+    ]),
+  },
+  {
+    // Newsprint. Event code `NsPr`. Keys: `Amnt` amount.
+    code: '', names: ['newsprint'], op: 'applyFilter', type: 'newsprint',
+    classId: 'null', label: 'Newsprint', keys: ['Amnt'],
+    read: d => {
+      const amount = valueNumber(atnGet(d, 'Amnt'))
+      if (amount === undefined) return null
+      return { amount: amount / 100 }
+    },
+    write: p => makeDescriptor('null', [
+      ['Amnt', psInt(Math.round((p.amount ?? 0.5) * 100))],
+    ]),
+  },
+  {
+    // Bloom. Event code `Bloom`. Keys: `Rds ` radius, `Int` intensity.
+    code: '', names: ['bloom'], op: 'applyFilter', type: 'bloom',
+    classId: 'null', label: 'Bloom', keys: ['Rds ', 'Int'],
+    read: d => {
+      const radius = valueNumber(atnGet(d, 'Rds '))
+      const intensity = valueNumber(atnGet(d, 'Int'))
+      if (radius === undefined || intensity === undefined) return null
+      return { radius, intensity: intensity / 100 }
+    },
+    write: p => makeDescriptor('null', [
+      ['Rds ', psInt(p.radius ?? 50)],
+      ['Int', psInt(p.intensity ?? 100)],
+    ]),
+  },
+  {
     // Photoshop Curves. Event code `Crv `. Key `CrvP` holds an array of curve
     // descriptors: each has `CrvI` (channel index: 0=composite, 1=red,
     // 2=green, 3=blue) and `CrvP` (array of {CrvI=input, CrvO=output} point pairs).
@@ -1332,6 +1375,34 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
     classId: 'null', label: 'Equalize', keys: [],
     read: () => ({}),
     write: () => makeDescriptor('null'),
+  },
+  {
+    // Vignette. Event code `Vgnt`. Keys: `Amnt` amount, `Rds ` radius.
+    code: '', names: ['vignette'], op: 'applyFilter', type: 'vignette',
+    classId: 'null', label: 'Vignette', keys: ['Amnt', 'Rds '],
+    read: d => {
+      const amount = valueNumber(atnGet(d, 'Amnt'))
+      const radius = valueNumber(atnGet(d, 'Rds '))
+      if (amount === undefined || radius === undefined) return null
+      return { amount: amount / 100, radius }
+    },
+    write: p => makeDescriptor('null', [
+      ['Amnt', psInt(Math.round((p.amount ?? 0.3) * 100))],
+      ['Rds ', psInt(p.radius ?? 50)],
+    ]),
+  },
+  {
+    // Newsprint. Event code `NsPr`. Keys: `Amnt` amount.
+    code: '', names: ['newsprint'], op: 'applyFilter', type: 'newsprint',
+    classId: 'null', label: 'Newsprint', keys: ['Amnt'],
+    read: d => {
+      const amount = valueNumber(atnGet(d, 'Amnt'))
+      if (amount === undefined) return null
+      return { amount: amount / 100 }
+    },
+    write: p => makeDescriptor('null', [
+      ['Amnt', psInt(Math.round((p.amount ?? 0.5) * 100))],
+    ]),
   },
   {
     // Photoshop Last Filter. Event code `LstF`. Re-applies the last filter.
