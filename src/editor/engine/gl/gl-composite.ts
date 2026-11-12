@@ -181,6 +181,20 @@ void main() {
 }
 `
 
+// Multi-channel subset: keeps targeted components as-is, desaturates others to grayscale
+const CHANNEL_SUBSET_FS = `
+precision highp float;
+varying vec2 vUV;
+uniform sampler2D uSrc;
+uniform vec3 uMask; // 1.0 for targeted, 0.0 for protected
+void main() {
+  vec4 c = texture2D(uSrc, vUV);
+  vec3 gray = vec3(dot(c.rgb, vec3(0.299, 0.587, 0.114)));
+  vec3 out = mix(gray, c.rgb, uMask);
+  gl_FragColor = vec4(out, c.a);
+}
+`
+
 // The adjustment uber-shader: applies an adjustment to the backdrop
 // (optionally gated by a mask texture), then blends the result over the
 // backdrop with opacity + blend mode — exactly what the CPU
@@ -478,14 +492,16 @@ void main() {
 let progBlend: WebGLProgram | null = null
 let progCopy: WebGLProgram | null = null
 let progChannel: WebGLProgram | null = null
+let progChannelSubset: WebGLProgram | null = null
 let progAdjust: WebGLProgram | null = null
 
 function programs(gl: WebGL2RenderingContext) {
   if (!progBlend) progBlend = compileProgram(gl, 'zphoto-blend', QUAD_VS, BLEND_FS)
   if (!progCopy) progCopy = compileProgram(gl, 'zphoto-copy', QUAD_VS, COPY_FS)
   if (!progChannel) progChannel = compileProgram(gl, 'zphoto-channel', QUAD_VS, CHANNEL_VIEW_FS)
+  if (!progChannelSubset) progChannelSubset = compileProgram(gl, 'zphoto-channel-subset', QUAD_VS, CHANNEL_SUBSET_FS)
   if (!progAdjust) progAdjust = compileProgram(gl, 'zphoto-adjust', QUAD_VS, ADJUST_FS)
-  return { progBlend, progCopy, progChannel, progAdjust }
+  return { progBlend, progCopy, progChannel, progChannelSubset, progAdjust }
 }
 
 // ---------------------------------------------------------------- LUT building
@@ -668,8 +684,8 @@ export function glCompositeDocument(doc: PsDocument, target: HTMLCanvasElement):
     // (cached) — fine, still GPU-composited.
   }
 
-  const { progBlend, progCopy, progChannel, progAdjust } = programs(gl)
-  if (!progBlend || !progCopy || !progChannel || !progAdjust) return false
+  const { progBlend, progCopy, progChannel, progChannelSubset, progAdjust } = programs(gl)
+  if (!progBlend || !progCopy || !progChannel || !progChannelSubset || !progAdjust) return false
 
   const W = doc.width, H = doc.height
   // Keep compositing/adjustment math in half-float render targets where the
@@ -773,8 +789,25 @@ export function glCompositeDocument(doc: PsDocument, target: HTMLCanvasElement):
       ;[acc, accTmp] = [accTmp, acc]
     }
 
-    // ---- channel view ----
-    if (doc.channelView !== 'rgb') {
+    // ---- channel view / channel target ----
+    // channelTarget (editing target) takes precedence for display; if composite,
+    // fall back to channelView (solo view). Subsets render targeted components
+    // in colour, others as grayscale.
+    const editingTarget = (doc.channelTarget ?? 'composite') as string
+    if (editingTarget !== 'composite') {
+      const comps = editingTarget.split('')
+      const mask = { r: comps.includes('r') ? 1 : 0, g: comps.includes('g') ? 1 : 0, b: comps.includes('b') ? 1 : 0 }
+      if (!(mask.r && mask.g && mask.b)) {
+        bindTarget(gl, accTmp)
+        gl.clearColor(0, 0, 0, 0)
+        gl.clear(gl.COLOR_BUFFER_BIT)
+        gl.useProgram(progChannelSubset)
+        bindUniformTex(gl, progChannelSubset, 'uSrc', acc.tex, 0)
+        gl.uniform3f(cachedUniformLocation(progChannelSubset, 'uMask'), mask.r, mask.g, mask.b)
+        drawQuad(gl, progChannelSubset)
+        ;[acc, accTmp] = [accTmp, acc]
+      }
+    } else if (doc.channelView !== 'rgb') {
       bindTarget(gl, accTmp)
       gl.clearColor(0, 0, 0, 0)
       gl.clear(gl.COLOR_BUFFER_BIT)

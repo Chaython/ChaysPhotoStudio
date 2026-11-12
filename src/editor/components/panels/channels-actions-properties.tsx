@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { FancyScroll } from '@/components/ui/fancy-scroll'
 import type {
   AdjustmentType, BlendIfSettings, BlendIfSlider, ChannelView, FilterType, PsAction, PsDocument,
+  ChannelTarget,
 } from '../../types'
 
 // ================= Channels =================
@@ -55,10 +56,37 @@ function loadLumMask(mode: 'lights' | 'darks' | 'midtones') {
 export function ChannelsPanel() {
   const tick = useEditorStore(s => s.renderTick)
   const channelView = useEditorStore(s => s.channelView)
+  const channelTarget = useEditorStore(s => s.channelTarget)
   const savedChannels = useEditorStore(s => s.savedChannels)
   const hasSelection = useEditorStore(s => s.hasSelection)
   const refs = useRef<Record<string, HTMLCanvasElement | null>>({})
   const suppressClick = useRef(false)
+
+  // helper: is a channel in the current editing target set?
+  const inTarget = (id: ChannelView | 'r' | 'g' | 'b'): boolean => {
+    if (channelTarget === 'composite') return false
+    const comps = channelTarget.split('') as ('r' | 'g' | 'b')[]
+    return comps.includes(id as 'r' | 'g' | 'b')
+  }
+
+  // helper: toggle a channel in the editing target set (shift-click)
+  const toggleTarget = (id: ChannelView | 'r' | 'g' | 'b') => {
+    if (id === 'rgb') {
+      engine.setChannelTarget('composite')
+      return
+    }
+    const current = channelTarget === 'composite' ? [] : channelTarget.split('') as ('r' | 'g' | 'b')[]
+    const idx = current.indexOf(id as 'r' | 'g' | 'b')
+    if (idx >= 0) {
+      // remove
+      const next = current.filter(c => c !== id)
+      engine.setChannelTarget(next.length ? next.join('') as ChannelTarget : 'composite')
+    } else {
+      // add
+      const next = [...current, id as 'r' | 'g' | 'b'].sort().join('') as ChannelTarget
+      engine.setChannelTarget(next)
+    }
+  }
 
   // live channel thumbnails (re-drawn each renderTick)
   useEffect(() => {
@@ -95,12 +123,13 @@ export function ChannelsPanel() {
     <div className="flex flex-col h-full min-h-0">
       <div className="px-2 py-1 text-[10px] text-muted-foreground border-b flex items-center gap-1.5">
         <Icons.MousePointerClick size={11} className="text-primary shrink-0" />
-        <span>Ctrl/⌘+click a channel to load it as a selection</span>
+        <span>Click a channel to view it; Shift+click to add/remove from editing target; Ctrl/⌘+click to load as selection</span>
       </div>
 
       <FancyScroll className="flex-1 min-h-0">
         {CHANNELS.map(ch => {
           const visible = channelView === 'rgb' || channelView === ch.id
+          const isTarget = inTarget(ch.id)
           return (
             <div
               key={ch.id}
@@ -109,10 +138,18 @@ export function ChannelsPanel() {
               aria-pressed={channelView === ch.id}
               className={cn(
                 'flex items-center gap-2 px-2 py-1.5 cursor-pointer border-b border-border/30 group',
-                channelView === ch.id ? 'bg-accent/60' : 'hover:bg-accent/25'
+                channelView === ch.id ? 'bg-accent/60' : 'hover:bg-accent/25',
+                isTarget && channelTarget !== 'composite' ? 'ring-1 ring-primary/50' : ''
               )}
-              onClick={() => { if (suppressClick.current) { suppressClick.current = false; return } engine.setChannelView(ch.id as ChannelView) }
-              }
+              onClick={e => {
+                if (suppressClick.current) { suppressClick.current = false; return }
+                if (e.shiftKey) {
+                  e.preventDefault()
+                  toggleTarget(ch.id)
+                } else {
+                  engine.setChannelView(ch.id as ChannelView)
+                }
+              }}
               onPointerDown={e => {
                 if (e.ctrlKey || e.metaKey) {
                   e.preventDefault()
@@ -140,6 +177,10 @@ export function ChannelsPanel() {
                 <div className="text-[11px] font-medium">{ch.label}</div>
                 <div className="text-[9px] text-muted-foreground">{ch.desc}</div>
               </div>
+
+              {isTarget && channelTarget !== 'composite' && (
+                <span className="text-[9px] text-primary/80 font-mono">{channelTarget.toUpperCase()}</span>
+              )}
 
               <button
                 className="text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground p-1 transition-opacity"
