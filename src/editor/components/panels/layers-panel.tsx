@@ -32,10 +32,12 @@ export function LayersPanel() {
   const [contextPreferences, updateContextPreferences] = useLayerContextMenuPreferences()
   const [editingContextMenu, setEditingContextMenu] = useState(false)
   const dragId = useRef<string | null>(null)
+  const dragOverArtboard = useRef<string | null>(null)
   const soloBackup = useRef<Record<string, boolean> | null>(null)
 
   const doc = engine.activeDoc
   const activeLayer = doc?.layers.find(l => l.id === activeLayerId)
+  const artboards = doc?.artboards ?? []
   const selectedSet = new Set(selectedLayerIds)
   const selectedLayers = doc?.layers.filter(l => selectedSet.has(l.id)) ?? []
 
@@ -225,6 +227,40 @@ export function LayersPanel() {
         {!layers.length && <div className="p-4 text-[11px] text-muted-foreground text-center">No layers</div>}
         {!!layers.length && !visibleLayers.length && <div className="p-4 text-[11px] text-muted-foreground text-center">No layers match this filter</div>}
       </FancyScroll>
+
+      {artboards.length > 0 && (
+        <div className="border-t border-border/40 px-2 py-1 bg-panel/40">
+          <div className="flex items-center gap-1.5 px-2 py-1 border-b border-border/30 mb-2">
+            <Icons.Layout size={12} className="text-muted-foreground shrink-0" />
+            <span className="text-[10px] text-muted-foreground font-medium">Artboards</span>
+          </div>
+          {artboards.map(ab => (
+            <div
+              key={ab.id}
+              className={cn(
+                'flex items-center gap-2 px-2 py-1.5 border border-border/30 rounded',
+                dragOverArtboard.current === ab.id ? 'bg-accent/50 ring-1 ring-accent' : 'hover:bg-accent/20',
+                ab.id === doc?.activeArtboardId ? 'bg-accent/20' : ''
+              )}
+              onDragOver={e => { e.preventDefault(); dragOverArtboard.current = ab.id }}
+              onDragLeave={() => dragOverArtboard.current = null}
+              onDrop={e => {
+                e.preventDefault()
+                dragOverArtboard.current = null
+                if (dragId.current && dragId.current !== ab.id) {
+                  engine.setLayerProps(dragId.current, { artboardId: ab.id }, { label: `Add to Artboard ${ab.name}` })
+                  dragId.current = null
+                }
+              }}
+            >
+              <Icons.Layout size={12} className="text-muted-foreground shrink-0" />
+              <span className="text-[10px] truncate">{ab.name}</span>
+              <span className="flex-1" />
+              <span className="text-[9px] text-muted-foreground">{ab.width}×{ab.height}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <LayerContextMenuEditor open={editingContextMenu} onOpenChange={setEditingContextMenu}
         preferences={contextPreferences} onChange={updateContextPreferences} />
