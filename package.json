@@ -91,7 +91,8 @@
     "atn:validate": "bun scripts/validate-atn.ts",
     "channel-editing:validate": "bun scripts/validate-channel-editing.ts",
     "artboards-offcanvas:validate": "node --import ./scripts/runner.mjs --experimental-strip-types scripts/validate-artboards-offcanvas.ts",
-    "paint-into-saved-channel:validate": "node --import ./scripts/runner.mjs --experimental-strip-types scripts/validate-paint-into-saved-channel.ts"
+    "paint-into-saved-channel:validate": "node --import ./scripts/runner.mjs --experimental-strip-types scripts/validate-paint-into-saved-channel.ts",
+    "atn-channel-target:validate": "node --import ./scripts/runner.mjs --experimental-strip-types scripts/validate-atn-channel-target.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

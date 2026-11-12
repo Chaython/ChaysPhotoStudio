@@ -448,6 +448,7 @@ const TOLERATED_KEYS = new Set([
   'presetKind', // the adjustment's preset marker
   'Vrsn',       // adjustment version
   'auto',       // automatic mode
+  'ChnT',       // studio channel editing target (extension; Photoshop keeps the step)
 ])
 
 /** The key of a Gaussian Blur / Median / High Pass / Minimum / Maximum / Box Blur radius. */
@@ -1015,6 +1016,15 @@ function mapStep(step: AtnStep): ActionStep | null {
   if (!params) return null
   const normalized = normalizeParams(mapping, params)
   if (!normalized) return null
+  // Studio channel editing target: restore the target so re-import edits the
+  // same components. The `ChnT` key is a Studio extension; Photoshop ignores it.
+  const targetItem = step.descriptor.items.find(item => item.key.text.trim() === 'ChnT')
+  if (targetItem && targetItem.value.type === 'enum') {
+    const target = targetItem.value.value.text.trim()
+    if (target === 'r' || target === 'g' || target === 'b' || target === 'rg' || target === 'rb' || target === 'gb') {
+      normalized.target = target
+    }
+  }
   return { op: mapping.op, args: argsFor(mapping, normalized), label: mapping.label }
 }
 
@@ -1079,8 +1089,17 @@ function stepToAtn(step: ActionStep): AtnStep | null {
   if (step.op === KEPT_STEP_OP) return atnStepFromJson(step.args?.atn)
   const mapping = findMappingForOp(step.op, step.args?.type)
   if (!mapping) return null
-  const descriptor = mapping.write(mergedParams(mapping, step.args?.params ?? step.args ?? {}))
-  return descriptor ? atnStep(eventFor(mapping), mapping.label, descriptor) : null
+  const params = mergedParams(mapping, step.args?.params ?? step.args ?? {})
+  const descriptor = mapping.write(params)
+  if (!descriptor) return null
+  // Studio channel editing target: record it so re-import restricts the same
+  // components. Photoshop has no equivalent key, so the step is kept verbatim
+  // by Photoshop but round-trips faithfully in Studio.
+  const target = step.args?.target
+  if (typeof target === 'string' && target !== 'composite') {
+    descriptor.items.push({ key: atnId('ChnT'), value: psEnum('ChnT', target) })
+  }
+  return atnStep(eventFor(mapping), mapping.label, descriptor)
 }
 
 /**
