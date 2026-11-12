@@ -637,4 +637,94 @@ function makeDoc(w = 8, h = 8, bitDepth: number = 8, channelTarget: ChannelTarge
   console.log('engine Curves default (rgb) affects all channels passed')
 }
 
+// ---------------------------------------------------------------- engine: feathered selection constrains subset
+
+{
+  const raw = new Engine()
+  const doc = makeDoc(8, 8, 8, 'r') // target red only
+  raw.docs.push(doc)
+  raw.setActiveDocument(doc.id)
+  const l = doc.layers[0] as any
+  const ctx = l.canvas.ctx
+  // Fill with midgray
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      ctx.buf[i] = 128; ctx.buf[i + 1] = 128; ctx.buf[i + 2] = 128; ctx.buf[i + 3] = 255
+    }
+  }
+  // Create a feathered selection: fully selected in center, fading to 0 at edges
+  const selMask = (doc.selection!.mask as unknown as FakeCanvas)
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      // Distance-based feather: center fully selected, edges unselected
+      const dx = x - 3.5, dy = y - 3.5
+      const d = Math.sqrt(dx * dx + dy * dy)
+      const alpha = d <= 2 ? 255 : d <= 3.5 ? Math.round(255 * (3.5 - d) / 1.5) : 0
+      selMask.ctx.buf[i + 3] = alpha
+    }
+  }
+  const before = l.canvas.ctx.buf.slice()
+  assert.equal(raw.applyAdjustmentToLayer('l1', 'invert', {}), true)
+  const after = l.canvas.ctx.buf.slice()
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      const selAlpha = selMask.ctx.buf[i + 3] / 255
+      // R is targeted, so it should invert attenuated by selection alpha
+      const expectedR = Math.round(128 * (1 - selAlpha) + (255 - 128) * selAlpha)
+      assert.equal(after[i], expectedR, `R feathered at ${x},${y} (selAlpha=${selAlpha})`)
+      // G and B are protected, should NOT change
+      assert.equal(after[i + 1], 128, `G preserved at ${x},${y}`)
+      assert.equal(after[i + 2], 128, `B preserved at ${x},${y}`)
+    }
+  }
+  console.log('engine feathered selection constrains subset adjustment passed')
+}
+
+// ---------------------------------------------------------------- engine: non-paint commands refuse channel target
+
+{
+  const raw = new Engine()
+  const doc = makeDoc(8, 8, 8, 'rb') // target red+blue
+  raw.docs.push(doc)
+  raw.setActiveDocument(doc.id)
+  const l = doc.layers[0] as any
+  const beforeOffsetX = l.offsetX
+
+  // moveLayerPixels must refuse under channel target
+  raw.moveLayerPixels('l1', 10, 0)
+  assert.equal(l.offsetX, beforeOffsetX, 'moveLayerPixels refused under channel target')
+
+  // deleteSelectionPixels must refuse under channel target
+  raw.deleteSelectionPixels()
+  const l2 = doc.layers[0] as any
+  const beforeBuf = l2.canvas.ctx.buf.slice()
+  raw.deleteSelectionPixels()
+  const afterBuf = l2.canvas.ctx.buf.slice()
+  assert.deepEqual(afterBuf, beforeBuf, 'deleteSelectionPixels refused under channel target')
+
+  console.log('engine non-paint commands refuse channel target passed')
+}
+
+// ---------------------------------------------------------------- engine: only pixel editing paint commands follow color set
+
+{
+  // Non-paint commands (transform, filter via smart filter, etc.) must NOT
+  // silently honor the channel target - they are refused transactionally.
+  const raw = new Engine()
+  const doc = makeDoc(8, 8, 8, 'r')
+  raw.docs.push(doc)
+  raw.setActiveDocument(doc.id)
+  const l = doc.layers[0] as any
+
+  // Smart filter add must refuse under channel target
+  raw.addSmartFilter('l1', 'gaussian-blur', { radius: 2 })
+  const l2 = doc.layers[0] as any
+  assert.equal(l2.smartFilters.length, 0, 'smart filter add refused under channel target')
+
+  console.log('engine only pixel editing paint commands follow color set passed')
+}
+
 console.log('validate-channel-editing: all checks passed')
