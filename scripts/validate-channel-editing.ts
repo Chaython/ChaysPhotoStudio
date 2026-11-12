@@ -538,4 +538,103 @@ function makeDoc(w = 8, h = 8, bitDepth: number = 8, channelTarget: ChannelTarge
   console.log('camera-raw/hdr-toning refused under channel target passed')
 }
 
+// ---------------------------------------------------------------- engine: Curves/Levels combined channel entries
+
+{
+  const raw = new Engine()
+  const doc = makeDoc(8, 8, 8, 'rb') // target red+blue only
+  raw.docs.push(doc)
+  raw.setActiveDocument(doc.id)
+  const l = doc.layers[0] as any
+  // Fill with a varying pattern
+  const ctx = l.canvas.ctx
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      ctx.buf[i] = x * 32       // R gradient
+      ctx.buf[i + 1] = y * 32   // G gradient
+      ctx.buf[i + 2] = (x + y) * 16 // B gradient
+      ctx.buf[i + 3] = 255
+    }
+  }
+  const before = l.canvas.ctx.buf.slice()
+
+  // Curves with channel=rb should only affect R and B
+  assert.equal(raw.applyAdjustmentToLayer('l1', 'curves', { channel: 'rb', points: [{ x: 0, y: 0 }, { x: 255, y: 128 }] }), true)
+  const afterCurves = l.canvas.ctx.buf.slice()
+  let rbChanged = false
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      assert.equal(afterCurves[i + 1], before[i + 1], `G preserved at ${x},${y} under curves rb`)
+      if (afterCurves[i] !== before[i] || afterCurves[i + 2] !== before[i + 2]) rbChanged = true
+    }
+  }
+  assert.ok(rbChanged, 'Curves rb changed R and/or B')
+  console.log('engine Curves combined channel (rb) passed')
+
+  // Levels with channel=rg should only affect R and G
+{
+  const raw2 = new Engine()
+  const doc2 = makeDoc(8, 8, 8, 'rg')
+  raw2.docs.push(doc2)
+  raw2.setActiveDocument(doc2.id)
+  const l2 = doc2.layers[0] as any
+  const ctx2 = l2.canvas.ctx
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      ctx2.buf[i] = x * 32
+      ctx2.buf[i + 1] = y * 32
+      ctx2.buf[i + 2] = (x + y) * 16
+      ctx2.buf[i + 3] = 255
+    }
+  }
+  const before2 = l2.canvas.ctx.buf.slice()
+  assert.equal(raw2.applyAdjustmentToLayer('l1', 'levels', { channel: 'rg', inBlack: 0, inWhite: 128 }), true)
+  const afterLevels = l2.canvas.ctx.buf.slice()
+  let rgChanged = false
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      assert.equal(afterLevels[i + 2], before2[i + 2], `B preserved at ${x},${y} under levels rg`)
+      if (afterLevels[i] !== before2[i] || afterLevels[i + 1] !== before2[i + 1]) rgChanged = true
+    }
+  }
+  assert.ok(rgChanged, 'Levels rg changed R and/or G')
+  console.log('engine Levels combined channel (rg) passed')
+}
+}
+
+// ---------------------------------------------------------------- engine: Curves/Levels default (rgb) still affects all channels
+
+{
+  const raw = new Engine()
+  const doc = makeDoc(8, 8, 8, 'composite')
+  raw.docs.push(doc)
+  raw.setActiveDocument(doc.id)
+  const l = doc.layers[0] as any
+  const ctx = l.canvas.ctx
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const i = (y * 8 + x) * 4
+      ctx.buf[i] = x * 32
+      ctx.buf[i + 1] = y * 32
+      ctx.buf[i + 2] = (x + y) * 16
+      ctx.buf[i + 3] = 255
+    }
+  }
+  const before = l.canvas.ctx.buf.slice()
+  assert.equal(raw.applyAdjustmentToLayer('l1', 'curves', { channel: 'rgb', points: [{ x: 0, y: 0 }, { x: 255, y: 128 }] }), true)
+  const after = l.canvas.ctx.buf.slice()
+  let rChanged = false, gChanged = false, bChanged = false
+  for (let i = 0; i < after.length; i += 4) {
+    if (after[i] !== before[i]) rChanged = true
+    if (after[i + 1] !== before[i + 1]) gChanged = true
+    if (after[i + 2] !== before[i + 2]) bChanged = true
+  }
+  assert.ok(rChanged && gChanged && bChanged, 'Curves rgb changed all three channels')
+  console.log('engine Curves default (rgb) affects all channels passed')
+}
+
 console.log('validate-channel-editing: all checks passed')

@@ -5,9 +5,10 @@
 // Math notes inline. Pure functions — no DOM / engine imports.
 // ============================================================
 
-import type { AdjustmentDef, AdjustmentType } from '../types'
+import type { AdjustmentDef, AdjustmentType, ChannelTarget } from '../types'
 import { clamp, linearToSrgb, srgbToLinear } from '../utils/canvas'
 import { computeHistogram } from './core'
+import { channelTargetComponents } from '../image-ops/channel-restrict'
 import {
   hexToRgbTriple, hslToRgb, hueFamilyWeight, labToRgb, luma,
   rgbToHsl, rgbToHsv, rgbToLab,
@@ -43,7 +44,7 @@ function applyLUT3(img: ImageData, rl: Uint8ClampedArray | null, gl: Uint8Clampe
 const curvesAdj: AdjustmentDef = {
   type: 'curves', label: 'Curves',
   controls: [
-    { key: 'channel', label: 'Channel', type: 'select', options: [{ label: 'RGB', value: 'rgb' }, { label: 'Red', value: 'r' }, { label: 'Green', value: 'g' }, { label: 'Blue', value: 'b' }] },
+    { key: 'channel', label: 'Channel', type: 'select', options: [{ label: 'RGB', value: 'rgb' }, { label: 'Red', value: 'r' }, { label: 'Green', value: 'g' }, { label: 'Blue', value: 'b' }, { label: 'Red+Green', value: 'rg' }, { label: 'Red+Blue', value: 'rb' }, { label: 'Green+Blue', value: 'gb' }] },
     { key: 'points', label: 'Curve', type: 'custom', customId: 'curves-points' },
   ],
   defaults: {
@@ -54,14 +55,25 @@ const curvesAdj: AdjustmentDef = {
   apply(img, p) {
     // Monotone cubic (Fritsch–Carlson) — C1-continuous, no overshoot,
     // natural S-curves. Master + per-channel LUTs compose like Photoshop.
+    const channelTargets = channelTargetComponents(p.channel as ChannelTarget)
     applyLUT3(
       img,
-      buildCurveLUT(p.pointsR),
-      buildCurveLUT(p.pointsG),
-      buildCurveLUT(p.pointsB),
+      channelTargets.includes(0) ? buildCurveLUT(p.pointsR) : null,
+      channelTargets.includes(1) ? buildCurveLUT(p.pointsG) : null,
+      channelTargets.includes(2) ? buildCurveLUT(p.pointsB) : null,
     )
     const master = buildCurveLUT(p.points)
-    if (master) applyLUT(img, master)
+    if (!master) return
+    if (channelTargets.length === 3) {
+      applyLUT(img, master)
+    } else {
+      const d = img.data
+      for (let i = 0; i < d.length; i += 4) {
+        if (channelTargets.includes(0)) d[i] = sampleLut256(master, d[i])
+        if (channelTargets.includes(1)) d[i + 1] = sampleLut256(master, d[i + 1])
+        if (channelTargets.includes(2)) d[i + 2] = sampleLut256(master, d[i + 2])
+      }
+    }
   },
 }
 
@@ -69,7 +81,7 @@ const curvesAdj: AdjustmentDef = {
 const levelsAdj: AdjustmentDef = {
   type: 'levels', label: 'Levels',
   controls: [
-    { key: 'channel', label: 'Channel', type: 'select', options: [{ label: 'RGB', value: 'rgb' }, { label: 'Red', value: 'r' }, { label: 'Green', value: 'g' }, { label: 'Blue', value: 'b' }] },
+    { key: 'channel', label: 'Channel', type: 'select', options: [{ label: 'RGB', value: 'rgb' }, { label: 'Red', value: 'r' }, { label: 'Green', value: 'g' }, { label: 'Blue', value: 'b' }, { label: 'Red+Green', value: 'rg' }, { label: 'Red+Blue', value: 'rb' }, { label: 'Green+Blue', value: 'gb' }] },
     { key: 'inBlack', label: 'Input Black', type: 'slider', min: 0, max: 254, step: 1 },
     { key: 'gamma', label: 'Gamma', type: 'slider', min: 0.1, max: 9.99, step: 0.01 },
     { key: 'inWhite', label: 'Input White', type: 'slider', min: 1, max: 255, step: 1 },
@@ -79,6 +91,7 @@ const levelsAdj: AdjustmentDef = {
   ],
   defaults: { channel: 'rgb', inBlack: 0, gamma: 1, inWhite: 255, outBlack: 0, outWhite: 255, auto: false, perChannel: null },
   apply(img, p) {
+    const channelTargets = channelTargetComponents(p.channel as ChannelTarget)
     const mk = (ib: number, g: number, iw: number, ob: number, ow: number) => {
       const lut = new Uint8ClampedArray(256)
       const range = Math.max(1, iw - ib)
@@ -95,6 +108,7 @@ const levelsAdj: AdjustmentDef = {
       const chans = [h.r, h.g, h.b]
       const luts: (Uint8ClampedArray | null)[] = [null, null, null]
       for (let c = 0; c < 3; c++) {
+        if (!channelTargets.includes(c)) continue
         const hist = chans[c]
         const total = Math.max(1, h.total)
         const loTarget = total * 0.001
@@ -111,14 +125,14 @@ const levelsAdj: AdjustmentDef = {
     }
     const base = mk(p.inBlack ?? 0, p.gamma ?? 1, p.inWhite ?? 255, p.outBlack ?? 0, p.outWhite ?? 255)
     const pc: any = p.perChannel
-    const rL = pc?.r ? mk(pc.r.inBlack, pc.r.gamma, pc.r.inWhite, p.outBlack ?? 0, p.outWhite ?? 255) : null
-    const gL = pc?.g ? mk(pc.g.inBlack, pc.g.gamma, pc.g.inWhite, p.outBlack ?? 0, p.outWhite ?? 255) : null
-    const bL = pc?.b ? mk(pc.b.inBlack, pc.b.gamma, pc.b.inWhite, p.outBlack ?? 0, p.outWhite ?? 255) : null
+    const rL = channelTargets.includes(0) && pc?.r ? mk(pc.r.inBlack, pc.r.gamma, pc.r.inWhite, p.outBlack ?? 0, p.outWhite ?? 255) : null
+    const gL = channelTargets.includes(1) && pc?.g ? mk(pc.g.inBlack, pc.g.gamma, pc.g.inWhite, p.outBlack ?? 0, p.outWhite ?? 255) : null
+    const bL = channelTargets.includes(2) && pc?.b ? mk(pc.b.inBlack, pc.b.gamma, pc.b.inWhite, p.outBlack ?? 0, p.outWhite ?? 255) : null
     const d = D(img)
     for (let i = 0; i < d.length; i += 4) {
-      d[i] = sampleLut256(rL ?? base, d[i])
-      d[i + 1] = sampleLut256(gL ?? base, d[i + 1])
-      d[i + 2] = sampleLut256(bL ?? base, d[i + 2])
+      if (channelTargets.includes(0)) d[i] = sampleLut256(rL ?? base, d[i])
+      if (channelTargets.includes(1)) d[i + 1] = sampleLut256(gL ?? base, d[i + 1])
+      if (channelTargets.includes(2)) d[i + 2] = sampleLut256(bL ?? base, d[i + 2])
     }
   },
 }
