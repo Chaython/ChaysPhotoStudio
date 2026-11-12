@@ -4390,6 +4390,40 @@ export class Engine {
     this.emit()
   }
 
+  /** Apply selection constraint to an adjusted/filtered image: blend adjusted
+   * pixels with original based on selection mask alpha. Pixels outside the
+   * selection (alpha=0) keep original values; partially selected pixels are
+   * blended proportionally. Called after the pixel op has been applied to
+   * `img.data` but before commitComputedPixelOp writes it to the layer. */
+  private applySelectionConstraint(
+    img: PixelImage,
+    originalData: Uint8ClampedArray | Float32Array,
+    doc: PsDocument
+  ): void {
+    if (!doc.selection) return
+    const selMask = doc.selection.mask
+    const selCtx = ctx2d(selMask)
+    const selImg = selCtx.getImageData(0, 0, doc.width, doc.height)
+    const selAlpha = selImg.data
+    const data = img.data as Uint8ClampedArray | Float32Array
+    for (let i = 0; i < data.length; i += 4) {
+      const a = selAlpha[i + 3] / 255
+      if (a <= 0) {
+        // Fully unselected: restore original
+        data[i] = originalData[i]
+        data[i + 1] = originalData[i + 1]
+        data[i + 2] = originalData[i + 2]
+        data[i + 3] = originalData[i + 3]
+      } else if (a < 1) {
+        // Partially selected: blend between original and adjusted
+        data[i] = originalData[i] * (1 - a) + data[i] * a
+        data[i + 1] = originalData[i + 1] * (1 - a) + data[i + 1] * a
+        data[i + 2] = originalData[i + 2] * (1 - a) + data[i + 2] * a
+        data[i + 3] = originalData[i + 3] * (1 - a) + data[i + 3] * a
+      }
+    }
+  }
+
   applyAdjustmentToLayer(layerId: string, type: AdjustmentType, params: Record<string, any>): boolean {
     const doc = this.activeDoc
     const layer = this.layerById(layerId)
@@ -4405,7 +4439,11 @@ export class Engine {
     try {
       const img = this.processingCopyForLayer(doc, layer)
       if (!img) return false
+      // Capture original for selection constraint (selection limits which
+      // pixels are adjusted, channel target limits which components change)
+      const originalData = img.data.slice()
       imageOps.applyAdjustment(img, type, params)
+      this.applySelectionConstraint(img, originalData, doc)
       if (!this.commitComputedPixelOp(layer, img, params.target)) return false
     } catch (err) {
       this.ui?.toast(err instanceof Error ? `Adjustment failed: ${err.message}` : 'Adjustment failed', 'error')
@@ -4434,7 +4472,11 @@ export class Engine {
     try {
       const img = this.processingCopyForLayer(doc, layer)
       if (!img) return false
+      // Capture original for selection constraint (selection limits which
+      // pixels are filtered, channel target limits which components change)
+      const originalData = img.data.slice()
       imageOps.applyFilter(img, type, params)
+      this.applySelectionConstraint(img, originalData, doc)
       if (!this.commitComputedPixelOp(layer, img, params.target)) return false
     } catch (err) {
       this.ui?.toast(err instanceof Error ? `Filter failed: ${err.message}` : 'Filter failed', 'error')
