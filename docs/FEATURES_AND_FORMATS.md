@@ -66,6 +66,14 @@ The **Actions** panel loads and writes Photoshop action files. **Load Photoshop 
 
 Thirty-three Photoshop events map onto studio operations: Gaussian, Box, Motion and Radial blur, Add Noise, Unsharp Mask, Median, Dust & Scratches, High Pass, Minimum/Maximum, Offset, Wind, Twirl, Spherize, Wave, Pinch, ZigZag, Crystallize, Mosaic, Emboss, Average, Find Edges, Brightness/Contrast, Hue/Saturation, Posterize, Threshold, Vibrance, Invert, Desaturate, Equalize, Flatten Image and Image Size. Numeric parameters are clamped to the studio's own control ranges, and an event whose settings the studio cannot express exactly — a different blur method, a colour-range Hue/Saturation, a multi-generator Wave — stays a **kept step**: stored verbatim, visible in the panel and skipped on playback, so importing and saving again writes the original bytes back. Studio operations Photoshop has no event for export as visible placeholder steps Photoshop skips rather than being dropped silently.
 
+### Channel editing targets (multi-channel editing)
+
+**Image → Adjustments → Desaturate…** and the Channels panel now support **editing targets**: Shift-click colour rows (R/G/B) to add or remove them from the editing set, or plain-click to view one channel alone. All three selected returns to Composite. When a subset is targeted, raster tools (brush/pencil/erasers/clone/pattern/heal/mixer/history brushes), bucket, gradient and Fill write **only** the targeted colour components — every other component, including layer alpha, is preserved **byte-for-byte** (HDR values, signed zeros and NaN payloads included at 8/16/32-bit). Erasing under a colour target paints the toolbox background colour into the targeted components, preserving transparency.
+
+**Refusals:** Move/transforms, Camera Raw (`camera-raw`), HDR Toning (`hdr-toning`) and new-layer render options are refused transactionally when a colour subset is targeted. RGB only today; CMYK/Lab stay at Composite until a channel model exists for them. With no target (`composite`, the default), behaviour is unchanged and there is no overhead.
+
+See [MULTI_CHANNEL_EDITING.md](MULTI_CHANNEL_EDITING.md) for the design, commit-site mapping, phased milestones and validator.
+
 ### High-bit-depth/HDR behavior
 
 The editor includes 16-bit-float and 32-bit scene-linear infrastructure, guarded native/float pixel read/write paths, HDR-aware compositing and selected high-depth fills/transforms. Do **not** interpret that as universal 16/32-bit fidelity for every filter, tool, codec, plugin or PSD round trip.
