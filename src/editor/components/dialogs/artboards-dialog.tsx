@@ -12,7 +12,7 @@ import { useEditorStore } from '../../store'
 import { createCanvas, ctx2d, downloadBlob, uid } from '../../utils/canvas'
 import { encodeCanvas } from '../../formats'
 import { fileStem } from '../../web-assets'
-import { artboardCrop, buildArtboardRolloverHtml, gridArtboards, layersForArtboard, MAX_ARTBOARDS, normalizeArtboards, type Artboard, type RolloverSlot } from '../../artboards'
+import { artboardCrop, buildArtboardRolloverHtml, gridArtboards, layersForArtboard, MAX_ARTBOARDS, normalizeArtboards, type Artboard, type ArtboardCrop, type RolloverSlot } from '../../artboards'
 import type { DialogProps } from './generic-dialogs'
 
 type ImageFormat = 'png' | 'jpeg' | 'webp'
@@ -209,9 +209,9 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
           }
         }
         const saveVariant = async (slot: RolloverSlot, filename: string) => {
-          const cropped = createCanvas(rect.sw, rect.sh)
+          const cropped = createCanvas(rect.aw, rect.ah)
           ctx2d(cropped).drawImage(previewArtboard(doc, board, slot),
-            rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, rect.sw, rect.sh)
+            rect.sx, rect.sy, rect.sw, rect.sh, rect.dx, rect.dy, rect.sw, rect.sh)
           const blob = await encodeCanvas(cropped, format, { quality,
             background: '#ffffff', includeMetadata: false, resolutionPpi: doc.resolutionPpi ?? 72 })
           await saveArtifact(blob, filename)
@@ -253,14 +253,13 @@ export function ArtboardsDialog({ onClose }: DialogProps) {
     <div key={key} className="space-y-1">
       <Label className="text-[10px] uppercase">{key}</Label>
       <Input className="h-7 text-xs" aria-label={'Artboard ' + key} type="number"
-        min={key === 'width' || key === 'height' ? 1 : 0}
+        min={key === 'width' || key === 'height' ? 1 : undefined}
         value={active?.[key] ?? 0} onChange={event => {
           if (!active || !doc) return
           const n = Number(event.target.value)
           if (!Number.isSafeInteger(n)) return
-          const max = key === 'x' ? doc.width - 1 : key === 'y' ? doc.height - 1
-            : key === 'width' ? doc.width - active.x : doc.height - active.y
-          modify({ [key]: Math.max(key === 'width' || key === 'height' ? 1 : 0, Math.min(max, n)) })
+          const max = key === 'width' ? doc.width - active.x : key === 'height' ? doc.height - active.y : Infinity
+          modify({ [key]: Math.max(key === 'width' || key === 'height' ? 1 : Number.MIN_SAFE_INTEGER, Math.min(max, n)) })
         }} />
     </div>
 

@@ -35,11 +35,8 @@ export function normalizeArtboards(input: unknown, width: number, height: number
     const numbers = [a.x, a.y, a.width, a.height]
     if (!numbers.every(n => typeof n === 'number' && Number.isSafeInteger(n))) continue
     let [x, y, w, h] = numbers as number[]
-    if (w < 1 || h < 1 || x >= width || y >= height || x + w <= 0 || y + h <= 0) continue
-    // Preserve the original rectangle's far edge when clipping negative origins.
-    const right = Math.min(width, x + w), bottom = Math.min(height, y + h)
-    x = Math.max(0, x); y = Math.max(0, y)
-    w = right - x; h = bottom - y
+    // Artboards may sit partly or fully outside the document canvas; those
+    // regions export as transparent. Only positive dimensions are required.
     if (w < 1 || h < 1) continue
     seen.add(a.id)
     const visibleLayerIds = normalizeArtboardLayerIds(a.visibleLayerIds)
@@ -76,12 +73,39 @@ export function gridArtboards(
   return result
 }
 
+/** Crop an artboard against the document canvas. Returns the source region
+ *  (clamped to canvas bounds), the destination offset within the artboard
+ *  canvas, and the artboard canvas dimensions. Off-canvas artboards export
+ *  with transparent padding. */
+export interface ArtboardCrop {
+  /** Source rectangle within the document canvas (clamped). */
+  sx: number
+  sy: number
+  sw: number
+  sh: number
+  /** Destination offset in the artboard canvas where the source is painted. */
+  dx: number
+  dy: number
+  /** Artboard canvas dimensions. */
+  aw: number
+  ah: number
+}
+
 /** Clamped document rectangle with no hidden off-canvas source requirements. */
 export function artboardCrop(
   artboard: Artboard, documentWidth: number, documentHeight: number,
-): { sx: number; sy: number; sw: number; sh: number } | null {
+): ArtboardCrop | null {
   const valid = normalizeArtboards([artboard], documentWidth, documentHeight)[0]
-  return valid ? { sx: valid.x, sy: valid.y, sw: valid.width, sh: valid.height } : null
+  if (!valid) return null
+  // Source region within the document canvas (clamped to canvas bounds).
+  const sx = Math.min(documentWidth, Math.max(0, valid.x))
+  const sy = Math.min(documentHeight, Math.max(0, valid.y))
+  const sw = Math.max(0, Math.min(documentWidth, valid.x + valid.width) - sx)
+  const sh = Math.max(0, Math.min(documentHeight, valid.y + valid.height) - sy)
+  // Destination offset in the artboard canvas (negative origin → positive offset).
+  const dx = Math.max(0, -valid.x)
+  const dy = Math.max(0, -valid.y)
+  return { sx, sy, sw, sh, dx, dy, aw: valid.width, ah: valid.height }
 }
 
 

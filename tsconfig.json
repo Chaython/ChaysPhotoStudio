@@ -42,6 +42,8 @@
     "skills",
     "build",
     "webview",
-    "extension"
+    "extension",
+    "scripts/validate-artboards-offcanvas.ts",
+    "tsconfig.validate.json"
   ]
 }

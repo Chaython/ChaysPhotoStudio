@@ -21,13 +21,13 @@ function boardAt(boards: Artboard[], x: number, y: number): Artboard | undefined
 function same(a: Rect, b: Rect): boolean {
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 }
-function boundedDrag(x: number, y: number, endX: number, endY: number, w: number, h: number, square: boolean): Rect {
+function boundedDrag(x: number, y: number, endX: number, endY: number, square: boolean): Rect {
   let dx = endX-x, dy = endY-y
   if (square) {
     const side = Math.max(Math.abs(dx), Math.abs(dy))
     dx = Math.sign(dx || 1)*side; dy = Math.sign(dy || 1)*side
   }
-  const xx = cap(x+dx, 0, w-1), yy = cap(y+dy, 0, h-1)
+  const xx = x+dx, yy = y+dy
   return { x: Math.min(x,xx), y: Math.min(y,yy), width: Math.abs(xx-x)+1, height: Math.abs(yy-y)+1 }
 }
 function commit(docId: string, boards: Artboard[], focused: string | null, label: string) {
@@ -65,15 +65,13 @@ export const artboardTool: Tool = {
   onPointerMove(p:PointerInfo) {
     const doc=engine.activeDoc, d=drag
     if (!doc || !d || d.docId!==doc.id) { drag=null; return }
-    const x=point(p.docX,doc.width),y=point(p.docY,doc.height)
-    if(d.kind==='new') d.draft=boundedDrag(d.x,d.y,x,y,doc.width,doc.height,p.shift)
+    const x=Math.round(p.docX),y=Math.round(p.docY)
+    if(d.kind==='new') d.draft=boundedDrag(d.x,d.y,x,y,p.shift)
     else if(d.original && d.kind==='move'){
-      d.draft={...d.original,x:cap(d.original.x+x-d.x,0,doc.width-d.original.width),
-        y:cap(d.original.y+y-d.y,0,doc.height-d.original.height)}
+      d.draft={...d.original,x:d.original.x+x-d.x, y:d.original.y+y-d.y}
     } else if(d.original){
       const rx=Math.max(1,x-d.original.x+1),ry=Math.max(1,y-d.original.y+1), side=Math.max(rx,ry)
-      d.draft={...d.original,width:Math.min(doc.width-d.original.x,p.shift?side:rx),
-        height:Math.min(doc.height-d.original.y,p.shift?side:ry)}
+      d.draft={...d.original,width:p.shift?side:rx, height:p.shift?side:ry}
     }
     engine.pokeOverlay()
   },
@@ -108,8 +106,7 @@ export const artboardTool: Tool = {
     const delta=directions[e.key], board=boards.find(b=>b.id===id)
     if(!delta||!board)return false
     const step=e.shiftKey?10:1
-    const x=cap(board.x+step*delta[0],0,doc.width-board.width)
-    const y=cap(board.y+step*delta[1],0,doc.height-board.height)
+    const x=board.x+step*delta[0], y=board.y+step*delta[1]
     if(board.x!==x||board.y!==y)commit(doc.id,boards.map(b=>b.id===id?{...b,x,y}:b),id,'Nudge Artboard')
     return true
   },
