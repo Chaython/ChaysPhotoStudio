@@ -531,9 +531,9 @@ function makeDoc(w = 8, h = 8, bitDepth: number = 8, channelTarget: ChannelTarge
     const doc = makeDoc(8, 8, 8, 'rb')
     raw.docs.push(doc)
     raw.setActiveDocument(doc.id)
-    const before = JSON.stringify(doc.layers[0].canvas.ctx.buf)
-    assert.equal(raw[fn](...args), false, `${type} refused under channel target`)
-    assert.equal(JSON.stringify(doc.layers[0].canvas.ctx.buf), before, `${type}: no pixel change`)
+    const before = JSON.stringify((doc.layers[0].canvas as unknown as FakeCanvas).ctx.buf)
+    assert.equal((raw as any)[fn](...args), false, `${type} refused under channel target`)
+    assert.equal(JSON.stringify((doc.layers[0].canvas as unknown as FakeCanvas).ctx.buf), before, `${type}: no pixel change`)
   }
   console.log('camera-raw/hdr-toning refused under channel target passed')
 }

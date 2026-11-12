@@ -46,7 +46,7 @@ import { rasterTransparencyAlpha } from '../image-ops/layer-transparency'
 import { applyHdrRasterMask, createLayerMaskAlpha, type LayerMaskCreationMode } from '../image-ops/layer-mask'
 import { layerContentForRasterization } from './rasterize-layer'
 import { compositeHdrRasters, type HdrCompositeLayer } from '../image-ops/hdr-composite'
-import { docRectToLayerRect } from '../image-ops/channel-restrict'
+import { docRectToLayerRect, channelTargetComponents } from '../image-ops/channel-restrict'
 import type { PlaneSnapshotF32 } from '../image-ops/channel-restrict'
 import {
   captureCanvasPlanes, restoreCanvasPlanes, captureHdrPlanes, restoreHdrPlanes,
@@ -3124,7 +3124,7 @@ export class Engine {
 
   // ================================================== clipboard (internal + system interop)
 
-  private _clip: { canvas: HTMLCanvasElement; hdrPixels?: Float32Array | null; offsetX: number; offsetY: number; name: string } | null = null
+  private _clip: { canvas: HTMLCanvasElement; hdrPixels?: Float32Array | null; offsetX: number; offsetY: number; name: string; components?: number[] } | null = null
 
   /** Copy the active layer (or the merged composite with merged=true) to the
    *  internal clipboard AND the system clipboard (PNG). With an active
@@ -3137,6 +3137,7 @@ export class Engine {
     let canvas: HTMLCanvasElement
     let hdrPixels: Float32Array | null = null
     let ox = 0, oy = 0, name = 'Layer'
+    let copyComponents: number[] | undefined = undefined
     this.syncPendingHdrCanvasEdits(doc)
     if (merged) {
       const composite = compositeDocument(doc)
@@ -3162,6 +3163,10 @@ export class Engine {
     } else {
       const l = this.activeLayer
       if (!l || l.kind === 'adjustment') { this.ui?.toast('No pixel layer to copy — use Copy Merged (Ctrl+Shift+C)', 'error'); return false }
+      // Channel target: only the targeted colour planes are copied; protected
+      // planes are zeroed so a paste re-applies only those components.
+      const target = doc.channelTarget ?? 'composite'
+      copyComponents = target === 'composite' ? undefined : channelTargetComponents(target)
       if (doc.selection) {
         const b = doc.selection.bounds
         const x0 = clamp(Math.floor(b.x), 0, doc.width), y0 = clamp(Math.floor(b.y), 0, doc.height)
@@ -3177,6 +3182,16 @@ export class Engine {
         ctx.drawImage(doc.selection.mask, -x0, -y0)
         if (l.kind === 'raster' && l.maskEnabled && l.mask) ctx.drawImage(l.mask, -x0, -y0)
         ctx.restore()
+        if (copyComponents) {
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+          const d = img.data
+          for (let i = 0; i < d.length; i += 4) {
+            if (!copyComponents.includes(0)) d[i] = 0
+            if (!copyComponents.includes(1)) d[i + 1] = 0
+            if (!copyComponents.includes(2)) d[i + 2] = 0
+          }
+          ctx.putImageData(img, 0, 0)
+        }
         if (l.kind === 'raster' && l.canvas && l.hdrPixels) {
           const region = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
           const selectionAlpha = this.selectionRegionAlpha(doc.selection.mask, region)
@@ -3186,6 +3201,13 @@ export class Engine {
           hdrPixels = splitHdrSelectionPixels(l.hdrPixels, l.canvas.width, l.canvas.height,
             Math.round(l.offsetX ?? 0), Math.round(l.offsetY ?? 0),
             region, selectionAlpha, false, layerMaskAlpha).pixels
+          if (copyComponents && hdrPixels) {
+            for (let i = 0; i < hdrPixels.length; i += 4) {
+              if (!copyComponents.includes(0)) hdrPixels[i] = 0
+              if (!copyComponents.includes(1)) hdrPixels[i + 1] = 0
+              if (!copyComponents.includes(2)) hdrPixels[i + 2] = 0
+            }
+          }
         }
         ox = x0; oy = y0
         name = l.name
@@ -3194,6 +3216,23 @@ export class Engine {
         hdrPixels = l.hdrPixels ? new Float32Array(l.hdrPixels) : null
         ox = l.offsetX ?? 0; oy = l.offsetY ?? 0
         name = l.name
+        if (copyComponents) {
+          const img = ctx2d(canvas).getImageData(0, 0, canvas.width, canvas.height)
+          const d = img.data
+          for (let i = 0; i < d.length; i += 4) {
+            if (!copyComponents.includes(0)) d[i] = 0
+            if (!copyComponents.includes(1)) d[i + 1] = 0
+            if (!copyComponents.includes(2)) d[i + 2] = 0
+          }
+          ctx2d(canvas).putImageData(img, 0, 0)
+          if (copyComponents && hdrPixels) {
+            for (let i = 0; i < hdrPixels.length; i += 4) {
+              if (!copyComponents.includes(0)) hdrPixels[i] = 0
+              if (!copyComponents.includes(1)) hdrPixels[i + 1] = 0
+              if (!copyComponents.includes(2)) hdrPixels[i + 2] = 0
+            }
+          }
+        }
       } else {
         const p = prepareLayer(doc, l)
         if (!p) return false
@@ -3201,7 +3240,7 @@ export class Engine {
         name = l.name
       }
     }
-    this._clip = { canvas, hdrPixels, offsetX: ox, offsetY: oy, name }
+    this._clip = { canvas, hdrPixels, offsetX: ox, offsetY: oy, name, components: copyComponents }
     void this.writeSystemClipboard(canvas)
     return true
   }
