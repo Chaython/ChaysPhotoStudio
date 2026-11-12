@@ -382,6 +382,22 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import camera-raw target rb passed')
 }
 
+// ---------------------------------------------------------------- chromatic-aberration with target
+
+{
+  const step = filterStep('chromatic-aberration', { radius: 50, intensity: 30 }, 'rb')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'chromatic-aberration step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyFilter', 'step is applyFilter')
+  assert.equal(importedStep.args.target, 'rb', 'target restored on import')
+  assert.equal(importedStep.args.params.radius, 50, 'radius restored')
+  assert.equal(importedStep.args.params.intensity, 30, 'intensity restored')
+  console.log('.atn export/import chromatic-aberration target rb passed')
+}
+
 // ---------------------------------------------------------------- vignette with target
 
 {

@@ -1320,6 +1320,21 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
     ]),
   },
   {
+    // Chromatic Aberration. Event code `ChrA`. Keys: `Rds ` radius, `Int` intensity.
+    code: '', names: ['chromatic-aberration'], op: 'applyFilter', type: 'chromatic-aberration',
+    classId: 'null', label: 'Chromatic Aberration', keys: ['Rds ', 'Int'],
+    read: d => {
+      const radius = valueNumber(atnGet(d, 'Rds '))
+      const intensity = valueNumber(atnGet(d, 'Int'))
+      if (radius === undefined || intensity === undefined) return null
+      return { radius, intensity: intensity / 100 }
+    },
+    write: p => makeDescriptor('null', [
+      ['Rds ', psInt(p.radius ?? 50)],
+      ['Int', psInt(p.intensity ?? 100)],
+    ]),
+  },
+  {
     // Photoshop Curves. Event code `Crv `. Key `CrvP` holds an array of curve
     // descriptors: each has `CrvI` (channel index: 0=composite, 1=red,
     // 2=green, 3=blue) and `CrvP` (array of {CrvI=input, CrvO=output} point pairs).
