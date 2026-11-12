@@ -1133,6 +1133,31 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
       ])
     },
   },
+  {
+    // Black & White. Keys: `Reds`, `Yellows`, `Greens`, `Cyans`, `Blues`, `Magentas`
+    // (percentages -200..300).
+    code: 'BlWt', names: ['blackWhite'], op: 'applyAdjustment', type: 'black-white',
+    classId: 'BlWt', label: 'Black & White', keys: ['Reds', 'Yellows', 'Greens', 'Cyans', 'Blues', 'Magentas'],
+    read: d => {
+      const reds = valueNumber(atnGet(d, 'Reds'))
+      const yellows = valueNumber(atnGet(d, 'Yellows'))
+      const greens = valueNumber(atnGet(d, 'Greens'))
+      const cyans = valueNumber(atnGet(d, 'Cyans'))
+      const blues = valueNumber(atnGet(d, 'Blues'))
+      const magentas = valueNumber(atnGet(d, 'Magentas'))
+      if (reds === undefined || yellows === undefined || greens === undefined ||
+          cyans === undefined || blues === undefined || magentas === undefined) return null
+      return { reds, yellows, greens, cyans, blues, magentas }
+    },
+    write: p => makeDescriptor('BlWt', [
+      ['Reds', psInt(p.reds ?? 40)],
+      ['Yellows', psInt(p.yellows ?? 60)],
+      ['Greens', psInt(p.greens ?? 40)],
+      ['Cyans', psInt(p.cyans ?? 60)],
+      ['Blues', psInt(p.blues ?? 20)],
+      ['Magentas', psInt(p.magentas ?? 80)],
+    ]),
+  },
 ]
 
 const DOCUMENT_MAPPINGS: AtnMapping[] = [

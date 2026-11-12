@@ -250,4 +250,26 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import gradient-map target b passed')
 }
 
+// ---------------------------------------------------------------- black-white with target
+
+{
+  const step = adjustmentStep('black-white', {
+    reds: 40, yellows: 60, greens: 40, cyans: 60, blues: 20, magentas: 80
+  }, 'b')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'black-white step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'b', 'target restored on import')
+  assert.equal(importedStep.args.params.reds, 40, 'reds restored')
+  assert.equal(importedStep.args.params.yellows, 60, 'yellows restored')
+  assert.equal(importedStep.args.params.greens, 40, 'greens restored')
+  assert.equal(importedStep.args.params.cyans, 60, 'cyans restored')
+  assert.equal(importedStep.args.params.blues, 20, 'blues restored')
+  assert.equal(importedStep.args.params.magentas, 80, 'magentas restored')
+  console.log('.atn export/import black-white target b passed')
+}
+
 console.log('.atn channel-target round-trip: all checks passed')
