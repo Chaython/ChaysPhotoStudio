@@ -827,6 +827,57 @@ const ADJUSTMENT_MAPPINGS: AtnMapping[] = [
     write: () => makeDescriptor('Dstt'),
   },
   {
+    // Photoshop records Exposure by name in some versions; the class id is
+    // the string id `exposure`. Keys: exposure (stops), gamma, offset.
+    code: '', names: ['exposure'], op: 'applyAdjustment', type: 'exposure',
+    classId: 'exposure', label: 'Exposure', keys: ['ExpS', 'GmmC', 'Offs'],
+    read: d => {
+      const exposure = valueNumber(atnGet(d, 'ExpS'))
+      const gamma = valueNumber(atnGet(d, 'GmmC'))
+      const offset = valueNumber(atnGet(d, 'Offs'))
+      if (exposure === undefined) return null
+      const out: Record<string, any> = { exposure }
+      if (gamma !== undefined) out.gamma = gamma
+      if (offset !== undefined) out.offset = offset
+      return out
+    },
+    write: p => {
+      const items: [string, AtnValue][] = [['ExpS', psDbl(p.exposure ?? 0)]]
+      if (typeof p.gamma === 'number') items.push(['GmmC', psDbl(p.gamma)])
+      if (typeof p.offset === 'number') items.push(['Offs', psDbl(p.offset)])
+      return makeDescriptor('exposure', items)
+    },
+  },
+  {
+    // Color Balance. Keys: `CtnM` (tones: Shdw/Mid/Hgh/Mstr), `CtnV` (RGB
+    // balance in range [-100, 100]). Photoshop stores the tone as an
+    // enumeration and the values as a double array.
+    code: 'CBr ', names: ['colorBalance'], op: 'applyAdjustment', type: 'color-balance',
+    classId: 'CBl ', label: 'Color Balance', keys: ['CtnM', 'CtnV'],
+    read: d => {
+      const tones = valueEnum(atnGet(d, 'CtnM'))
+      const values = atnGet(d, 'CtnV')
+      if (!tones || !values || values.type !== 'list' || values.items.length !== 3) return null
+      const rv = valueNumber(values.items[0])
+      const gv = valueNumber(values.items[1])
+      const bv = valueNumber(values.items[2])
+      if (rv === undefined || gv === undefined || bv === undefined) return null
+      return { tones, shadows: rv, midtones: gv, highlights: bv }
+    },
+    write: p => {
+      const tones = enumCode({ Shdw: 'Shadows', 'Mid ': 'Midtones', Hgh: 'Highlights', Mstr: 'Master' }, p.tones ?? 'Midtones')
+      if (!tones) return null
+      return makeDescriptor('CBl ', [
+        ['CtnM', psEnum('CtnM', tones)],
+        ['CtnV', { type: 'list', items: [
+          { type: 'double', value: p.shadows ?? 0 },
+          { type: 'double', value: p.midtones ?? 0 },
+          { type: 'double', value: p.highlights ?? 0 },
+        ] }],
+      ])
+    },
+  },
+  {
     code: 'Eqlz', names: ['equalize'], op: 'applyAdjustment', type: 'equalize',
     classId: 'Eqlz', label: 'Equalize', keys: [],
     read: () => ({}),

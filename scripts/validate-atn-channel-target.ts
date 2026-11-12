@@ -107,4 +107,37 @@ function findChnT(descriptor: any): string | null {
   console.log('.atn export/import invert target rg passed')
 }
 
+// ---------------------------------------------------------------- exposure with target
+
+{
+  const step = adjustmentStep('exposure', { exposure: 1.5, gamma: 1.0, offset: 0.0 }, 'rb')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'exposure step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'rb', 'target restored on import')
+  assert.equal(importedStep.args.params.exposure, 1.5, 'exposure value restored')
+  console.log('.atn export/import exposure target rb passed')
+}
+
+// ---------------------------------------------------------------- color-balance with target
+
+{
+  const step = adjustmentStep('color-balance', { tones: 'Midtones', shadows: 10, midtones: -5, highlights: 15 }, 'r')
+  const actions: PsAction[] = [{ id: 'a1', name: 'Test', steps: [step], created: Date.now() }]
+  const bytes = writeAtnActions(actions, 'Test')
+  const imported = readAtnActions(bytes)
+  assert.equal(imported.mapped, 1, 'color-balance step mapped')
+  const importedStep = imported.actions[0].steps[0]
+  assert.equal(importedStep.op, 'applyAdjustment', 'step is applyAdjustment')
+  assert.equal(importedStep.args.target, 'r', 'target restored on import')
+  assert.equal(importedStep.args.params.tones, 'Midtones', 'tones restored on import')
+  assert.equal(importedStep.args.params.shadows, 10, 'shadows restored on import')
+  assert.equal(importedStep.args.params.midtones, -5, 'midtones restored on import')
+  assert.equal(importedStep.args.params.highlights, 15, 'highlights restored on import')
+  console.log('.atn export/import color-balance target r passed')
+}
+
 console.log('.atn channel-target round-trip: all checks passed')
