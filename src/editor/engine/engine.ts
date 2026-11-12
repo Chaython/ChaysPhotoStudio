@@ -6537,6 +6537,10 @@ export class Engine {
       case 'rotate': this.rotateCanvas(a.deg); break
       case 'flipCanvas': this.flipCanvas(a.dir); break
       case 'invertAdjust': if (layerId) this.applyAdjustmentToLayer(layerId, 'invert', {}); break
+      // A Photoshop step imported from an .atn file that this studio has no
+      // operation for. It is preserved verbatim so a re-export writes it back
+      // unchanged; playing the action skips it.
+      case 'photoshop': break
       case 'applyFilterComposite': {
         const doc = this.activeDoc
         if (doc) {

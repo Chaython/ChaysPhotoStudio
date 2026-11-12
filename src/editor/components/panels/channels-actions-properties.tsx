@@ -13,6 +13,7 @@ import { getFlatComposite, invalidateFlat } from '../../engine/document'
 import { ADJUSTMENT_ICONS } from '../../constants/tools'
 import { getImageData, uid, downloadBlob, clamp } from '../../utils/canvas'
 import { ADJUSTMENTS, FILTERS, listLuts, getLut, parseLutFile, sampleLUT } from '../../image-ops'
+import { readAtnActions, writeAtnActions } from '../../formats/atn-actions'
 import { PanelBtn } from './layers-panel'
 import { ControlRenderer } from '../toolbar/tool-options-bar'
 import { cn } from '@/lib/utils'
@@ -314,6 +315,7 @@ export function ActionsPanel() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const importRef = useRef<HTMLInputElement>(null)
+  const atnRef = useRef<HTMLInputElement>(null)
   void tick
 
   // live recording mirror (private engine field; ops emit -> renderTick bumps)
@@ -351,6 +353,43 @@ export function ActionsPanel() {
     )
     downloadBlob(blob, 'zphoto-actions.json')
     useEditorStore.getState().pushToast(`Exported ${engine.actions.length} action(s)`, 'success')
+  }
+
+  const exportAtn = () => {
+    if (!engine.actions.length) { useEditorStore.getState().pushToast('No actions to export', 'info'); return }
+    try {
+      const bytes = writeAtnActions(engine.actions, 'Photo Studio Actions')
+      downloadBlob(new Blob([bytes as unknown as BlobPart], { type: 'application/octet-stream' }), 'photo-studio-actions.atn')
+      useEditorStore.getState().pushToast(`Exported ${engine.actions.length} action(s) to Photoshop .atn`, 'success')
+    } catch {
+      useEditorStore.getState().pushToast('Could not write the actions file', 'error')
+    }
+  }
+
+  const applyAtnImport = (result: ReturnType<typeof readAtnActions>) => {
+    for (const action of result.actions) engine.actions.push(action)
+    persist()
+    engine.emit()
+    const parts: string[] = []
+    if (result.actions.length) parts.push(`${result.actions.length} action(s)`)
+    if (result.mapped) parts.push(`${result.mapped} step(s) mapped`)
+    if (result.kept) parts.push(`${result.kept} Photoshop step(s) kept`)
+    useEditorStore.getState().pushToast(
+      parts.length ? `Imported ${parts.join(', ')}` : 'No actions found',
+      result.actions.length ? 'success' : 'error'
+    )
+  }
+
+  const onAtnFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!f) return
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer())
+      applyAtnImport(readAtnActions(bytes))
+    } catch {
+      useEditorStore.getState().pushToast('Invalid Photoshop actions file', 'error')
+    }
   }
 
   const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -413,6 +452,8 @@ export function ActionsPanel() {
         <span className="flex-1" />
         <PanelBtn title="Import actions (.json)" icon="Upload" onClick={() => importRef.current?.click()} />
         <PanelBtn title="Export all actions (.json)" icon="Download" onClick={exportActions} />
+        <PanelBtn title="Load Photoshop actions (.atn)" icon="FileUp" onClick={() => atnRef.current?.click()} />
+        <PanelBtn title="Save all actions as Photoshop .atn" icon="FileDown" onClick={exportAtn} />
         <PanelBtn
           title="Delete all actions"
           icon="Trash2"
@@ -423,6 +464,7 @@ export function ActionsPanel() {
           }}
         />
         <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={onImportFile} aria-label="Import actions file" />
+        <input ref={atnRef} type="file" accept=".atn,application/octet-stream" className="hidden" onChange={onAtnFile} aria-label="Load Photoshop actions file" />
       </div>
 
       {recording && (

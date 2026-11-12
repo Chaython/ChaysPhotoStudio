@@ -40,6 +40,11 @@ export { decodePsd, buildPsd, psdBlendKeyToMode, blendModeToPsdKey, psdPixelFing
 export { PHOTOPEA_IMPORT_ACCEPT, PHOTOPEA_COMPLEX_EXTENSIONS, PHOTOPEA_RASTER_EXTENSIONS, PHOTOPEA_RAW_EXTENSIONS, PHOTOPEA_ANIMATED_EXTENSIONS, EXTRA_IMPORT_EXTENSIONS, fileExtension, publishedFormatKind, isPhotopeaPublishedExtension, isVideoImport } from './photopea-formats'
 export { hasDedicatedDocumentParser, parseStructuredDocument } from './structured'
 
+// ---- Photoshop Actions (.atn) ----
+export { parseAtn, writeAtn, ATN_VERSION, type AtnActionSet } from './atn'
+export type { AtnImport, AtnJsonDescriptor, AtnJsonStep } from './atn-actions'
+export { readAtnActions, writeAtnActions, atnToStudioActions, studioActionsToAtn, KEPT_STEP_OP } from './atn-actions'
+
 // ============================================================
 // import
 // ============================================================
