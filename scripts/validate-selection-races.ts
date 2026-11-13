@@ -81,6 +81,10 @@ try {
   await historyJob
   assert.equal(doc.selection, newer, 'worker must discard results after a document edit')
 
+  // Auto Tone operates on the full layer, so clear the test selection left
+  // by the Magic Wand race checks before dispatching the histogram worker.
+  doc.selection = null
+
   // A pending Auto Tone worker must not commit into an edited or switched
   // document. Patch COW access so the test focuses on worker ownership rather
   // than a full browser's Canvas2D implementation.
