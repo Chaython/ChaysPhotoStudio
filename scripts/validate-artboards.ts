@@ -6,17 +6,20 @@ assert.deepEqual(normalizeArtboards([first], 100, 80), [{ ...first, name: 'Page 
 assert.equal(normalizeArtboards([first, first], 100, 80).length, 1, 'duplicate ids skipped')
 assert.equal(normalizeArtboards([{ ...first, id: '' }], 100, 80).length, 0)
 assert.equal(normalizeArtboards([{ ...first, width: 0 }], 100, 80).length, 0)
-assert.equal(normalizeArtboards([{ ...first, x: 100 }], 100, 80).length, 0)
+assert.equal(normalizeArtboards([{ ...first, x: 100 }], 100, 80).length, 1,
+  'artboards may begin at or beyond the canvas boundary')
 assert.equal(normalizeArtboards([{ ...first, width: Infinity }], 100, 80).length, 0)
 assert.equal(normalizeArtboards([{ ...first, width: '25' }], 100, 80).length, 0)
 assert.equal(normalizeArtboards([{ ...first, name: ' ' }], 100, 80).length, 0)
 
-const clipped = normalizeArtboards([{ ...first, x: -5, y: -4, width: 9, height: 8 }], 100, 80)[0]
-assert.deepEqual([clipped.x, clipped.y, clipped.width, clipped.height], [0, 0, 4, 4],
-  'clipping must not expand an off-canvas rectangle')
+const offCanvas = normalizeArtboards([{ ...first, x: -5, y: -4, width: 9, height: 8 }], 100, 80)[0]
+assert.deepEqual([offCanvas.x, offCanvas.y, offCanvas.width, offCanvas.height], [-5, -4, 9, 8],
+  'normalization must preserve off-canvas artboard geometry')
 assert.deepEqual(artboardCrop({ ...first, x: 99, y: 79, width: 20, height: 10 }, 100, 80),
-  { sx: 99, sy: 79, sw: 1, sh: 1 })
-assert.equal(artboardCrop({ ...first, x: 150 }, 100, 80), null)
+  { sx: 99, sy: 79, sw: 1, sh: 1, dx: 0, dy: 0, aw: 20, ah: 10 })
+assert.deepEqual(artboardCrop({ ...first, x: 150 }, 100, 80),
+  { sx: 100, sy: 2, sw: 0, sh: 10, dx: 0, dy: 0, aw: 20, ah: 10 },
+  'fully off-canvas artboards have an empty source crop and retain their output size')
 const split = gridArtboards(101, 71, 3, 2, (() => { let id = 0; return () => String(++id) })())
 assert.equal(split.length, 6)
 assert.equal(new Set(split.map(a => a.id)).size, 6)
@@ -33,9 +36,9 @@ assert.equal(normalizeArtboards([{ ...first, x: NaN }], 100, 80).length, 0)
 const moved = translateArtboards([first], 100, 80, 4, 7, 110, 90)
 assert.deepEqual([moved[0].x, moved[0].y, moved[0].width, moved[0].height], [5, 9, 20, 10])
 const cropped = translateArtboards([first], 100, 80, -10, -8, 80, 60)
-assert.deepEqual([cropped[0]?.x, cropped[0]?.y, cropped[0]?.width, cropped[0]?.height], [0, 0, 11, 4])
+assert.deepEqual([cropped[0]?.x, cropped[0]?.y, cropped[0]?.width, cropped[0]?.height], [-9, -6, 20, 10])
 const removed = translateArtboards([first], 100, 80, -80, 0, 20, 80)
-assert.equal(removed.length, 0)
+assert.equal(removed.length, 1, 'translation preserves artboards even when they move fully off-canvas')
 const resized = scaleArtboards(gridArtboards(101, 71, 2, 1, (() => { let i=0;return () => String(++i) })()), 101, 71, 202, 142)
 assert.deepEqual(resized.map(a => [a.x, a.width, a.height]), [[0, 100, 142], [100, 102, 142]])
 assert.equal(scaleArtboards([first], 100, 80, 0, 40).length, 0)
