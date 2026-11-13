@@ -53,7 +53,7 @@ try {
   const initialSelection = selection(1)
   const doc = {
     id: 'selection-race', name: 'Selection Race', width: W, height: H,
-    workingBitDepth: 8, workingColorSpace: 'srgb',
+    workingBitDepth: 8, workingColorSpace: 'srgb', channelTarget: 'composite',
     layers: [{ id: 'layer', name: 'Layer', kind: 'raster', locked: false,
       canvas: pixelCanvas, _v: 1, _mv: 1, visible: true, opacity: 100 }],
     activeLayerId: 'layer', selectedLayerIds: ['layer'],
