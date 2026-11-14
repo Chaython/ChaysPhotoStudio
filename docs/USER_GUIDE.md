@@ -598,8 +598,8 @@ Find related Photoshop-style tools and inspect their options.
 
 **Notes and tips:**
 
-- Main has 52 registered tools; shared hotkeys cycle tools.
-- Search all 52 tools through Window → All Tools / Tool Search (merged PR #81).
+- Main has 76 registered tools; shared hotkeys cycle tools.
+- Search all 76 tools through Window → All Tools / Tool Search (merged PR #81).
 
 ## Paths, text and shapes
 

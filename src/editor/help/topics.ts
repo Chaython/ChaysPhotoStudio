@@ -558,8 +558,8 @@ export const HELP_TOPICS: readonly HelpTopic[] =
       "Organize toolbar groups through Edit → Customize Toolbar… and key assignments through Keyboard Shortcuts."
     ],
     "tips": [
-      "Main has 52 registered tools; shared hotkeys cycle tools.",
-      "Search all 52 tools through Window → All Tools / Tool Search (merged PR #81)."
+      "Main has 76 registered tools; shared hotkeys cycle tools.",
+      "Search all 76 tools through Window → All Tools / Tool Search (merged PR #81)."
     ]
   },
   {
