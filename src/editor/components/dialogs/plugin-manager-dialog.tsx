@@ -43,6 +43,8 @@ import { GimpRuntimeTab } from './gimp-runtime-tab'
 import { dataUrlToCanvas } from '../../image-ops'
 import { getFlatComposite } from '../../engine/document'
 import type { PluginPermission } from '../../plugins/plugin-types'
+import { listProcedures, getProcedure, runProcedure, getGeglOperations, getGeglOperation, type GeglOperation } from '../../plugins/gegl-ops'
+import { runProcedure as runProcProcedure, listAllProcedures, runGimpPipeline } from '../../plugins/gimp-host'
 
 // ---- the honest "what can/can't import" note ----
 function CompatibilityNote() {
@@ -603,6 +605,9 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
           <TabsTrigger value="native" className="text-[11px] gap-1.5">
             <Terminal size={11} /> Desktop Filters
           </TabsTrigger>
+          <TabsTrigger value="gimp-procedural" className="text-[11px] gap-1.5">
+            <Sparkles size={11} /> GIMP Procedural
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="plugins" className="mt-3">
           <PluginsTab />
@@ -622,11 +627,177 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         <TabsContent value="native" className="mt-3">
           <NativeFiltersTab />
         </TabsContent>
+        <TabsContent value="gimp-procedural" className="mt-3">
+          <GimpProceduralTab />
+        </TabsContent>
       </Tabs>
       <DialogFooter>
         <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
       </DialogFooter>
     </>
+  )
+}
+
+// ============================================================
+// GIMP Procedural tab — browse and run PDB procedures / GEGL ops
+// ============================================================
+
+function GimpProceduralTab() {
+  const [filter, setFilter] = useState('')
+  const [category, setCategory] = useState<string>('all')
+  const [running, setRunning] = useState<string | null>(null)
+  const pushToast = useEditorStore(s => s.pushToast)
+
+  const procedures = useMemo(() => listProcedures(), [])
+  const geglOps = useMemo(() => getGeglOperations(), [])
+
+  const filteredProcedures = useMemo(() => {
+    let list = procedures
+    if (filter) {
+      const f = filter.toLowerCase()
+      list = list.filter(p => p.name.toLowerCase().includes(f) || p.title.toLowerCase().includes(f) || p.blurb.toLowerCase().includes(f))
+    }
+    if (category !== 'all') {
+      list = list.filter(p => p.categories.includes(category))
+    }
+    return list
+  }, [procedures, filter, category])
+
+  const categories = useMemo(() => {
+    const cats = new Set<string>()
+    for (const p of procedures) for (const c of p.categories) cats.add(c)
+    return ['all', ...Array.from(cats).sort()]
+  }, [procedures])
+
+  const runProc = async (procName: string) => {
+    setRunning(procName)
+    try {
+      const proc = getProcedure(procName)
+      if (!proc) throw new Error('Procedure not found')
+
+      // Get the active layer as input image
+      const doc = engine.activeDoc
+      if (!doc) throw new Error('No active document')
+      const layer = doc.layers[doc.activeLayerIndex]
+      if (!layer) throw new Error('No active layer')
+
+      const canvas = layer.canvas
+      const inputDataUrl = canvas.toDataURL('image/png')
+
+      // For GEGL ops, we'd use the GEGL graph processor
+      // For procedural, we run the procedure
+      const result = await runProcProcedure(procName, { image: inputDataUrl })
+
+      if (result.status === 'success') {
+        pushToast(`${proc.title} completed`, 'success')
+        // Apply result to layer
+        if (result.values[0]?.startsWith('data:image/')) {
+          const img = new Image()
+          img.src = result.values[0]
+          await new Promise(r => img.onload = r)
+          const ctx = canvas.getContext('2d')!
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+          ctx.drawImage(img, 0, 0)
+          engine.requestRedraw()
+        }
+      } else {
+        pushToast(`${proc.title} failed: ${result.error}`, 'error')
+      }
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : 'Procedure failed', 'error')
+    } finally {
+      setRunning(null)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <input
+          type="text"
+          placeholder="Filter procedures… (name, description, category)"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          className="flex-1 min-w-[200px] h-8 rounded border border-border bg-background px-2 text-sm text-foreground placeholder:text-muted-foreground"
+        />
+        <select
+          value={category}
+          onChange={e => setCategory(e.target.value)}
+          className="h-8 rounded border border-border bg-background px-2 text-sm text-foreground"
+        >
+          {categories.map(c => <option key={c} value={c}>{c === 'all' ? 'All Categories' : c}</option>)}
+        </select>
+        <Button size="sm" variant="secondary" onClick={async () => {
+          const all = await listAllProcedures()
+          pushToast(`Found ${all.length} procedures (${procedures.length} browser, ${all.length - procedures.length} native)`, 'info')
+        }}>
+          <RefreshCw size={13} className="mr-1.5" /> Refresh from Native
+        </Button>
+      </div>
+
+      <div className="rounded border border-border/70 bg-panel/40 max-h-[500px] overflow-y-auto zphoto-scroll">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border/70 bg-background/50">
+              <th className="text-left p-2 font-medium text-[11px] text-muted-foreground">Name</th>
+              <th className="text-left p-2 font-medium text-[11px] text-muted-foreground">Title</th>
+              <th className="text-left p-2 font-medium text-[11px] text-muted-foreground">Category</th>
+              <th className="text-right p-2 font-medium text-[11px] text-muted-foreground">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredProcedures.slice(0, 100).map(p => (
+              <tr key={p.name} className="border-b border-border/40 hover:bg-accent/30">
+                <td className="p-2 font-mono text-[10px] text-foreground/80">{p.name}</td>
+                <td className="p-2 text-[11px] text-foreground">{p.title}</td>
+                <td className="p-2 text-[10px] text-muted-foreground">{p.categories.join(', ')}</td>
+                <td className="p-2 text-right">
+                  <Button
+                    size="sm"
+                    variant={running === p.name ? 'default' : 'secondary'}
+                    className="h-7 px-2.5 text-[10px]"
+                    disabled={running !== null && running !== p.name}
+                    onClick={() => runProc(p.name)}
+                  >
+                    {running === p.name ? 'Running…' : 'Run'}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {filteredProcedures.length > 100 && (
+              <tr>
+                <td colSpan={4} className="p-2 text-center text-[10px] text-muted-foreground">
+                  Showing first 100 of {filteredProcedures.length} — filter to narrow
+                </td>
+              </tr>
+            )}
+            {filteredProcedures.length === 0 && (
+              <tr>
+                <td colSpan={4} className="p-4 text-center text-muted-foreground">No procedures match filter</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="rounded border border-border/70 bg-panel/40 p-3 space-y-2">
+        <h4 className="text-[11px] font-medium text-foreground">GEGL Operations (Pipeline Builder)</h4>
+        <p className="text-[10px] text-muted-foreground">Chain multiple GEGL ops into a non-destructive filter pipeline.</p>
+        <div className="flex flex-wrap gap-2">
+          {geglOps.slice(0, 20).map(op => (
+            <Button
+              key={op.name}
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-[10px] text-left"
+              onClick={() => pushToast(`${op.title} — use in pipeline builder`, 'info')}
+            >
+              {op.title}
+            </Button>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 

@@ -209,3 +209,196 @@ export function gradientCss(stops: GradientStop[]): string {
   const segs = stops.map(s => `rgba(${Math.round(s.r * 255)},${Math.round(s.g * 255)},${Math.round(s.b * 255)},${s.a.toFixed(3)}) ${(s.pos * 100).toFixed(1)}%`)
   return `linear-gradient(to right, ${segs.join(', ')})`
 }
+
+// ============================================================
+// GIMP .vbr (Vector Brush) format — parametric brushes defined
+// by geometric shapes (circle, square, diamond) with radius,
+// hardness, aspect ratio, angle, and spacing.
+// ============================================================
+export interface ParsedVbrBrush {
+  name: string
+  shape: 'circle' | 'square' | 'diamond'
+  radius: number
+  hardness: number
+  aspectRatio: number
+  angle: number
+  spacing: number
+  canvas: HTMLCanvasElement
+}
+
+function readU16LE(v: DataView, off: number): number { return v.getUint16(off, true) }
+function readU32LE(v: DataView, off: number): number { return v.getUint32(off, true) }
+function readF32LE(v: DataView, off: number): number { return v.getFloat32(off, true) }
+
+export function parseVbrBrush(buf: ArrayBuffer): ParsedVbrBrush {
+  const v = new DataView(buf)
+  if (buf.byteLength < 32) throw new Error('Truncated GIMP vector brush')
+  const version = readU32LE(v, 0)
+  if (version !== 2) throw new Error(`Unsupported GIMP .vbr version ${version}`)
+  const shape = readU32LE(v, 4)
+  const radius = readF32LE(v, 8)
+  const hardness = readF32LE(v, 12)
+  const aspectRatio = readF32LE(v, 16)
+  const angle = readF32LE(v, 20)
+  const spacing = readF32LE(v, 24)
+  const nameLen = readU32LE(v, 28)
+  const nameBytes = new Uint8Array(buf, 32, nameLen)
+  const name = new TextDecoder().decode(nameBytes).replace(/\0.*$/, '') || 'GIMP Vector Brush'
+
+  const shapeNames = ['circle', 'square', 'diamond'] as const
+  const shapeName = shapeNames[shape] ?? 'circle'
+
+  // Render parametric brush to canvas
+  const size = Math.ceil(radius * 2 * Math.max(1, aspectRatio)) + 4
+  const canvas = createCanvas(size, size)
+  const ctx = ctx2d(canvas)
+  const cx = size / 2, cy = size / 2
+
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate((angle * Math.PI) / 180)
+  ctx.scale(aspectRatio, 1)
+
+  const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, radius)
+  grad.addColorStop(0, `rgba(255,255,255,${hardness})`)
+  grad.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = grad
+
+  if (shapeName === 'circle') {
+    ctx.beginPath()
+    ctx.arc(0, 0, radius, 0, Math.PI * 2)
+    ctx.fill()
+  } else if (shapeName === 'square') {
+    ctx.fillRect(-radius, -radius, radius * 2, radius * 2)
+  } else if (shapeName === 'diamond') {
+    ctx.beginPath()
+    ctx.moveTo(0, -radius)
+    ctx.lineTo(radius, 0)
+    ctx.lineTo(0, radius)
+    ctx.lineTo(-radius, 0)
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  ctx.restore()
+  return { name, shape: shapeName, radius, hardness, aspectRatio, angle, spacing, canvas }
+}
+
+// ============================================================
+// GIMP .gih (Image Hose / Animated Brush) format — multi-frame
+// brushes with rank-based selection (pressure, random, angular,
+// velocity, incremental). Each frame is a PNG.
+// ============================================================
+export interface GihFrame { canvas: HTMLCanvasElement; width: number; height: number }
+export interface ParsedGihBrush {
+  name: string
+  spacing: number
+  ranks: number
+  selection: 'incremental' | 'random' | 'angular' | 'velocity' | 'pressure'
+  frames: GihFrame[]
+  defaultFrame: number
+}
+
+export async function parseGihBrush(buf: ArrayBuffer): Promise<ParsedGihBrush> {
+  const v = new DataView(buf)
+  if (buf.byteLength < 20) throw new Error('Truncated GIMP image hose')
+  const magic = String.fromCharCode(...new Uint8Array(buf, 0, 4))
+  if (magic !== 'GIMP') throw new Error('Not a GIMP .gih image hose')
+  const version = readU32LE(v, 4)
+  if (version !== 2 && version !== 3) throw new Error(`Unsupported GIMP .gih version ${version}`)
+  const spacing = readU32LE(v, 8)
+  const ranks = readU32LE(v, 12)
+  const selection = readU32LE(v, 16)
+  const selNames = ['incremental', 'random', 'angular', 'velocity', 'pressure'] as const
+  const selectionName = selNames[selection] ?? 'incremental'
+
+  let offset = 20
+  const frames: GihFrame[] = []
+  for (let r = 0; r < ranks; r++) {
+    if (offset + 4 > buf.byteLength) throw new Error('Truncated GIMP .gih frame count')
+    const frameCount = readU32LE(v, offset)
+    offset += 4
+    for (let f = 0; f < frameCount; f++) {
+      if (offset + 8 > buf.byteLength) throw new Error('Truncated GIMP .gih frame header')
+      const frameSize = readU32LE(v, offset)
+      const frameWidth = readU32LE(v, offset + 4)
+      const frameHeight = readU32LE(v, offset + 8)
+      offset += 12
+      const pngData = buf.slice(offset, offset + frameSize)
+      offset += frameSize
+      // Decode PNG to canvas
+      const blob = new Blob([pngData], { type: 'image/png' })
+      const bitmap = await createImageBitmap(blob)
+      const canvas = createCanvas(frameWidth, frameHeight)
+      const ctx = ctx2d(canvas)
+      ctx.drawImage(bitmap, 0, 0)
+      frames.push({ canvas, width: frameWidth, height: frameHeight })
+    }
+  }
+
+  const nameBytes = new Uint8Array(buf, offset)
+  const nul = nameBytes.indexOf(0)
+  const name = new TextDecoder().decode(nameBytes.subarray(0, nul < 0 ? nameBytes.length : nul)) || 'GIMP Image Hose'
+
+  return { name, spacing, ranks, selection: selectionName, frames, defaultFrame: 0 }
+}
+
+// ============================================================
+// Export helpers — serialize editor assets to GIMP formats
+// ============================================================
+
+/** Export a canvas as GIMP .gbr brush (grayscale + alpha) */
+export function exportGbrBrush(canvas: HTMLCanvasElement, name: string, spacing = 10): ArrayBuffer {
+  const { width, height } = canvas
+  const ctx = canvas.getContext('2d')!
+  const img = ctx.getImageData(0, 0, width, height)
+  const headerSize = 28 + name.length + 1
+  const alignedHeader = (headerSize + 3) & ~3
+  const buf = new ArrayBuffer(alignedHeader + width * height * 4)
+  const v = new DataView(buf)
+  v.setUint32(0, alignedHeader, false)
+  v.setUint32(4, 2, false)
+  v.setUint32(8, width, false)
+  v.setUint32(12, height, false)
+  v.setUint32(16, 4, false)
+  new Uint8Array(buf, 20, 4).set([0x47, 0x49, 0x4d, 0x50]) // GIMP
+  v.setUint32(24, spacing, false)
+  new Uint8Array(buf, 28, name.length).set(new TextEncoder().encode(name))
+  // Write RGBA pixels (grayscale + alpha in single channel for mask brushes)
+  const px = new Uint8Array(buf, alignedHeader)
+  for (let i = 0; i < width * height; i++) {
+    const r = img.data[i * 4], g = img.data[i * 4 + 1], b = img.data[i * 4 + 2], a = img.data[i * 4 + 3]
+    const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b)
+    px[i * 4] = gray
+    px[i * 4 + 1] = gray
+    px[i * 4 + 2] = gray
+    px[i * 4 + 3] = a
+  }
+  return buf
+}
+
+/** Export palette as GIMP .gpl */
+export function exportGplPalette(colors: { name: string; hex: string }[], name = 'Palette', columns = 16): string {
+  const lines = ['GIMP Palette', `Name: ${name}`, `Columns: ${columns}`, '#']
+  for (const c of colors) {
+    const r = parseInt(c.hex.slice(1, 3), 16)
+    const g = parseInt(c.hex.slice(3, 5), 16)
+    const b = parseInt(c.hex.slice(5, 7), 16)
+    lines.push(`${r} ${g} ${b} ${c.name}`)
+  }
+  return lines.join('\n') + '\n'
+}
+
+/** Export gradient as GIMP .ggr */
+export function exportGgrGradient(stops: GradientStop[], name = 'Gradient'): string {
+  const lines = [`GIMP Gradient ${name}`, `Segments: ${Math.max(1, stops.length - 1)}`]
+  for (let i = 0; i < stops.length - 1; i++) {
+    const L = stops[i], R = stops[i + 1]
+    const mid = (L.pos + R.pos) / 2
+    lines.push(`${L.pos.toFixed(6)} ${mid.toFixed(6)} ${R.pos.toFixed(6)} ` +
+      `${(L.r * 255).toFixed(0)} ${(L.g * 255).toFixed(0)} ${(L.b * 255).toFixed(0)} ${(L.a * 255).toFixed(0)} ` +
+      `${(R.r * 255).toFixed(0)} ${(R.g * 255).toFixed(0)} ${(R.b * 255).toFixed(0)} ${(R.a * 255).toFixed(0)} ` +
+      `0 0`)
+  }
+  return lines.join('\n') + '\n'
+}

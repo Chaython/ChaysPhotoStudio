@@ -1,4 +1,3 @@
-'use client'
 // GIMP-style paint tools — placeholder implementations
 import type { Tool } from '../types'
 import { useEditorStore } from '../store'
