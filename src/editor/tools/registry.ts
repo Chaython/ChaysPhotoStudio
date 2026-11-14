@@ -40,6 +40,10 @@ import { sliceSelectTool } from './slice-select'
 import { artboardTool } from './artboard-tool'
 import { countTool } from './count'
 import { frameTool } from './frame-tool'
+// GIMP-specific tools
+import { alignmentTool, rotateTool, scaleTool, shearTool, perspectiveTool, unifiedTransformTool, handleTransformTool, flipTool, cageTransformTool, warpTransformTool } from './gimp-transform'
+import { scissorsSelectTool, foregroundSelectTool } from './gimp-selection'
+import { airbrushTool, inkTool, mypaintBrushTool } from './gimp-paint'
 
 export const TOOLS: Record<ToolId, Tool> = {
   'move': moveTool,
@@ -103,6 +107,24 @@ export const TOOLS: Record<ToolId, Tool> = {
   'hand': handTool,
   'zoom': zoomTool,
   'rotate-view': rotateViewTool,
+  // GIMP transform tools
+  'alignment': alignmentTool,
+  'rotate': rotateTool,
+  'scale': scaleTool,
+  'shear': shearTool,
+  'perspective': perspectiveTool,
+  'unified-transform': unifiedTransformTool,
+  'handle-transform': handleTransformTool,
+  'flip': flipTool,
+  'cage-transform': cageTransformTool,
+  'warp-transform': warpTransformTool,
+  // GIMP selection tools
+  'scissors-select': scissorsSelectTool,
+  'foreground-select': foregroundSelectTool,
+  // GIMP paint tools
+  'airbrush': airbrushTool,
+  'ink': inkTool,
+  'mypaint-brush': mypaintBrushTool,
 }
 
 let activeToolId: ToolId = 'move'

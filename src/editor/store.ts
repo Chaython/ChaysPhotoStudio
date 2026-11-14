@@ -1,7 +1,7 @@
 'use client'
 // Zustand store — UI state + lightweight mirrors of engine state
 import { create } from 'zustand'
-import type { DialogInstance, DialogType, ToolId, PsAction, ChannelView, ChannelTarget, ToolbarSection } from './types'
+import type { DialogInstance, DialogType, ToolId, PsAction, ChannelView, ChannelTarget, ToolbarSection, ToolbarLayout } from './types'
 import { TOOL_DEFS, TOOL_MAP } from './constants/tools'
 import { DOCKABLE_PANEL_IDS, isDockablePanelId } from './constants/panel-ids'
 import { engine } from './engine/engine'
@@ -576,7 +576,7 @@ function savePersonalShortcutBackup(overrides: Record<string, string>) {
 /** default toolbar: ToolDef groups → sections, preserving TOOL_DEFS order.
  *  Application-inspired templates reorder the same registered tools into
  *  familiar flyout groupings; nothing is removed from any template. */
-export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): ToolbarSection[] {
+export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): ToolbarSection[] | ToolbarLayout {
   // Flyout-group templates by workspace. Every registered editor tool stays
   // accessible exactly once, with new tools appended automatically by the sanitizer.
   const flyoutTemplates: Partial<Record<WorkspacePreset, ToolId[][]>> = {
@@ -633,23 +633,44 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
     ],
     // GIMP-style: selection suite first (rect/ellipse/free/fuzzy), then
     // measure/crop/text/fill, the paint tools family, and Paths at the end.
+    // Grid layout (2 columns) matching GIMP 3.0 toolbox arrangement
     gimp: [
-      ['move'],
-      ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-column'],
-      ['lasso', 'polygon-lasso', 'magnetic-lasso', 'selection-brush'],
-      ['magic-wand', 'object-select', 'quick-select', 'quick-mask'],
+      ['move', 'alignment'],
+      ['marquee-rect', 'marquee-ellipse'],
+      ['marquee-row', 'marquee-column'],
+      ['lasso', 'polygon-lasso'],
+      ['magnetic-lasso', 'selection-brush'],
+      ['scissors-select', 'foreground-select'],
+      ['magic-wand', 'object-select'],
+      ['quick-select', 'quick-mask'],
       ['eyedropper', 'color-sampler'],
-      ['zoom'],
-      ['measure', 'count'],
-      ['crop', 'perspective-crop', 'artboard', 'slice', 'slice-select', 'hotspot', 'frame'],
-      ['text', 'type-mask-horizontal', 'type-mask-vertical'],
+      ['zoom', 'measure'],
+      ['count', 'crop'],
+      ['perspective-crop', 'rotate'],
+      ['scale', 'shear'],
+      ['perspective', 'unified-transform'],
+      ['handle-transform', 'flip'],
+      ['cage-transform', 'warp-transform'],
+      ['text', 'path-select'],
+      ['direct-select', 'pen'],
+      ['pen-freeform', 'pen-curvature'],
       ['paint-bucket', 'gradient'],
-      ['pencil', 'brush', 'mixer-brush', 'color-replacement', 'history-brush', 'art-history-brush'],
-      ['eraser', 'background-eraser', 'magic-eraser'],
-      ['clone-stamp', 'pattern-stamp', 'remove', 'healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye'],
-      ['blur', 'sharpen', 'smudge', 'dodge', 'burn', 'sponge'],
-      ['pen', 'pen-freeform', 'pen-curvature', 'path-select', 'direct-select', 'shape'],
-      ['hand'],
+      ['pencil', 'brush'],
+      ['airbrush', 'ink'],
+      ['mypaint-brush', 'mixer-brush'],
+      ['color-replacement', 'history-brush'],
+      ['art-history-brush', 'eraser'],
+      ['background-eraser', 'magic-eraser'],
+      ['clone-stamp', 'healing-brush'],
+      ['spot-healing', 'remove'],
+      ['patch', 'content-aware-move'],
+      ['red-eye', 'blur'],
+      ['sharpen', 'smudge'],
+      ['dodge', 'burn'],
+      ['sponge', 'hand'],
+      ['artboard', 'slice'],
+      ['slice-select', 'hotspot'],
+      ['frame', 'shape'],
     ],
     // Fireworks-style: Pointer/Subselect, the select suite, crop and the web
     // Slice/Hotspot export tools, then drawing, rubber stamp and fill.
@@ -672,9 +693,14 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
   }
   const groups = flyoutTemplates[preset]
   if (groups) {
-    return sanitizeToolbarLayout(groups.map(ids => ids.length === 1
+    const sections = sanitizeToolbarLayout(groups.map(ids => ids.length === 1
       ? { kind: 'single' as const, tool: ids[0] }
       : { kind: 'group' as const, tools: ids }))
+    // GIMP preset uses grid mode (2 columns) by default
+    if (preset === 'gimp') {
+      return { mode: 'grid', sections, gridColumns: 2 }
+    }
+    return sections
   }
   const map = new Map<number, ToolId[]>()
   for (const def of TOOL_DEFS) {
@@ -715,27 +741,34 @@ export function sanitizeToolbarLayout(sections: ToolbarSection[]): ToolbarSectio
   return out
 }
 
-function loadToolbarLayout(): ToolbarSection[] | null {
+function loadToolbarLayout(): ToolbarLayout | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = localStorage.getItem(TOOLBAR_KEY)
     if (!raw) return null
-    const sections = JSON.parse(raw)
-    if (!Array.isArray(sections) || !sections.length) return null
-    const clean = sanitizeToolbarLayout(sections)
-    // an all-default layout stores as null — treat “everything fell back”
-    // the same way so equality checks in the UI are simple
-    return clean.length ? clean : null
+    const data = JSON.parse(raw)
+    // Handle legacy format (ToolbarSection[] array)
+    if (Array.isArray(data)) {
+      const clean = sanitizeToolbarLayout(data)
+      return clean.length ? { mode: 'rail', sections: clean } : null
+    }
+    // Handle new format (ToolbarLayout object)
+    if (data && typeof data === 'object' && 'mode' in data && 'sections' in data) {
+      const layout = data as ToolbarLayout
+      const clean = sanitizeToolbarLayout(layout.sections)
+      return clean.length ? { ...layout, sections: clean } : null
+    }
+    return null
   } catch {
     return null
   }
 }
 
-function persistToolbarLayout(sections: ToolbarSection[] | null) {
+function persistToolbarLayout(layout: ToolbarLayout | null) {
   if (typeof localStorage === 'undefined') return
   try {
-    if (!sections) localStorage.removeItem(TOOLBAR_KEY)
-    else localStorage.setItem(TOOLBAR_KEY, JSON.stringify(sections))
+    if (!layout) localStorage.removeItem(TOOLBAR_KEY)
+    else localStorage.setItem(TOOLBAR_KEY, JSON.stringify(layout))
   } catch { /* noop */ }
 }
 
@@ -745,9 +778,9 @@ export interface SavedWorkspaceLayout {
   name: string
   kind: SavedLayoutKind
   panels?: EditorStore['panels']
-  toolbar?: ToolbarSection[] | null
+  toolbar?: ToolbarLayout | null
 }
-function readWorkspaceRecord(preset: WorkspacePreset): { panels: ReturnType<typeof loadPanelLayout>; toolbar: ToolbarSection[] | null } | null {
+function readWorkspaceRecord(preset: WorkspacePreset): { panels: ReturnType<typeof loadPanelLayout>; toolbar: ToolbarLayout | null } | null {
   if (typeof localStorage === 'undefined') return null
   try {
     const all = JSON.parse(localStorage.getItem(WORKSPACE_LAYOUTS_KEY) || '{}')
@@ -762,14 +795,26 @@ function readWorkspaceRecord(preset: WorkspacePreset): { panels: ReturnType<type
       }
       return null
     }
+    // Handle both legacy (ToolbarSection[]) and new (ToolbarLayout) formats
+    let toolbar: ToolbarLayout | null = null
+    if (data.toolbar) {
+      if (Array.isArray(data.toolbar)) {
+        const clean = sanitizeToolbarLayout(data.toolbar)
+        toolbar = clean.length ? { mode: 'rail', sections: clean } : null
+      } else if (typeof data.toolbar === 'object' && 'mode' in data.toolbar && 'sections' in data.toolbar) {
+        const layout = data.toolbar as ToolbarLayout
+        const clean = sanitizeToolbarLayout(layout.sections)
+        toolbar = clean.length ? { ...layout, sections: clean } : null
+      }
+    }
     return {
       panels: typeof data.panels === 'object' && data.panels !== null
         ? loadPanelLayout(JSON.stringify(data.panels), preset) : null,
-      toolbar: Array.isArray(data.toolbar) && data.toolbar.length ? sanitizeToolbarLayout(data.toolbar) : null,
+      toolbar,
     }
   } catch { return null }
 }
-function saveWorkspaceRecord(preset: WorkspacePreset, panels: EditorStore['panels'], toolbar: ToolbarSection[] | null) {
+function saveWorkspaceRecord(preset: WorkspacePreset, panels: EditorStore['panels'], toolbar: ToolbarLayout | null) {
   try {
     const all = JSON.parse(localStorage.getItem(WORKSPACE_LAYOUTS_KEY) || '{}')
     all[preset] = { panels, toolbar }
@@ -1020,9 +1065,9 @@ interface EditorStore {
   resetShortcutOverrides(): void
   /** Restore the active application's factory shortcut profile. */
   resetWorkspaceShortcutProfile(): void
-  /** custom toolbar section order — null = factory default layout */
-  toolbarLayout: ToolbarSection[] | null
-  setToolbarLayout(sections: ToolbarSection[] | null): void
+  /** custom toolbar layout — null = factory default layout */
+  toolbarLayout: ToolbarLayout | null
+  setToolbarLayout(layout: ToolbarLayout | null): void
   resetToolbarLayout(): void
   // ---- timeline actions (Task 9-c) ----
   /** apply frame i to the real layers + set the active-frame mirror */
@@ -1154,8 +1199,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const layout: SavedWorkspaceLayout = {
       version: 1, name: cleanName, kind,
       ...(kind !== 'tools' ? { panels: clonePanelLayout(s.panels) } : {}),
-      ...(kind !== 'panels' ? { toolbar: (s.toolbarLayout ?? defaultToolbarLayout(s.workspacePreset)).map(section =>
-        section.kind === 'single' ? { ...section } : { ...section, tools: [...section.tools] }) } : {}),
+      ...(kind !== 'panels' ? { 
+        toolbar: s.toolbarLayout 
+          ? { ...s.toolbarLayout, sections: s.toolbarLayout.sections.map(section =>
+              section.kind === 'single' ? { ...section } : { ...section, tools: [...section.tools] }) }
+          : { mode: 'rail' as const, sections: defaultToolbarLayout(s.workspacePreset).map(section =>
+              section.kind === 'single' ? { ...section } : { ...section, tools: [...section.tools] }) }
+      } : {}),
     }
     const savedLayouts = [...s.savedLayouts.filter(x => x.name !== cleanName), layout]
     saveNamedLayouts(savedLayouts)
@@ -1656,10 +1706,19 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return { shortcutOverrides: defaults }
   }),
 
-  setToolbarLayout: (sections) => set(s => {
+  setToolbarLayout: (layout) => set(s => {
     if (s.workspaceLayoutLocks[s.workspacePreset].tools) return {}
-    const clean = sections ? sanitizeToolbarLayout(sections) : null
-    const toolbarLayout = clean && clean.length ? clean : null
+    // Handle both legacy (ToolbarSection[]) and new (ToolbarLayout) formats
+    let toolbarLayout: ToolbarLayout | null = null
+    if (layout) {
+      if (Array.isArray(layout)) {
+        const clean = sanitizeToolbarLayout(layout)
+        toolbarLayout = clean.length ? { mode: 'rail', sections: clean } : null
+      } else {
+        const clean = sanitizeToolbarLayout(layout.sections)
+        toolbarLayout = clean.length ? { ...layout, sections: clean } : null
+      }
+    }
     persistToolbarLayout(toolbarLayout)
     saveWorkspaceRecord(s.workspacePreset, s.panels, toolbarLayout)
     return { toolbarLayout }

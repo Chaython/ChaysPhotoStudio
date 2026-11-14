@@ -33,7 +33,7 @@ import * as Icons from 'lucide-react'
 import { TOOL_MAP } from '../../constants/tools'
 import { useEditorStore, defaultToolbarLayout, WORKSPACE_PRESET_LABELS } from '../../store'
 import { formatCombo } from '../../shortcuts'
-import type { ToolId, ToolbarSection } from '../../types'
+import type { ToolId, ToolbarSection, ToolbarLayout } from '../../types'
 import {
   findTool, pinToTop, moveToGroup, newFlyout, nudgeTool, nudgeSectionAt,
   insertBefore, appendPinned,
@@ -60,7 +60,26 @@ export function ToolbarCustomizeDialog({ onClose }: DialogProps) {
   const workspacePreset = useEditorStore(s => s.workspacePreset)
   const toolsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].tools)
   const setWorkspaceLayoutLock = useEditorStore(s => s.setWorkspaceLayoutLock)
-  const sections = useMemo(() => layout ?? defaultToolbarLayout(workspacePreset), [layout, workspacePreset])
+  
+  // Handle both legacy (ToolbarSection[]) and new (ToolbarLayout) formats
+  const layoutData = useMemo(() => {
+    if (!layout) return defaultToolbarLayout(workspacePreset)
+    if (Array.isArray(layout)) return layout
+    return layout.sections
+  }, [layout, workspacePreset])
+  
+  const isGridMode = useMemo(() => {
+    if (!layout) return false
+    if (Array.isArray(layout)) return false
+    return layout.mode === 'grid'
+  }, [layout])
+  
+  const gridColumns = useMemo(() => {
+    if (!layout || Array.isArray(layout)) return 2
+    return layout.gridColumns ?? 2
+  }, [layout])
+
+  const sections = layoutData
 
   const [drag, setDrag] = useState<ToolId | null>(null)
   const [dropHint, setDropHint] = useState<string | null>(null)
@@ -79,7 +98,16 @@ export function ToolbarCustomizeDialog({ onClose }: DialogProps) {
     </>
   )
 
-  const apply = (next: Sections) => { if (next !== sections) setToolbarLayout(next) }
+  const apply = (next: Sections) => { 
+    if (next !== sections) {
+      // Preserve grid mode and grid columns when updating sections
+      if (layout && !Array.isArray(layout)) {
+        setToolbarLayout({ ...layout, sections: next })
+      } else {
+        setToolbarLayout(next)
+      }
+    }
+  }
   const keyOf = (id: ToolId) => (overrides?.[`tool:${id}`] || TOOL_MAP[id].shortcut || '?').toLowerCase()
 
   const groups = sections
@@ -407,15 +435,52 @@ export function ToolbarCustomizeDialog({ onClose }: DialogProps) {
       </div>
 
       <DialogFooter className="gap-2 sm:justify-between">
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-xs gap-1.5"
-          onClick={() => { resetToolbarLayout(); pushToast('Toolbar layout reset to default', 'success') }}
-        >
-          <RotateCcw size={12} />
-          Reset layout
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-xs gap-1.5"
+            onClick={() => { resetToolbarLayout(); pushToast('Toolbar layout reset to default', 'success') }}
+          >
+            <RotateCcw size={12} />
+            Reset layout
+          </Button>
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-border/60 bg-background/50">
+            <LayoutGrid size={12} className="text-muted-foreground" />
+            <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+              <input
+                type="checkbox"
+                checked={isGridMode}
+                onChange={(e) => {
+                  if (layout && !Array.isArray(layout)) {
+                    setToolbarLayout({ ...layout, mode: e.target.checked ? 'grid' : 'rail' })
+                  } else if (e.target.checked) {
+                    // Switch from rail to grid
+                    setToolbarLayout({ mode: 'grid', sections, gridColumns: 2 })
+                  }
+                }}
+                className="h-3 w-3 rounded border-border text-primary focus:ring-primary"
+              />
+              <span>Grid mode (GIMP-style)</span>
+            </label>
+            {isGridMode && (
+              <select
+                value={gridColumns}
+                onChange={(e) => {
+                  if (layout && !Array.isArray(layout)) {
+                    setToolbarLayout({ ...layout, gridColumns: Number(e.target.value) })
+                  }
+                }}
+                className="h-6 w-12 rounded-sm border border-border bg-background text-xs text-foreground"
+                aria-label="Grid columns"
+              >
+                <option value={2}>2 cols</option>
+                <option value={3}>3 cols</option>
+                <option value={4}>4 cols</option>
+              </select>
+            )}
+          </div>
+        </div>
         <Button size="sm" onClick={onClose}>Done</Button>
       </DialogFooter>
     </>

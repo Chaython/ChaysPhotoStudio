@@ -19,7 +19,7 @@ import * as Icons from 'lucide-react'
 import { TOOL_MAP } from '../../constants/tools'
 import { useEditorStore, defaultToolbarLayout } from '../../store'
 import { formatCombo } from '../../shortcuts'
-import type { ToolDef, ToolId, ToolbarSection } from '../../types'
+import type { ToolDef, ToolId, ToolbarSection, ToolbarLayout } from '../../types'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -60,6 +60,22 @@ const WORKSPACE_TOOL_ICONS: Record<string, Record<string, string>> = {
     eraser: 'Eraser', 'clone-stamp': 'Stamp', 'healing-brush': 'Bandage',
     gradient: 'Blend', 'paint-bucket': 'PaintBucket', pen: 'Waypoints',
     text: 'Type', shape: 'Shapes', hand: 'Hand', zoom: 'ZoomIn',
+    // New GIMP tools
+    alignment: 'AlignHorizontalDistributeCenter',
+    rotate: 'RotateCcw',
+    scale: 'Maximize2',
+    shear: 'Slash',
+    perspective: 'Box',
+    'unified-transform': 'Move3d',
+    'handle-transform': 'CornerUpLeft',
+    flip: 'FlipHorizontal2',
+    'cage-transform': 'Grid',
+    'warp-transform': 'Waves',
+    'scissors-select': 'Scissors',
+    'foreground-select': 'User',
+    airbrush: 'SprayCan',
+    ink: 'Pen',
+    'mypaint-brush': 'Paintbrush',
   },
   fireworks: {
     move: 'Pointer', artboard: 'PanelsTopLeft', 'marquee-rect': 'Square',
@@ -108,6 +124,22 @@ const WORKSPACE_CUSTOM_GLYPHS: Record<string, Record<string, React.ReactNode>> =
     'clone-stamp': <><path d="M7 8h10v7H7zM9 15v3h6v-3" /><path d="M9 5h6" /></>,
     'healing-brush': <><path d="m5 15 10-10 5 5-10 10H5z" /><path d="m11 9 5 5M8 17l2-2" /></>,
     gradient: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M4 18 18 5M8 19 20 7" /></>,
+    // New GIMP tools
+    alignment: <><rect x="4" y="4" width="16" height="16" /><path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="0.5" /></>,
+    rotate: <><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8m11.3 11.3l2.8 2.8M4.9 19.1l2.8-2.8m11.3-11.3l2.8-2.8" /><circle cx="12" cy="12" r="3" /></>,
+    scale: <><rect x="5" y="5" width="14" height="14" /><path d="M3 12h6M15 12h6M12 3v6M12 15v6" /></>,
+    shear: <><path d="M4 16l16-12" /><path d="M4 8l16 12" stroke="currentColor" strokeWidth="0.5" strokeDasharray="2 2" /></>,
+    perspective: <><path d="M6 4l6 16M12 4l6 16M6 20l6-16" /><path d="M6 4h12M12 20h12" stroke="currentColor" strokeWidth="0.5" strokeDasharray="2 2" /></>,
+    'unified-transform': <><rect x="4" y="4" width="16" height="16" /><path d="M12 4v4M12 16v4M4 12h4M16 12h4" /><path d="M8 8l8 8M16 8l-8 8" stroke="currentColor" strokeWidth="0.5" /></>,
+    'handle-transform': <><rect x="4" y="4" width="16" height="16" /><circle cx="4" cy="4" r="2" fill="currentColor" /><circle cx="20" cy="4" r="2" fill="currentColor" /><circle cx="4" cy="20" r="2" fill="currentColor" /><circle cx="20" cy="20" r="2" fill="currentColor" /></>,
+    flip: <><path d="M4 12h16" /><path d="M8 8l4-4 4 4M8 16l4 4 4-4" /></>,
+    'cage-transform': <><rect x="3" y="3" width="18" height="18" /><path d="M9 3v18M15 3v18M3 9h18M3 15h18" stroke="currentColor" strokeWidth="0.5" /></>,
+    'warp-transform': <><rect x="3" y="3" width="18" height="18" /><path d="M3 12c3-4 9-4 12 0M3 12c3 4 9 4 12 0" stroke="currentColor" strokeWidth="0.5" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></>,
+    'scissors-select': <><path d="M4 12l4-6 4 6 4-6 4 6" strokeWidth="1.5" /><circle cx="8" cy="6" r="1.5" fill="currentColor" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /><circle cx="16" cy="6" r="1.5" fill="currentColor" /></>,
+    'foreground-select': <><path d="M6 6l6 6 6-6" strokeWidth="2" /><path d="M12 2v20M2 12h20" strokeWidth="0.5" strokeDasharray="2 2" /></>,
+    airbrush: <><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 4.9l-2.8 2.8" /><circle cx="12" cy="12" r="4" /><path d="M12 8v8" strokeWidth="0.5" /></>,
+    ink: <><path d="M4 20l8-12 8 12" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M12 8v12" strokeWidth="0.5" /></>,
+    'mypaint-brush': <><path d="M12 2c0 3-3 5-7 5s-7-2-7-5c0-2 1-4 3-5l-3-3 1-5c4 1 7 3 7 6s-3 5-7 5z" /><path d="M12 13v4c0 2 1 3 3 3" /></>,
   },
   fireworks: {
     slice: <><rect x="3" y="4" width="18" height="16" /><path d="M12 4v16M3 12h18" /><path d="m9 9 3 3-3 3" /></>,
@@ -135,14 +167,22 @@ function ToolIcon({ icon, toolId, size = 16 }: { icon: string; toolId?: ToolId; 
   return <Cmp size={size} strokeWidth={1.75} />
 }
 
-/** effective toolbar sections: the user's custom layout, else the factory default */
-function useToolbarSections(): ToolbarSection[] {
+/** effective toolbar layout: the user's custom layout, else the factory default */
+function useToolbarLayout(): ToolbarLayout {
   const layout = useEditorStore(s => s.toolbarLayout)
   const preset = useEditorStore(s => s.workspacePreset)
-  return useMemo(
-    () => layout ?? defaultToolbarLayout(preset),
-    [layout, preset]
-  )
+  return useMemo(() => {
+    // Handle legacy layout (ToolbarSection[] array)
+    if (Array.isArray(layout)) {
+      return { mode: 'rail' as const, sections: layout }
+    }
+    // Handle new layout object
+    if (layout && typeof layout === 'object' && 'mode' in layout) {
+      return layout as ToolbarLayout
+    }
+    // Default to rail mode with preset layout
+    return { mode: 'rail' as const, sections: defaultToolbarLayout(preset) }
+  }, [layout, preset])
 }
 
 /** live tool shortcut labels (updates when the user edits bindings) */
@@ -164,7 +204,7 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
   const hasDoc = useEditorStore(s => !!s.activeDocId)
   const setToolbarLayout = useEditorStore(s => s.setToolbarLayout)
   const pushToast = useEditorStore(s => s.pushToast)
-  const sections = useToolbarSections()
+  const layout = useToolbarLayout()
   const keys = useToolKeys()
   const workspacePreset = useEditorStore(s => s.workspacePreset)
   const fgColor = useEditorStore(s => s.fgColor)
@@ -176,10 +216,14 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
   const swapColors = useEditorStore(s => s.swapColors)
   const illustratorColors = workspacePreset === 'illustrator' && !compact && !embedded
 
+  const sections = layout.sections
+  const isGridMode = layout.mode === 'grid'
+  const gridColumns = layout.gridColumns ?? 2
+
   // ---------- drag & drop (desktop rail only) ----------
   const [dragSrc, setDragSrc] = useState<ToolId | null>(null)
   const [hoverKey, setHoverKey] = useState<string | null>(null)
-  const dnd = !compact
+  const dnd = !compact && !isGridMode // Grid mode uses different DnD
 
   const selectTool = (id: ToolId) => {
     setTool(id)
@@ -194,8 +238,8 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
     const id = (e.dataTransfer.getData('text/plain') || dragSrc) as ToolId
     return id && TOOL_MAP[id] ? id : null
   }
-  const applyLayout = (next: ToolbarSection[], msg: string) => {
-    if (next === sections) return
+  const applyLayout = (next: ToolbarLayout, msg: string) => {
+    if (JSON.stringify(next) === JSON.stringify(layout)) return
     setToolbarLayout(next)
     pushToast(msg, 'success')
   }
@@ -233,13 +277,13 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
       if (!id) return
       if (sec.kind === 'single') {
         applyLayout(
-          insertBefore(sections, id, sec.tool),
+          { ...layout, sections: insertBefore(sections, id, sec.tool) },
           `${TOOL_MAP[id].label} moved before ${TOOL_MAP[sec.tool].label}`
         )
       } else {
         const first = sec.tools[0]
         applyLayout(
-          moveToGroup(sections, id, first),
+          { ...layout, sections: moveToGroup(sections, id, first) },
           `${TOOL_MAP[id].label} moved to the ${TOOL_MAP[first].label} flyout`
         )
       }
@@ -255,13 +299,158 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
       const id = readDropId(e)
       endDrag()
       if (!id) return
-      applyLayout(pinToTop(sections, id), `${TOOL_MAP[id].label} pinned to the toolbar`)
+      applyLayout({ ...layout, sections: pinToTop(sections, id) }, `${TOOL_MAP[id].label} pinned to the toolbar`)
       closeFlyoutMenus()
     },
   } : {}
 
   const dragActive = dnd && !!dragSrc
 
+  // Grid mode rendering (GIMP-style toolbox)
+  if (isGridMode && !compact) {
+    const gridDnd = dnd ? {
+      onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        const id = readDropId(e)
+        endDrag()
+        if (!id) return
+        // In grid mode, append to the end of the grid
+        const newSections = [...sections, { kind: 'single', tool: id }]
+        applyLayout({ ...layout, sections: newSections }, `${TOOL_MAP[id].label} added to toolbox`)
+        closeFlyoutMenus()
+      },
+    } : {}
+
+    // Build grid rows from sections with row/col hints
+    const gridRows = new Map<number, Map<number, ToolbarSection>>()
+    let maxRow = 0
+    sections.forEach((sec, idx) => {
+      const row = sec.row ?? Math.floor(idx / gridColumns)
+      const col = sec.col ?? (idx % gridColumns)
+      maxRow = Math.max(maxRow, row)
+      if (!gridRows.has(row)) gridRows.set(row, new Map())
+      gridRows.get(row)!.set(col, sec)
+    })
+
+    return (
+      <div
+        {...gridDnd}
+        className={cn(
+          'flex bg-panel border-r flex-shrink-0 z-20 transition-all',
+          'flex-col w-12 h-full',
+          dragActive && 'ring-1 ring-primary/60'
+        )}
+        role="toolbar"
+        aria-label="Tools"
+      >
+        {Array.from({ length: maxRow + 1 }, (_, rowIdx) => (
+          <div key={`row-${rowIdx}`} className="flex flex-row gap-0.5 px-1 py-0.5">
+            {Array.from({ length: gridColumns }, (_, colIdx) => {
+              const sec = gridRows.get(rowIdx)?.get(colIdx)
+              if (!sec) return <div key={`empty-${rowIdx}-${colIdx}`} className="w-10 h-10" />
+              const key = sectionKey(sec)
+              const hovered = !!hoverKey && hoverKey === key && dragSrc && dragSrc !== key
+              if (sec.kind === 'single') {
+                const def = TOOL_MAP[sec.tool]
+                if (!def) return null
+                return (
+                  <div key={`${sec.tool}-${rowIdx}-${colIdx}`} className={cn('flex flex-shrink-0 rounded-sm', hovered && 'ring-1 ring-primary/70')}>
+                    <ToolButton
+                      def={def} shortcut={keys[sec.tool]} active={activeTool === sec.tool}
+                      onSelect={selectTool} compact={false}
+                      dragHandle={dnd ? { onDragStart: itemDragStart(sec.tool), onDragEnd: endDrag } : undefined}
+                    />
+                  </div>
+                )
+              }
+              const tools = sec.tools.map(t => TOOL_MAP[t]).filter(Boolean)
+              if (tools.length === 1) {
+                return (
+                  <div key={`${tools[0].id}-${rowIdx}-${colIdx}`} className={cn('flex flex-shrink-0 rounded-sm', hovered && 'ring-1 ring-primary/70')}>
+                    <ToolButton
+                      def={tools[0]} shortcut={keys[tools[0].id]} active={activeTool === tools[0].id}
+                      onSelect={selectTool} compact={false}
+                      dragHandle={dnd ? { onDragStart: itemDragStart(tools[0].id), onDragEnd: endDrag } : undefined}
+                    />
+                  </div>
+                )
+              }
+              if (!tools.length) return null
+              const activeInGroup = tools.find(t => t.id === activeTool)
+              const main = activeInGroup ?? tools[0]
+              return (
+                <div key={`grp-${rowIdx}-${colIdx}`} className={cn('flex flex-shrink-0 rounded-sm', hovered && 'ring-1 ring-primary/70')}>
+                  <ToolGroupButton
+                    tools={tools}
+                    main={main}
+                    active={!!activeInGroup}
+                    activeTool={activeTool}
+                    keys={keys}
+                    onSelect={selectTool}
+                    compact={false}
+                    embedded={false}
+                    dnd={dnd}
+                    itemDragStart={itemDragStart}
+                    endDrag={endDrag}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        ))}
+        {illustratorColors && (
+          <div className="mt-auto border-t border-border/60 px-1.5 py-2 flex flex-col items-center gap-1.5" aria-label="Fill and Stroke colors">
+            <div className="relative w-9 h-9" aria-label="Fill and Stroke swatches">
+              <label
+                className={cn('absolute left-0 top-0 z-10 h-6 w-6 rounded-sm border-2 shadow-sm cursor-pointer', activeColorTarget === 'fg' ? 'border-primary' : 'border-foreground/60')}
+                title="Fill color — click to choose"
+                aria-label="Choose Fill color"
+                style={{ backgroundColor: fgColor }}
+              >
+                <input
+                  type="color"
+                  value={fgColor}
+                  onFocus={() => setActiveColorTarget('fg')}
+                  onChange={e => { setActiveColorTarget('fg'); setFgColor(e.target.value) }}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  aria-label="Fill color picker"
+                />
+              </label>
+              <label
+                className={cn('absolute right-0 bottom-0 h-6 w-6 rounded-sm border-2 shadow-sm cursor-pointer', activeColorTarget === 'bg' ? 'border-primary' : 'border-foreground/60')}
+                title="Stroke color — click to choose"
+                aria-label="Choose Stroke color"
+                style={{ backgroundColor: bgColor }}
+              >
+                <input
+                  type="color"
+                  value={bgColor}
+                  onFocus={() => setActiveColorTarget('bg')}
+                  onChange={e => { setActiveColorTarget('bg'); setBgColor(e.target.value) }}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  aria-label="Stroke color picker"
+                />
+              </label>
+            </div>
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={() => { setFgColor('#000000'); setBgColor('#ffffff') }}
+                className="h-4 w-4 rounded-sm border border-border text-[10px] leading-none hover:bg-accent"
+                title="Default Fill and Stroke colors" aria-label="Default Fill and Stroke colors">↙</button>
+              <button type="button" onClick={swapColors}
+                className="h-4 w-4 rounded-sm border border-border flex items-center justify-center hover:bg-accent"
+                title="Swap Fill and Stroke colors" aria-label="Swap Fill and Stroke colors">
+                <Icons.ArrowLeftRight size={10} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Rail mode rendering (original vertical/horizontal rail)
   return (
     <div
       {...railDnd}

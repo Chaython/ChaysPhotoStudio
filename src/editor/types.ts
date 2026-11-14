@@ -23,12 +23,28 @@ export type ToolId =
 export type SelectionCombine = 'new' | 'add' | 'subtract' | 'intersect'
 
 // ---------- Customizable toolbar layout (TASK 17) ----------
-/** A section of the vertical tool rail: either one standalone (pinned,
- *  top-level) tool button, or a flyout group of tools in order. The full
- *  layout is an ordered array of these; every ToolId appears exactly once. */
+/** A section of the tool rail: either one standalone (pinned,
+ *  top-level) tool button, or a flyout group of tools in order.
+ *  The full layout is an ordered array of these; every ToolId appears exactly once.
+ *  
+ *  For grid-based layouts (GIMP-style), sections can also specify row/column
+ *  positioning to create a multi-column toolbox. */
 export type ToolbarSection =
-  | { kind: 'single'; tool: ToolId }
-  | { kind: 'group'; tools: ToolId[] }
+  | { kind: 'single'; tool: ToolId; row?: number; col?: number }
+  | { kind: 'group'; tools: ToolId[]; row?: number; col?: number }
+
+/** Toolbar layout mode: 'rail' (vertical single-column) or 'grid' (multi-column GIMP-style) */
+export type ToolbarLayoutMode = 'rail' | 'grid'
+
+/** Complete toolbar layout including mode and sections */
+export interface ToolbarLayout {
+  mode: ToolbarLayoutMode
+  sections: ToolbarSection[]
+  /** For grid mode: number of columns (default 2 for GIMP-style) */
+  gridColumns?: number
+  /** For grid mode: row height in tool units (default 1) */
+  gridRowHeight?: number
+}
 
 // ---------- Adjustments & filters ----------
 export type AdjustmentType =
