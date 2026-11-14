@@ -19,7 +19,7 @@ const duplicates = <T>(items: T[]): T[] => {
 const typesSource = readFileSync(new URL('../src/editor/types.ts', import.meta.url), 'utf8')
 const registrySource = readFileSync(new URL('../src/editor/tools/registry.ts', import.meta.url), 'utf8')
 
-const toolIdBlock = typesSource.match(/export type ToolId\s*=([\s\S]*?)\n\nexport type SelectionCombine/)
+const toolIdBlock = typesSource.match(/export type ToolId\s*=([\s\S]*?)(?:\r?\n){2}export type SelectionCombine/)
 if (!toolIdBlock) fail('could not parse ToolId union')
 const typeIds = [...toolIdBlock![1].matchAll(/'([^']+)'/g)].map(m => m[1])
 

@@ -150,14 +150,14 @@ export const TOOL_DEFS: ToolDef[] = [
   },
 
   // GIMP-specific transform tools (group 3 — crop / measure / transform)
-  { id: 'alignment', label: 'Alignment', group: 3, shortcut: 'Q', icon: 'AlignHorizontalDistributeCenter', cursor: 'crosshair',
+  { id: 'alignment', label: 'Alignment', group: 3, shortcut: 'Q', icon: 'AlignHorizontalDistributeCenter', cursor: 'crosshair', requiresLayer: true,
     defaults: { alignTo: 'first', relativeTo: 'first', offsetX: 0, offsetY: 0 }, options: [
       { key: 'alignTo', label: 'Align To', type: 'select', options: [{ label: 'First Item', value: 'first' }, { label: 'Image', value: 'image' }, { label: 'Selection', value: 'selection' }, { label: 'Active Layer', value: 'layer' }, { label: 'Grid', value: 'grid' }] },
       { key: 'relativeTo', label: 'Relative To', type: 'select', options: [{ label: 'First Item', value: 'first' }, { label: 'Image', value: 'image' }, { label: 'Selection', value: 'selection' }, { label: 'Active Layer', value: 'layer' }, { label: 'Grid', value: 'grid' }] },
       { key: 'offsetX', label: 'Horizontal Offset', type: 'number', min: -10000, max: 10000, step: 1, unit: 'px' },
       { key: 'offsetY', label: 'Vertical Offset', type: 'number', min: -10000, max: 10000, step: 1, unit: 'px' },
     ] },
-  { id: 'rotate', label: 'Rotate', group: 3, shortcut: 'Shift+R', icon: 'RotateCcw', cursor: 'crosshair',
+  { id: 'rotate', label: 'Rotate', group: 3, shortcut: 'Shift+R', icon: 'RotateCcw', cursor: 'crosshair', requiresLayer: true,
     defaults: { angle: 0, centerX: 50, centerY: 50, interpolation: 'cubic', clipping: 'adjust' }, options: [
       { key: 'angle', label: 'Angle', type: 'angle', min: -180, max: 180, step: 1, unit: '°' },
       { key: 'centerX', label: 'Center X', type: 'number', min: 0, max: 100, step: 1, unit: '%' },
@@ -165,7 +165,7 @@ export const TOOL_DEFS: ToolDef[] = [
       { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { label: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
-  { id: 'scale', label: 'Scale', group: 3, shortcut: 'Shift+T', icon: 'Maximize2', cursor: 'crosshair',
+  { id: 'scale', label: 'Scale', group: 3, shortcut: 'Shift+T', icon: 'Maximize2', cursor: 'crosshair', requiresLayer: true,
     defaults: { width: 100, height: 100, link: true, interpolation: 'cubic', clipping: 'adjust' }, options: [
       { key: 'width', label: 'Width', type: 'number', min: 0.01, max: 1000, step: 0.1, unit: '%' },
       { key: 'height', label: 'Height', type: 'number', min: 0.01, max: 1000, step: 0.1, unit: '%' },
@@ -173,19 +173,19 @@ export const TOOL_DEFS: ToolDef[] = [
       { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { label: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
-  { id: 'shear', label: 'Shear', group: 3, shortcut: 'Shift+S', icon: 'Slash', cursor: 'crosshair',
+  { id: 'shear', label: 'Shear', group: 3, shortcut: 'Shift+S', icon: 'Slash', cursor: 'crosshair', requiresLayer: true,
     defaults: { angleX: 0, angleY: 0, interpolation: 'cubic', clipping: 'adjust' }, options: [
       { key: 'angleX', label: 'Shear X', type: 'angle', min: -90, max: 90, step: 1, unit: '°' },
       { key: 'angleY', label: 'Shear Y', type: 'angle', min: -90, max: 90, step: 1, unit: '°' },
       { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { label: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
-  { id: 'perspective', label: 'Perspective', group: 3, shortcut: 'Shift+P', icon: 'Box', cursor: 'crosshair',
+  { id: 'perspective', label: 'Perspective', group: 3, shortcut: 'Shift+P', icon: 'Box', cursor: 'crosshair', requiresLayer: true,
     defaults: { interpolation: 'cubic', clipping: 'adjust' }, options: [
       { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { label: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
-  { id: 'unified-transform', label: 'Unified Transform', group: 3, shortcut: 'Shift+T', icon: 'Move3d', cursor: 'crosshair',
+  { id: 'unified-transform', label: 'Unified Transform', group: 3, shortcut: 'Shift+T', icon: 'Move3d', cursor: 'crosshair', requiresLayer: true,
     defaults: { transform: 'combined', angle: 0, scaleX: 100, scaleY: 100, shearX: 0, shearY: 0, perspectiveX: 0, perspectiveY: 0, centerX: 50, centerY: 50, interpolation: 'cubic', clipping: 'adjust' }, options: [
       { key: 'transform', label: 'Transform', type: 'select', options: [{ label: 'Combined', value: 'combined' }, { label: 'Scale', value: 'scale' }, { label: 'Rotate', value: 'rotate' }, { label: 'Shear', value: 'shear' }, { label: 'Perspective', value: 'perspective' }] },
       { key: 'angle', label: 'Angle', type: 'angle', min: -180, max: 180, step: 1, unit: '°' },
@@ -200,32 +200,32 @@ export const TOOL_DEFS: ToolDef[] = [
       { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { label: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
-  { id: 'handle-transform', label: 'Handle Transform', group: 3, shortcut: 'Shift+L', icon: 'CornerUpLeft', cursor: 'crosshair',
+  { id: 'handle-transform', label: 'Handle Transform', group: 3, shortcut: 'Shift+L', icon: 'CornerUpLeft', cursor: 'crosshair', requiresLayer: true,
     defaults: { handles: 4, interpolation: 'cubic', clipping: 'adjust' }, options: [
       { key: 'handles', label: 'Handle Count', type: 'select', options: [{ label: '4 Corners', value: 4 }, { label: '8 Handles', value: 8 }] },
       { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { key: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
-  { id: 'flip', label: 'Flip', group: 3, shortcut: 'Shift+F', icon: 'FlipHorizontal2', cursor: 'crosshair',
+  { id: 'flip', label: 'Flip', group: 3, shortcut: 'Shift+F', icon: 'FlipHorizontal2', cursor: 'crosshair', requiresLayer: true,
     defaults: { direction: 'horizontal', centerX: 50, centerY: 50 }, options: [
       { key: 'direction', label: 'Direction', type: 'select', options: [{ label: 'Horizontal', value: 'horizontal' }, { label: 'Vertical', value: 'vertical' }] },
       { key: 'centerX', label: 'Center X', type: 'number', min: 0, max: 100, step: 1, unit: '%' },
       { key: 'centerY', label: 'Center Y', type: 'number', min: 0, max: 100, step: 1, unit: '%' },
     ] },
-  { id: 'cage-transform', label: 'Cage Transform', group: 3, shortcut: 'Shift+C', icon: 'Grid', cursor: 'crosshair',
+  { id: 'cage-transform', label: 'Cage Transform', group: 3, shortcut: 'Shift+C', icon: 'Grid', cursor: 'crosshair', requiresLayer: true,
     defaults: { rows: 4, cols: 4, interpolation: 'cubic', clipping: 'adjust' }, options: [
       { key: 'rows', label: 'Rows', type: 'slider', min: 2, max: 10, step: 1 },
       { key: 'cols', label: 'Columns', type: 'slider', min: 2, max: 10, step: 1 },
       { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { label: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
-  { id: 'warp-transform', label: 'Warp Transform', group: 3, shortcut: 'Shift+W', icon: 'Waves', cursor: 'crosshair',
+  { id: 'warp-transform', label: 'Warp Transform', group: 3, shortcut: 'Shift+W', icon: 'Waves', cursor: 'crosshair', requiresLayer: true,
     defaults: { gridSize: 4, interpolation: 'cubic', clipping: 'adjust' }, options: [
       { key: 'gridSize', label: 'Grid Size', type: 'slider', min: 2, max: 16, step: 1 },
       { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { label: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
-  { id: 'scissors-select', label: 'Scissors Select', group: 1, shortcut: 'I', icon: 'Scissors', cursor: 'crosshair',
+  { id: 'scissors-select', label: 'Scissors Select', group: 1, shortcut: 'I', icon: 'Scissors', cursor: 'crosshair', requiresLayer: true,
     defaults: { mode: 'new', feather: 0, antiAlias: true, interactive: true }, options: [
       { key: 'mode', label: 'Mode', type: 'select', options: [{ label: 'New', value: 'new' }, { label: 'Add', value: 'add' }, { label: 'Subtract', value: 'subtract' }, { label: 'Intersect', value: 'intersect' }] },
       { key: 'feather', label: 'Feather', type: 'slider', min: 0, max: 250, step: 1, unit: 'px' },
@@ -233,7 +233,7 @@ export const TOOL_DEFS: ToolDef[] = [
       { key: 'interactive', label: 'Interactive Boundary', type: 'toggle', hint: 'Update the selection boundary in real-time while placing control nodes' },
       selectMaskCtl,
     ] },
-  { id: 'foreground-select', label: 'Foreground Select', group: 1, shortcut: 'G', icon: 'User', cursor: 'crosshair',
+  { id: 'foreground-select', label: 'Foreground Select', group: 1, shortcut: 'G', icon: 'User', cursor: 'crosshair', requiresLayer: true,
     defaults: { mode: 'new', feather: 0, drawForeground: true, drawBackground: false, strokeWidth: 5, previewColor: '#ff0000' }, options: [
       { key: 'mode', label: 'Mode', type: 'select', options: [{ label: 'New', value: 'new' }, { label: 'Add', value: 'add' }, { label: 'Subtract', value: 'subtract' }, { label: 'Intersect', value: 'intersect' }] },
       { key: 'feather', label: 'Feather', type: 'slider', min: 0, max: 250, step: 1, unit: 'px' },
@@ -292,7 +292,8 @@ export const TOOL_DEFS: ToolDef[] = [
   ] },
 
   // GIMP-specific paint tools
-  { id: 'airbrush', label: 'Airbrush', group: 4, shortcut: 'A', icon: 'SprayCan', cursor: 'none', requiresLayer: true, defaults: { size: 40, hardness: 70, opacity: 100, flow: 50, spacing: 15, rate: 50, pressure: true, tip: 'round-soft', angle: 0, roundness: 100 }, options: [
+  { id: 'airbrush', label: 'Airbrush', group: 4, shortcut: 'A', icon: 'SprayCan', cursor: 'none', requiresLayer: true,
+    defaults: { size: 40, hardness: 70, opacity: 100, flow: 50, spacing: 15, rate: 50, pressure: true, tip: 'round-soft', angle: 0, roundness: 100 }, options: [
     { key: 'size', label: 'Size', type: 'slider', min: 1, max: 500, step: 1, unit: 'px' },
     { key: 'hardness', label: 'Hardness', type: 'slider', min: 0, max: 100, step: 1, unit: '%' },
     { key: 'opacity', label: 'Opacity', type: 'slider', min: 1, max: 100, step: 1, unit: '%' },
