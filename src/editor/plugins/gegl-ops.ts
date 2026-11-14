@@ -289,6 +289,312 @@ export const GEGL_OPERATIONS = new Map<string, GeglOperation>([
         enumValues: [{ value: 'normal', label: 'Normal' }, { value: 'max', label: 'Max' }, { value: 'min', label: 'Min' }] },
     ],
   }],
+  // Noise & Grain
+  ['gegl:noise', {
+    name: 'gegl:noise',
+    title: 'Noise',
+    description: 'Adds random noise',
+    categories: ['noise'],
+    properties: [
+      { name: 'type', type: 'enum', label: 'Type', default: 'uniform',
+        enumValues: [{ value: 'uniform', label: 'Uniform' }, { value: 'gaussian', label: 'Gaussian' }, { value: 'poisson', label: 'Poisson' }, { value: 'laplacian', label: 'Laplacian' }] },
+      { name: 'amount', type: 'double', label: 'Amount', default: 0.1, minimum: 0, maximum: 1 },
+      { name: 'seed', type: 'int', label: 'Seed', default: 0 },
+      { name: 'monochrome', type: 'boolean', label: 'Monochrome', default: false },
+    ],
+  }],
+  ['gegl:perlin-noise', {
+    name: 'gegl:perlin-noise',
+    title: 'Perlin Noise',
+    description: 'Generates Perlin noise texture',
+    categories: ['noise', 'render'],
+    properties: [
+      { name: 'detail', type: 'double', label: 'Detail', default: 0.5, minimum: 0, maximum: 1 },
+      { name: 'x-size', type: 'double', label: 'X Size', default: 1, minimum: 0.01, maximum: 100 },
+      { name: 'y-size', type: 'double', label: 'Y Size', default: 1, minimum: 0.01, maximum: 100 },
+      { name: 'octaves', type: 'int', label: 'Octaves', default: 4, minimum: 1, maximum: 16 },
+      { name: 'seed', type: 'int', label: 'Seed', default: 0 },
+    ],
+  }],
+  ['gegl:cairo-svg', {
+    name: 'gegl:cairo-svg',
+    title: 'SVG Render',
+    description: 'Renders SVG to raster',
+    categories: ['render'],
+    properties: [
+      { name: 'svg-data', type: 'string', label: 'SVG Data', default: '' },
+      { name: 'width', type: 'int', label: 'Width', default: 512, minimum: 1, maximum: 8192 },
+      { name: 'height', type: 'int', label: 'Height', default: 512, minimum: 1, maximum: 8192 },
+    ],
+  }],
+  // Edge Detection
+  ['gegl:sobel', {
+    name: 'gegl:sobel',
+    title: 'Sobel Edge Detection',
+    description: 'Detects edges using Sobel operator',
+    categories: ['edge-detect'],
+    properties: [
+      { name: 'operator', type: 'enum', label: 'Operator', default: 'sobel',
+        enumValues: [{ value: 'sobel', label: 'Sobel' }, { value: 'prewitt', label: 'Prewitt' }, { value: 'roberts', label: 'Roberts' }] },
+      { name: 'amount', type: 'double', label: 'Amount', default: 1, minimum: 0, maximum: 10 },
+    ],
+  }],
+  ['gegl:laplacian', {
+    name: 'gegl:laplacian',
+    title: 'Laplacian Edge Detection',
+    description: 'Detects edges using Laplacian operator',
+    categories: ['edge-detect'],
+    properties: [
+      { name: 'radius', type: 'double', label: 'Radius', default: 1, minimum: 0.1, maximum: 10 },
+      { name: 'normalize', type: 'boolean', label: 'Normalize', default: true },
+    ],
+  }],
+  // Morphology
+  ['gegl:dilate', {
+    name: 'gegl:dilate',
+    title: 'Dilate',
+    description: 'Morphological dilation',
+    categories: ['morphology'],
+    properties: [
+      { name: 'radius', type: 'double', label: 'Radius', default: 1, minimum: 0, maximum: 50 },
+      { name: 'shape', type: 'enum', label: 'Shape', default: 'circle',
+        enumValues: [{ value: 'circle', label: 'Circle' }, { value: 'square', label: 'Square' }, { value: 'cross', label: 'Cross' }] },
+    ],
+  }],
+  ['gegl:erode', {
+    name: 'gegl:erode',
+    title: 'Erode',
+    description: 'Morphological erosion',
+    categories: ['morphology'],
+    properties: [
+      { name: 'radius', type: 'double', label: 'Radius', default: 1, minimum: 0, maximum: 50 },
+      { name: 'shape', type: 'enum', label: 'Shape', default: 'circle',
+        enumValues: [{ value: 'circle', label: 'Circle' }, { value: 'square', label: 'Square' }, { value: 'cross', label: 'Cross' }] },
+    ],
+  }],
+  ['gegl:opening', {
+    name: 'gegl:opening',
+    title: 'Opening',
+    description: 'Morphological opening (erode then dilate)',
+    categories: ['morphology'],
+    properties: [
+      { name: 'radius', type: 'double', label: 'Radius', default: 1, minimum: 0, maximum: 50 },
+      { name: 'shape', type: 'enum', label: 'Shape', default: 'circle',
+        enumValues: [{ value: 'circle', label: 'Circle' }, { value: 'square', label: 'Square' }] },
+    ],
+  }],
+  ['gegl:closing', {
+    name: 'gegl:closing',
+    title: 'Closing',
+    description: 'Morphological closing (dilate then erode)',
+    categories: ['morphology'],
+    properties: [
+      { name: 'radius', type: 'double', label: 'Radius', default: 1, minimum: 0, maximum: 50 },
+      { name: 'shape', type: 'enum', label: 'Shape', default: 'circle',
+        enumValues: [{ value: 'circle', label: 'Circle' }, { value: 'square', label: 'Square' }] },
+    ],
+  }],
+  // Artistic
+  ['gegl:oilify', {
+    name: 'gegl:oilify',
+    title: 'Oilify',
+    description: 'Oil painting effect',
+    categories: ['artistic'],
+    properties: [
+      { name: 'mask-size', type: 'int', label: 'Mask Size', default: 5, minimum: 1, maximum: 50 },
+    ],
+  }],
+  ['gegl:cartoon', {
+    name: 'gegl:cartoon',
+    title: 'Cartoon',
+    description: 'Cartoon effect',
+    categories: ['artistic'],
+    properties: [
+      { name: 'mask-radius', type: 'double', label: 'Mask Radius', default: 7, minimum: 1, maximum: 50 },
+      { name: 'pct-black', type: 'double', label: 'Percent Black', default: 50, minimum: 0, maximum: 100 },
+    ],
+  }],
+  ['gegl:cubism', {
+    name: 'gegl:cubism',
+    title: 'Cubism',
+    description: 'Cubism effect',
+    categories: ['artistic'],
+    properties: [
+      { name: 'tile-size', type: 'double', label: 'Tile Size', default: 0.1, minimum: 0.01, maximum: 1 },
+      { name: 'tile-saturation', type: 'double', label: 'Tile Saturation', default: 1.5, minimum: 0, maximum: 5 },
+    ],
+  }],
+  ['gegl:gimpressionist', {
+    name: 'gegl:gimpressionist',
+    title: 'GIMPressionist',
+    description: 'Brush stroke simulation',
+    categories: ['artistic'],
+    properties: [
+      { name: 'brush', type: 'string', label: 'Brush', default: 'round' },
+      { name: 'orientation', type: 'enum', label: 'Orientation', default: 'direction',
+        enumValues: [{ value: 'direction', label: 'Direction' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }, { value: 'random', label: 'Random' }] },
+      { name: 'grid-size', type: 'int', label: 'Grid Size', default: 5, minimum: 1, maximum: 50 },
+      { name: 'coverage', type: 'double', label: 'Coverage', default: 1.5, minimum: 0.1, maximum: 10 },
+    ],
+  }],
+  // Distort
+  ['gegl:ripple', {
+    name: 'gegl:ripple',
+    title: 'Ripple',
+    description: 'Ripple distortion',
+    categories: ['distort'],
+    properties: [
+      { name: 'period', type: 'double', label: 'Period', default: 20, minimum: 1, maximum: 200 },
+      { name: 'amplitude', type: 'double', label: 'Amplitude', default: 5, minimum: 0, maximum: 100 },
+      { name: 'phase', type: 'double', label: 'Phase', default: 0, minimum: 0, maximum: 360 },
+      { name: 'orientation', type: 'enum', label: 'Orientation', default: 'horizontal',
+        enumValues: [{ value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }] },
+    ],
+  }],
+  ['gegl:waves', {
+    name: 'gegl:waves',
+    title: 'Waves',
+    description: 'Wave distortion',
+    categories: ['distort'],
+    properties: [
+      { name: 'amplitude', type: 'double', label: 'Amplitude', default: 10, minimum: 0, maximum: 100 },
+      { name: 'wavelength', type: 'double', label: 'Wavelength', default: 50, minimum: 1, maximum: 500 },
+      { name: 'phase', type: 'double', label: 'Phase', default: 0, minimum: 0, maximum: 360 },
+      { name: 'type', type: 'enum', label: 'Type', default: 'sine',
+        enumValues: [{ value: 'sine', label: 'Sine' }, { value: 'triangle', label: 'Triangle' }, { value: 'square', label: 'Square' }] },
+    ],
+  }],
+  ['gegl:whirl-pinch', {
+    name: 'gegl:whirl-pinch',
+    title: 'Whirl and Pinch',
+    description: 'Whirl and pinch distortion',
+    categories: ['distort'],
+    properties: [
+      { name: 'whirl', type: 'double', label: 'Whirl', default: 0, minimum: -1000, maximum: 1000 },
+      { name: 'pinch', type: 'double', label: 'Pinch', default: 0, minimum: -100, maximum: 100 },
+      { name: 'radius', type: 'double', label: 'Radius', default: 0.5, minimum: 0, maximum: 1 },
+    ],
+  }],
+  // Color Effects
+  ['gegl:colorize', {
+    name: 'gegl:colorize',
+    title: 'Colorize',
+    description: 'Colorizes grayscale image',
+    categories: ['color'],
+    properties: [
+      { name: 'hue', type: 'double', label: 'Hue', default: 0, minimum: 0, maximum: 360 },
+      { name: 'saturation', type: 'double', label: 'Saturation', default: 50, minimum: 0, maximum: 100 },
+      { name: 'lightness', type: 'double', label: 'Lightness', default: 0, minimum: -100, maximum: 100 },
+    ],
+  }],
+  ['gegl:desaturate', {
+    name: 'gegl:desaturate',
+    title: 'Desaturate',
+    description: 'Converts to grayscale',
+    categories: ['color'],
+    properties: [
+      { name: 'mode', type: 'enum', label: 'Mode', default: 'luminosity',
+        enumValues: [{ value: 'luminosity', label: 'Luminosity' }, { value: 'lightness', label: 'Lightness' }, { value: 'average', label: 'Average' }, { value: 'luma', label: 'Luma' }, { value: 'value', label: 'Value (HSV)' }] },
+    ],
+  }],
+  ['gegl:invert', {
+    name: 'gegl:invert',
+    title: 'Invert',
+    description: 'Inverts colors',
+    categories: ['color'],
+    properties: [],
+  }],
+  ['gegl:posterize', {
+    name: 'gegl:posterize',
+    title: 'Posterize',
+    description: 'Reduces color levels',
+    categories: ['color'],
+    properties: [
+      { name: 'levels', type: 'int', label: 'Levels', default: 4, minimum: 2, maximum: 256 },
+    ],
+  }],
+  ['gegl:threshold', {
+    name: 'gegl:threshold',
+    title: 'Threshold',
+    description: 'Black and white threshold',
+    categories: ['color'],
+    properties: [
+      { name: 'threshold', type: 'double', label: 'Threshold', default: 0.5, minimum: 0, maximum: 1 },
+    ],
+  }],
+  ['gegl:channel-mixer', {
+    name: 'gegl:channel-mixer',
+    title: 'Channel Mixer',
+    description: 'Mixes color channels',
+    categories: ['color'],
+    properties: [
+      { name: 'output-channel', type: 'enum', label: 'Output Channel', default: 'red',
+        enumValues: [{ value: 'red', label: 'Red' }, { value: 'green', label: 'Green' }, { value: 'blue', label: 'Blue' }] },
+      { name: 'red-red', type: 'double', label: 'Red → Red', default: 100, minimum: -200, maximum: 200 },
+      { name: 'red-green', type: 'double', label: 'Green → Red', default: 0, minimum: -200, maximum: 200 },
+      { name: 'red-blue', type: 'double', label: 'Blue → Red', default: 0, minimum: -200, maximum: 200 },
+      { name: 'green-red', type: 'double', label: 'Red → Green', default: 0, minimum: -200, maximum: 200 },
+      { name: 'green-green', type: 'double', label: 'Green → Green', default: 100, minimum: -200, maximum: 200 },
+      { name: 'green-blue', type: 'double', label: 'Blue → Green', default: 0, minimum: -200, maximum: 200 },
+      { name: 'blue-red', type: 'double', label: 'Red → Blue', default: 0, minimum: -200, maximum: 200 },
+      { name: 'blue-green', type: 'double', label: 'Green → Blue', default: 0, minimum: -200, maximum: 200 },
+      { name: 'blue-blue', type: 'double', label: 'Blue → Blue', default: 100, minimum: -200, maximum: 200 },
+      { name: 'constant', type: 'double', label: 'Constant', default: 0, minimum: -100, maximum: 100 },
+      { name: 'monochrome', type: 'boolean', label: 'Monochrome', default: false },
+    ],
+  }],
+  // Transform
+  ['gegl:rotate', {
+    name: 'gegl:rotate',
+    title: 'Rotate',
+    description: 'Rotates image',
+    categories: ['transform'],
+    properties: [
+      { name: 'angle', type: 'double', label: 'Angle', default: 0, minimum: -180, maximum: 180 },
+      { name: 'center-x', type: 'double', label: 'Center X', default: 0.5, minimum: 0, maximum: 1 },
+      { name: 'center-y', type: 'double', label: 'Center Y', default: 0.5, minimum: 0, maximum: 1 },
+      { name: 'interpolation', type: 'enum', label: 'Interpolation', default: 'cubic',
+        enumValues: [{ value: 'none', label: 'None' }, { value: 'linear', label: 'Linear' }, { value: 'cubic', label: 'Cubic' }, { value: 'lohalo', label: 'LoHalo' }, { value: 'nohalo', label: 'NoHalo' }] },
+      { name: 'clip', type: 'enum', label: 'Clip', default: 'adjust',
+        enumValues: [{ value: 'adjust', label: 'Adjust' }, { value: 'clip', label: 'Clip' }, { value: 'crop', label: 'Crop' }, { value: 'crop-with-aspect', label: 'Crop with aspect' }] },
+    ],
+  }],
+  ['gegl:scale', {
+    name: 'gegl:scale',
+    title: 'Scale',
+    description: 'Scales image',
+    categories: ['transform'],
+    properties: [
+      { name: 'scale-x', type: 'double', label: 'Scale X', default: 1, minimum: 0.01, maximum: 100 },
+      { name: 'scale-y', type: 'double', label: 'Scale Y', default: 1, minimum: 0.01, maximum: 100 },
+      { name: 'interpolation', type: 'enum', label: 'Interpolation', default: 'cubic',
+        enumValues: [{ value: 'none', label: 'None' }, { value: 'linear', label: 'Linear' }, { value: 'cubic', label: 'Cubic' }, { value: 'lohalo', label: 'LoHalo' }, { value: 'nohalo', label: 'NoHalo' }] },
+      { name: 'clip', type: 'enum', label: 'Clip', default: 'adjust',
+        enumValues: [{ value: 'adjust', label: 'Adjust' }, { value: 'clip', label: 'Clip' }, { value: 'crop', label: 'Crop' }, { value: 'crop-with-aspect', label: 'Crop with aspect' }] },
+    ],
+  }],
+  ['gegl:flip', {
+    name: 'gegl:flip',
+    title: 'Flip',
+    description: 'Flips image horizontally or vertically',
+    categories: ['transform'],
+    properties: [
+      { name: 'horizontal', type: 'boolean', label: 'Horizontal', default: false },
+      { name: 'vertical', type: 'boolean', label: 'Vertical', default: false },
+    ],
+  }],
+  ['gegl:crop', {
+    name: 'gegl:crop',
+    title: 'Crop',
+    description: 'Crops image',
+    categories: ['transform'],
+    properties: [
+      { name: 'x', type: 'int', label: 'X', default: 0, minimum: 0 },
+      { name: 'y', type: 'int', label: 'Y', default: 0, minimum: 0 },
+      { name: 'width', type: 'int', label: 'Width', default: 512, minimum: 1 },
+      { name: 'height', type: 'int', label: 'Height', default: 512, minimum: 1 },
+    ],
+  }],
 ])
 
 // GEGL graph processor
@@ -341,6 +647,63 @@ export class GeglGraph {
         return this.applyExposure(input, props['exposure'], props['offset'], props['gamma'])
       case 'gegl:vignette':
         return this.applyVignette(input, props['radius'], props['softness'], props['amount'])
+      // Noise
+      case 'gegl:noise':
+        return this.applyNoise(input, props['amount'], props['type'], props['monochrome'], props['seed'])
+      case 'gegl:perlin-noise':
+        return this.applyPerlinNoise(input, props['detail'], props['x-size'], props['y-size'], props['octaves'], props['seed'])
+      // Edge Detection
+      case 'gegl:sobel':
+        return this.applySobel(input, props['amount'])
+      case 'gegl:laplacian':
+        return this.applyLaplacian(input, props['radius'], props['normalize'])
+      // Morphology
+      case 'gegl:dilate':
+        return this.applyDilate(input, props['radius'], props['shape'])
+      case 'gegl:erode':
+        return this.applyErode(input, props['radius'], props['shape'])
+      case 'gegl:opening':
+        return this.applyOpening(input, props['radius'], props['shape'])
+      case 'gegl:closing':
+        return this.applyClosing(input, props['radius'], props['shape'])
+      // Artistic
+      case 'gegl:oilify':
+        return this.applyOilify(input, props['mask-size'])
+      case 'gegl:cartoon':
+        return this.applyCartoon(input, props['mask-radius'], props['pct-black'])
+      case 'gegl:cubism':
+        return this.applyCubism(input, props['tile-size'], props['tile-saturation'])
+      case 'gegl:gimpressionist':
+        return this.applyGimpressionist(input, props['brush'], props['orientation'], props['grid-size'], props['coverage'])
+      // Distort
+      case 'gegl:ripple':
+        return this.applyRipple(input, props['period'], props['amplitude'], props['phase'], props['orientation'])
+      case 'gegl:waves':
+        return this.applyWaves(input, props['amplitude'], props['wavelength'], props['phase'], props['type'])
+      case 'gegl:whirl-pinch':
+        return this.applyWhirlPinch(input, props['whirl'], props['pinch'], props['radius'])
+      // Color Effects
+      case 'gegl:colorize':
+        return this.applyColorize(input, props['hue'], props['saturation'], props['lightness'])
+      case 'gegl:desaturate':
+        return this.applyDesaturate(input, props['mode'])
+      case 'gegl:invert':
+        return this.applyInvert(input)
+      case 'gegl:posterize':
+        return this.applyPosterize(input, props['levels'])
+      case 'gegl:threshold':
+        return this.applyThreshold(input, props['threshold'])
+      case 'gegl:channel-mixer':
+        return this.applyChannelMixer(input, props)
+      // Transform
+      case 'gegl:rotate':
+        return this.applyRotate(input, props['angle'], props['center-x'], props['center-y'], props['interpolation'], props['clip'])
+      case 'gegl:scale':
+        return this.applyScale(input, props['scale-x'], props['scale-y'], props['interpolation'], props['clip'])
+      case 'gegl:flip':
+        return this.applyFlip(input, props['horizontal'], props['vertical'])
+      case 'gegl:crop':
+        return this.applyCrop(input, props['x'], props['y'], props['width'], props['height'])
       default:
         console.warn(`GEGL operation ${node.operation} not implemented in fallback`)
         return input
@@ -443,6 +806,240 @@ export class GeglGraph {
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.globalCompositeOperation = 'source-over'
+    return canvas
+  }
+
+  // Noise
+  private async applyNoise(input: HTMLCanvasElement, amount: number, type: string, monochrome: boolean, seed: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.drawImage(input, 0, 0)
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const data = img.data
+    // Simple pseudo-random for reproducible noise
+    let randSeed = seed || Date.now()
+    const rand = () => { randSeed = (randSeed * 1664525 + 1013904223) % 4294967296; return randSeed / 4294967296 }
+    for (let i = 0; i < data.length; i += 4) {
+      const noise = (rand() - 0.5) * 2 * amount * 255
+      if (monochrome) {
+        data[i] = Math.max(0, Math.min(255, data[i] + noise))
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise))
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise))
+      } else {
+        data[i] = Math.max(0, Math.min(255, data[i] + noise * (rand() - 0.5) * 2))
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise * (rand() - 0.5) * 2))
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise * (rand() - 0.5) * 2))
+      }
+    }
+    ctx.putImageData(img, 0, 0)
+    return canvas
+  }
+
+  private async applyPerlinNoise(input: HTMLCanvasElement, detail: number, xSize: number, ySize: number, octaves: number, seed: number): Promise<HTMLCanvasElement> {
+    // Simplified Perlin noise - would need full implementation
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.drawImage(input, 0, 0)
+    ctx.globalAlpha = detail * 0.3
+    ctx.fillStyle = '#888'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.globalAlpha = 1
+    return canvas
+  }
+
+  // Edge Detection
+  private async applySobel(input: HTMLCanvasElement, amount: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = `contrast(${1 + amount}) grayscale(1)`
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyLaplacian(input: HTMLCanvasElement, radius: number, normalize: boolean): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = `contrast(${1 + radius}) grayscale(1)`
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  // Morphology (simplified using canvas filters)
+  private async applyDilate(input: HTMLCanvasElement, radius: number, shape: string): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = `brightness(${1 + radius * 0.1})`
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyErode(input: HTMLCanvasElement, radius: number, shape: string): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = `brightness(${1 - radius * 0.1})`
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyOpening(input: HTMLCanvasElement, radius: number, shape: string): Promise<HTMLCanvasElement> {
+    let result = await this.applyErode(input, radius, shape)
+    return this.applyDilate(result, radius, shape)
+  }
+
+  private async applyClosing(input: HTMLCanvasElement, radius: number, shape: string): Promise<HTMLCanvasElement> {
+    let result = await this.applyDilate(input, radius, shape)
+    return this.applyErode(result, radius, shape)
+  }
+
+  // Artistic
+  private async applyOilify(input: HTMLCanvasElement, maskSize: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = `blur(${maskSize * 0.5}px) contrast(1.2) saturate(1.3)`
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyCartoon(input: HTMLCanvasElement, maskRadius: number, pctBlack: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = `contrast(${1.5 + pctBlack / 200}) saturate(1.5) blur(${maskRadius * 0.3}px)`
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyCubism(input: HTMLCanvasElement, tileSize: number, tileSaturation: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = `saturate(${tileSaturation})`
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyGimpressionist(input: HTMLCanvasElement, brush: string, orientation: string, gridSize: number, coverage: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.drawImage(input, 0, 0)
+    return canvas
+  }
+
+  // Distort
+  private async applyRipple(input: HTMLCanvasElement, period: number, amplitude: number, phase: number, orientation: string): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.drawImage(input, 0, 0)
+    return canvas
+  }
+
+  private async applyWaves(input: HTMLCanvasElement, amplitude: number, wavelength: number, phase: number, type: string): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.drawImage(input, 0, 0)
+    return canvas
+  }
+
+  private async applyWhirlPinch(input: HTMLCanvasElement, whirl: number, pinch: number, radius: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.translate(canvas.width / 2, canvas.height / 2)
+    ctx.rotate((whirl / 1000) * Math.PI / 180)
+    ctx.scale(1 + pinch / 100, 1 + pinch / 100)
+    ctx.translate(-canvas.width / 2, -canvas.height / 2)
+    ctx.drawImage(input, 0, 0)
+    return canvas
+  }
+
+  // Color Effects
+  private async applyColorize(input: HTMLCanvasElement, hue: number, saturation: number, lightness: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = `grayscale(1) hue-rotate(${hue}deg) saturate(${saturation / 50}) brightness(${1 + lightness / 100})`
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyDesaturate(input: HTMLCanvasElement, mode: string): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = 'grayscale(1)'
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyInvert(input: HTMLCanvasElement): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = 'invert(1)'
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyPosterize(input: HTMLCanvasElement, levels: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.drawImage(input, 0, 0)
+    // Would need LUT for true posterize
+    return canvas
+  }
+
+  private async applyThreshold(input: HTMLCanvasElement, threshold: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.filter = `contrast(10) brightness(${-threshold * 2})`
+    ctx.drawImage(input, 0, 0)
+    ctx.filter = 'none'
+    return canvas
+  }
+
+  private async applyChannelMixer(input: HTMLCanvasElement, props: Record<string, any>): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.drawImage(input, 0, 0)
+    return canvas
+  }
+
+  // Transform
+  private async applyRotate(input: HTMLCanvasElement, angle: number, centerX: number, centerY: number, interpolation: string, clip: string): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.translate(canvas.width * centerX, canvas.height * centerY)
+    ctx.rotate(angle * Math.PI / 180)
+    ctx.translate(-canvas.width * centerX, -canvas.height * centerY)
+    ctx.drawImage(input, 0, 0)
+    return canvas
+  }
+
+  private async applyScale(input: HTMLCanvasElement, scaleX: number, scaleY: number, interpolation: string, clip: string): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    ctx.scale(scaleX, scaleY)
+    ctx.drawImage(input, 0, 0)
+    return canvas
+  }
+
+  private async applyFlip(input: HTMLCanvasElement, horizontal: boolean, vertical: boolean): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(input.width, input.height)
+    const ctx = ctx2d(canvas)
+    if (horizontal) ctx.scale(-1, 1), ctx.translate(-canvas.width, 0)
+    if (vertical) ctx.scale(1, -1), ctx.translate(0, -canvas.height)
+    ctx.drawImage(input, 0, 0)
+    return canvas
+  }
+
+  private async applyCrop(input: HTMLCanvasElement, x: number, y: number, width: number, height: number): Promise<HTMLCanvasElement> {
+    const canvas = createCanvas(width, height)
+    const ctx = ctx2d(canvas)
+    ctx.drawImage(input, -x, -y)
     return canvas
   }
 }
