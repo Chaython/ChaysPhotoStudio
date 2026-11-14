@@ -18,7 +18,7 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -215,7 +215,7 @@ jobs:
     timeout-minutes: 25
     needs: verify
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -289,7 +289,7 @@ jobs:
 
       - name: Upload Chromium E2E diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: chromium-editor-e2e
           path: build/chromium-e2e/

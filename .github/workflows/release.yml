@@ -47,7 +47,7 @@ jobs:
   web:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -78,35 +78,35 @@ jobs:
         run: node scripts/export-webapp.mjs both
 
       - name: Upload web bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: web-standalone
           path: web-standalone.tar.gz
           if-no-files-found: error
 
       - name: Upload static webapp (Pages flavor)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: webapp-static-pages
           path: build/webapp-export-pages/
           if-no-files-found: error
 
       - name: Upload static webapp (plugin flavor)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: webapp-static-plugin
           path: build/webapp-export/
           if-no-files-found: error
 
       - name: Upload icons (electron builder resources)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: app-icons
           path: build/icons
           if-no-files-found: error
 
       - name: Upload icons (tauri)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: tauri-icons
           path: webview/src-tauri/icons
@@ -134,7 +134,7 @@ jobs:
         uses: actions/configure-pages@v6
 
       - name: Download static webapp
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: webapp-static-pages
           path: site
@@ -183,7 +183,7 @@ jobs:
             builder-args: --mac --arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -232,7 +232,7 @@ jobs:
           CHAYS_SMOKE_TEST=1 timeout 45s xvfb-run -a "$APP_BIN" --no-sandbox
 
       - name: Upload desktop builds
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: electron-${{ matrix.name }}
           path: |
@@ -277,7 +277,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     needs: web
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -306,13 +306,13 @@ jobs:
         run: cargo update -p toml_parser --precise "1.1.3+spec-1.1.0"
 
       - name: Restore icons
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: tauri-icons
           path: webview/src-tauri/icons
 
       - name: Restore static webapp for embedded webview
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: webapp-static-plugin
           path: build/webapp-export
@@ -415,7 +415,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "webview/src-tauri/target/release/bundle/${APP_NAME}-${{ matrix.arch }}.app.zip"
 
       - name: Upload webview bundles
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: webview-${{ matrix.name }}
           path: |
@@ -434,20 +434,20 @@ jobs:
     runs-on: ubuntu-24.04
     needs: web
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Restore icons
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: app-icons
           path: build/icons
 
       - name: Restore static webapp (plugin flavor)
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: webapp-static-plugin
           path: build/webapp-export
@@ -456,7 +456,7 @@ jobs:
         run: node scripts/build-extension.mjs
 
       - name: Upload plugin
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: browser-extension
           path: build/extension
@@ -471,7 +471,7 @@ jobs:
     # (e.g. org policy) must never block artifact publishing.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Compute release tag
         id: rel
@@ -488,7 +488,7 @@ jobs:
           fi
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           path: dist
 
