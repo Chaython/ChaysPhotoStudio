@@ -26,8 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Puzzle, Brush, Blend, Upload, Trash2, Play, Sparkles, BookOpen, Info, Check,
-  FileJson, ChevronDown, Lock, CircleAlert, Terminal, RefreshCw, ShieldCheck,
-  Palette, FileText, FolderOpen,
+  FileJson, ChevronDown, ChevronUp, Lock, CircleAlert, Terminal, RefreshCw, ShieldCheck,
+  Palette, FileText, FolderOpen, Layers, Film, Plus, Download,
 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
@@ -53,6 +53,8 @@ import { runGimpProcedure, listAllProcedures as listAllGimpProcedures } from '..
 import { getGeglOperations, type GeglOperation } from '../../plugins/gegl-ops'
 import { convertColorSpace, convertCanvasColorSpace, SRGB_PROFILE, listColorSpaces } from '../../plugins/gimp-color-management'
 import { extractMetadataFromImage, parseExif, parseXmp, ImageMetadata } from '../../plugins/gimp-metadata'
+import { getAllPipelines, executePipeline, createPipelineFromSteps, type FilterPipeline, type FilterStep } from '../../plugins/gimp-filter-pipeline'
+import { createFrame, exportGif, exportAnimatedWebP, composeFrames, generateSpriteSheet, type AnimationFrame, type AnimationSettings, EASING } from '../../plugins/gimp-animation'
 
 // ---- the honest "what can/can't import" note ----
 function CompatibilityNote() {
@@ -628,6 +630,12 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
           <TabsTrigger value="gimp-xcf" className="text-[11px] gap-1.5">
             <FolderOpen size={11} /> XCF Import
           </TabsTrigger>
+          <TabsTrigger value="gimp-pipelines" className="text-[11px] gap-1.5">
+            <Layers size={11} /> Filter Pipelines
+          </TabsTrigger>
+          <TabsTrigger value="gimp-animation" className="text-[11px] gap-1.5">
+            <Film size={11} /> Animation
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="plugins" className="mt-3">
           <PluginsTab />
@@ -661,6 +669,12 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </TabsContent>
         <TabsContent value="gimp-xcf" className="mt-3">
           <GimpXcfImportTab />
+        </TabsContent>
+        <TabsContent value="gimp-pipelines" className="mt-3">
+          <GimpFilterPipelinesTab />
+        </TabsContent>
+        <TabsContent value="gimp-animation" className="mt-3">
+          <GimpAnimationTab />
         </TabsContent>
       </Tabs>
       <DialogFooter>
@@ -828,6 +842,378 @@ function GimpProceduralTab() {
             </Button>
           ))}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// GIMP Filter Pipelines Tab
+// ============================================================
+function GimpFilterPipelinesTab() {
+  const [filter, setFilter] = useState('')
+  const [running, setRunning] = useState<string | null>(null)
+  const [showBuilder, setShowBuilder] = useState(false)
+  const [builderSteps, setBuilderSteps] = useState<FilterStep[]>([])
+  const [builderName, setBuilderName] = useState('')
+  const pushToast = useEditorStore(s => s.pushToast)
+
+  const pipelines = useMemo(() => getAllPipelines(), [])
+  const filteredPipelines = useMemo(() => pipelines.filter(p =>
+    p.name.toLowerCase().includes(filter.toLowerCase()) ||
+    p.description.toLowerCase().includes(filter.toLowerCase()) ||
+    p.tags.some(t => t.toLowerCase().includes(filter.toLowerCase()))
+  ), [pipelines, filter])
+
+  const runPipeline = async (pipeline: FilterPipeline) => {
+    setRunning(pipeline.id)
+    try {
+      const doc = engine.activeDoc
+      if (!doc) { pushToast('No active document', 'error'); return }
+      const layer = doc.layers[doc.activeLayerIndex]
+      if (!layer) { pushToast('No active layer', 'error'); return }
+
+      const result = await executePipeline(pipeline, layer.canvas, (step, progress) => {
+        pushToast(`Running ${step.label}... ${Math.round(progress * 100)}%`, 'info')
+      })
+
+      if (result.success && result.output) {
+        const ctx = layer.canvas.getContext('2d')!
+        ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
+        ctx.drawImage(result.output, 0, 0)
+        engine.requestRedraw()
+        pushToast(`${pipeline.name} completed`, 'success')
+      } else {
+        const failed = result.stepResults.find(r => !r.success)
+        pushToast(`Failed at ${failed?.stepId}: ${failed?.error}`, 'error')
+      }
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : 'Pipeline failed', 'error')
+    } finally {
+      setRunning(null)
+    }
+  }
+
+  const saveCustomPipeline = () => {
+    if (!builderName.trim() || builderSteps.length === 0) return
+    const pipeline = createPipelineFromSteps(builderName, builderSteps)
+    savePipeline(pipeline)
+    pushToast(`Saved pipeline "${builderName}"`, 'success')
+    setShowBuilder(false)
+    setBuilderSteps([])
+    setBuilderName('')
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <input
+          type="text"
+          placeholder="Filter pipelines… (name, description, tags)"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          className="flex-1 min-w-[200px] h-8 rounded border border-border bg-background px-2 text-sm text-foreground placeholder:text-muted-foreground"
+        />
+        <Button size="sm" variant="secondary" onClick={() => { setShowBuilder(!showBuilder); setBuilderSteps([]); setBuilderName('') }}>
+          <Plus size={13} className="mr-1.5" /> {showBuilder ? 'Close Builder' : 'New Pipeline'}
+        </Button>
+      </div>
+
+      {showBuilder && (
+        <div className="rounded border border-primary/30 bg-primary/5 p-3 space-y-3">
+          <h4 className="text-[11px] font-medium text-foreground">Pipeline Builder</h4>
+          <input
+            type="text"
+            placeholder="Pipeline name"
+            value={builderName}
+            onChange={e => setBuilderName(e.target.value)}
+            className="w-full h-8 rounded border border-border bg-background px-2 text-sm text-foreground placeholder:text-muted-foreground"
+          />
+          <div className="space-y-1 max-h-60 overflow-y-auto">
+            {builderSteps.map((step, idx) => (
+              <div key={step.id} className="flex items-center gap-1.5 p-1.5 rounded border border-border/50 bg-background/50">
+                <span className="text-[10px] text-muted-foreground w-5">{idx + 1}.</span>
+                <input type="text" value={step.operation} readOnly className="flex-1 text-[11px] bg-transparent border-0 focus:outline-none" />
+                <Button size="sm" variant="ghost" className="h-6 p-0" onClick={() => setBuilderSteps(s => s.filter((_, i) => i !== idx))}>
+                  <Trash2 size={11} />
+                </Button>
+              </div>
+            ))}
+            {builderSteps.length === 0 && <p className="text-[10px] text-muted-foreground text-center py-2">Add steps from the list below</p>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" onClick={() => {
+              const ops = getGeglOperations()
+              const step: FilterStep = { id: `step-${builderSteps.length + 1}`, operation: ops[0]?.name || '', label: ops[0]?.title || '', params: {}, enabled: true }
+              setBuilderSteps(s => [...s, step])
+            }}>
+              <Plus size={11} className="mr-1" /> Add GEGL Op
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => {
+              // Could add procedural steps
+              pushToast('Add procedural step from GIMP Procedural tab', 'info')
+            }}>
+              <Plus size={11} className="mr-1" /> Add Procedure
+            </Button>
+            <Button size="sm" onClick={saveCustomPipeline} disabled={!builderName.trim() || builderSteps.length === 0}>
+              <Check size={11} className="mr-1" /> Save Pipeline
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded border border-border/70 bg-panel/40 max-h-[500px] overflow-y-auto zphoto-scroll">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border/70 bg-background/50">
+              <th className="text-left p-2 font-medium text-[11px] text-muted-foreground">Name</th>
+              <th className="text-left p-2 font-medium text-[11px] text-muted-foreground">Description</th>
+              <th className="text-left p-2 font-medium text-[11px] text-muted-foreground">Steps</th>
+              <th className="text-left p-2 font-medium text-[11px] text-muted-foreground">Tags</th>
+              <th className="text-right p-2 font-medium text-[11px] text-muted-foreground">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredPipelines.map(p => (
+              <tr key={p.id} className="border-b border-border/40 hover:bg-accent/30">
+                <td className="p-2 font-medium text-[11px] text-foreground">{p.name}</td>
+                <td className="p-2 text-[10px] text-muted-foreground truncate max-w-[200px]">{p.description}</td>
+                <td className="p-2 text-[10px] text-muted-foreground">{p.steps.length}</td>
+                <td className="p-2 text-[10px] text-muted-foreground">{p.tags.join(', ')}</td>
+                <td className="p-2 text-right">
+                  <Button
+                    size="sm"
+                    variant={running === p.id ? 'default' : 'secondary'}
+                    className="h-7 px-2.5 text-[10px]"
+                    disabled={running !== null && running !== p.id}
+                    onClick={() => runPipeline(p)}
+                  >
+                    {running === p.id ? 'Running…' : 'Run'}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {filteredPipelines.length === 0 && (
+              <tr>
+                <td colSpan={5} className="p-4 text-center text-muted-foreground">No pipelines match filter</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="rounded border border-border/70 bg-panel/40 p-3 space-y-2">
+        <h4 className="text-[11px] font-medium text-foreground">Available GEGL Operations</h4>
+        <p className="text-[10px] text-muted-foreground">Click to add to pipeline builder above.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {getGeglOperations().slice(0, 30).map(op => (
+            <Button
+              key={op.name}
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-[9px] text-left"
+              onClick={() => {
+                if (!showBuilder) setShowBuilder(true)
+                const step: FilterStep = { id: `step-${builderSteps.length + 1}`, operation: op.name, label: op.title, params: {}, enabled: true }
+                setBuilderSteps(s => [...s, step])
+              }}
+            >
+              {op.title}
+            </Button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// GIMP Animation Tab
+// ============================================================
+function GimpAnimationTab() {
+  const [frames, setFrames] = useState<AnimationFrame[]>([])
+  const [settings, setSettings] = useState<AnimationSettings>(DEFAULT_ANIMATION_SETTINGS)
+  const [onionSkinSettings, setOnionSkinSettings] = useState({ prevFrames: 2, nextFrames: 1, opacity: 0.4, colorPrev: 'red', colorNext: 'blue' })
+  const [exportFormat, setExportFormat] = useState<'gif' | 'webp' | 'apng' | 'spritesheet'>('gif')
+  const [running, setRunning] = useState(false)
+  const pushToast = useEditorStore(s => s.pushToast)
+
+  const addFrame = () => {
+    const doc = engine.activeDoc
+    if (!doc) { pushToast('No active document', 'error'); return }
+    const layer = doc.layers[doc.activeLayerIndex]
+    if (!layer) { pushToast('No active layer', 'error'); return }
+    setFrames(f => [...f, createFrame(layer.canvas, { name: `Frame ${f.length + 1}` })])
+  }
+
+  const removeFrame = (id: string) => setFrames(f => f.filter(frame => frame.id !== id))
+  const duplicateFrameFn = (id: string) => setFrames(f => {
+    const idx = f.findIndex(frame => frame.id === id)
+    if (idx < 0) return f
+    const newFrames = [...f]
+    newFrames.splice(idx + 1, 0, duplicateFrame(f[idx]))
+    return newFrames
+  })
+
+  const moveFrame = (id: string, dir: -1 | 1) => setFrames(f => {
+    const idx = f.findIndex(frame => frame.id === id)
+    if (idx < 0 || idx + dir < 0 || idx + dir >= f.length) return f
+    const newFrames = [...f]
+    ;[newFrames[idx], newFrames[idx + dir]] = [newFrames[idx + dir], newFrames[idx]]
+    return newFrames
+  })
+
+  const exportAnimation = async () => {
+    if (frames.length === 0) { pushToast('No frames to export', 'error'); return }
+    setRunning(true)
+    try {
+      let blob: Blob
+      if (exportFormat === 'gif') {
+        blob = await exportGif(frames, settings)
+      } else if (exportFormat === 'webp') {
+        blob = await exportAnimatedWebP(frames, settings)
+      } else if (exportFormat === 'apng') {
+        blob = await exportAnimatedWebP(frames, settings) // fallback
+      } else {
+        // Sprite sheet
+        const canvas = generateSpriteSheet(frames, Math.ceil(Math.sqrt(frames.length)))
+        blob = await new Promise(resolve => canvas.toBlob(b => resolve(b || new Blob()), 'image/png'))
+      }
+
+      // Download
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `animation.${exportFormat === 'spritesheet' ? 'png' : exportFormat}`
+      a.click()
+      URL.revokeObjectURL(url)
+      pushToast(`Exported ${frames.length} frames as ${exportFormat.toUpperCase()}`, 'success')
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : 'Export failed', 'error')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={addFrame} disabled={running}>
+          <Plus size={13} className="mr-1.5" /> Add Frame from Active Layer
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => {
+          const doc = engine.activeDoc
+          if (!doc) { pushToast('No active document', 'error'); return }
+          const layer = doc.layers[doc.activeLayerIndex]
+          if (!layer) { pushToast('No active layer', 'error'); return }
+          // Add multiple frames with slight variations (for animation)
+          const newFrames = []
+          for (let i = 0; i < 5; i++) {
+            newFrames.push(createFrame(layer.canvas, { name: `Frame ${frames.length + i + 1}` }))
+          }
+          setFrames(f => [...f, ...newFrames])
+        }} disabled={running}>
+          <Film size={13} className="mr-1.5" /> Add 5 Frames
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => setFrames([])} disabled={running || frames.length === 0}>
+          <Trash2 size={13} className="mr-1.5" /> Clear All
+        </Button>
+      </div>
+
+      <div className="rounded border border-border/70 bg-panel/40 p-3 space-y-2">
+        <h4 className="text-[11px] font-medium text-foreground">Animation Settings</h4>
+        <div className="grid grid-cols-4 gap-2 text-sm">
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-muted-foreground">FPS:</label>
+            <input type="number" value={settings.fps} onChange={e => setSettings(s => ({ ...s, fps: parseInt(e.target.value) || 12 }))} className="w-16 h-7 rounded border border-border bg-background px-2 text-sm text-foreground" min="1" max="60" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-muted-foreground">Loop:</label>
+            <input type="number" value={settings.loopCount} onChange={e => setSettings(s => ({ ...s, loopCount: parseInt(e.target.value) || 0 }))} className="w-16 h-7 rounded border border-border bg-background px-2 text-sm text-foreground" min="0" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-muted-foreground">Frame Duration (ms):</label>
+            <input type="number" value={settings.defaultFrameDuration} onChange={e => setSettings(s => ({ ...s, defaultFrameDuration: parseInt(e.target.value) || 100 }))} className="w-24 h-7 rounded border border-border bg-background px-2 text-sm text-foreground" min="10" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-muted-foreground">BG:</label>
+            <input type="color" value={settings.backgroundColor} onChange={e => setSettings(s => ({ ...s, backgroundColor: e.target.value }))} className="w-7 h-7 rounded border border-border" />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded border border-border/70 bg-panel/40 p-3 space-y-2">
+        <h4 className="text-[11px] font-medium text-foreground">Onion Skinning</h4>
+        <div className="grid grid-cols-4 gap-2 text-sm">
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-muted-foreground">Prev Frames:</label>
+            <input type="number" value={onionSkinSettings.prevFrames} onChange={e => setOnionSkinSettings(s => ({ ...s, prevFrames: Math.max(0, Math.min(5, parseInt(e.target.value) || 0)) }))} className="w-12 h-7 rounded border border-border bg-background px-2 text-sm text-foreground" min="0" max="5" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-muted-foreground">Next Frames:</label>
+            <input type="number" value={onionSkinSettings.nextFrames} onChange={e => setOnionSkinSettings(s => ({ ...s, nextFrames: Math.max(0, Math.min(5, parseInt(e.target.value) || 0)) }))} className="w-12 h-7 rounded border border-border bg-background px-2 text-sm text-foreground" min="0" max="5" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-muted-foreground">Opacity:</label>
+            <input type="range" value={onionSkinSettings.opacity} onChange={e => setOnionSkinSettings(s => ({ ...s, opacity: parseFloat(e.target.value) }))} className="flex-1 h-7" min="0" max="1" step="0.1" />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded border border-border/70 bg-panel/40 max-h-[300px] overflow-y-auto zphoto-scroll">
+        {frames.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Film size={32} className="mx-auto mb-2 opacity-50" />
+            <p className="text-sm">No frames yet. Add frames from the active layer.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-5 gap-2">
+            {frames.map((frame, idx) => (
+              <div key={frame.id} className="relative group">
+                <canvas
+                  width={80}
+                  height={60}
+                  className="w-full aspect-video rounded border border-border/50 bg-[repeating-conic-gradient(#3a3a3a_0%_25%,#2c2c2c_0%_50%)] [background-size:8px_8px]"
+                  ref={el => {
+                    if (el) {
+                      const ctx = el.getContext('2d')!
+                      ctx.clearRect(0, 0, 80, 60)
+                      const s = Math.min(80 / frame.canvas.width, 60 / frame.canvas.height)
+                      ctx.drawImage(frame.canvas, (80 - frame.canvas.width * s) / 2, (60 - frame.canvas.height * s) / 2, frame.canvas.width * s, frame.canvas.height * s)
+                    }
+                  }}
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[9px] px-1 py-0.5 flex justify-between">
+                  <span>{frame.name}</span>
+                  <span>{frame.duration}ms</span>
+                </div>
+                <div className="absolute top-0 right-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={e => { e.stopPropagation(); duplicateFrameFn(frame.id) }} className="p-0.5 rounded bg-background/90 hover:bg-primary/20" title="Duplicate"><Plus size={10} /></button>
+                  <button onClick={e => { e.stopPropagation(); removeFrame(frame.id) }} className="p-0.5 rounded bg-background/90 hover:bg-destructive/20 text-destructive" title="Delete"><Trash2 size={10} /></button>
+                  <button onClick={e => { e.stopPropagation(); moveFrame(frame.id, -1) }} className="p-0.5 rounded bg-background/90" title="Move Up" disabled={idx === 0}><ChevronUp size={10} /></button>
+                  <button onClick={e => { e.stopPropagation(); moveFrame(frame.id, 1) }} className="p-0.5 rounded bg-background/90" title="Move Down" disabled={idx === frames.length - 1}><ChevronDown size={10} /></button>
+                </div>
+                <input type="number" value={frame.duration} onChange={e => setFrames(f => f.map((fr, i) => i === idx ? { ...fr, duration: parseInt(e.target.value) || 100 } : fr))} className="absolute bottom-0 left-0 w-full h-6 bg-black/50 text-white text-[9px] px-1 border-none focus:outline-none focus:bg-black/70" min="10" />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded border border-border/70 bg-panel/40 p-3 space-y-2">
+        <h4 className="text-[11px] font-medium text-foreground">Export</h4>
+        <div className="flex flex-wrap gap-2">
+          <select value={exportFormat} onChange={e => setExportFormat(e.target.value as any)} className="h-8 rounded border border-border bg-background px-2 text-sm text-foreground">
+            <option value="gif">GIF (animated)</option>
+            <option value="webp">WebP (animated)</option>
+            <option value="apng">APNG (animated)</option>
+            <option value="spritesheet">Sprite Sheet (PNG)</option>
+          </select>
+          <Button size="sm" onClick={exportAnimation} disabled={running || frames.length === 0}>
+            <Download size={13} className="mr-1.5" /> {running ? 'Exporting…' : `Export as ${exportFormat.toUpperCase()}`}
+          </Button>
+        </div>
+        <p className="text-[10px] text-muted-foreground">{frames.length} frame{frames.length !== 1 ? 's' : ''} · {Math.round(frames.reduce((sum, f) => sum + f.duration, 0) / 1000 * 10) / 10}s total</p>
       </div>
     </div>
   )
