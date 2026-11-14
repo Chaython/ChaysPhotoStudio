@@ -1,5 +1,5 @@
 'use client'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   MenubarMenu, MenubarTrigger, MenubarContent, MenubarItem, MenubarSeparator, Menubar,
   MenubarSub, MenubarSubTrigger, MenubarSubContent,
@@ -7,7 +7,7 @@ import {
 import type { MenuItem } from '../../constants/menus'
 import { MENUS, PLUGINS_MENU_INDEX, getPluginsMenuItems } from '../../constants/menus'
 import { useEditorStore, WORKSPACE_PRESETS, WORKSPACE_PRESET_LABELS } from '../../store'
-import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2, Pencil, X, Lock, Unlock } from 'lucide-react'
+import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2, Pencil, X, Lock, Unlock, Download as DownloadIcon } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -52,6 +52,77 @@ function renderItems(items: MenuItem[], depth = 0): React.ReactNode[] {
     )
   }
   return out
+}
+
+/** PWA install prompt button shown in the header when the browser offers
+ *  installation (Chrome/Edge on desktop/Android). Hidden when already
+ *  installed in standalone mode or on platforms that don't support it. */
+function PwaInstallButton() {
+  const [deferred, setDeferred] = useState<PromiseEvent | null>(null)
+  const [prompted, setPrompted] = useState(false)
+
+  // If already running standalone (installed), don't show the button.
+  if (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches) {
+    return null
+  }
+
+  const onBeforeInstallPrompt = (e: Event) => {
+    // Chrome fires beforeinstallprompt; prevent the mini-infobar so we can
+    // surface our own button instead.
+    e.preventDefault()
+    setDeferred(e as unknown as PromiseEvent)
+    setPrompted(false)
+  }
+
+  const onAppInstalled = () => {
+    setDeferred(null)
+    setPrompted(true)
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    window.addEventListener('appinstalled', onAppInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', onAppInstalled)
+    }
+  }, [])
+
+  const install = async () => {
+    if (!deferred) return
+    try {
+      const choice = await deferred.prompt()
+      if (choice.outcome === 'accepted') {
+        setPrompted(true)
+      }
+    } catch {
+      // install dismissed or failed — button may reappear on next visit
+    } finally {
+      setDeferred(null)
+    }
+  }
+
+  // Don't show after the user has dismissed/install already handled this session
+  if (prompted || !deferred) return null
+
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-1 h-6 px-2.5 rounded-md bg-primary/15 border border-primary/40 text-primary text-[11px] font-medium hover:bg-primary/25 active:scale-95 transition-all"
+      onClick={install}
+      title="Install Chay's Photo Studio as a desktop app"
+      aria-label="Install Chay's Photo Studio"
+    >
+      <DownloadIcon size={11} />
+      <span className="hidden sm:inline">Install App</span>
+    </button>
+  )
+}
+
+type PromiseEvent = Event & {
+  promise: Promise<{ outcome: 'accepted' | 'dismissed' }>
+  prompt(): Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
 type AppTheme = 'dark' | 'light' | 'oled' | 'photoshop'
@@ -141,6 +212,8 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
           <CircleHelp size={15}/>
           <span className="hidden xl:inline text-[11px]">Help</span>
         </button>
+
+        <PwaInstallButton />
 
         <button
           className="text-muted-foreground hover:text-foreground p-1.5 rounded hover:bg-accent"

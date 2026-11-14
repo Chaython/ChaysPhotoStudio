@@ -19,7 +19,7 @@ A source-available, browser-first photo editor with layered editing, Photoshop-i
 
 | Area | Available in the current `main` branch |
 |---|---|
-| **61 registered tools** | Move/transform, rectangular/elliptical/single-row/single-column marquee; Lasso/Polygonal/Magnetic; Object/Quick/Brush selection; Magic Wand; crop/perspective crop; painting, erasers, healing, retouching, Pen/Path tools, editable Type/Shapes, Hand/Zoom |
+| **76 registered tools** | Move/transform, rectangular/elliptical/single-row/single-column marquee; Lasso/Polygonal/Magnetic; Object/Quick/Brush selection; Magic Wand; crop/perspective crop; painting, erasers, healing, retouching, Pen/Path tools, editable Type/Shapes, Hand/Zoom — plus fifteen GIMP-style tools (Alignment, Rotate, Scale, Shear, Perspective, Unified/Handle/Cage/Warp Transform, Flip, Scissors/Foreground Select, Airbrush, Ink and MyPaint Brush) reachable from the same toolbar and All Tools dialog |
 | **Selections** | New/Add/Subtract/Intersect, Color Range, Select Subject, Focus Area, Grow/Similar, Select & Mask edge refinement, channels and luminosity selections, feather/smooth/contract/expand |
 | **Layers & masks** | Raster, native text/shape, adjustments, Smart Objects with Smart Filters, alpha/vector masks, clipping, blending, Layer Styles, alignment, layer duplication into another document, Layer Comps |
 | **History & automation** | Undo/redo, durable snapshots and snapshot notes, Actions recording/playback with Photoshop `.atn` import/export, Batch / Image Processor, scripting console and portable recovery snapshot exports |
