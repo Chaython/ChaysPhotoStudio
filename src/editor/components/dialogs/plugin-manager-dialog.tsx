@@ -27,6 +27,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   Puzzle, Brush, Blend, Upload, Trash2, Play, Sparkles, BookOpen, Info, Check,
   FileJson, ChevronDown, Lock, CircleAlert, Terminal, RefreshCw, ShieldCheck,
+  Palette, FileText, FolderOpen,
 } from 'lucide-react'
 import { engine } from '../../engine/engine'
 import { useEditorStore } from '../../store'
@@ -45,6 +46,13 @@ import { getFlatComposite } from '../../engine/document'
 import type { PluginPermission } from '../../plugins/plugin-types'
 import { listProcedures, getProcedure, runProcedure, getGeglOperations, getGeglOperation, type GeglOperation } from '../../plugins/gegl-ops'
 import { runProcedure as runProcProcedure, listAllProcedures, runGimpPipeline } from '../../plugins/gimp-host'
+import { runScriptFu, listBuiltInScripts, getBuiltInScript, registerScriptFu } from '../../plugins/gimp-script-fu'
+import { parseBrush, importBrushPack, detectBrushFormat, brushToEngine } from '../../plugins/gimp-brush-import'
+import { parseXcf, renderXcf } from '../../plugins/gimp-xcf'
+import { runGimpProcedure, listAllProcedures as listAllGimpProcedures } from '../../plugins/gimp-host'
+import { getGeglOperations, type GeglOperation } from '../../plugins/gegl-ops'
+import { convertColorSpace, convertCanvasColorSpace, SRGB_PROFILE, listColorSpaces } from '../../plugins/gimp-color-management'
+import { extractMetadataFromImage, parseExif, parseXmp, ImageMetadata } from '../../plugins/gimp-metadata'
 
 // ---- the honest "what can/can't import" note ----
 function CompatibilityNote() {
@@ -608,6 +616,18 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
           <TabsTrigger value="gimp-procedural" className="text-[11px] gap-1.5">
             <Sparkles size={11} /> GIMP Procedural
           </TabsTrigger>
+          <TabsTrigger value="gimp-scriptfu" className="text-[11px] gap-1.5">
+            <BookOpen size={11} /> Script-Fu
+          </TabsTrigger>
+          <TabsTrigger value="gimp-colors" className="text-[11px] gap-1.5">
+            <Palette size={11} /> Color Mgmt
+          </TabsTrigger>
+          <TabsTrigger value="gimp-metadata" className="text-[11px] gap-1.5">
+            <FileText size={11} /> Metadata
+          </TabsTrigger>
+          <TabsTrigger value="gimp-xcf" className="text-[11px] gap-1.5">
+            <FolderOpen size={11} /> XCF Import
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="plugins" className="mt-3">
           <PluginsTab />
@@ -629,6 +649,18 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </TabsContent>
         <TabsContent value="gimp-procedural" className="mt-3">
           <GimpProceduralTab />
+        </TabsContent>
+        <TabsContent value="gimp-scriptfu" className="mt-3">
+          <GimpScriptFuTab />
+        </TabsContent>
+        <TabsContent value="gimp-colors" className="mt-3">
+          <GimpColorManagementTab />
+        </TabsContent>
+        <TabsContent value="gimp-metadata" className="mt-3">
+          <GimpMetadataTab />
+        </TabsContent>
+        <TabsContent value="gimp-xcf" className="mt-3">
+          <GimpXcfImportTab />
         </TabsContent>
       </Tabs>
       <DialogFooter>

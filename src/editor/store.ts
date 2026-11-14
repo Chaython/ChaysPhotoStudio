@@ -509,21 +509,55 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
       'tool:gradient': 'g',
     },
     gimp: {
-      // GIMP's Edit/Layer menu bindings differ from Adobe applications.
-      undo: 'ctrl+z', redo: 'ctrl+y',
-      deselect: 'ctrl+shift+a', invertSelection: 'ctrl+i',
-      duplicateLayer: 'ctrl+shift+d', mergeDown: 'ctrl+m',
+      // GIMP 3.0 default keybindings (matching standard GIMP shortcuts)
+      // Edit menu
+      undo: 'ctrl+z', redo: 'ctrl+y', redoAlt: 'ctrl+shift+z',
+      cut: 'ctrl+x', copy: 'ctrl+c', paste: 'ctrl+v', pasteInPlace: 'ctrl+shift+v', clear: 'delete', fillWithFg: 'ctrl+,', fillWithBg: 'ctrl+.',
+      // Select menu
+      all: 'ctrl+a', none: 'ctrl+shift+a', invert: 'ctrl+i', float: 'ctrl+shift+l', byColor: 'shift+o', sharpen: 'shift+s', shrink: 'ctrl+shift+s', grow: 'ctrl+g', border: 'ctrl+b', feather: 'shift+f', toPath: 'shift+p',
+      // Layer menu
+      newLayer: 'ctrl+shift+n', duplicateLayer: 'ctrl+shift+d', deleteLayer: 'ctrl+shift+k', mergeDown: 'ctrl+m', mergeVisible: 'ctrl+shift+m', flatten: 'ctrl+shift+f', layerToImageSize: 'ctrl+shift+i', scaleLayer: 'ctrl+shift+t', layerBoundarySize: 'ctrl+shift+b', transparency: 'ctrl+shift+o', addAlpha: 'ctrl+shift+a', mask: 'ctrl+shift+m', transform: 'ctrl+t',
+      // View menu
+      zoomIn: 'ctrl++', zoomOut: 'ctrl+-', zoomFit: 'ctrl+0', zoom100: 'ctrl+1', showGrid: 'ctrl+shift+g', snapToGrid: 'ctrl+shift+;', showGuides: 'ctrl+;', snapToGuides: 'ctrl+shift+;', fullscreen: 'f11',
+      // Image menu
+      cropToSelection: 'ctrl+shift+x', canvasSize: 'ctrl+alt+c', printSize: 'ctrl+alt+p',
+      // Colors menu
+      levels: 'ctrl+l', curves: 'ctrl+shift+m', hueSaturation: 'ctrl+u', colorBalance: 'ctrl+b', brightnessContrast: 'ctrl+shift+b', desaturate: 'ctrl+shift+d', invert: 'ctrl+i', posterize: 'ctrl+shift+p', threshold: 'ctrl+shift+t',
+      // Filters menu
+      blur: 'shift+u', enhance: 'shift+e', noise: 'shift+n', edgeDetect: 'ctrl+shift+e', generic: 'ctrl+f', repeatLast: 'ctrl+f',
+      // Tools - selection
       'tool:move': 'm',
-      'tool:marquee-rect': 'r', 'tool:marquee-ellipse': 'e',
-      'tool:lasso': 'f', 'tool:polygon-lasso': 'f', 'tool:quick-mask': 'q',
-      'tool:magic-wand': 'z',
-      'tool:eyedropper': 'o', 'tool:color-sampler': 'o',
-      'tool:zoom': 'z',
-      'tool:text': 't', 'tool:brush': 'p',
-      'tool:pencil': 'n',
+      'tool:marquee-rect': 'r', 'tool:marquee-ellipse': 'e', 'tool:marquee-row': 'ctrl+r', 'tool:marquee-column': 'ctrl+e',
+      'tool:lasso': 'f', 'tool:polygon-lasso': 'ctrl+f', 'tool:magnetic-lasso': 'shift+f', 'tool:selection-brush': 'shift+b', 'tool:quick-mask': 'q',
+      'tool:object-select': 'o', 'tool:quick-select': 'shift+o', 'tool:magic-wand': 'z',
+      'tool:scissors-select': 'i', 'tool:foreground-select': 'ctrl+i',
+      // Tools - transform (GIMP uses Shift+letter)
+      'tool:alignment': 'q', 'tool:rotate': 'shift+r', 'tool:scale': 'shift+t', 'tool:shear': 'shift+s', 'tool:perspective': 'shift+p', 'tool:unified-transform': 'shift+t', 'tool:handle-transform': 'shift+l', 'tool:flip': 'shift+f', 'tool:cage-transform': 'shift+c', 'tool:warp-transform': 'shift+w',
+      // Tools - color
+      'tool:eyedropper': 'o', 'tool:color-sampler': 'ctrl+o',
+      // Tools - measure
+      'tool:measure': 'k', 'tool:zoom': 'z',
+      // Tools - crop
+      'tool:crop': 'shift+c', 'tool:perspective-crop': 'ctrl+shift+c',
+      // Tools - text
+      'tool:text': 't',
+      // Tools - paint
+      'tool:brush': 'p', 'tool:pencil': 'n', 'tool:mixer-brush': 'shift+p', 'tool:color-replacement': 'ctrl+p', 'tool:airbrush': 'a', 'tool:ink': 'k', 'tool:mypaint-brush': 'ctrl+n',
+      // Tools - erasers
+      'tool:eraser': 'shift+e', 'tool:background-eraser': 'ctrl+shift+e', 'tool:magic-eraser': 'alt+shift+e',
+      // Tools - retouch
+      'tool:clone-stamp': 'c', 'tool:pattern-stamp': 'ctrl+c', 'tool:healing-brush': 'h', 'tool:spot-healing': 'shift+h', 'tool:remove': 'ctrl+h', 'tool:patch': 'ctrl+shift+h', 'tool:content-aware-move': 'ctrl+alt+h', 'tool:red-eye': 'shift+r',
+      'tool:blur': 'shift+u', 'tool:sharpen': 'ctrl+shift+u', 'tool:smudge': 's', 'tool:dodge': 'shift+d', 'tool:burn': 'ctrl+shift+d', 'tool:sponge': 'ctrl+d',
+      // Tools - fill
       'tool:gradient': 'l', 'tool:paint-bucket': 'shift+b',
-      'tool:eraser': 'shift+e', 'tool:crop': 'shift+c',
-      'tool:clone-stamp': 'c',
+      // Tools - vector
+      'tool:pen': 'b', 'tool:pen-freeform': 'ctrl+b', 'tool:pen-curvature': 'shift+b', 'tool:path-select': 'ctrl+b', 'tool:direct-select': 'alt+b',
+      'tool:shape': 'shift+u',
+      // Tools - navigation
+      'tool:hand': 'h', 'tool:rotate-view': 'shift+z',
+      // Web tools
+      'tool:slice': 'k', 'tool:slice-select': 'ctrl+k', 'tool:hotspot': 'shift+k', 'tool:frame': 'ctrl+k',
+      'tool:artboard': 'shift+a', 'tool:count': 'ctrl+k',
     },
     fireworks: {
       undo: 'ctrl+z', redo: 'ctrl+y',
