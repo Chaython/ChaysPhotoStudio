@@ -27,6 +27,10 @@ ARTIFACTS = Path(os.getenv("CHAYS_E2E_ARTIFACTS", "build/chromium-e2e"))
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 RESULTS: list[tuple[str, bool, str]] = []
 ACTIVE_PAGE = None
+# Page errors and console errors of the page under test. React catches render
+# failures in its error boundary, so the console output is the only place the
+# real exception shows up — it has to be printed when a test fails.
+LAST_PAGE_ERRORS: list[str] = []
 
 DOCKS = {
     "top-left": ("documents", "Open Files"),
@@ -101,7 +105,11 @@ def app_page(browser, size=(1440, 900), track_workers=False):
         })()""")
     page = context.new_page()
     errors = []
+    LAST_PAGE_ERRORS.clear()
     page.on("pageerror", lambda error: errors.append(str(error)))
+    page.on("pageerror", lambda error: LAST_PAGE_ERRORS.append(f"pageerror: {error}"))
+    page.on("console", lambda msg: LAST_PAGE_ERRORS.append(f"console.{msg.type}: {msg.text}")
+            if msg.type == "error" else None)
     resp = page.goto(APP_URL, wait_until="domcontentloaded", timeout=60000)
     check(resp is not None and resp.status == 200, "exported application did not return HTTP 200")
     # Mobile deliberately renders drawers instead of desktop dock elements.
@@ -151,6 +159,10 @@ def run_test(name, fn):
         RESULTS.append((name, False, msg))
         print(f"FAIL {name}: {msg}", flush=True)
         traceback.print_exc(limit=2)
+        if LAST_PAGE_ERRORS:
+            print("  page errors:", flush=True)
+            for entry in LAST_PAGE_ERRORS[:12]:
+                print(f"    {entry}", flush=True)
         if ACTIVE_PAGE:
             try:
                 ACTIVE_PAGE.screenshot(path=str(ARTIFACTS / (name + ".png")), full_page=True, timeout=10000)
@@ -1454,9 +1466,20 @@ def main():
                       f"Artboard drag failed: {boards}")
                 page.mouse.click(**point(24,25))
                 page.keyboard.press('ArrowRight')
-                page.wait_for_function("() => window.__zphotoEngine.activeDoc.artboards[0].x >= 13", timeout=10000)
-                check(page.evaluate("() => window.__zphotoEngine.activeDoc.artboards[0].x")>=13,
-                      "Artboard keyboard nudge failed")
+                try:
+                    page.wait_for_function("() => window.__zphotoEngine.activeDoc.artboards[0].x >= 13", timeout=5000)
+                except Exception:
+                    pass
+                nudge_state = page.evaluate("""() => ({
+                    artboards: window.__zphotoEngine.activeDoc?.artboards ?? null,
+                    activeArtboardId: window.__zphotoEngine.activeDoc?.activeArtboardId ?? null,
+                    view: window.__zphotoEngine.activeDoc?.view ?? null,
+                    tool: window.__zphotoStore.getState().activeTool,
+                    crashed: document.body.innerText.includes('Something went wrong'),
+                    body: document.body.innerText.slice(0, 160),
+                })""")
+                check(nudge_state['artboards'] and nudge_state['artboards'][0]['x'] >= 13,
+                      f"Artboard keyboard nudge failed: {nudge_state}")
                 page.evaluate("() => window.__zphotoEngine.undo()")
                 check(page.evaluate("() => window.__zphotoEngine.activeDoc.artboards[0].x") == 12,
                       "Artboard nudge Undo failed")
