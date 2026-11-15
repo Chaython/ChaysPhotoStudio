@@ -38,7 +38,7 @@ jobs:
       PUBLISH_STORES: ${{ github.event_name == 'release' || inputs.publish_stores }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -119,7 +119,7 @@ jobs:
           echo "publish_stores=$( [[ "$PUBLISH_STORES" == true ]] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
       - name: Upload validated release packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: chays-photo-studio-publish-bundle
           path: dist/
@@ -144,7 +144,7 @@ jobs:
           }
 
       - name: Download release bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: chays-photo-studio-publish-bundle
           path: dist
@@ -231,7 +231,7 @@ jobs:
           }
 
       - name: Download release bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: chays-photo-studio-publish-bundle
           path: dist
