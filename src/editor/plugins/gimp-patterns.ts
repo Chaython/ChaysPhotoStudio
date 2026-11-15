@@ -411,7 +411,7 @@ function parseAcoPalette(buf: ArrayBuffer, fileName: string): PalettePreset {
     }
   }
 
-  return { name: fileName.replace('.aco', ''), colors, columns: 16, source: 'photoshop-aco' }
+  return { name: fileName.replace('.aco', ''), colors, columns: 16, source: 'aco' }
 }
 
 /** Parse Adobe .ase palette (Swatch Exchange) */
@@ -457,7 +457,7 @@ function parseAsePalette(buf: ArrayBuffer, fileName: string): PalettePreset {
     }
   }
 
-  return { name: fileName.replace('.ase', ''), colors, columns: 16, source: 'photoshop-ase' }
+  return { name: fileName.replace('.ase', ''), colors, columns: 16, source: 'ase' }
 }
 
 /** Export palette as GIMP .gpl */

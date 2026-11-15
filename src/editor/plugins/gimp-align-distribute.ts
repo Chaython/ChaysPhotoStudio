@@ -6,21 +6,21 @@ import { createCanvas, ctx2d } from '../utils/canvas'
 
 export interface AlignDistributeOptions {
   /** Target objects to align/distribute */
-  targets: AlignTarget[]
+  targets?: AlignTarget[]
   /** Reference object (if any) */
   reference?: AlignTarget
   /** Alignment axis */
-  axis: 'horizontal' | 'vertical' | 'both'
+  axis?: 'horizontal' | 'vertical' | 'both'
   /** Alignment type */
-  alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
+  alignment?: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
   /** Distribution type */
-  distribution: 'none' | 'horizontal' | 'vertical' | 'both'
+  distribution?: 'none' | 'horizontal' | 'vertical' | 'both'
   /** Distribution spacing */
-  spacing: number
+  spacing?: number
   /** Use selection bounds as reference */
-  useSelectionBounds: boolean
+  useSelectionBounds?: boolean
   /** Relative to */
-  relativeTo: 'selection' | 'canvas' | 'first' | 'last' | 'page'
+  relativeTo?: 'selection' | 'canvas' | 'first' | 'last' | 'page'
 }
 
 export interface AlignTarget {
@@ -153,14 +153,14 @@ export function alignAndDistribute(
   })
 
   // Update all targets
-  const updatedTargets = targets.map(t => {
-    const updated = targetsToProcess.find(u => u.id === t.id)
+  const mergedTargets = targets.map(t => {
+    const updated = updatedTargets.find(u => u.id === t.id)
     return updated || t
   })
 
   return {
-    targets: updatedTargets,
-    bounds: getBounds(updatedTargets),
+    targets: mergedTargets,
+    bounds: getBounds(mergedTargets),
     transforms,
   }
 }
@@ -356,9 +356,9 @@ export function createAlignDistributeUI(
   // Event listeners
   let selectedAlignment = 'center'
   let selectedDistribution = 'none'
-  let selectedAxis = 'both'
+  let selectedAxis: 'horizontal' | 'vertical' | 'both' = 'both'
 
-  container.querySelectorAll('[data-align]').forEach(btn => {
+  container.querySelectorAll<HTMLElement>('[data-align]').forEach(btn => {
     btn.addEventListener('click', () => {
       container.querySelectorAll('[data-align]').forEach(b => b.classList.remove('active'))
       btn.classList.add('active')
@@ -366,7 +366,7 @@ export function createAlignDistributeUI(
     })
   })
 
-  container.querySelectorAll('[data-distribute]').forEach(btn => {
+  container.querySelectorAll<HTMLElement>('[data-distribute]').forEach(btn => {
     btn.addEventListener('click', () => {
       container.querySelectorAll('[data-distribute]').forEach(b => b.classList.remove('active'))
       btn.classList.add('active')

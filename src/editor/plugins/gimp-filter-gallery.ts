@@ -71,7 +71,7 @@ export interface FilterGalleryState {
 
 export class FilterGallery {
   private state: FilterGalleryState
-  private listeners: Set<() => void> = new Map()
+  private listeners: Set<() => void> = new Set()
   private previewCache: Map<string, HTMLCanvasElement> = new Map()
 
   constructor() {
@@ -998,21 +998,6 @@ export class FilterGallery {
     this.notify()
   }
 
-  setSearchQuery(query: string): void {
-    this.state.searchQuery = query
-    this.notify()
-  }
-
-  setPreviewMode(mode: FilterGalleryState['previewMode']): void {
-    this.state.previewMode = mode
-    this.notify()
-  }
-
-  setPreviewSize(size: FilterGalleryState['previewSize']): void {
-    this.state.previewSize = size
-    this.notify()
-  }
-
   // Get filtered filters
   getFilteredFilters(): FilterGalleryItem[] {
     let filters = Array.from(this.state.filters.values())
@@ -1113,13 +1098,12 @@ export class FilterGallery {
 
   // Subscribe to changes
   subscribe(listener: () => void): () => void {
-    const id = Math.random().toString(36)
-    this.listeners.set(id, listener)
-    return () => this.listeners.delete(id)
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
   }
 
   private notify(): void {
-    for (const listener of this.listeners.values()) listener()
+    for (const listener of this.listeners) listener()
   }
 }
 

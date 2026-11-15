@@ -487,77 +487,80 @@ export async function createPicturePackage(
 
   const layoutConfig = layouts[layout] || layouts.standard
 
+  // Resolve every input to a canvas once so the page loop stays synchronous
+  const sourceCanvases: HTMLCanvasElement[] = []
+  for (const img of images) {
+    if (img instanceof HTMLCanvasElement) {
+      sourceCanvases.push(img)
+    } else if (img instanceof HTMLImageElement) {
+      const c = createCanvas(img.naturalWidth || img.width, img.naturalHeight || img.height)
+      ctx2d(c).drawImage(img, 0, 0)
+      sourceCanvases.push(c)
+    } else {
+      const bitmap = await createImageBitmap(img)
+      const c = createCanvas(bitmap.width, bitmap.height)
+      ctx2d(c).drawImage(bitmap, 0, 0)
+      bitmap.close()
+      sourceCanvases.push(c)
+    }
+  }
+
   const pages: HTMLCanvasElement[] = []
-  let imgIndex = 0
+  const cellsPerPage = layoutConfig.rows * layoutConfig.cols
 
   for (let copy = 0; copy < copies; copy++) {
-    for (let pageNum = 0; ; pageNum++) {
+    for (let start = 0; start < sourceCanvases.length; start += cellsPerPage) {
       const pageCanvas = createCanvas(paper.width, paper.height)
       const ctx = ctx2d(pageCanvas)
-
-      // Background
       ctx.fillStyle = background
       ctx.fillRect(0, 0, paper.width, paper.height)
 
-      let hasImages = false
+      for (let cell = 0; cell < cellsPerPage; cell++) {
+        const imgIndex = start + cell
+        if (imgIndex >= sourceCanvases.length) break
 
-      for (let row = 0; row < layoutConfig.rows; row++) {
-        for (let col = 0; col < layoutConfig.cols; col++) {
-          const cellIndex = row * layoutConfig.cols + col
+        const imgCanvas = sourceCanvases[imgIndex]
+        const row = Math.floor(cell / layoutConfig.cols)
+        const col = cell % layoutConfig.cols
+        const x = margins.left + col * (layoutConfig.cellW + 10)
+        const y = margins.top + row * (layoutConfig.cellH + 10)
 
-          if (imgIndex >= images.length) break
-
-          const img = images[imgIndex]
-          const imgCanvas = img instanceof HTMLCanvasElement ? img : (() => { const c = createCanvas(img.width, img.height); ctx2d(c).drawImage(img, 0, 0); return c })()
-
-          const x = margins.left + col * (layoutConfig.cellW + 10)
-          const y = margins.top + row * (layoutConfig.cellH + 10)
-
-          // Draw border
-          if (border.width > 0) {
-            ctx.strokeStyle = border.color
-            ctx.lineWidth = border.width
-            ctx.strokeRect(x, y, layoutConfig.cellW, layoutConfig.cellH)
-          }
-
-          // Draw image
-          let drawX = x
-          let drawY = y
-          let drawW = layoutConfig.cellW
-          let drawH = layoutConfig.cellH
-
-          if (cropToFit) {
-            const imgAspect = imgCanvas.width / imgCanvas.height
-            const cellAspect = layoutConfig.cellW / layoutConfig.cellH
-
-            if (imgAspect > cellAspect) {
-              drawH = layoutConfig.cellH
-              drawW = drawH * imgAspect
-              drawX = x + (layoutConfig.cellW - drawW) / 2
-              drawY = y
-            } else {
-              drawW = layoutConfig.cellW
-              drawH = drawW / (imgCanvas.width / imgCanvas.height)
-              drawX = x
-              drawY = y + (layoutConfig.cellH - drawH) / 2
-            }
-          }
-
-          ctx.drawImage(imgCanvas, drawX, drawY, drawW, drawH)
-          hasImages = true
-          imgIndex++
+        if (border.width > 0) {
+          ctx.strokeStyle = border.color
+          ctx.lineWidth = border.width
+          ctx.strokeRect(x, y, layoutConfig.cellW, layoutConfig.cellH)
         }
 
-        if (!hasImages) break
+        let drawX = x
+        let drawY = y
+        let drawW = layoutConfig.cellW
+        let drawH = layoutConfig.cellH
 
-        pages.push(pageCanvas)
+        if (cropToFit) {
+          const imgAspect = imgCanvas.width / imgCanvas.height
+          const cellAspect = layoutConfig.cellW / layoutConfig.cellH
+
+          if (imgAspect > cellAspect) {
+            drawH = layoutConfig.cellH
+            drawW = drawH * imgAspect
+            drawX = x + (layoutConfig.cellW - drawW) / 2
+            drawY = y
+          } else {
+            drawW = layoutConfig.cellW
+            drawH = drawW / (imgCanvas.width / imgCanvas.height)
+            drawX = x
+            drawY = y + (layoutConfig.cellH - drawH) / 2
+          }
+        }
+
+        ctx.drawImage(imgCanvas, drawX, drawY, drawW, drawH)
       }
 
-      if (imgIndex >= images.length * copies) break
+      pages.push(pageCanvas)
     }
-
-    return pages
   }
+
+  return pages
 }
 
 /** Web Photo Gallery Generator */
@@ -681,7 +684,7 @@ function generateGalleryHTML(params: any): string {
     <h1>${seo.title}</h1>
   </header>
   <div class="gallery">
-    ${loadedImages.map((img, i) => `
+    ${images.map((img: { name: string }, i: number) => `
       <div class="gallery-item" data-index="${i}">
         <img src="thumbnails/${img.name}" alt="${img.name}" loading="lazy">
         <div class="metadata">${img.name}</div>
@@ -799,7 +802,7 @@ export async function createPDFPresentation(
     durations: slides.map(s => s.duration || defaultDuration),
   })
 
-  return new Blob([pdfContent], { type: 'application/pdf' })
+  return new Blob([pdfContent as unknown as BlobPart], { type: 'application/pdf' })
 }
 
 function generatePDFContent(params: any): Uint8Array {
@@ -816,13 +819,13 @@ export class LayerCompsManager {
   constructor() {}
 
   createComp(comp: Omit<LayerComp, 'id'>): LayerComp {
-    const comp: LayerComp = {
+    const newComp: LayerComp = {
       ...comp,
       id: 'comp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9),
     }
-    this.comps.set(comp.id, comp)
+    this.comps.set(newComp.id, newComp)
     this.notify()
-    return comp
+    return newComp
   }
 
   getComp(id: string): LayerComp | undefined {

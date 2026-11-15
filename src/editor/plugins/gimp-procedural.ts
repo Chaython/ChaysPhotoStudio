@@ -500,7 +500,7 @@ export function applyBlendMode(ctx: CanvasRenderingContext2D, mode: string) {
     overlay: 'overlay',
     difference: 'difference',
     addition: 'lighter',
-    subtract: 'darker',
+    subtract: 'darken',
     darken: 'darken',
     lighten: 'lighten',
     'color-dodge': 'color-dodge',

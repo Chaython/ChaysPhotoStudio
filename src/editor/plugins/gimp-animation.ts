@@ -221,7 +221,12 @@ export async function exportApng(
   const composed = composeFrames(frames, settings.backgroundColor)
   // APNG not directly supported by canvas.toBlob
   // Would need apng-js or similar
-  return composed[0].toBlob('image/png') || Promise.resolve(new Blob())
+  return new Promise<Blob>((resolve, reject) => {
+    composed[0].toBlob(
+      (blob) => blob ? resolve(blob) : reject(new Error('Failed to encode APNG frame')),
+      'image/png'
+    )
+  })
 }
 
 // Sprite sheet generation

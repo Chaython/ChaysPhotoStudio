@@ -329,7 +329,7 @@ export async function parsePsd(buffer: ArrayBuffer): Promise<PsdDocument> {
   offset = resourcesEnd
 
   // Layer and Mask Information Section
-  const layerInfoLength = isPSB ? view.getUint64(offset, false) : view.getUint32(offset, false)
+  const layerInfoLength = isPSB ? readUint64(view, offset) : view.getUint32(offset, false)
   offset += isPSB ? 8 : 4
 
   const layers = parseLayers(view, offset, width, height, isPSB)
@@ -428,7 +428,7 @@ function parseLayerRecord(view: DataView, offset: number, width: number, height:
   for (let i = 0; i < channelCount; i++) {
     const channelId = view.getUint16(offset, false)
     offset += 2
-    const dataLength = isPSB ? view.getUint64(offset, false) : view.getUint32(offset, false)
+    const dataLength = isPSB ? readUint64(view, offset) : view.getUint32(offset, false)
     offset += isPSB ? 8 : 4
     channels.push({ id: channelId, name: '', type: 'red', data: new Uint8Array(0), compression: 'raw' })
     offset += dataLength // skip data
@@ -461,7 +461,7 @@ function parseLayerRecord(view: DataView, offset: number, width: number, height:
   }
 
   // Layer extra data
-  const extraLength = isPSB ? view.getUint64(offset, false) : view.getUint32(offset, false)
+  const extraLength = isPSB ? readUint64(view, offset) : view.getUint32(offset, false)
   offset += isPSB ? 8 : 4
 
   const extraEnd = offset + extraLength
@@ -470,7 +470,7 @@ function parseLayerRecord(view: DataView, offset: number, width: number, height:
     offset += 4
     const key = readString(view, offset, 4)
     offset += 4
-    const len = isPSB ? view.getUint64(offset, false) : view.getUint32(offset, false)
+    const len = isPSB ? readUint64(view, offset) : view.getUint32(offset, false)
     offset += isPSB ? 8 : 4
 
     if (key === 'luni') {
@@ -553,7 +553,7 @@ function getBlendModeName(key: string): string {
     'colr': 'color', 'lum ': 'luminosity', 'lbrn': 'color-burn', 'lddg': 'color-dodge',
     'div ': 'divide', 'dkCl': 'darken', 'lgCl': 'lighten', 'lgLt': 'linear-dodge',
     'lgBr': 'linear-burn', 'vivL': 'vivid-light', 'linL': 'linear-light', 'pinL': 'pin-light',
-    'hrdM': 'hard-mix', 'over': 'overlay', 'sLit': 'soft-light', 'hLit': 'hard-light',
+    'hrdM': 'hard-mix',
   }
   return modes[key] || 'normal'
 }
@@ -565,6 +565,13 @@ function getColorModeName(mode: number): PsdDocument['colorMode'] {
 
 function readString(view: DataView, offset: number, length: number): string {
   return String.fromCharCode(...new Uint8Array(view.buffer, view.byteOffset + offset, length))
+}
+
+/** Read a 64-bit unsigned big-endian integer (PSB lengths) */
+function readUint64(view: DataView, offset: number): number {
+  const high = view.getUint32(offset, false)
+  const low = view.getUint32(offset + 4, false)
+  return high * 0x100000000 + low
 }
 
 /** Export to PSD format */

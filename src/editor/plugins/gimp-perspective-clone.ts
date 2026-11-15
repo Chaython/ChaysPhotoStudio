@@ -5,6 +5,11 @@
 import { createCanvas, ctx2d } from '../utils/canvas'
 import { VanishingPointPlane, VanishingPointManager } from './gimp-vanishing-point'
 
+/** Linear interpolation between two values */
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
 export interface PerspectiveCloneOptions {
   /** Vanishing point plane to use for perspective */
   plane: VanishingPointPlane
@@ -131,40 +136,6 @@ export class PerspectiveCloneTool {
     this.notify()
   }
 
-  /** Convert screen coordinates to 3D plane coordinates */
-  private screenToPlane(x: number, y: number): { x: number; y: number; z: number } {
-    if (!this.state.plane) return { x: 0, y: 0, z: 0 }
-
-    // Use the plane's perspective matrix to unproject
-    const matrix = this.getPlaneMatrix()
-    if (!matrix) return { x: 0, y: 0, z: 0 }
-
-    // Inverse project screen coordinates to plane coordinates
-    // This is simplified - real implementation would use the full perspective matrix
-    const plane = this.state.plane!
-    const [p0, p1, p2, p3] = plane.points
-
-    // Bilinear interpolation to find UV coordinates
-    const u = this.uvFromPoint(x, y, plane.points)
-    const v = 0 // Simplified
-
-    return { x: u, y: v, z: 0 }
-  }
-
-  /** Get plane's perspective matrix */
-  private getPlaneMatrix(): number[] | null {
-    if (!this.state.plane) return null
-    const plane = this.state.plane
-    const src = plane.points
-    const dst = [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-      { x: 1, y: 1 },
-      { x: 0, y: 1 },
-    ]
-    return computePerspectiveTransform(plane.points, dst)
-  }
-
   /** Create preview canvas for real-time feedback */
   private createPreviewCanvas(): void {
     if (!this.sourceCanvas) return
@@ -284,10 +255,10 @@ export class PerspectiveCloneTool {
     stampCanvas.width = stampSize
     stampCanvas.height = stampSize
 
-    const sourceX = Math.max(0, Math.min(this.sourceCanvas!.width - stampSize, sourceX - stampSize / 2))
-    const sourceY = Math.max(0, Math.min(this.sourceCanvas!.height - stampSize, sourceY - stampSize / 2))
+    const clampedX = Math.max(0, Math.min(this.sourceCanvas!.width - stampSize, sourceX - stampSize / 2))
+    const clampedY = Math.max(0, Math.min(this.sourceCanvas!.height - stampSize, sourceY - stampSize / 2))
 
-    stampCtx.drawImage(this.sourceCanvas!, sourceX, sourceY, stampSize, stampSize, 0, 0, stampSize, stampSize)
+    stampCtx.drawImage(this.sourceCanvas!, clampedX, clampedY, stampSize, stampSize, 0, 0, stampSize, stampSize)
 
     // Apply hardness
     if (hardness < 1) {
@@ -308,7 +279,6 @@ export class PerspectiveCloneTool {
 
     // Draw stamp at target position with flow and spacing
     // This is simplified - real implementation would handle stroke path
-    const targetCtx = targetCanvas.getContext('2d')!
     targetCtx.globalAlpha = opacity
     targetCtx.globalCompositeOperation = 'source-over'
     targetCtx.drawImage(stampCanvas, 0, 0, brushSize, brushSize)
@@ -545,7 +515,7 @@ export function createPerspectiveCloneUI(
   // Brush settings
   ;(container.querySelector('#pc-brush-size') as HTMLInputElement).addEventListener('input', (e) => {
     const val = parseInt((e.target as HTMLInputElement).value)
-    ;(container.querySelector('#pc-brush-size-value') as HTMLSpanElement).textContent = val
+    ;(container.querySelector('#pc-brush-size-value') as HTMLSpanElement).textContent = String(val)
   })
 
   ;(container.querySelector('#pc-brush-hardness') as HTMLInputElement).addEventListener('input', (e) => {
@@ -601,8 +571,14 @@ export function createPerspectiveCloneUI(
   return container
 }
 
+/** A named perspective clone preset */
+export type PerspectiveClonePreset = Partial<PerspectiveCloneOptions> & {
+  name: string
+  description: string
+}
+
 /** Perspective Clone presets */
-export const PERSPECTIVE_CLONE_PRESETS: Record<string, Partial<PerspectiveCloneOptions>> = {
+export const PERSPECTIVE_CLONE_PRESETS: Record<string, PerspectiveClonePreset> = {
   'floor-clone': {
     name: 'Floor Clone',
     description: 'Clone along floor plane',

@@ -211,15 +211,15 @@ export class BrushStrokeEngine {
       roundness: 1.0,
       dabShape: 'circle',
       dynamics: {
-        size: { pressure: 1, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 0, fade: 0, curve: [[0, 0], [1, 1]] },
-        opacity: { pressure: 0.5, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 0.1, fade: 0, curve: [[0, 0], [1, 1]] },
-        flow: { pressure: 1, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 0, fade: 0, curve: [[0, 0], [1, 1]] },
-        hardness: { pressure: 0, velocity: 0, direction: 0, tilt: 0.5, rotation: 0, random: 0, fade: 0, curve: [[0, 0], [1, 1]] },
-        angle: { pressure: 0, velocity: 0, direction: 1, tilt: 0.5, rotation: 0.5, random: 0, fade: 0, curve: [[0, 0], [1, 1]] },
-        roundness: { pressure: 0, velocity: 0, direction: 0, tilt: 0.5, rotation: 0, random: 0, fade: 0, curve: [[0, 0], [1, 1]] },
-        spacing: { pressure: 0, velocity: 1, direction: 0, tilt: 0, rotation: 0, random: 0.1, fade: 0, curve: [[0, 0], [1, 1]] },
-        scatter: { pressure: 0, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 1, fade: 0, curve: [[0, 0], [1, 1]] },
-        jitter: { pressure: 0, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 0.5, fade: 0, curve: [[0, 0], [1, 1]] },
+        size: { pressure: 1, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 0, fade: 0, curve: [0, 0, 1, 1] },
+        opacity: { pressure: 0.5, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 0.1, fade: 0, curve: [0, 0, 1, 1] },
+        flow: { pressure: 1, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 0, fade: 0, curve: [0, 0, 1, 1] },
+        hardness: { pressure: 0, velocity: 0, direction: 0, tilt: 0.5, rotation: 0, random: 0, fade: 0, curve: [0, 0, 1, 1] },
+        angle: { pressure: 0, velocity: 0, direction: 1, tilt: 0.5, rotation: 0.5, random: 0, fade: 0, curve: [0, 0, 1, 1] },
+        roundness: { pressure: 0, velocity: 0, direction: 0, tilt: 0.5, rotation: 0, random: 0, fade: 0, curve: [0, 0, 1, 1] },
+        spacing: { pressure: 0, velocity: 1, direction: 0, tilt: 0, rotation: 0, random: 0.1, fade: 0, curve: [0, 0, 1, 1] },
+        scatter: { pressure: 0, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 1, fade: 0, curve: [0, 0, 1, 1] },
+        jitter: { pressure: 0, velocity: 0, direction: 0, tilt: 0, rotation: 0, random: 0.5, fade: 0, curve: [0, 0, 1, 1] },
       },
       texture: { enabled: false, canvas: null!, mode: 'multiply', scale: 1, depth: 0.5, jitter: 0 },
       color: { hueJitter: 0, saturationJitter: 0, brightnessJitter: 0, purityJitter: 0, foregroundBackground: 0 },
@@ -438,21 +438,21 @@ export class BrushStrokeEngine {
         break
       case 'radial':
         for (let i = 0; i < s.segments; i++) {
-          const a = (i / s.segments) * Math.PI * 2
+          const baseA = (i / s.segments) * Math.PI * 2
           const dx = dab.x - cx
           const dy = dab.y - cy
           const dist = Math.hypot(dx, dy)
-          const a = Math.atan2(dy, dx) + a
+          const a = Math.atan2(dy, dx) + baseA
           centers.push({ x: cx + Math.cos(a) * dist, y: cy + Math.sin(a) * dist, angle: a })
         }
         break
       case 'mandala':
         for (let i = 0; i < s.segments * 2; i++) {
-          const a = (i / (s.segments * 2)) * Math.PI * 2
+          const baseA = (i / (s.segments * 2)) * Math.PI * 2
           const dx = dab.x - cx
           const dy = dab.y - cy
           const dist = Math.hypot(dx, dy)
-          const a = Math.atan2(dy, dx) + (i % 2 === 0 ? a : -a)
+          const a = Math.atan2(dy, dx) + (i % 2 === 0 ? baseA : -baseA)
           centers.push({ x: cx + Math.cos(a) * dist, y: cy + Math.sin(a) * dist, angle: a })
         }
         break

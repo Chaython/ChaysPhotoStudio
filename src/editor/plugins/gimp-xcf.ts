@@ -113,7 +113,7 @@ async function decompressRle(src: Uint8Array, width: number, height: number, bpp
 async function decompressZlib(src: Uint8Array): Promise<Uint8Array> {
   // Use browser's built-in decompression via CompressionStream (requires secure context)
   if (typeof DecompressionStream !== 'undefined') {
-    const blob = new Blob([src])
+    const blob = new Blob([src as unknown as BlobPart])
     const stream = blob.stream().pipeThrough(new DecompressionStream('deflate'))
     const chunks: Uint8Array[] = []
     for await (const chunk of stream) chunks.push(chunk)

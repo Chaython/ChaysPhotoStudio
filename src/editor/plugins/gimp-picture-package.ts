@@ -298,6 +298,7 @@ export async function createPicturePackage(
           ctx.fillRect(x, y, layoutConfig.cellWidth, layoutConfig.cellH)
 
           if (useImage && imgIndex < loadedImages.length) {
+            hasImages = true
             const img = loadedImages[imgIndex]
             const imgCanvas = img.canvas
 
@@ -398,27 +399,27 @@ export async function createPicturePackage(
               drawPageNumber(ctx, paper.width, paper.height, pageNumbers, pageNum + 1)
             }
           }
-
-          if (!hasImages) break
-
-          pages.push(pageCanvas)
         }
+
+        pages.push(pageCanvas)
 
         if (imgIndex >= images.length * copies) break
       }
-
-      return {
-        pages,
-        metadata: {
-          totalImages: images.length,
-          pages: pages.length,
-          imagesPerPage: layoutConfig.cols * layoutConfig.rows,
-          layout,
-          paperSize,
-          dpi,
-        },
-      }
     }
+  }
+
+  return {
+    pages,
+    metadata: {
+      totalImages: images.length,
+      pages: pages.length,
+      imagesPerPage: layoutConfig.cols * layoutConfig.rows,
+      layout,
+      paperSize,
+      dpi,
+    },
+  }
+}
 
 /** Draw caption under image */
 function drawCaption(
@@ -655,7 +656,13 @@ export async function exportPackageAsImages(
 }
 
 /** Picture Package Presets */
-export const PICTURE_PACKAGE_PRESETS: Record<string, Partial<PicturePackageOptions>> = {
+export type PicturePackagePreset = Partial<Omit<PicturePackageOptions, 'captions' | 'watermark'>> & {
+  name: string
+  captions?: Partial<PicturePackageOptions['captions']>
+  watermark?: Partial<PicturePackageOptions['watermark']>
+}
+
+export const PICTURE_PACKAGE_PRESETS: Record<string, PicturePackagePreset> = {
   'standard-4x6': {
     name: 'Standard 4x6',
     paperSize: '4x6',
@@ -733,6 +740,4 @@ export const PICTURE_PACKAGE_PRESETS: Record<string, Partial<PicturePackageOptio
     border: { width: 2, color: '#dddddd', radius: 4 },
     background: '#fafafa',
   },
-}
-}
 }

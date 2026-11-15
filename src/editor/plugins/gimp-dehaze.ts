@@ -75,7 +75,6 @@ export async function dehaze(
   } = options
 
   let transmissionMap: HTMLCanvasElement | undefined
-  let depthMap: HTMLCanvasElement | undefined
 
   // 1. Estimate atmospheric light
   const atmosphericLight = estimateAtmosphericLight(canvas)
@@ -108,7 +107,7 @@ export async function dehaze(
   }
 
   // 3. Recover scene radiance
-  const dehazed = await recoverRadiance(canvas, transmissionMap!, atmosphericLight, strength, preserveColor)
+  let dehazed = await recoverRadiance(canvas, transmissionMap!, atmosphericLight, strength, preserveColor)
 
   // 5. Color correction
   if (colorCorrection !== 0) {
@@ -211,12 +210,12 @@ async function darkChannelPrior(
           const py = Math.max(0, Math.min(height - 1, y + ky))
           const idx = (py * width + px) * 4
 
-          const r = imgData[py * width * 4 + px * 4]
-          const g = imgData[py * width * 4 + px * 4 + 1]
-          const b = imgData[py * width * 4 + px * 4 + 2]
+          const r = data[py * width * 4 + px * 4]
+          const g = data[py * width * 4 + px * 4 + 1]
+          const b = data[py * width * 4 + px * 4 + 2]
 
-          const minVal = Math.min(r, g, b)
-          if (minVal < minVal) minVal = minVal
+          const pixelMin = Math.min(r, g, b)
+          if (pixelMin < minVal) minVal = pixelMin
         }
       }
 
@@ -237,17 +236,17 @@ async function darkChannelPrior(
 
   // Create transmission map canvas
   const output = createCanvas(width, height)
-  const ctx = ctx2d(output)
-  const imgData = ctx.createImageData(width, height)
-  const data = imgData.data
+  const outCtx = ctx2d(output)
+  const outImgData = outCtx.createImageData(width, height)
+  const outData = outImgData.data
 
   for (let i = 0; i < transmission.length; i++) {
     const val = Math.round(transmission[i] * 255)
-    data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = Math.round(transmission[i] * 255)
-    data[i * 4 + 3] = 255
+    outData[i * 4] = outData[i * 4 + 1] = outData[i * 4 + 2] = val
+    outData[i * 4 + 3] = 255
   }
 
-  ctx.putImageData(imgData, 0, 0)
+  outCtx.putImageData(outImgData, 0, 0)
   return output
 }
 
@@ -303,26 +302,24 @@ async function recoverRadiance(
   preserveColor: boolean
 ): Promise<HTMLCanvasElement> {
   const { width, height } = canvas
-  const ctx = canvas.getContext('2d')!
-  const imgData = ctx.getImageData(0, 0, width, height)
+  const srcCtx = canvas.getContext('2d')!
+  const imgData = srcCtx.getImageData(0, 0, width, height)
   const data = imgData.data
 
   const transCtx = transmissionMap.getContext('2d')!
   const transData = transCtx.getImageData(0, 0, width, height).data
 
   const output = createCanvas(width, height)
-  const ctx = ctx2d(output)
-  const outputData = ctx.createImageData(width, height)
-  const outputDataArr = outputData.data
-
-  const omega = 0.95
+  const outCtx = ctx2d(output)
+  const outputData = outCtx.createImageData(width, height)
+  const outData = outputData.data
 
   for (let i = 0; i < data.length; i += 4) {
     const idx = i / 4
-    const t = transData[idx * 4] / 255 // transmission value 0-1
+    const rawT = transData[idx * 4] / 255 // transmission value 0-1
 
     // Clamp transmission
-    const t = Math.max(0.1, Math.min(1, t))
+    const t = Math.max(0.1, Math.min(1, rawT))
 
     const r = data[i]
     const g = data[i + 1]
@@ -343,15 +340,13 @@ async function recoverRadiance(
       // Would maintain original color ratios
     }
 
-    outputData[i] = Math.max(0, Math.min(255, outR))
-    outputData[i + 1] = Math.max(0, Math.min(255, outG))
-    outputData[i + 2] = Math.max(0, Math.min(255, outB))
-    outputData[i + 3] = 255
+    outData[i] = Math.max(0, Math.min(255, outR))
+    outData[i + 1] = Math.max(0, Math.min(255, outG))
+    outData[i + 2] = Math.max(0, Math.min(255, outB))
+    outData[i + 3] = 255
   }
 
-  const output = createCanvas(canvas.width, canvas.height)
-  const ctx = ctx2d(output)
-  ctx.putImageData(new ImageData(outputData, width, height), 0, 0)
+  outCtx.putImageData(outputData, 0, 0)
   return output
 }
 
@@ -367,7 +362,7 @@ async function refineTransmissionMap(
 
   for (let i = 0; i < iterations; i++) {
     const output = createCanvas(current.width, current.height)
-    const ctx = ctx2d(current)
+    const ctx = ctx2d(output)
     ctx.filter = `blur(${haloSuppression * 2}px)`
     ctx.drawImage(current, 0, 0)
     ctx.filter = 'none'
@@ -479,6 +474,7 @@ export async function autoDehaze(canvas: HTMLCanvasElement): Promise<DehazeResul
     strength,
     algorithm,
     preserveColor: true,
+    colorCorrection: 0,
     localContrast: 10,
     haloSuppression: 0.5,
     radius: 15,
@@ -591,21 +587,35 @@ async function detectSkyRegion(canvas: HTMLCanvasElement): Promise<HTMLCanvasEle
       data[idx + 2] = val
       data[idx + 3] = 255
     }
-
-    ctx.putImageData(imgData, 0, 0)
-    return mask
   }
 
+  ctx.putImageData(imgData, 0, 0)
+  return mask
+}
+
 /** Real-time dehaze preview */
+const DEFAULT_DEHAZE_OPTIONS: DehazeOptions = {
+  strength: 50,
+  algorithm: 'dark-channel',
+  preserveColor: true,
+  colorCorrection: 0,
+  localContrast: 0,
+  haloSuppression: 0.5,
+  radius: 15,
+  iterations: 1,
+  outputDepthMap: false,
+  outputTransmissionMap: false,
+}
+
 export class DehazePreview {
   private canvas: HTMLCanvasElement
   private options: DehazeOptions
-  private previewCanvas: HTMLCanvasElement
+  private previewCanvas: HTMLCanvasElement = createCanvas(1, 1)
   private processing = false
 
-  constructor(canvas: HTMLCanvasElement, options: DehazeOptions = {}) {
+  constructor(canvas: HTMLCanvasElement, options: Partial<DehazeOptions> = {}) {
     this.canvas = canvas
-    this.options = { ...options }
+    this.options = { ...DEFAULT_DEHAZE_OPTIONS, ...options }
   }
 
   setOptions(options: Partial<DehazeOptions>): void {
@@ -625,9 +635,4 @@ export class DehazePreview {
   getOptions(): DehazeOptions {
     return { ...this.options }
   }
-
-  setOptions(options: Partial<DehazeOptions>): void {
-    this.options = { ...this.options, ...options }
-  }
-}
 }

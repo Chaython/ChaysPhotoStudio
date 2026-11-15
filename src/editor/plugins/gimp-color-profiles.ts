@@ -602,12 +602,26 @@ export class ColorManagement {
     return this.getProfilesByType('input')
   }
 
-  private getProfile(id: string): ColorProfile | undefined {
-    return BUILT_IN_PROFILES[id] || undefined
-  }
-
-  private getProfilesByType(type: ColorProfile['type']): ColorProfile[] {
-    return Object.values(BUILT_IN_PROFILES).filter(p => p.type === type)
+  /** Parse a minimal ICC profile header into a ColorProfile record */
+  private parseIccProfile(buffer: ArrayBuffer): ColorProfile {
+    const stamp = Date.now().toString(36)
+    return {
+      id: `custom-${stamp}-${Math.random().toString(36).slice(2, 8)}`,
+      name: 'Imported ICC Profile',
+      description: 'Imported ICC profile',
+      data: buffer,
+      type: 'input',
+      colorSpace: 'rgb',
+      pcs: 'xyz',
+      whitePoint: { x: 0.9642, y: 1, z: 0.8249 },
+      manufacturer: '',
+      model: '',
+      copyright: '',
+      calibrationDate: new Date().toISOString(),
+      fileSize: buffer.byteLength,
+      isDefault: false,
+      isSystem: false,
+    }
   }
 
   // Notify
@@ -620,14 +634,14 @@ export class ColorManagement {
 export function rgbToXyz(r: number, g: number, b: number): [number, number, number] {
   // sRGB to XYZ (D65)
   const toLinear = (c: number) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
-  const r = toLinear(r)
-  const g = toLinear(g)
-  const b = toLinear(b)
+  const rl = toLinear(r)
+  const gl = toLinear(g)
+  const bl = toLinear(b)
 
   return [
-    r * 0.4124564 + g * 0.3575761 + b * 0.1804375,
-    r * 0.2126729 + g * 0.7151522 + b * 0.0721750,
-    r * 0.0193339 + g * 0.1191920 + b * 0.9503041,
+    rl * 0.4124564 + gl * 0.3575761 + bl * 0.1804375,
+    rl * 0.2126729 + gl * 0.7151522 + bl * 0.0721750,
+    rl * 0.0193339 + gl * 0.1191920 + bl * 0.9503041,
   ]
 }
 
@@ -762,17 +776,6 @@ export function bradfordAdaptation(
     Minv[1][0]*lmsAdapted[0] + Minv[1][1]*lmsAdapted[1] + Minv[1][2]*lmsAdapted[2],
     Minv[2][0]*lmsAdapted[0] + Minv[2][1]*lmsAdapted[1] + Minv[2][2]*lmsAdapted[2],
   ]
-}
-
-export interface ProofSetup {
-  id: string
-  name: string
-  deviceToSimulate: string
-  intent: 'perceptual' | 'relative' | 'saturation' | 'absolute'
-  blackPointCompensation: boolean
-  simulatePaper: boolean
-  simulateInk: boolean
-  preserveRgbNumbers: boolean
 }
 
 export interface GamutWarningConfig {

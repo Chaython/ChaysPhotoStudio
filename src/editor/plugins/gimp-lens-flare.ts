@@ -55,9 +55,9 @@ export interface LensFlareOptions {
   /** Light intensity */
   intensity: number
   /** Lens type */
-  lensType: 'prime' | 'zoom' | 'anamorphic' | 'vintage' | 'modern'
+  lensType: 'prime' | 'zoom' | 'anamorphic' | 'vintage' | 'modern' | 'cinematic'
   /** Aperture shape */
-  apertureShape: 'circular' | 'hexagonal' | 'octagonal' | 'heart' | 'star' | 'custom'
+  apertureShape: 'circular' | 'hexagonal' | 'octagonal' | 'heart' | 'star' | 'anamorphic' | 'custom'
   /** Aperture blades */
   apertureBlades: number
   /** Aperture rotation */
@@ -80,6 +80,7 @@ export interface LensFlarePreset {
   lensType: LensFlareOptions['lensType']
   apertureShape: LensFlareOptions['apertureShape']
   apertureBlades: number
+  apertureRotation?: number
 }
 
 export const LENS_FLARE_PRESETS: Record<string, LensFlarePreset> = {
@@ -225,13 +226,12 @@ export async function addLensFlare(
   const lensType = options.lensType || (preset ? preset.lensType : 'modern')
   const apertureShape = options.apertureShape || (preset ? preset.apertureShape : 'circular')
   const apertureBlades = options.apertureBlades || (preset ? preset.apertureBlades : 8)
-  const apertureRotation = options.apertureRotation || (preset ? preset.apertureRotation : 0)
+  const apertureRotation = options.apertureRotation || (preset ? preset.apertureRotation ?? 0 : 0)
   const chromaticAberration = options.chromaticAberration ?? 0
   const dirtAmount = options.dirtAmount ?? 0
   const coatingColor = options.coatingColor || '#ff8822'
   const vignetteAmount = options.vignetteAmount ?? 0
 
-  const { width, height } = canvas
   const diagonal = Math.sqrt(width * width + height * height)
 
   // Create flare canvas
@@ -337,8 +337,6 @@ async function renderFlareElement(
   ctx.scale(element.scale || 1, element.scale || 1)
   ctx.globalAlpha = opacity
   ctx.globalCompositeOperation = element.blendMode as GlobalCompositeOperation
-
-  const size = element.size * context.diagonal
 
   switch (element.type) {
     case 'ring':

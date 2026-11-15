@@ -251,8 +251,8 @@ async function generateGBuffer(
   const depthData = depthCtx.createImageData(width, height)
   const depthDataArr = depthData.data
 
-  for (let i = 0; i < data.length; i += 4) {
-    const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+  for (let i = 0; i < srcData.length; i += 4) {
+    const lum = 0.299 * srcData[i] + 0.587 * srcData[i + 1] + 0.114 * srcData[i + 2]
     const depth = 1 - lum / 255 // Brighter = closer
     const val = Math.round(depth * 255)
     const idx = (i / 4) * 4
@@ -320,15 +320,14 @@ async function generateNormalMap(
       const ny_n = ny / len
       const nz_n = 1 / len
 
-      const idx = (y * width + x) * 4
-      outputData[idx] = Math.round((nx_n * 0.5 + 0.5) * 255)
-      outputData[idx + 1] = Math.round((ny_n * 0.5 + 0.5) * 255)
-      outputData[idx + 2] = Math.round((nz_n * 0.5 + 0.5) * 255)
-      outputData[idx + 3] = 255
+      outData[idx] = Math.round((nx_n * 0.5 + 0.5) * 255)
+      outData[idx + 1] = Math.round((ny_n * 0.5 + 0.5) * 255)
+      outData[idx + 2] = Math.round((nz_n * 0.5 + 0.5) * 255)
+      outData[idx + 3] = 255
     }
-
-    outputCtx.putImageData(outputData, 0, 0)
   }
+
+  outputCtx.putImageData(outputData, 0, 0)
 }
 
 /** Calculate ambient occlusion */
@@ -385,14 +384,14 @@ async function calculateAmbientOcclusion(
 
       const ao = 1 - (occlusion / samples) * intensity
       const aoVal = Math.round(clamp(ao, 0, 1) * 255)
-      const idx = (y * width + x) * 4
-      outData[idx] = outData[idx + 1] = outData[idx + 2] = aoVal
-      outData[idx + 3] = 255
+      const outIdx = (y * width + x) * 4
+      outData[outIdx] = outData[outIdx + 1] = outData[outIdx + 2] = aoVal
+      outData[outIdx + 3] = 255
     }
-
-    outputCtx.putImageData(outputData, 0, 0)
-    return output
   }
+
+  ctx.putImageData(outputData, 0, 0)
+  return output
 }
 
 /** Render shadows */
@@ -408,7 +407,6 @@ async function renderShadows(
   const ctx = ctx2d(output)
 
   // Start with white (no shadow)
-  const ctx = output.getContext('2d')!
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, output.width, output.height)
 
@@ -452,7 +450,6 @@ async function renderLighting(
   const emitCtx = ctx2d(emission)
 
   // Start with ambient
-  const diffCtx = diffuse.getContext('2d')!
   diffCtx.globalCompositeOperation = 'source-over'
   diffCtx.fillStyle = material.ambient || '#000000'
   diffCtx.fillRect(0, 0, width, height)
@@ -467,7 +464,7 @@ async function renderLighting(
 
     // Calculate lighting for each pixel
     // This is simplified - real implementation would use shaders
-    await applyLight(light, ambientLight, diffuse, specular, emission)
+    await applyLight(light, ao, diffuse, specular, emission)
   }
 
   // Emission
@@ -490,6 +487,10 @@ async function applyLight(
 ): Promise<void> {
   // Would calculate lighting per pixel
   // Simplified: just add light contribution
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
 }
 
 /** Composite all lighting passes */

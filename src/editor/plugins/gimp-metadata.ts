@@ -212,7 +212,7 @@ export interface XmpData {
   dateCreated?: string
   headline?: string
   instructions?: string
-  source?: string
+  iptcSource?: string
   state?: string
   transmissionReference?: string
   urgency?: number
@@ -385,9 +385,9 @@ export function parseExif(buf: ArrayBuffer): ExifData | null {
         } else if (type === 4) { // LONG
           (result as any)[key] = readU32(data, valueOffset, littleEndian)
         } else if (type === 5) { // RATIONAL
-          const num = readU32(data, valueOffset, littleEndian)
-          const den = readU32(data, valueOffset + 4, littleEndian)
-          (result as any)[key] = num / den
+          const numerator = data.getUint32(valueOffset, littleEndian)
+          const den = data.getUint32(valueOffset + 4, littleEndian)
+          ;(result as any)[key] = den === 0 ? 0 : numerator / den
         }
       }
     }
@@ -603,10 +603,10 @@ export async function extractMetadataFromImage(
   const result: ImageMetadata = {}
 
   if (options.parseExif !== false) {
-    result.exif = parseExif(buf)
+    result.exif = parseExif(buf) ?? undefined
   }
   if (options.parseXmp !== false) {
-    result.xmp = parseXmp(buf)
+    result.xmp = parseXmp(buf) ?? undefined
   }
   if (options.parseIptc !== false) {
     // Would parse IPTC

@@ -52,6 +52,10 @@ export interface PatternOptions {
   rotationIncrement: number
   /** Color shift per recursion */
   hueShift: number
+  /** Wave amplitude (wave pattern) */
+  waveAmplitude?: number
+  /** Wave frequency (wave pattern) */
+  waveFrequency?: number
 }
 
 export interface PatternElement {
@@ -116,7 +120,7 @@ export async function createPattern(
     hueShift: 0,
   }
 ): Promise<PatternResult> {
-  const {
+  let {
     type = 'grid',
     width = 512,
     height = 512,
@@ -180,8 +184,6 @@ export async function createPattern(
     tileWidth = Math.round(tileWidth * scale)
     tileHeight = Math.round(tileHeight * scale)
   }
-
-  const elements: PatternElement[] = []
 
   // Generate pattern based on type
   switch (type) {
@@ -366,9 +368,6 @@ async function generateGridPattern(
         scale = 1 + (Math.random() - 0.5) * variation / 50
         rotation = (Math.random() - 0.5) * variation * Math.PI / 180
       }
-
-      const x = col * stepX + offsetX
-      const y = row * stepY + offsetY
 
       ctx.save()
       ctx.translate(x + tileWidth / 2, y + tileHeight / 2)
@@ -814,7 +813,7 @@ export async function createPatternFromImage(
     tileHeight,
     width: tileWidth * 2,
     height: tileHeight * 2,
-  })
+  } as PatternOptions)
 }
 
 /** Make pattern seamless */
@@ -830,19 +829,19 @@ export async function makeSeamless(
   ctx.drawImage(canvas, 0, 0)
 
   // Create seamless edges using cross-fade
-  const overlap = Math.min(overlap, width / 2, height / 2)
+  const seam = Math.min(overlap, width / 2, height / 2)
 
   // Left-right seam
-  const leftStrip = createCanvas(overlap, height)
-  const rightStrip = createCanvas(overlap, height)
+  const leftStrip = createCanvas(seam, height)
+  const rightStrip = createCanvas(seam, height)
   const leftCtx = ctx2d(leftStrip)
   const rightCtx = ctx2d(rightStrip)
-  leftCtx.drawImage(canvas, 0, 0, overlap, height, 0, 0, overlap, height)
-  rightCtx.drawImage(canvas, width - overlap, 0, overlap, height, 0, 0, overlap, height)
+  leftCtx.drawImage(canvas, 0, 0, seam, height, 0, 0, seam, height)
+  rightCtx.drawImage(canvas, width - seam, 0, seam, height, 0, 0, seam, height)
 
   // Blend
-  for (let x = 0; x < overlap; x++) {
-    const alpha = x / overlap
+  for (let x = 0; x < seam; x++) {
+    const alpha = x / seam
     // Would blend left and right strips
   }
 

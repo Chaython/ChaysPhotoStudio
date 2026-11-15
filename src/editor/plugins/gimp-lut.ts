@@ -46,7 +46,7 @@ export async function loadLut(file: File): Promise<Lut3D | Lut1D> {
 }
 
 /** Parse .cube file (Adobe/Sony/Resolve) */
-export function parseCubeFile(text: string): Lut3D {
+export function parseCubeFile(text: string): Lut3D | Lut1D {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
 
   let size = 32
@@ -232,17 +232,17 @@ export async function applyLut3D(
       const fr = nr - r0, fg = ng - g0, fb = nb - b0
 
       // 8 corners
-      const idx = (x: number, y: number, z: number) =>
+      const lutIdx = (x: number, y: number, z: number) =>
         (x * lut.size * lut.size + y * lut.size + z) * 4
 
-      const c000 = lutData.slice(idx(r0, g0, b0), idx(r0, g0, b0) + 4)
-      const c001 = lutData.slice(idx(r0, g0, b1), idx(r0, g0, b1) + 4)
-      const c010 = lutData.slice(idx(r0, g1, b0), idx(r0, g1, b0) + 4)
-      const c011 = lutData.slice(idx(r0, g1, b1), idx(r0, g1, b1) + 4)
-      const c100 = lutData.slice(idx(r1, g0, b0), idx(r1, g0, b0) + 4)
-      const c101 = lutData.slice(idx(r1, g0, b1), idx(r1, g0, b1) + 4)
-      const c110 = lutData.slice(idx(r1, g1, b0), idx(r1, g1, b0) + 4)
-      const c111 = lutData.slice(idx(r1, g1, b1), idx(r1, g1, b1) + 4)
+      const c000 = lutData.slice(lutIdx(r0, g0, b0), lutIdx(r0, g0, b0) + 4)
+      const c001 = lutData.slice(lutIdx(r0, g0, b1), lutIdx(r0, g0, b1) + 4)
+      const c010 = lutData.slice(lutIdx(r0, g1, b0), lutIdx(r0, g1, b0) + 4)
+      const c011 = lutData.slice(lutIdx(r0, g1, b1), lutIdx(r0, g1, b1) + 4)
+      const c100 = lutData.slice(lutIdx(r1, g0, b0), lutIdx(r1, g0, b0) + 4)
+      const c101 = lutData.slice(lutIdx(r1, g0, b1), lutIdx(r1, g0, b1) + 4)
+      const c110 = lutData.slice(lutIdx(r1, g1, b0), lutIdx(r1, g1, b0) + 4)
+      const c111 = lutData.slice(lutIdx(r1, g1, b1), lutIdx(r1, g1, b1) + 4)
 
       // Trilinear interpolation
       const rOut = lerp3(

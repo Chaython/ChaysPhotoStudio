@@ -985,8 +985,9 @@ export function createGradientEditorUI(
     const file = (e.target as HTMLInputElement).files?.[0]
     if (file) {
       const reader = new FileReader()
-      reader.onload = (e) => {
-        if (editor.importJSON(e.target.result)) {
+      reader.onload = (ev) => {
+        const text = ev.target?.result
+        if (typeof text === 'string' && editor.importJSON(text)) {
           state = editor.getState()
           updateUI()
         }

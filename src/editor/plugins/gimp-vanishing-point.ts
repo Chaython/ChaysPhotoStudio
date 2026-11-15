@@ -100,9 +100,10 @@ export class VanishingPointManager {
   createPlaneFromHorizon(
     horizonY: number,
     vanishingPoint: { x: number; y: number },
-    height: number
+    canvasHeight: number
   ): VanishingPointPlane {
-    const { width, height } = this.canvasSize
+    const { width } = this.canvasSize
+    const height = canvasHeight
     const vp = vanishingPoint
 
     // Calculate plane corners based on horizon and vanishing point
@@ -430,7 +431,7 @@ function computePerspectiveTransform(
 ): number[] {
   // Solve for 3x3 homography matrix using DLT (Direct Linear Transform)
   // src points -> dst points
-  const A = []
+  const A: number[][] = []
   for (let i = 0; i < 4; i++) {
     const x = src[i].x
     const y = src[i].y
@@ -605,7 +606,7 @@ export function createVanishingPointUI(
 
   // Populate plane list
   const planeList = container.querySelector('#plane-list')!
-  const propertiesPanel = container.querySelector('#plane-properties')!
+  const propertiesPanel = container.querySelector('#plane-properties') as HTMLElement
   const planes = manager.getPlanes()
 
   function renderPlaneList(): void {
@@ -634,13 +635,15 @@ export function createVanishingPointUI(
 
   // Plane list click handler
   planeList.addEventListener('click', (e) => {
-    const item = e.target.closest('.plane-item')
+    const target = e.target as HTMLElement | null
+    if (!target) return
+    const item = target.closest('.plane-item') as HTMLElement | null
     if (!item) return
 
     const planeId = item.dataset.id
     if (!planeId) return
 
-    const action = (e.target as HTMLElement).dataset.action
+    const action = target.dataset.action
     if (action === 'edit') {
       manager.setActivePlane(planeId)
       showPlaneProperties(planeId)
@@ -664,11 +667,11 @@ export function createVanishingPointUI(
     if (!plane) return
 
     propertiesPanel.style.display = 'block'
-    const props = container.querySelector('#plane-properties')
+    const props = container.querySelector('#plane-properties') as HTMLElement
 
     ;(props.querySelector('#plane-name') as HTMLInputElement).value = plane.name
     ;(props.querySelector('#grid-size') as HTMLInputElement).value = String(plane.gridSize)
-    ;(props.querySelector('#grid-size-value') as HTMLSpanElement).textContent = plane.gridSize
+    ;(props.querySelector('#grid-size-value') as HTMLSpanElement).textContent = String(plane.gridSize)
     ;(props.querySelector('#grid-color') as HTMLInputElement).value = plane.gridColor
     ;(props.querySelector('#grid-opacity') as HTMLInputElement).value = String(plane.gridOpacity)
     ;(props.querySelector('#grid-opacity-value') as HTMLSpanElement).textContent = plane.gridOpacity + '%'
@@ -685,7 +688,7 @@ export function createVanishingPointUI(
   }
 
   function setupPropertyInputs(plane: VanishingPointPlane): void {
-    const props = container.querySelector('#plane-properties')
+    const props = container.querySelector('#plane-properties') as HTMLElement
 
     ;(props.querySelector('#plane-name') as HTMLInputElement).oninput = (e) => {
       manager.updatePlane(plane.id, { name: (e.target as HTMLInputElement).value })
@@ -693,7 +696,7 @@ export function createVanishingPointUI(
     ;(props.querySelector('#grid-size') as HTMLInputElement).oninput = (e) => {
       const val = parseInt((e.target as HTMLInputElement).value)
       manager.updatePlane(plane.id, { gridSize: val })
-      ;(props.querySelector('#grid-size-value') as HTMLSpanElement).textContent = val
+      ;(props.querySelector('#grid-size-value') as HTMLSpanElement).textContent = String(val)
     }
     ;(props.querySelector('#grid-color') as HTMLInputElement).oninput = (e) => {
       manager.updatePlane(plane.id, { gridColor: (e.target as HTMLInputElement).value })
@@ -748,7 +751,7 @@ export function createVanishingPointUI(
     btn.addEventListener('click', () => {
       container.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'))
       btn.classList.add('active')
-      manager.setTool(btn.dataset.tool as any)
+      manager.setTool((btn as HTMLElement).dataset.tool as any)
     })
   })
 
@@ -794,7 +797,8 @@ export function createVanishingPointUI(
     if (file) {
       const reader = new FileReader()
       reader.onload = (e) => {
-        const count = manager.importAllPlanes(e.target.result)
+        const result = (e.target as FileReader).result
+        const count = manager.importAllPlanes(typeof result === 'string' ? result : '')
         alert(`Imported ${count} plane(s)`)
         renderPlaneList()
       }
@@ -816,7 +820,7 @@ export function createVanishingPointUI(
   })
 
   // Brush settings
-  const brushSettings = container.querySelector('#brush-settings')
+  const brushSettings = container.querySelector('#brush-settings') as HTMLElement | null
   container.querySelector('[data-tool="brush"]')?.addEventListener('click', () => {
     if (brushSettings) brushSettings.style.display = 'block'
   })
@@ -828,7 +832,7 @@ export function createVanishingPointUI(
   ;(container.querySelector('#brush-size') as HTMLInputElement)?.addEventListener('input', (e) => {
     const val = parseInt((e.target as HTMLInputElement).value)
     manager.setBrushProperties({ size: val })
-    ;(container.querySelector('#brush-size-value') as HTMLSpanElement).textContent = val
+    ;(container.querySelector('#brush-size-value') as HTMLSpanElement).textContent = String(val)
   })
 
   ;(container.querySelector('#brush-hardness') as HTMLInputElement)?.addEventListener('input', (e) => {

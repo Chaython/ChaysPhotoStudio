@@ -68,7 +68,7 @@ export interface ContentAwareCropOptions {
 export async function contentAwareFill(
   sourceCanvas: HTMLCanvasElement,
   selectionMask: HTMLCanvasElement,
-  options: ContentAwareFillOptions = {}
+  options: Partial<ContentAwareFillOptions> = {}
 ): Promise<HTMLCanvasElement> {
   const opts: ContentAwareFillOptions = {
     area: 'selection',
@@ -170,7 +170,6 @@ async function patchMatchFill(
 
   // Find all pixels to fill
   const toFill: Array<{ x: number; y: number }> = []
-  const maskData = maskCtx.getImageData(0, 0, width, height)
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * 4
@@ -315,7 +314,7 @@ export async function contentAwareMove(
   selectionMask: HTMLCanvasElement,
   targetX: number,
   targetY: number,
-  options: ContentAwareMoveOptions = {}
+  options: Partial<ContentAwareMoveOptions> = {}
 ): Promise<HTMLCanvasElement> {
   const { width, height } = sourceCanvas
   const output = createCanvas(width, height)
@@ -337,15 +336,15 @@ export async function contentAwareMove(
   })
 
   // Draw filled background
-  const ctx = ctx2d(filled)
+  const fillCtx = ctx2d(filled)
   if (mode === 'extend') {
     // Draw original + moved copy
-    ctx.drawImage(sourceCanvas, 0, 0)
-    ctx.drawImage(selection.canvas, targetX, targetY)
+    fillCtx.drawImage(sourceCanvas, 0, 0)
+    fillCtx.drawImage(selection.canvas, targetX, targetY)
   } else {
     // Move: just draw moved copy
-    ctx.drawImage(filled, 0, 0)
-    ctx.drawImage(selection.canvas, targetX, targetY)
+    fillCtx.drawImage(filled, 0, 0)
+    fillCtx.drawImage(selection.canvas, targetX, targetY)
   }
 
   if (options.transformOnDrop) {
@@ -386,13 +385,13 @@ function extractSelection(
 
   // Apply mask
   const maskCanvas = createCanvas(selWidth, selHeight)
-  const maskCtx = maskCanvas.getContext('2d')!
-  maskCtx.drawImage(mask, -minX, -minY)
+  const maskCanvasCtx = maskCanvas.getContext('2d')!
+  maskCanvasCtx.drawImage(mask, -minX, -minY)
 
   // Apply mask to selection
   const selCtx = output.getContext('2d')!
   const selData = selCtx.getImageData(0, 0, selWidth, selHeight)
-  const maskSelData = maskCtx.getImageData(0, 0, selWidth, selHeight)
+  const maskSelData = maskCanvasCtx.getImageData(0, 0, selWidth, selHeight)
   const selDataArr = selData.data
   const maskSelArr = maskSelData.data
 
@@ -410,7 +409,7 @@ export async function contentAwareScale(
   sourceCanvas: HTMLCanvasElement,
   targetWidth: number,
   targetHeight: number,
-  options: ContentAwareScaleOptions = {}
+  options: Partial<ContentAwareScaleOptions> = {}
 ): Promise<HTMLCanvasElement> {
   const { width, height } = sourceCanvas
   const output = createCanvas(targetWidth, targetHeight)
@@ -434,7 +433,7 @@ export async function contentAwareScale(
 export async function contentAwareCrop(
   sourceCanvas: HTMLCanvasElement,
   cropRect: { x: number; y: number; width: number; height: number },
-  options: ContentAwareCropOptions = {}
+  options: Partial<ContentAwareCropOptions> = {}
 ): Promise<HTMLCanvasElement> {
   const { width, height } = sourceCanvas
   const { fillEmpty = true, fillOptions } = options

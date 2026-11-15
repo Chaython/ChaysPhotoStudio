@@ -141,6 +141,7 @@ function formatFromMime(type: string): ImportFormatId | null {
     case 'image/x-icon': case 'image/vnd.microsoft.icon': return 'ico'
     case 'image/tiff': case 'image/x-tiff': return 'tiff'
     case 'image/x-tga': case 'image/x-truevision': case 'image/x-targa': return 'tga'
+    case 'image/x-xcf': case 'image/x-xcfgz': return 'xcf'
     default: return null
   }
 }
@@ -324,6 +325,26 @@ export async function decodeFile(file: File | Blob, options?: { rawSettings?: Ra
   }
 
   switch (format) {
+    case 'xcf': {
+      const parsed = await parseStructuredDocument(file, sourceName || 'import.xcf')
+      if (!parsed) throw new Error('XCF document could not be parsed')
+      let canvas = parsed.composite ?? null
+      if (!canvas) {
+        try { canvas = await decodePublishedFormatPreview(file, sourceName || 'import.xcf') }
+        catch { canvas = createCanvas(parsed.width, parsed.height) }
+      }
+      return {
+        canvas,
+        width: parsed.width,
+        height: parsed.height,
+        hasAlpha: scanAlpha(getImageData(canvas).data),
+        format: 'xcf',
+        sourceBitDepth: parsed.sourceBitDepth ?? 8,
+        resolutionPpi: parsed.resolutionPpi,
+        documentLayers: parsed.layers,
+        warnings: parsed.warnings,
+      }
+    }
     case 'tiff': {
       const pages = tiffPageOffsets(bytes)
       if (pages.length < 2) return fromRaw(await decodeTiff(bytes), 'tiff')

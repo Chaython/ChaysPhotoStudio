@@ -212,25 +212,25 @@ async function applySingleEffect(
 
   switch (type) {
     case 'drop-shadow':
-      return applyDropShadow(canvas, params, globalLight)
+      return applyDropShadow(canvas, params as DropShadowParams, globalLight)
     case 'inner-shadow':
-      return applyInnerShadow(canvas, params, globalLight)
+      return applyInnerShadow(canvas, params as InnerShadowParams, globalLight)
     case 'outer-glow':
-      return applyOuterGlow(canvas, params)
+      return applyOuterGlow(canvas, params as OuterGlowParams)
     case 'inner-glow':
-      return applyInnerGlow(canvas, params)
+      return applyInnerGlow(canvas, params as InnerGlowParams)
     case 'bevel-emboss':
-      return applyBevelEmboss(canvas, params, globalLight)
+      return applyBevelEmboss(canvas, params as BevelEmbossParams, globalLight)
     case 'satin':
-      return applySatin(canvas, params)
+      return applySatin(canvas, params as SatinParams)
     case 'color-overlay':
-      return applyColorOverlay(canvas, params)
+      return applyColorOverlay(canvas, params as ColorOverlayParams)
     case 'gradient-overlay':
-      return applyGradientOverlay(canvas, params)
+      return applyGradientOverlay(canvas, params as GradientOverlayParams)
     case 'pattern-overlay':
-      return applyPatternOverlay(canvas, params)
+      return applyPatternOverlay(canvas, params as PatternOverlayParams)
     case 'stroke':
-      return applyStroke(canvas, params)
+      return applyStroke(canvas, params as StrokeParams)
     default:
       return canvas
   }
@@ -241,7 +241,7 @@ function applyDropShadow(
   canvas: HTMLCanvasElement,
   params: DropShadowParams,
   globalLight: { angle: number; altitude: number }
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   const { width, height } = canvas
   const output = createCanvas(width + 100, height + 100) // Extra space for shadow
   const ctx = ctx2d(output)
@@ -283,7 +283,7 @@ function applyInnerShadow(
   canvas: HTMLCanvasElement,
   params: InnerShadowParams,
   globalLight: { angle: number; altitude: number }
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   const { width, height } = canvas
   const output = createCanvas(width, height)
   const ctx = ctx2d(output)
@@ -323,7 +323,7 @@ function applyInnerShadow(
 function applyOuterGlow(
   canvas: HTMLCanvasElement,
   params: OuterGlowParams
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   const { width, height } = canvas
   const output = createCanvas(width + 100, height + 100)
   const ctx = ctx2d(output)
@@ -362,7 +362,7 @@ function applyOuterGlow(
 function applyInnerGlow(
   canvas: HTMLCanvasElement,
   params: InnerGlowParams
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   // Simplified implementation
   const output = createCanvas(canvas.width, canvas.height)
   const ctx = ctx2d(output)
@@ -375,7 +375,7 @@ function applyBevelEmboss(
   canvas: HTMLCanvasElement,
   params: BevelEmbossParams,
   globalLight: { angle: number; altitude: number }
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   const output = createCanvas(canvas.width, canvas.height)
   const ctx = ctx2d(output)
   ctx.drawImage(canvas, 0, 0)
@@ -399,7 +399,7 @@ function applyBevelEmboss(
 function applySatin(
   canvas: HTMLCanvasElement,
   params: SatinParams
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   const output = createCanvas(canvas.width, canvas.height)
   const ctx = ctx2d(output)
   ctx.drawImage(canvas, 0, 0)
@@ -410,7 +410,7 @@ function applySatin(
 function applyColorOverlay(
   canvas: HTMLCanvasElement,
   params: ColorOverlayParams
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   const output = createCanvas(canvas.width, canvas.height)
   const ctx = ctx2d(output)
   ctx.drawImage(canvas, 0, 0)
@@ -425,7 +425,7 @@ function applyColorOverlay(
 function applyGradientOverlay(
   canvas: HTMLCanvasElement,
   params: GradientOverlayParams
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   const output = createCanvas(canvas.width, canvas.height)
   const ctx = ctx2d(output)
   ctx.drawImage(canvas, 0, 0)
@@ -443,7 +443,7 @@ function applyGradientOverlay(
 function applyPatternOverlay(
   canvas: HTMLCanvasElement,
   params: PatternOverlayParams
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   const output = createCanvas(canvas.width, canvas.height)
   const ctx = ctx2d(output)
   ctx.drawImage(canvas, 0, 0)
@@ -465,7 +465,7 @@ function applyPatternOverlay(
 function applyStroke(
   canvas: HTMLCanvasElement,
   params: StrokeParams
-): Promise<HTMLCanvasElement> {
+): HTMLCanvasElement {
   const output = createCanvas(canvas.width, canvas.height)
   const ctx = ctx2d(output)
 

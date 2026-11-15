@@ -35,8 +35,6 @@ export interface CloudsOptions {
   ridged: boolean
   /** Billow */
   billow: boolean
-  /** Seed */
-  seed: number
   /** Anisotropy */
   anisotropy: number
   /** Rotation */
@@ -109,9 +107,6 @@ export async function renderClouds(
     tileable: false,
   }
 ): Promise<HTMLCanvasElement> {
-  const canvas = createCanvas(width, height)
-  const ctx = ctx2d(canvas)
-
   const {
     type,
     size = 50,
@@ -131,29 +126,28 @@ export async function renderClouds(
     tileable = false,
   } = options
 
-  const seed = options.seed || Date.now()
   const rng = createRNG(seed)
 
   const canvas = createCanvas(width, height)
   const ctx = ctx2d(canvas)
 
   // Generate noise
-  const noiseData = generateNoise(width, height, {
+  const noiseData = generatePerlinNoise(width, height, {
     octaves,
     persistence,
     lacunarity,
     seed,
-    type: type,
+    type,
     ridged,
     billow,
     turbulence,
     anisotropy,
     rotation,
     tileable,
-    scale: options.size / 100,
-    detail,
-    rng,
+    scale: size / 100,
   })
+
+  const gradient = options.gradient?.stops ?? options.colors
 
   // Apply contrast/brightness
   const imgData = ctx.createImageData(width, height)
@@ -163,8 +157,8 @@ export async function renderClouds(
     let val = noiseData[i] * 255
 
     // Contrast
-    const contrast = options.contrast / 100
-    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
+    const contrastFactor = contrast / 100
+    const factor = (259 * (contrastFactor + 255)) / (255 * (259 - contrastFactor))
     val = factor * (val - 128) + 128
 
     // Brightness
@@ -194,8 +188,6 @@ export async function renderClouds(
     data[idx + 3] = 255
   }
 
-  const output = createCanvas(width, height)
-  const ctx = ctx2d(canvas)
   ctx.putImageData(imgData, 0, 0)
 
   // Apply rotation
@@ -266,7 +258,6 @@ async function renderFibers(
   ctx.fillStyle = backgroundColor
   ctx.fillRect(0, 0, width, height)
 
-  const seed = options.seed || Date.now()
   const rng = createRNG(seed)
 
   // Parse color
@@ -287,14 +278,12 @@ async function renderFibers(
       // Fiber direction
       const baseAngle = (angle * Math.PI) / 180
       const angleVar = (angleVariation / 100) * Math.PI
-      const angle = baseAngle + (rng() - 0.5) * angleVar * 2
 
       // Fiber properties
       const fiberLength = length * (0.5 + rng() * variation / 100)
-      const fiberWidth = width * (0.5 + rng() * 0.5)
+      const strokeWidth = fiberWidth * (0.5 + rng() * 0.5)
       const curve = curvature / 100 * Math.PI * 2
       const taperAmount = taper / 100
-
       // Color variation
       const colorVar = colorVariation / 100
       const r = Math.min(255, Math.max(0, baseColor.r + (rng() - 0.5) * 2 * colorVar * 255))
@@ -303,7 +292,7 @@ async function renderFibers(
       const a = Math.round((1 - transparency / 100) * opacity / 100 * 255)
 
       ctx.strokeStyle = `rgba(${r},${g},${b},${a / 255})`
-      ctx.lineWidth = fiberWidth
+      ctx.lineWidth = strokeWidth
       ctx.lineCap = taperEnds ? 'round' : 'butt'
       ctx.lineJoin = 'round'
 
@@ -316,22 +305,20 @@ async function renderFibers(
 
       const steps = 20
       const stepLength = length / steps
-      let cx = rng() * width
-      let cy = rng() * height
-      let angle = baseAngle + (rng() - 0.5) * angleVar * 2
+      let fiberAngle = baseAngle + (rng() - 0.5) * angleVar * 2
 
       for (let step = 0; step < steps; step++) {
         const progress = step / steps
         const taperFactor = taperEnds ? (1 - progress * taper / 100) : 1
 
         // Curvature
-        angle += (rng() - 0.5) * curvature / 50 * Math.PI
+        fiberAngle += (rng() - 0.5) * curvature / 50 * Math.PI
 
-        const stepX = Math.cos(angle) * stepLength
-        const stepY = Math.sin(angle) * stepLength
+        const stepX = Math.cos(fiberAngle) * stepLength
+        const stepY = Math.sin(fiberAngle) * stepLength
 
         ctx.lineTo(cx + stepX, cy + stepY)
-        ctx.lineWidth = fiberWidth * (1 - progress * taper / 100)
+        ctx.lineWidth = strokeWidth * (1 - progress * taper / 100)
         ctx.stroke()
         ctx.beginPath()
         ctx.moveTo(cx, cy)
@@ -537,6 +524,7 @@ function parseColor(color: string): { r: number; g: number; b: number } {
   }
   if (color.startsWith('rgb')) {
     const match = color.match(/\d+/g)
+    if (!match) return { r: 255, g: 255, b: 255 }
     return {
       r: parseInt(match[0]),
       g: parseInt(match[1]),
@@ -544,10 +532,6 @@ function parseColor(color: string): { r: number; g: number; b: number } {
     }
   }
   return { r: 255, g: 255, b: 255 }
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t
 }
 
 function clamp(val: number, min: number, max: number): number {

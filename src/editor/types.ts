@@ -883,6 +883,8 @@ export interface PointerInfo {
 
 export interface Tool {
   id: ToolId
+  /** Human-readable tool name (optional; tool definitions carry the canonical label) */
+  label?: string
   onActivate?(): void
   onDeactivate?(): void
   onPointerDown?(p: PointerInfo): void

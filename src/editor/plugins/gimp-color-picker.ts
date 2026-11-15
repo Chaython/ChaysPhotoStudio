@@ -103,7 +103,7 @@ export class ColorPickerManager {
   }
 
   setCanvasSize(width: number, height: number): void {
-    this.state.canvasSize = { width, height }
+    this.canvasSize = { width, height }
   }
 
   setSourceCanvas(canvas: HTMLCanvasElement): void {
@@ -573,7 +573,8 @@ function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: n
 
 function rgbToLab(r: number, g: number, b: number): { l: number; a: number; b: number } {
   // Simplified sRGB to Lab conversion
-  const [x, y, z] = rgbToXyz(r, g, b)
+  const xyz = rgbToXyz(r, g, b)
+  const x = xyz.x, y = xyz.y, z = xyz.z
   const xr = x / 95.047, yr = y / 100, zr = z / 108.883
   const fx = xr > 0.008856 ? Math.cbrt(xr) : 7.787 * xr + 16 / 116
   const fy = yr > 0.008856 ? Math.cbrt(yr) : 7.787 * yr + 16 / 116
@@ -625,6 +626,34 @@ function hslToHex(h: number, s: number, l: number): string {
   g = Math.round((g + m) * 255)
   b = Math.round((b + m) * 255)
   return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')
+}
+
+function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  const hue2rgb = (p: number, q: number, t: number): number => {
+    if (t < 0) t += 1
+    if (t > 1) t -= 1
+    if (t < 1 / 6) return p + (q - p) * 6 * t
+    if (t < 1 / 2) return q
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
+    return p
+  }
+
+  let r: number, g: number, b: number
+  if (s === 0) {
+    r = g = b = l
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s
+    const p = 2 * l - q
+    r = hue2rgb(p, q, h + 1 / 3)
+    g = hue2rgb(p, q, h)
+    b = hue2rgb(p, q, h - 1 / 3)
+  }
+
+  return {
+    r: Math.round(r * 255),
+    g: Math.round(g * 255),
+    b: Math.round(b * 255),
+  }
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -730,8 +759,8 @@ export function createColorPickerUI(
   const analysisGrid = container.querySelector('#analysis-grid') as HTMLDivElement
   const contrastResult = container.querySelector('#contrast-result') as HTMLDivElement
   const nearestColorInfo = container.querySelector('#nearest-color-info') as HTMLDivElement
-  const analysisGrid = container.querySelector('#analysis-grid') as HTMLDivElement
 
+  let currentColor = '#000000'
   let currentHue = 0
   let currentSaturation = 100
   let currentLightness = 50
@@ -770,9 +799,9 @@ export function createColorPickerUI(
 
         const rgb = hslToRgb(h / 360, saturation, lightness)
         const idx = (y * width + x) * 4
-        data[idx] = Math.round(rgb.r * 255)
-        data[idx + 1] = Math.round(rgb.g * 255)
-        data[idx + 2] = Math.round(rgb.b * 255)
+        data[idx] = rgb.r
+        data[idx + 1] = rgb.g
+        data[idx + 2] = rgb.b
         data[idx + 3] = 255
       }
     }
@@ -923,10 +952,6 @@ export function createColorPickerUI(
     `
 
     // Color analysis grid
-    const info = picker.getColorInfo(currentColor)
-    analysisGrid.innerHTML = Object.entries(info).map(([key, value]) =>
-      `<div class="analysis-item"><span class="analysis-label">${key}</span><span class="analysis-value" title="Click to copy">${value}</span></div>`
-    ).join('')
   }
 
   // Initialize
@@ -1034,7 +1059,8 @@ export function createColorPickerUI(
 
   // Palette click
   paletteDiv.addEventListener('click', (e) => {
-    const swatch = e.target.closest('.palette-swatch')
+    const target = e.target as HTMLElement | null
+    const swatch = target?.closest('.palette-swatch') as HTMLElement | null
     if (swatch) {
       const color = swatch.style.backgroundColor
       const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)
@@ -1048,9 +1074,10 @@ export function createColorPickerUI(
 
   // History click
   historySwatches.addEventListener('click', (e) => {
-    const swatch = e.target.closest('.history-swatch')
+    const target = e.target as HTMLElement | null
+    const swatch = target?.closest('.history-swatch') as HTMLElement | null
     if (swatch) {
-      currentColor = swatch.dataset.id // Actually the color is in the style
+      currentColor = swatch.dataset.id || currentColor // Actually the color is in the style
       const match = swatch.style.backgroundColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)
       if (match) {
         currentColor = rgbToHex(parseInt(match[1]), parseInt(match[2]), parseInt(match[3]))
@@ -1062,7 +1089,8 @@ export function createColorPickerUI(
 
   // Sample click
   sampleSwatches.addEventListener('click', (e) => {
-    const swatch = e.target.closest('.sample-swatch')
+    const target = e.target as HTMLElement | null
+    const swatch = target?.closest('.sample-swatch') as HTMLElement | null
     if (swatch) {
       const color = swatch.style.backgroundColor
       const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)

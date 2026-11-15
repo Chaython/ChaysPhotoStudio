@@ -11,7 +11,7 @@ import { createCanvas, ctx2d, canvasProfile, putFloat16Pixels } from '../utils/c
 
 export type ImportFormatId =
   | 'png' | 'jpeg' | 'gif' | 'webp' | 'avif' | 'heic' | 'jxl' | 'jp2' | 'svg'
-  | 'bpg' | 'bmp' | 'ico' | 'icns' | 'dds' | 'iff' | 'anim' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx' | 'sgi' | 'sunras' | 'exr' | 'fits' | 'dicom'
+  | 'bpg' | 'bmp' | 'ico' | 'icns' | 'dds' | 'iff' | 'anim' | 'tiff' | 'psd' | 'tga' | 'ppm' | 'pfm' | 'hdr' | 'qoi' | 'pcx' | 'sgi' | 'sunras' | 'exr' | 'fits' | 'dicom' | 'xcf'
 
 /** decoded raster: tightly packed 8-bit RGBA (ImageData-compatible).
  *  Typed as Uint8ClampedArray<ArrayBuffer> (not ArrayBufferLike) so it feeds

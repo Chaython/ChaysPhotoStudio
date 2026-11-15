@@ -40,7 +40,7 @@ export async function gimpRunSource(image: string, language: 'python' | 'scheme'
 }
 
 // Browser-side fallback implementations using GEGL ops and procedural equivalents
-import { runProcedure as runGeglProcedure, getGeglOperation } from './gegl-ops'
+import { getGeglOperation } from './gegl-ops'
 import { listProcedures, getProcedure, runProcedure as runProcProcedure } from './gimp-procedural'
 
 // Check if we should use native GIMP or browser fallback

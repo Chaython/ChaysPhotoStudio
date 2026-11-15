@@ -8,7 +8,7 @@ export interface ActionStep {
   params: Record<string, any>
   enabled: boolean
   condition?: ActionCondition
-  description: string
+  description?: string
 }
 
 export interface ActionCondition {
@@ -230,15 +230,15 @@ export class ActionManager {
     const set = this.sets.get(setId)
     if (!set) throw new Error('Set not found')
 
-    const action: Action = {
+    const newAction: Action = {
       ...action,
       id: 'action-' + Date.now(),
       created: Date.now(),
       modified: Date.now(),
     }
-    set.actions.push(action)
+    set.actions.push(newAction)
     this.notify()
-    return action
+    return newAction
   }
 
   updateAction(setId: string, actionId: string, updates: Partial<Action>): boolean {
@@ -284,14 +284,14 @@ export class ActionManager {
     const action = this.getAction(setId, actionId)
     if (!action) throw new Error('Action not found')
 
-    const step: ActionStep = {
+    const newStep: ActionStep = {
       ...step,
       id: 'step-' + Date.now(),
     }
-    action.steps.push(step)
+    action.steps.push(newStep)
     action.modified = Date.now()
     this.notify()
-    return step
+    return newStep
   }
 
   updateStep(setId: string, actionId: string, stepId: string, updates: Partial<ActionStep>): boolean {
@@ -402,13 +402,10 @@ export class ActionManager {
       filter: p => `${p.type} filter`,
       adjustment: p => `${p.type} adjustment`,
       export: p => `Export as ${p.format}`,
-      crop: p => `Crop`,
-      resize: p => `Resize`,
       'camera-raw': p => 'Camera Raw adjustment',
       watermark: p => `Watermark: ${p.text}`,
       'batch-resize': p => `Batch resize to ${p.width}x${p.height}`,
       'color-space': p => `Convert ${p.sourceSpace} to ${p.destSpace}`,
-      watermark: p => `Watermark: ${p.text}`,
       'layer-effects': p => `Layer effect: ${p.preset}`,
     }
 
@@ -489,7 +486,7 @@ export class ActionManager {
       createSnapshot: false,
     }
   ): Promise<{ results: Array<{ file: string; success: boolean; error?: string }> }> {
-    const results = []
+    const results: Array<{ file: string; success: boolean; error?: string }> = []
 
     for (const file of files) {
       try {
@@ -545,10 +542,10 @@ export class ActionManager {
 
 /** Conditional Action Builder */
 export class ActionBuilder {
-  private steps: Omit<ActionStep, 'id'>[] = []
+  private steps: ActionStep[] = []
 
   addStep(command: string, params: Record<string, any>, description?: string): this {
-    this.steps.push({ command, params, enabled: true, description: description || command })
+    this.steps.push({ id: 'step-' + Date.now() + '-' + this.steps.length, command, params, enabled: true, description: description || command })
     return this
   }
 
@@ -624,7 +621,7 @@ export class ActionShortcutManager {
   }
 
   handleKeyDown(event: KeyboardEvent): string | null {
-    const keys = []
+    const keys: string[] = []
     if (event.ctrlKey || event.metaKey) keys.push('ctrl')
     if (event.shiftKey) keys.push('shift')
     if (event.altKey) keys.push('alt')

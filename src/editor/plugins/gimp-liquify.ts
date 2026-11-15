@@ -127,9 +127,9 @@ export function applyBrushToMesh(
       const vx = mesh.vertices[idx]
       const vy = mesh.vertices[idx + 1]
 
-      const dx = vx - tool.brushX
-      const dy = vy - tool.brushY
-      const distSq = dx * dx + dy * dy
+      const vdx = vx - brushX
+      const vdy = vy - brushY
+      const distSq = vdx * vdx + vdy * vdy
 
       if (distSq > radiusSq) continue
 
@@ -143,17 +143,17 @@ export function applyBrushToMesh(
 
       if (pressureFactor <= 0) continue
 
-      const dx = tool.brushX - vx
-      const dy = tool.brushY - vy
-      const dist = Math.hypot(dx, dy)
+      const dx = brushX - vx
+      const dy = brushY - vy
+      const distToBrush = Math.hypot(dx, dy)
 
-      if (dist === 0) continue
+      if (distToBrush === 0) continue
 
       switch (tool.type) {
         case 'warp':
           // Pull vertices toward brush
-          mesh.vertices[idx] += (dx / dist) * pressureFactor
-          mesh.vertices[idx + 1] += (dy / dist) * pressureFactor
+          mesh.vertices[idx] += (dx / distToBrush) * pressureFactor
+          mesh.vertices[idx + 1] += (dy / distToBrush) * pressureFactor
           break
 
         case 'push':
@@ -170,30 +170,30 @@ export function applyBrushToMesh(
           const twirlAngle = strength * 0.5
           const cos = Math.cos(twirlAngle)
           const sin = Math.sin(twirlAngle)
-          const relX = vx - tool.brushX
-          const relY = vy - tool.brushY
-          mesh.vertices[idx] = tool.brushX + relX * cos - relY * sin
-          mesh.vertices[idx + 1] = tool.brushY + relX * sin + relY * cos
+          const relX = vx - brushX
+          const relY = vy - brushY
+          mesh.vertices[idx] = brushX + relX * cos - relY * sin
+          mesh.vertices[idx + 1] = brushY + relX * sin + relY * cos
           break
 
         case 'pinch':
           // Pull toward center
           const pinchFactor = 1 - strength * 0.5
-          mesh.vertices[idx] = tool.brushX + (vx - tool.brushX) * pinchFactor
-          mesh.vertices[idx + 1] = tool.brushY + (vy - tool.brushY) * pinchFactor
+          mesh.vertices[idx] = brushX + (vx - brushX) * pinchFactor
+          mesh.vertices[idx + 1] = brushY + (vy - brushY) * pinchFactor
           break
 
         case 'bloat':
           // Push away from center
           const bloatFactor = 1 + strength * 0.5
-          mesh.vertices[idx] = tool.brushX + (vx - tool.brushX) * bloatFactor
-          mesh.vertices[idx + 1] = tool.brushY + (vy - tool.brushY) * bloatFactor
+          mesh.vertices[idx] = brushX + (vx - brushX) * bloatFactor
+          mesh.vertices[idx + 1] = brushY + (vy - brushY) * bloatFactor
           break
 
         case 'push':
           // Push in direction of brush movement
-          mesh.vertices[idx] += (dx / dist) * pressureFactor
-          mesh.vertices[idx + 1] += (dy / dist) * pressureFactor
+          mesh.vertices[idx] += (dx / distToBrush) * pressureFactor
+          mesh.vertices[idx + 1] += (dy / distToBrush) * pressureFactor
           break
       }
     }

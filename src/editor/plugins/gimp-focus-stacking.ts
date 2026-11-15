@@ -6,13 +6,13 @@ import { createCanvas, ctx2d } from '../utils/canvas'
 
 export interface FocusStackingOptions {
   /** Input images at different focus distances */
-  images: HTMLCanvasElement[]
+  images?: HTMLCanvasElement[]
   /** Focus distances for each image (meters) */
   focusDistances?: number[]
   /** Alignment method */
   alignment: 'auto' | 'feature' | 'eyes' | 'manual'
   /** Stacking method */
-  method: 'weighted' | 'pyramid' | 'depth-map' | 'entropy' | 'contrast' | 'variance' | 'laplacian' | 'tenengrad' | 'brenner' | 'spatial-frequency'
+  method: 'weighted' | 'pyramid' | 'depth-map' | 'entropy' | 'contrast' | 'variance' | 'laplacian' | 'tenengrad' | 'brenner' | 'spatial-frequency' | 'gradient' | 'energy-laplace' | 'sum-modified-laplace'
   /** Quality threshold */
   qualityThreshold: number
   /** Smoothing radius */
@@ -135,7 +135,7 @@ export async function focusStack(
   let sourceMap: HTMLCanvasElement | undefined
 
   if (options.outputDepthMap) {
-    const depthResult = await generateDepthMap(focusMap, images[0].width, images[0].height, options)
+    const depthResult = await generateDepthMap(focusMap, images[0].width, images[0].height, images.length, options)
     depthMap = depthResult.depthMap
     confidenceMap = depthResult.confidenceMap
     sharpnessMap = depthResult.sharpnessMap
@@ -170,8 +170,8 @@ async function alignImagesForStacking(
   const aligned = [reference]
 
   for (let i = 1; i < images.length; i++) {
-    const aligned = await alignImagePairForStack(reference, images[i])
-    aligned.push(aligned)
+    const alignedImage = await alignImagePairForStack(reference, images[i])
+    aligned.push(alignedImage)
   }
 
   return aligned
@@ -602,6 +602,7 @@ async function generateDepthMap(
   focusMap: FocusMap,
   width: number,
   height: number,
+  imageCount: number,
   options: FocusStackingOptions
 ): Promise<{
   depthMap: HTMLCanvasElement
@@ -634,7 +635,7 @@ async function generateDepthMap(
     const sharp = sharpness[i]
 
     // Depth: closer to camera = lower index (assuming images ordered near to far)
-    const depth = Math.round((srcIdx / (images.length - 1)) * maxDepth)
+    const depth = Math.round((srcIdx / Math.max(1, imageCount - 1)) * maxDepth)
 
     const idx = i * 4
     depthData[idx] = depth
@@ -653,7 +654,7 @@ async function generateDepthMap(
     sharpData[idx + 2] = sharpVal
     sharpData[idx + 3] = 255
 
-    const srcColor = Math.round((srcIdx / (images.length - 1)) * 255)
+    const srcColor = Math.round((srcIdx / Math.max(1, imageCount - 1)) * 255)
     srcData[idx] = srcColor
     srcData[idx + 1] = srcColor
     srcData[idx + 2] = srcColor

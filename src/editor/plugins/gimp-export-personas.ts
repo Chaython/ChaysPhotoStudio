@@ -519,7 +519,7 @@ export class ExportPersonaManager {
     options.onProgress?.(job)
 
     for (let i = 0; i < files.length; i++) {
-      if (job.status === 'cancelled') break
+      if ((job.status as string) === 'cancelled') break
 
       job.currentFile = files[i].name
       job.processedCount = i + 1

@@ -6,9 +6,9 @@ import { createCanvas, ctx2d } from '../utils/canvas'
 
 export interface HDRMergeOptions {
   /** Input images (bracketed exposures) */
-  images: HTMLCanvasElement[]
+  images?: HTMLCanvasElement[]
   /** Exposure values for each image (EV) */
-  exposures: number[]
+  exposures?: number[]
   /** Alignment method */
   alignment: 'auto' | 'feature' | 'eyes' | 'manual'
   /** Deghosting */
@@ -93,7 +93,7 @@ export async function removeGhosts(
   const height = alignedImages[0].height
   const count = alignedImages.length
 
-  const output = []
+  const output: HTMLCanvasElement[] = []
 
   for (let i = 0; i < alignedImages.length; i++) {
     const canvas = alignedImages[i]
@@ -132,11 +132,10 @@ export async function removeGhosts(
       }
     }
 
-    const output = createCanvas(width, height)
-    const ctx = ctx2d(output)
-    ctx.putImageData(imgData, 0, 0)
-    output.getContext('2d')!.putImageData(imgData, 0, 0)
-    output.push(output)
+    const canvasOut = createCanvas(width, height)
+    const outCtx = ctx2d(canvasOut)
+    outCtx.putImageData(imgData, 0, 0)
+    output.push(canvasOut)
   }
 
   return output
@@ -158,12 +157,9 @@ export async function mergeToHDR(
   const height = alignedImages[0].height
 
   // Create HDR radiance map (32-bit float per channel)
-  const hdrCanvas = createCanvas(alignedImages[0].width, alignedImages[0].height)
-  const ctx = ctx2d(hdrCanvas)
-
   // This would use the actual HDR merge algorithm
   // For now, create a simple composite weighted by exposure
-  const output = createCanvas(alignedImages[0].width, alignedImages[1].height)
+  const output = createCanvas(width, height)
   const ctx = output.getContext('2d')!
 
   // Simple exposure-weighted blend
@@ -172,7 +168,7 @@ export async function mergeToHDR(
   for (let i = 0; i < alignedImages.length; i++) {
     const weight = Math.pow(2, -exposures[i]) / totalWeight
     ctx.globalAlpha = weight
-    ctx.globalCompositeOperation = i === 0 ? 'source-over' : 'plus-lighter'
+    ctx.globalCompositeOperation = (i === 0 ? 'source-over' : 'plus-lighter') as GlobalCompositeOperation
     ctx.drawImage(alignedImages[i], 0, 0)
   }
 
@@ -181,6 +177,7 @@ export async function mergeToHDR(
 
 /** Tone mapping operators */
 export interface ToneMappingParams {
+  canvas?: HTMLCanvasElement
   exposure?: number
   gamma?: number
   contrast?: number
@@ -198,15 +195,14 @@ export function reinhardToneMap(
   params: ToneMappingParams = {}
 ): HTMLCanvasElement {
   const { exposure = 0, gamma = 1, contrast = 1, saturation = 1 } = params
-  const { width, height } = params.canvas || { width: 0, height: 0 }
+  const canvas = params.canvas ?? hdrCanvas
 
   // Simplified Reinhard implementation using canvas filters
-  const output = createCanvas(params.canvas?.width || 1, params.canvas?.height || 1)
+  const output = createCanvas(canvas.width, canvas.height)
   const ctx = ctx2d(output)
   
-  const canvas = params.canvas!
   ctx.filter = `brightness(${1 + exposure}) contrast(${contrast}) saturate(${saturation})`
-  ctx.drawImage(params.canvas!, 0, 0)
+  ctx.drawImage(canvas, 0, 0)
   ctx.filter = 'none'
 
   return output
@@ -286,17 +282,8 @@ export function acesFilmicToneMap(
       v = v * (2.51 * v + 0.03) / (v * (2.43 * v + 0.59) + 0.14)
       data[i + c] = Math.round(Math.max(0, Math.min(1, v)) * 255)
     }
-    ctx.putImageData(ctx.createImageData(canvas.width, canvas.height), 0, 0)
-    // Actually put the modified data
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    for (let i = 0; i < data.length; i += 4) {
-      for (let c = 0; c < 3; c++) {
-        let v = data[i + c] / 255
-        v = v * (2.51 * v + 0.03) / (v * (2.43 * v + 0.59) + 0.14)
-        data[i + c] = Math.round(Math.max(0, Math.min(1, v)) * 255)
-      }
-    }
-    ctx.putImageData(imgData, 0, 0)
+  }
+  ctx.putImageData(imgData, 0, 0)
 
   return output
 }
@@ -353,7 +340,7 @@ export async function mergeHDR(
   let alignedImages = aligned
   if (options.deghosting !== 'none') {
     const strength = { low: 0.05, medium: 0.1, high: 0.2 }[options.deghosting] || 0.1
-    alignedImages = await removeGhosts(alignedImages, options.ghostThreshold)
+    alignedImages = await removeGhosts(alignedImages, exposures, options.ghostThreshold)
   }
 
   // 3. Merge to HDR
@@ -392,10 +379,10 @@ export async function mergeHDR(
 
   // Apply saturation/contrast adjustments
   if (options.toneMappingParams.saturation || options.toneMappingParams.contrast) {
-    const ctx = output.getContext('2d')!
-    ctx.filter = `saturate(${1 + (options.toneMappingParams.saturation || 0) / 100}) contrast(${1 + (options.toneMappingParams.contrast || 0) / 100})`
-    ctx.drawImage(output, 0, 0)
-    ctx.filter = 'none'
+    const postCtx = output.getContext('2d')!
+    postCtx.filter = `saturate(${1 + (options.toneMappingParams.saturation || 0) / 100}) contrast(${1 + (options.toneMappingParams.contrast || 0) / 100})`
+    postCtx.drawImage(output, 0, 0)
+    postCtx.filter = 'none'
   }
 
   return {
@@ -524,5 +511,4 @@ export async function hdrPanorama(
   // Would use feature matching and cylindrical/spherical projection
   // Simplified: just return first for now
   return hdrImages[0].canvas
-}
 }

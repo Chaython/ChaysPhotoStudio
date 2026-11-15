@@ -482,7 +482,7 @@ async function smoothMask(mask: HTMLCanvasElement, radius: number): Promise<HTML
   ctx.filter = 'none'
 
   // Threshold
-  const img = ctx.getImageData(0, 0, width, height)
+  const img = ctx.getImageData(0, 0, mask.width, mask.height)
   const data = img.data
   for (let i = 3; i < data.length; i += 4) {
     data[i] = data[i] > 128 ? 255 : 0
@@ -543,8 +543,8 @@ async function erodeMask(mask: HTMLCanvasElement, radius: number): Promise<HTMLC
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * 4
+      let keep = true
       if (inputData[idx] > 128) {
-        let keep = true
         for (let dy = -radius; dy <= radius; dy++) {
           for (let dx = -radius; dx <= radius; dx++) {
             if (dx * dx + dy * dy <= radius * radius) {
@@ -719,4 +719,34 @@ export async function selectionToPath(
   }
 
   return new Path2D()
+}
+/** Draw a marching-ants style dashed selection outline from a mask */
+function drawMarchingAnts(ctx: CanvasRenderingContext2D, mask: HTMLCanvasElement): void {
+  const { width, height } = mask
+  if (width === 0 || height === 0) return
+  const maskCtx = ctx2d(mask)
+  const maskData = maskCtx.getImageData(0, 0, width, height).data
+  const view = ctx.getImageData(0, 0, width, height)
+  const data = view.data
+
+  const alphaAt = (x: number, y: number): number => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return 0
+    return maskData[(y * width + x) * 4 + 3]
+  }
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (alphaAt(x, y) <= 128) continue
+      const edge = alphaAt(x - 1, y) <= 128 || alphaAt(x + 1, y) <= 128 ||
+        alphaAt(x, y - 1) <= 128 || alphaAt(x, y + 1) <= 128
+      if (!edge) continue
+      const idx = (y * width + x) * 4
+      const light = Math.floor((x + y) / 4) % 2 === 0
+      const value = light ? 255 : 0
+      data[idx] = data[idx + 1] = data[idx + 2] = value
+      data[idx + 3] = 255
+    }
+  }
+
+  ctx.putImageData(view, 0, 0)
 }

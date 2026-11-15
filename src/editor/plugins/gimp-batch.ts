@@ -5,9 +5,9 @@
 import { executePipeline, getAllPipelines, type FilterPipeline } from './gimp-filter-pipeline'
 import { extractMetadataFromImage, type ImageMetadata } from './gimp-metadata'
 import { convertCanvasColorSpace, listColorSpaces, type ColorSpace } from './gimp-color-management'
-import { applyLayerEffects, type LayerEffects } from './gimp-layer-effects'
-import { parseBrush, type PatternPreset } from './gimp-brush-import'
-import { parsePattern, type GradientPreset } from './gimp-patterns'
+import { applyLayerEffects, LAYER_STYLE_PRESETS, type LayerEffects } from './gimp-layer-effects'
+import { parseBrush } from './gimp-brush-import'
+import { parsePattern, type GradientPreset, type PatternPreset } from './gimp-patterns'
 import { parsePalette, type PalettePreset } from './gimp-patterns'
 
 export interface BatchJob {
@@ -163,7 +163,7 @@ export class BatchProcessor {
       })
 
       try {
-        const output = await this.processFile(file, job, pipeline)
+        const output = await this.processFile(file, job, pipeline, i)
         result.outputs.push({ original: file.name, output: output.name, metadata: output.metadata })
         result.processed++
       } catch (error) {
@@ -180,7 +180,8 @@ export class BatchProcessor {
   private async processFile(
     file: File,
     job: BatchJob,
-    pipeline?: FilterPipeline
+    pipeline?: FilterPipeline,
+    outputIndex = 0
   ): Promise<{ name: string; blob: Blob; metadata?: any }> {
     const img = await this.loadImage(file)
     let canvas = img.canvas
@@ -218,14 +219,19 @@ export class BatchProcessor {
         case 'metadata':
           metadata = await this.applyMetadata(canvas, file, op.params)
           break
-        case 'layer-effects':
-          canvas = await applyLayerEffects(canvas, { ...import('./gimp-layer-effects').then(m => m.LAYER_STYLE_PRESETS[op.params.preset]) })
+        case 'layer-effects': {
+          const preset = LAYER_STYLE_PRESETS[op.params.preset] ?? {
+            effects: [],
+            globalLight: { angle: 120, altitude: 30 },
+          }
+          canvas = await applyLayerEffects(canvas, preset)
           break
+        }
       }
     }
 
     // Generate output name
-    const outputName = this.generateOutputName(file, job, job.operations.find(o => o.type === 'rename')?.params?.pattern)
+    const outputName = this.generateOutputName(file, job, job.operations.find(o => o.type === 'rename')?.params?.pattern, outputIndex)
 
     // Export
     const blob = await this.exportCanvas(canvas, job.outputFormat, job.outputQuality)
@@ -302,10 +308,9 @@ export class BatchProcessor {
     return {}
   }
 
-  private generateOutputName(file: File, job: BatchJob, pattern?: string): string {
+  private generateOutputName(file: File, job: BatchJob, pattern?: string, index = 0): string {
     const baseName = file.name.replace(/\.[^.]+$/, '')
     const ext = `.${job.outputFormat}`
-    const index = job.outputs?.length || 0
     const patternStr = pattern || '{name}_edited_{index}'
     return patternStr
       .replace('{name}', baseName)

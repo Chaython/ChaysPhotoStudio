@@ -34,19 +34,49 @@ export interface TextureOptions {
   /** Colored grain */
   colored: boolean
   /** Grain type for grain texture */
-  grainType: 'gaussian' | 'poisson' | 'uniform' | 'film' | 'kodak' | 'fuji' | 'ilford'
+  grainType?: 'gaussian' | 'poisson' | 'uniform' | 'film' | 'kodak' | 'fuji' | 'ilford'
   /** Paper type for paper texture */
-  paperType: 'fine' | 'medium' | 'rough' | 'cold-press' | 'hot-press' | 'handmade' | 'vellum' | 'newsprint'
+  paperType?: 'fine' | 'medium' | 'rough' | 'cold-press' | 'hot-press' | 'handmade' | 'vellum' | 'newsprint'
   /** Canvas type */
-  canvasType: 'linen' | 'cotton' | 'jute' | 'burlap' | 'custom-weave'
+  canvasType?: 'linen' | 'cotton' | 'jute' | 'burlap' | 'custom-weave'
   /** Fabric type */
-  fabricType: 'cotton' | 'silk' | 'wool' | 'denim' | 'canvas' | 'burlap' | 'velvet' | 'satin'
+  fabricType?: 'cotton' | 'silk' | 'wool' | 'denim' | 'canvas' | 'burlap' | 'velvet' | 'satin'
   /** Wood type */
-  woodType: 'oak' | 'pine' | 'mahogany' | 'walnut' | 'cherry' | 'maple' | 'cedar' | 'bamboo'
+  woodType?: 'oak' | 'pine' | 'mahogany' | 'walnut' | 'cherry' | 'maple' | 'cedar' | 'bamboo'
   /** Stone type */
-  stoneType: 'marble' | 'granite' | 'slate' | 'sandstone' | 'limestone' | 'travertine' | 'concrete'
+  stoneType?: 'marble' | 'granite' | 'slate' | 'sandstone' | 'limestone' | 'travertine' | 'concrete'
   /** Metal type */
-  metalType: 'brushed' | 'polished' | 'hammered' | 'corrugated' | 'diamond-plate' | 'rusted' | 'oxidized'
+  metalType?: 'brushed' | 'polished' | 'hammered' | 'corrugated' | 'diamond-plate' | 'rusted' | 'oxidized'
+  /** Paper fibers */
+  fibers?: number
+  /** Paper sizing */
+  sizing?: number
+  /** Canvas weave size */
+  weaveSize?: number
+  /** Canvas weave angle */
+  weaveAngle?: number
+  /** Canvas weave depth */
+  weaveDepth?: number
+  /** Wood grain direction (degrees) */
+  grainDirection?: number
+  /** Wood knot density */
+  knotDensity?: number
+  /** Wood ring spacing */
+  ringSpacing?: number
+  /** Wood color variation */
+  colorVariation?: number
+  /** Stone vein contrast */
+  veinContrast?: number
+  /** Stone vein scale */
+  veinScale?: number
+  /** Stone porosity */
+  porosity?: number
+  /** Metal scratch density */
+  scratchDensity?: number
+  /** Metal patina amount */
+  patina?: number
+  /** Metal reflectivity */
+  reflectivity?: number
 }
 
 export interface GrainOptions extends TextureOptions {
@@ -194,7 +224,7 @@ async function generateGrain(
     const layerScale = scale * (1 + layer * 0.5)
     const layerAmount = amount / (layer + 1)
 
-    const grainCanvas = createCanvas(width, height)
+    let grainCanvas = createCanvas(width, height)
     const grainCtx = ctx2d(grainCanvas)
 
     // Generate noise
@@ -291,7 +321,7 @@ async function generateGrain(
     }
 
     // Blend mode
-    ctx.globalCompositeOperation = 'normal'
+    ctx.globalCompositeOperation = 'source-over'
     ctx.globalAlpha = 1 / (layer + 1)
     ctx.drawImage(grainCanvas, 0, 0)
   }
@@ -360,7 +390,7 @@ async function generatePaperTexture(
 }
 
 /** Generate canvas texture */
-function generateCanvasTexture(
+async function generateCanvasTexture(
   width: number,
   height: number,
   options: TextureOptions,
@@ -391,6 +421,7 @@ function generateCanvasTexture(
         ctx.fillRect(x, y, 1, weaveSize)
       }
     }
+  }
 
   // Weave depth
   if (weaveDepth > 0) {
@@ -405,7 +436,7 @@ function generateCanvasTexture(
 }
 
 /** Generate fabric texture */
-function generateFabricTexture(
+async function generateFabricTexture(
   width: number,
   height: number,
   options: TextureOptions,
@@ -439,6 +470,7 @@ function generateFabricTexture(
         ctx.fillRect(x, y, weaveScale, weaveScale / 2)
       }
     }
+  }
 
   // Fabric texture
   ctx.filter = 'blur(0.5px)'
@@ -971,9 +1003,6 @@ export const TEXTURE_PRESETS: Record<string, Partial<TextureOptions>> = {
   'rusted-metal': { type: 'metal', metalType: 'rusted', patina: 30, scratchDensity: 15 },
   'oxidized-metal': { type: 'metal', metalType: 'oxidized', patina: 50 },
 
-  'watercolor-paper': { type: 'watercolor', amount: 30, scale: 100, monochrome: false },
   'pastel-paper': { type: 'pastel', amount: 40, scale: 100, monochrome: false },
   'chalkboard': { type: 'chalk', amount: 50, scale: 100 },
-}
-}
 }

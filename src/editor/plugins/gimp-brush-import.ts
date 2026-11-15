@@ -2,7 +2,7 @@
 // GIMP brush import/export utilities
 // Supports .gbr, .vbr, .gih, .abr (Photoshop), and MyPaint brushes
 
-import { parseGbrBrush, parseVbrBrush, parseGihBrush, exportGbrBrush } from './gimp-assets'
+import { parseGbr, parseVbrBrush, parseGihBrush, exportGbrBrush } from './gimp-assets'
 import { createCanvas, ctx2d } from '../utils/canvas'
 
 export interface BrushPreset {
@@ -70,7 +70,7 @@ export async function parseBrush(buf: ArrayBuffer, fileName: string): Promise<Br
 
   switch (format) {
     case 'gbr': {
-      const parsed = parseGbrBrush(buf)
+      const parsed = parseGbr(buf)
       return {
         name: parsed.name,
         type: 'gbr',
@@ -113,7 +113,7 @@ export async function parseBrush(buf: ArrayBuffer, fileName: string): Promise<Br
 }
 
 /** Parse Photoshop .abr brush format */
-function parseAbrBrush(buf: ArrayBuffer, fileName: string): BrushPreset {
+async function parseAbrBrush(buf: ArrayBuffer, fileName: string): Promise<BrushPreset> {
   const v = new DataView(buf)
   if (buf.byteLength < 6) throw new Error('Truncated ABR file')
 

@@ -17,6 +17,7 @@ export interface ImageFormat {
     metadata: boolean
     hdr: boolean
     lossless: boolean
+    vector?: boolean
     compression: string[]
   }
   maxDimensions?: { width: number; height: number }
@@ -364,7 +365,7 @@ export function getFormatCapabilities(format: string): ImageFormat | null {
 /** Check if format supports feature */
 export function formatSupports(format: string, feature: keyof ImageFormat['supports']): boolean {
   const fmt = SUPPORTED_FORMATS[format]
-  return fmt ? fmt.supports[feature] : false
+  return fmt ? Boolean(fmt.supports[feature]) : false
 }
 
 /** Get recommended format for use case */

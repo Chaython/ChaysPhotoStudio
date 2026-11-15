@@ -350,9 +350,9 @@ export async function renderExpressionistStroke(
 
     // Interpolate pressure, tilt, velocity
     const pressure = (p0.pressure + p1.pressure) / 2
-    const tiltX = (p0.tiltX ?? 0 + p1.tiltX ?? 0) / 2
-    const tiltY = (p0.tiltY ?? 0 + p1.tiltY ?? 0) / 2
-    const velocity = (p0.velocity ?? 1 + p1.velocity ?? 1) / 2
+    const tiltX = ((p0.tiltX ?? 0) + (p1.tiltX ?? 0)) / 2
+    const tiltY = ((p0.tiltY ?? 0) + (p1.tiltY ?? 0)) / 2
+    const velocity = ((p0.velocity ?? 1) + (p1.velocity ?? 1)) / 2
 
     // Calculate brush size at this point
     let brushSize = settings.size * pressure

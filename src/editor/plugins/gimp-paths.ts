@@ -351,7 +351,7 @@ export class PathManager {
 
     if (path.closed) svgPath += ' Z'
 
-    const attrs = []
+    const attrs: string[] = []
     if (path.fillColor) attrs.push(`fill="${path.fillColor}"`)
     else attrs.push('fill="none"')
     if (path.strokeColor) attrs.push(`stroke="${path.strokeColor}"`)

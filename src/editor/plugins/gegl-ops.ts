@@ -17,7 +17,7 @@ export interface GeglProperty {
   name: string
   type: 'double' | 'int' | 'string' | 'boolean' | 'color' | 'curve' | 'matrix' | 'enum'
   label: string
-  description: string
+  description?: string
   default: any
   minimum?: number
   maximum?: number
@@ -1023,7 +1023,7 @@ export class GeglGraph {
       case 'gegl:film-grain':
         return this.applyFilmGrain(input, props['strength'], props['size'], props['color'])
       case 'gegl:vignette':
-        return this.applyVignette(input, props['radius'], props['softness'], props['amount'], props['shape'])
+        return this.applyVignetteShape(input, props['radius'], props['softness'], props['amount'], props['shape'])
       // Edge Detection
       case 'gegl:canny-edge':
         return this.applyCannyEdge(input, props['low-threshold'], props['high-threshold'], props['sigma'])
@@ -1580,7 +1580,7 @@ export class GeglGraph {
     return canvas
   }
 
-  private async applyVignette(input: HTMLCanvasElement, radius: number, softness: number, amount: number, shape: number): Promise<HTMLCanvasElement> {
+  private async applyVignetteShape(input: HTMLCanvasElement, radius: number, softness: number, amount: number, shape: number): Promise<HTMLCanvasElement> {
     const canvas = createCanvas(input.width, input.height)
     const ctx = ctx2d(canvas)
     ctx.drawImage(input, 0, 0)

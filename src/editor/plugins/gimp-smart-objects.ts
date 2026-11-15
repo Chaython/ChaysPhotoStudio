@@ -506,7 +506,7 @@ export class SmartObjectManager {
     return () => this.listeners.delete(listener)
   }
 
-  private notify(): void {
+  public notify(): void {
     for (const listener of this.listeners) listener()
   }
 }

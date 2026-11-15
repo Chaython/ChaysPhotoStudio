@@ -174,10 +174,11 @@ async function detectSky(canvas: HTMLCanvasElement): Promise<HTMLCanvasElement> 
       data[idx + 2] = maskValue
       data[idx + 3] = 255
     }
-
-    ctx.putImageData(imgData, 0, 0)
-    return mask
   }
+
+  ctx.putImageData(imgData, 0, 0)
+  return mask
+}
 
 /** Refine mask edges with feathering and cleanup */
 async function refineMaskEdges(
@@ -540,5 +541,4 @@ export async function generateProceduralSky(
   }
 
   return canvas
-}
 }

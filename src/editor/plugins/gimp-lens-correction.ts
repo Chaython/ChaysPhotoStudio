@@ -414,10 +414,10 @@ export async function correctLens(
 
 /** Apply lens profile corrections */
 async function applyLensProfile(
-  canvas: HTMLCanvasElement,
+  sourceCanvas: HTMLCanvasElement,
   profile: LensProfile
 ): Promise<HTMLCanvasElement> {
-  let canvas = canvas
+  let canvas = sourceCanvas
 
   // Apply distortion correction
   if (profile.distortion.k1 !== 0 || profile.distortion.k2 !== 0 || profile.distortion.k3 !== 0) {
@@ -493,6 +493,7 @@ async function correctDistortion(
       mapX[y * width + x] = srcX
       mapY[y * width + x] = srcY
     }
+  }
 
   // Apply remap using canvas
   return remapCanvas(canvas, mapX, mapY)
@@ -560,17 +561,18 @@ async function correctVignetting(
       data[idx + 2] = v
       data[idx + 3] = 255
     }
-
-    maskCtx.putImageData(imgData, 0, 0)
-
-    // Apply vignette correction
-    const ctx = ctx2d(canvas)
-    ctx.globalCompositeOperation = 'multiply'
-    ctx.drawImage(mask, 0, 0)
-    ctx.globalCompositeOperation = 'source-over'
-
-    return canvas
   }
+
+  maskCtx.putImageData(imgData, 0, 0)
+
+  // Apply vignette correction
+  const applyCtx = ctx2d(output)
+  applyCtx.globalCompositeOperation = 'multiply'
+  applyCtx.drawImage(mask, 0, 0)
+  applyCtx.globalCompositeOperation = 'source-over'
+
+  return output
+}
 
 /** Chromatic aberration correction */
 async function correctChromaticAberration(
@@ -747,8 +749,8 @@ async function autoCrop(canvas: HTMLCanvasElement): Promise<HTMLCanvasElement> {
   if (minX >= maxX || minY >= maxY) return canvas
 
   const cropped = createCanvas(maxX - minX + 1, maxY - minY + 1)
-  const ctx = ctx2d(cropped)
-  ctx.drawImage(canvas, minX, minY, maxX - minX + 1, maxY - minY + 1, 0, 0, maxX - minX + 1, maxY - minY + 1)
+  const cropCtx = ctx2d(cropped)
+  cropCtx.drawImage(canvas, minX, minY, maxX - minX + 1, maxY - minY + 1, 0, 0, maxX - minX + 1, maxY - minY + 1)
 
   return cropped
 }
@@ -777,20 +779,19 @@ function remapCanvas(canvas: HTMLCanvasElement, mapX: Float32Array, mapY: Float3
         const y1 = Math.min(y0 + 1, height - 1)
         const fx = srcX - x0
         const fy = srcY - y0
-
-        const idx = (y * width + x) * 4
+        const dstIdx = idx * 4
 
         for (let c = 0; c < 3; c++) {
-          const v00 = canvas.getContext('2d')!.getImageData(x0, y0, 1, 1).data[c]
           // Simplified - would use proper bilinear interpolation
-          dst[c] = canvas.getContext('2d')!.getImageData(Math.round(srcX), Math.round(srcY), 1, 1).data[c]
+          dst[dstIdx + c] = srcData[(Math.round(srcY) * width + Math.round(srcX)) * 4 + c]
         }
-        dst[3] = 255
+        dst[dstIdx + 3] = 255
       } else {
-        dst[idx] = 0
-        dst[idx + 1] = 0
-        dst[idx + 2] = 0
-        dst[idx + 3] = 0
+        const dstIdx = idx * 4
+        dst[dstIdx] = 0
+        dst[dstIdx + 1] = 0
+        dst[dstIdx + 2] = 0
+        dst[dstIdx + 3] = 0
       }
     }
   }
@@ -938,8 +939,8 @@ export function createLensCorrectionUI(
     btn.addEventListener('click', () => {
       tabButtons.forEach(b => b.classList.remove('active'))
       btn.classList.add('active')
-      tabContents.forEach(tc => tc.style.display = 'none')
-      document.getElementById(`${btn.dataset.tab}-tab`)!.style.display = 'block'
+      tabContents.forEach(tc => (tc as HTMLElement).style.display = 'none')
+      document.getElementById(`${(btn as HTMLElement).dataset.tab}-tab`)!.style.display = 'block'
     })
   })
 
@@ -967,6 +968,7 @@ function getCorrectionOptionsFromUI(container: HTMLElement): LensCorrectionOptio
       midpoint: parseFloat((container.querySelector('#vignette-midpoint') as HTMLInputElement).value),
       roundness: parseFloat((container.querySelector('#vignette-roundness') as HTMLInputElement).value),
       feather: parseFloat((container.querySelector('#vignette-feather') as HTMLInputElement).value),
+      highlights: 0,
     },
     chromaticAberration: {
       redShift: parseFloat((container.querySelector('#ca-red') as HTMLInputElement).value),
@@ -978,6 +980,7 @@ function getCorrectionOptionsFromUI(container: HTMLElement): LensCorrectionOptio
       horizontal: parseFloat((container.querySelector('#persp-horizontal') as HTMLInputElement).value),
       rotate: parseFloat((container.querySelector('#persp-rotate') as HTMLInputElement).value),
       scale: parseFloat((container.querySelector('#persp-scale') as HTMLInputElement).value),
+      aspect: 100,
     },
     transform: {
       scaleX: parseFloat((container.querySelector('#tx-scale-x') as HTMLInputElement).value),
@@ -985,11 +988,13 @@ function getCorrectionOptionsFromUI(container: HTMLElement): LensCorrectionOptio
       rotation: parseFloat((container.querySelector('#tx-rotation') as HTMLInputElement).value),
       translateX: parseFloat((container.querySelector('#tx-x') as HTMLInputElement).value),
       translateY: parseFloat((container.querySelector('#tx-y') as HTMLInputElement).value),
+      shearX: 0,
+      shearY: 0,
+      perspectiveX: 0,
+      perspectiveY: 0,
     },
     interpolation: 'bicubic',
     edgeHandling: 'transparent',
     output: { crop: true, maintainResolution: true },
   }
-}
-}
 }

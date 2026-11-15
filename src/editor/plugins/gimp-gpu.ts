@@ -11,7 +11,7 @@ export interface GpuFilter {
 }
 
 export interface GpuUniform {
-  type: 'float' | 'vec2' | 'vec3' | 'vec4' | 'int' | 'sampler2D' | 'mat3' | 'mat4'
+  type: 'float' | 'vec2' | 'vec3' | 'vec4' | 'int' | 'bool' | 'sampler2D' | 'mat3' | 'mat4'
   value: any
 }
 
@@ -36,7 +36,7 @@ export class GpuAccelerator {
   private context: GpuContext | null = null
   private filters: Map<string, GpuFilter> = new Map()
   private isWebGPU = false
-  private webgpuDevice: GPUDevice | null = null
+  private webgpuDevice: { destroy(): void } | null = null
 
   constructor() {
     this.registerBuiltInFilters()

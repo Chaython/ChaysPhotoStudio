@@ -4,6 +4,8 @@
 
 import { createCanvas, ctx2d } from '../utils/canvas'
 
+type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> }
+
 export interface CameraRawSettings {
   // Basic panel
   basic: {
@@ -523,9 +525,9 @@ async function applyEffectsPanel(
   }
 
   // Grain
-  const { amount, size, roughness } = settings.grain
-  if (amount > 0) {
-    current = await addGrain(current, amount, size, roughness)
+  const { amount: grainAmount, size, roughness } = settings.grain
+  if (grainAmount > 0) {
+    current = await addGrain(current, grainAmount, size, roughness)
   }
 
   // Dehaze
@@ -591,19 +593,20 @@ async function applyVignette(
       data[idx + 2] = v
       data[idx + 3] = 255
     }
-
-    maskCtx.putImageData(imgData, 0, 0)
-
-    // Apply
-    const ctx = ctx2d(canvas)
-    ctx.globalCompositeOperation = amount < 0 ? 'multiply' : 'screen'
-    ctx.globalAlpha = Math.abs(amount) / 100
-    ctx.drawImage(mask, 0, 0)
-    ctx.globalCompositeOperation = 'source-over'
-    ctx.globalAlpha = 1
-
-    return canvas
   }
+
+  maskCtx.putImageData(imgData, 0, 0)
+
+  // Apply
+  const applyCtx = ctx2d(output)
+  applyCtx.globalCompositeOperation = amount < 0 ? 'multiply' : 'screen'
+  applyCtx.globalAlpha = Math.abs(amount) / 100
+  applyCtx.drawImage(mask, 0, 0)
+  applyCtx.globalCompositeOperation = 'source-over'
+  applyCtx.globalAlpha = 1
+
+  return output
+}
 
 /** Add grain */
 async function addGrain(canvas: HTMLCanvasElement, amount: number, size: number, roughness: number): Promise<HTMLCanvasElement> {
@@ -708,7 +711,7 @@ export function createCameraRawUI(
       container.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('active'))
       btn.classList.add('active')
       container.querySelectorAll('.cr-panel').forEach(p => p.classList.remove('active'))
-      document.getElementById(`${btn.dataset.tab}-panel`)?.classList.add('active')
+      document.getElementById(`${(btn as HTMLElement).dataset.tab}-panel`)?.classList.add('active')
     })
   })
 
@@ -716,7 +719,7 @@ export function createCameraRawUI(
 }
 
 /** Camera Raw Presets */
-export const CAMERA_RAW_PRESETS: Record<string, Partial<CameraRawSettings>> = {
+export const CAMERA_RAW_PRESETS: Record<string, DeepPartial<CameraRawSettings>> = {
   'portrait': {
     basic: { temperature: -10, tint: 5, exposure: 0.2, contrast: 10, highlights: -20, shadows: 20, clarity: 10, vibrance: 15 },
     detail: { sharpening: { amount: 50, radius: 1, detail: 25, masking: 20 } },
@@ -752,5 +755,4 @@ export const CAMERA_RAW_PRESETS: Record<string, Partial<CameraRawSettings>> = {
       highlights: { hue: 60, saturation: 40, luminance: 20 },
     },
   },
-}
 }

@@ -47,7 +47,7 @@ export interface RetouchLayer {
 /** Frequency Separation - Split image into high/low frequency */
 export async function frequencySeparation(
   sourceCanvas: HTMLCanvasElement,
-  options: FrequencySeparationOptions = {
+  options: Partial<FrequencySeparationOptions> = {
     radius: 10,
     blurMethod: 'gaussian',
     preserveEdges: true,
@@ -59,7 +59,12 @@ export async function frequencySeparation(
   }
 ): Promise<FrequencySeparationResult> {
   const { width, height } = sourceCanvas
-  const { radius, blurMethod, preserveEdges, edgeThreshold } = options
+  const {
+    radius = 10,
+    blurMethod = 'gaussian',
+    preserveEdges = true,
+    edgeThreshold = 35,
+  } = options
 
   // Create low frequency (blurred)
   const lowFreqCanvas = createCanvas(width, height)
@@ -248,47 +253,8 @@ export async function colorCorrectLowFrequency(
 ): Promise<HTMLCanvasElement> {
   const output = createCanvas(lowFreqCanvas.width, lowFreqCanvas.height)
   const ctx = ctx2d(output)
-  ctx.drawImage(lowFreqCanvas, 0, 0)
-
-  // Build filter string
-  const filters: string[] = []
-
-  if (adjustments.temperature) {
-    filters.push(`sepia(${adjustments.temperature / 100 * 0.3}) hue-rotate(${adjustments.temperature * 0.5}deg)`)
-  }
-  if (adjustments.tint) {
-    filters.push(`hue-rotate(${adjustments.tint * 0.5}deg)`)
-  }
-  if (adjustments.exposure) {
-    filters.push(`brightness(${1 + adjustments.exposure / 100})`)
-  }
-  if (adjustments.contrast) {
-    filters.push(`contrast(${1 + adjustments.contrast / 100})`)
-  }
-  if (adjustments.highlights) {
-    // Approximation
-    filters.push(`contrast(${1 + adjustments.highlights / 200}) brightness(${1 - adjustments.highlights / 200})`)
-  }
-  if (adjustments.shadows) {
-    filters.push(`brightness(${1 + adjustments.shadows / 200}) contrast(${1 + adjustments.shadows / 100})`)
-  }
-  if (adjustments.saturation) {
-    filters.push(`saturate(${1 + adjustments.saturation / 100})`)
-  }
-  if (adjustments.vibrance) {
-    // Approximation
-    filters.push(`saturate(${1 + adjustments.vibrance / 200})`)
-  }
-
-  if (filters.length > 0) {
-    const filterStr = filters.join(' ')
-    const ctx = ctx2d(createCanvas(1, 1)) // temp
-    // Apply filters
-  }
 
   // Apply to canvas
-  const output = createCanvas(lowFreqCanvas.width, lowFreqCanvas.height)
-  const ctx = ctx2d(output)
   ctx.filter = adjustments.exposure ? `brightness(${1 + (adjustments.exposure || 0) / 100}) contrast(${1 + (adjustments.contrast || 0) / 100}) saturate(${1 + (adjustments.saturation || 0) / 100}) sepia(${(adjustments.temperature || 0) / 100 * 0.3}) hue-rotate(${adjustments.temperature || 0}deg)` : 'none'
   ctx.drawImage(lowFreqCanvas, 0, 0)
   ctx.filter = 'none'
@@ -349,7 +315,7 @@ export async function reconstructMultiScale(
     const output = createCanvas(base.width, base.height)
     const ctx = ctx2d(output)
     ctx.drawImage(current, 0, 0)
-    ctx.globalCompositeOperation = 'linear-light'
+    ctx.globalCompositeOperation = 'linear-light' as GlobalCompositeOperation
     ctx.drawImage(highFreq, 0, 0)
     current = output
   }
