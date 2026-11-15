@@ -2,14 +2,16 @@
 // GIMP Neural Filters
 // AI-powered filters using ONNX Runtime Web / TensorFlow.js / WebGPU
 
+import { createCanvas, ctx2d } from '../utils/canvas'
+
 export interface NeuralFilter {
   id: string
   name: string
   description: string
   category: 'portrait' | 'landscape' | 'creative' | 'restoration' | 'utility'
   modelUrl: string
-  inputShape: number[]
-  outputShape: number[]
+  inputShape: (number | null)[]
+  outputShape: (number | null)[]
   parameters: NeuralFilterParam[]
   requirements: {
     webgpu: boolean
@@ -29,7 +31,7 @@ export interface NeuralFilterParam {
   step?: number
   default: any
   options?: { label: string; value: any }[]
-  description: string
+  description?: string
 }
 
 export interface NeuralFilterResult {
@@ -37,8 +39,8 @@ export interface NeuralFilterResult {
   metadata: {
     modelName: string
     inferenceTime: number
-    inputShape: number[]
-    outputShape: number[]
+    inputShape: (number | null)[]
+    outputShape: (number | null)[]
     parameters: Record<string, any>
   }
 }
@@ -186,19 +188,21 @@ export class NeuralFilterManager {
 
   private async preprocessInput(
     canvas: HTMLCanvasElement,
-    inputShape: number[]
+    inputShape: (number | null)[]
   ): Promise<any> {
     // Resize and normalize
     const [, , height, width] = inputShape
-    const resized = createCanvas(width, height)
+    const w = width ?? canvas.width
+    const h = height ?? canvas.height
+    const resized = createCanvas(w, h)
     const ctx = ctx2d(resized)
-    ctx.drawImage(canvas, 0, 0, width, height)
+    ctx.drawImage(canvas, 0, 0, w, h)
 
     // Normalize to [-1, 1] or [0, 1] depending on model
-    const imgData = ctx.getImageData(0, 0, width, height)
+    const imgData = ctx.getImageData(0, 0, w, h)
     const data = imgData.data
 
-    const tensorData = new Float32Array(width * height * 3)
+    const tensorData = new Float32Array(w * h * 3)
     for (let i = 0; i < data.length; i += 4) {
       tensorData[i / 4 * 3] = data[i] / 255
       tensorData[i / 4 * 3 + 1] = data[i + 1] / 255
@@ -210,7 +214,7 @@ export class NeuralFilterManager {
 
   private async postprocessOutput(
     outputTensor: any,
-    outputShape: number[],
+    outputShape: (number | null)[],
     originalWidth: number,
     originalHeight: number
   ): Promise<HTMLCanvasElement> {
@@ -219,9 +223,9 @@ export class NeuralFilterManager {
 
     // Would decode output tensor to canvas
     // For now, return placeholder
-    const ctx = ctx2d(createCanvas(originalWidth, originalHeight))
-    ctx.fillStyle = '#888'
-    ctx.fillRect(0, 0, originalWidth, originalHeight)
+    const placeholderCtx = ctx2d(createCanvas(originalWidth, originalHeight))
+    placeholderCtx.fillStyle = '#888'
+    placeholderCtx.fillRect(0, 0, originalWidth, originalHeight)
 
     return output
   }

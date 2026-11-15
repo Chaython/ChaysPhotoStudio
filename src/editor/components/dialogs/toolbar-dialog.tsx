@@ -104,7 +104,8 @@ export function ToolbarCustomizeDialog({ onClose }: DialogProps) {
       if (layout && !Array.isArray(layout)) {
         setToolbarLayout({ ...layout, sections: next })
       } else {
-        setToolbarLayout(next)
+        // Legacy format: wrap in ToolbarLayout object
+        setToolbarLayout({ mode: 'rail', sections: next })
       }
     }
   }

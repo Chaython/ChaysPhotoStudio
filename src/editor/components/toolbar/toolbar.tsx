@@ -317,7 +317,8 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
         endDrag()
         if (!id) return
         // In grid mode, append to the end of the grid
-        const newSections = [...sections, { kind: 'single', tool: id }]
+        const newSection: ToolbarSection = { kind: 'single', tool: id }
+        const newSections = [...sections, newSection]
         applyLayout({ ...layout, sections: newSections }, `${TOOL_MAP[id].label} added to toolbox`)
         closeFlyoutMenus()
       },

@@ -117,8 +117,8 @@ export function GimpToolOptionsPanel() {
               {options.map(opt => (
                 <ControlRenderer
                   key={opt.key}
-                  def={opt}
-                  value={toolOptions[activeTool as ToolId]?.[opt.key] ?? opt.defaults?.[opt.key]}
+                  control={opt}
+                  value={toolOptions[activeTool as ToolId]?.[opt.key] ?? toolDef.defaults?.[opt.key]}
                   onChange={(value) => setToolOption(activeTool as ToolId, opt.key, value)}
                   compact
                 />
@@ -142,8 +142,8 @@ export function GimpToolOptionsPanel() {
                 .map(opt => (
                   <ControlRenderer
                     key={opt.key}
-                    def={opt}
-                    value={toolOptions[activeTool as ToolId]?.[opt.key] ?? opt.defaults?.[opt.key]}
+                    control={opt}
+                    value={toolOptions[activeTool as ToolId]?.[opt.key] ?? toolDef.defaults?.[opt.key]}
                     onChange={(value) => setToolOption(activeTool as ToolId, opt.key, value)}
                     compact
                   />
@@ -224,7 +224,6 @@ function getOptionGroup(key: string): string {
     brushAngle: 'Brush Shape',
     brushRoundness: 'Brush Shape',
     showOverlay: 'Overlay',
-    overlayOpacity: 'Overlay',
     overlayAutoHide: 'Overlay',
     overlayClipped: 'Overlay',
     overlayBlend: 'Overlay',
@@ -240,25 +239,14 @@ function getOptionGroup(key: string): string {
     diffusion: 'Healing',
     brushMode: 'Mode',
     overlayColor: 'Overlay',
-    overlayOpacity: 'Overlay',
     geometry: 'Mode',
-    clickSearch: 'Mode',
     detector: 'Mode',
     level: 'Refine',
-    autoEnhance: 'Edge',
-    refineProvider: 'Refine',
     exactPixels: 'Matching',
     matchAlpha: 'Matching',
-    contiguous: 'Fill',
-    diagonal: 'Fill',
-    perceptual: 'Color',
     smooth: 'Edge',
     antiAlias: 'Edge',
     fill: 'Fill',
-    pattern: 'Pattern',
-    patternScale: 'Pattern',
-    patternOffsetX: 'Pattern',
-    patternOffsetY: 'Pattern',
     straighten: 'Crop',
     ratio: 'Crop',
     ratioW: 'Crop',
@@ -269,7 +257,6 @@ function getOptionGroup(key: string): string {
     overlay: 'Overlay',
     deletePixels: 'Crop',
     output: 'Output',
-    angle: 'Transform',
     centerX: 'Transform',
     centerY: 'Transform',
     interpolation: 'Quality',
@@ -299,17 +286,12 @@ function getOptionGroup(key: string): string {
     transformPivotY: 'Pivot',
     selectMask: 'Refine',
     sizing: 'Sizing',
-    brushMode: 'Mode',
-    drawForeground: 'Mode',
-    drawBackground: 'Mode',
     strokeWidth: 'Stroke',
     previewColor: 'Preview',
     interactive: 'Mode',
-    expand: 'Mask',
     feather: 'Mask',
     alignTo: 'Align',
     autoSelect: 'Auto',
-    showTransformControls: 'Transform',
     smartGuides: 'Guides',
     showDistances: 'Distances',
     unit: 'Units',
@@ -320,12 +302,9 @@ function getOptionGroup(key: string): string {
     offsetY: 'Offset',
     chain: 'Chain',
     angleSnap: 'Snap',
-    useDocResolution: 'Resolution',
-    pixelsPerUnit: 'Units',
     showDelta: 'Delta',
     persist: 'Persist',
     measureActions: 'Actions',
-    radius: 'Sample',
     hud: 'HUD',
     showLabels: 'Labels',
     pressure: 'Pressure',
@@ -339,12 +318,10 @@ function getOptionGroup(key: string): string {
     pressureStrength: 'Pressure',
     range: 'Range',
     protectTones: 'Tones',
-    airbrush: 'Airbrush',
     exposure: 'Exposure',
     vibrance: 'Vibrance',
     type: 'Type',
     stops: 'Stops',
-    interpolation: 'Interp',
     smoothness: 'Smooth',
     noise: 'Noise',
     noiseSeed: 'Seed',
@@ -362,15 +339,7 @@ function getOptionGroup(key: string): string {
     sampleRadius: 'Sample',
     edgeAware: 'Edge',
     adaptive: 'Adaptive',
-    sampling: 'Sampling',
-    clickSearch: 'Click Search',
-    autoEnhance: 'Auto Enhance',
-    refineProvider: 'Refine',
     structure: 'Structure',
-    color: 'Color',
-    expand: 'Expand',
-    sampleAllLayers: 'Sample All',
-    sourceTransforms: 'Sources',
     sourceTransforms: 'Sources',
     // Text
     family: 'Font',

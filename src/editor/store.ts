@@ -908,7 +908,7 @@ function validateLayoutImport(value: unknown): SavedWorkspaceLayout {
   const panels = raw.kind === 'tools' ? undefined : loadPanelLayout(JSON.stringify(raw.panels), null)
   if (raw.kind !== 'tools' && !panels) throw Error('Invalid panel layout')
   const toolbar = raw.kind === 'panels' ? undefined :
-    raw.toolbar === null ? null : sanitizeToolbarLayout(raw.toolbar)
+    raw.toolbar === null ? null : { mode: 'rail' as const, sections: sanitizeToolbarLayout(raw.toolbar) }
   return { version: 1, name: raw.name.trim(), kind: raw.kind,
     ...(panels ? { panels: { ...defaultPanelState(), ...panels } } : {}),
     ...(raw.kind !== 'panels' ? { toolbar } : {}) }

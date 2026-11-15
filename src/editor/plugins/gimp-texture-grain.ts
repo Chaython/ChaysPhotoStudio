@@ -360,7 +360,7 @@ async function generatePaperTexture(
 }
 
 /** Generate canvas texture */
-async function generateCanvasTexture(
+function generateCanvasTexture(
   width: number,
   height: number,
   options: TextureOptions,
@@ -405,7 +405,7 @@ async function generateCanvasTexture(
 }
 
 /** Generate fabric texture */
-async function generateFabricTexture(
+function generateFabricTexture(
   width: number,
   height: number,
   options: TextureOptions,

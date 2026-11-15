@@ -5,8 +5,8 @@
 import { createCanvas, ctx2d } from '../utils/canvas'
 
 export interface PanoramaOptions {
-  /** Input images */
-  images: HTMLCanvasElement[]
+  /** Input images (optional, passed separately to stitchPanorama) */
+  images?: HTMLCanvasElement[]
   /** Projection type */
   projection: 'spherical' | 'cylindrical' | 'perspective' | 'fisheye' | 'stereographic' | 'mercator' | 'transverse-mercator' | 'equirectangular' | 'panini' | 'vedutismo' | 'architectural'
   /** Auto-detect projection */
@@ -91,7 +91,7 @@ export async function stitchPanorama(
     straighten: false,
     fillTransparent: false,
   }
-): Promise<PanoramaResult> {
+): Promise<HTMLCanvasElement> {
   if (images.length < 2) {
     throw new Error('At least 2 images required for panorama')
   }
@@ -135,18 +135,7 @@ export async function stitchPanorama(
     result = await fillTransparent(result)
   }
 
-  return {
-    canvas: result,
-    metadata: {
-      inputCount: images.length,
-      projection: options.projection,
-      blending: options.blending,
-      coverage: 1,
-      maxError: 0,
-      matchingPairs: 0,
-    },
-    transforms: [],
-  }
+  return result
 }
 
 /** Detect keypoints using ORB/SIFT/AKAZE */
@@ -204,14 +193,6 @@ function generateMockMatches(kp1: Keypoint[], kp2: Keypoint[], count: number): M
 }
 
 /** Estimate homography matrices between adjacent images */
-interface TransformInfo {
-  index: number
-  transform: number[] // 3x3 homography matrix
-  confidence: number
-  inliers: number
-  keypoints: Keypoint[]
-}
-
 function estimateHomographies(
   images: HTMLCanvasElement[],
   keypoints: Keypoint[][],
@@ -553,8 +534,8 @@ async function cropPanorama(
   if (minX >= maxX || minY >= maxY) return canvas
 
   const cropped = createCanvas(maxX - minX + 1, maxY - minY + 1)
-  const ctx = ctx2d(cropped)
-  ctx.drawImage(canvas, minX, minY, maxX - minX + 1, maxY - minY + 1, 0, 0, maxX - minX + 1, maxY - minY + 1)
+  const croppedCtx = ctx2d(cropped)
+  croppedCtx.drawImage(canvas, minX, minY, maxX - minX + 1, maxY - minY + 1, 0, 0, maxX - minX + 1, maxY - minY + 1)
   return cropped
 }
 
@@ -581,7 +562,7 @@ export async function hdrPanorama(
   }
 ): Promise<HTMLCanvasElement> {
   // 1. Merge each bracket set to HDR
-  const hdrImages = []
+  const hdrImages: HTMLCanvasElement[] = []
   for (const bracket of bracketSets) {
     // Would merge bracket to HDR
     // For now, use first image
@@ -590,6 +571,7 @@ export async function hdrPanorama(
 
   // 2. Stitch HDR images
   return stitchPanorama(hdrImages, {
+    ...(options as unknown as PanoramaOptions),
     projection: options.projection,
     blending: options.blending,
   })
@@ -606,8 +588,8 @@ export async function multiRowPanorama(
   )
 
   // Then stitch rows vertically
-  const verticalOptions = { ...options, projection: 'cylindrical' }
-  return stitchPanorama(rowPanoramas.map(r => r.canvas), verticalOptions)
+  const verticalOptions = { ...options, projection: 'cylindrical' as PanoramaOptions['projection'] }
+  return stitchPanorama(rowPanoramas, verticalOptions)
 }
 
 /** 360° spherical panorama */
@@ -618,7 +600,7 @@ export async function sphericalPanorama(
   return stitchPanorama(images, {
     ...options,
     projection: 'spherical',
-    outputProjection: 'equirectangular',
+    outputProjection: 'spherical',
   })
 }
 
@@ -671,11 +653,11 @@ export async function gigapixelPanorama(
 export class PanoramaCaptureAssistant {
   private capturedImages: HTMLCanvasElement[] = []
   private overlayCanvas: HTMLCanvasElement
-  private onProgress?: (progress: number, message: string) => void
+  private onProgressCallback?: (progress: number, message: string) => void
 
   constructor(overlayCanvas: HTMLCanvasElement, onProgress?: (progress: number, message: string) => void) {
     this.overlayCanvas = overlayCanvas
-    this.onProgress = onProgress
+    this.onProgressCallback = onProgress
   }
 
   addImage(canvas: HTMLCanvasElement): void {
@@ -696,7 +678,7 @@ export class PanoramaCaptureAssistant {
     if (this.capturedImages.length < 2) {
       return this.capturedImages[0] || createCanvas(1, 1)
     }
-    return stitchPanorama(this.capturedImages, { projection: 'cylindrical' })
+    return stitchPanorama(this.capturedImages, { projection: 'cylindrical' } as PanoramaOptions)
   }
 
   private updateOverlay(): void {
@@ -712,8 +694,8 @@ export class PanoramaCaptureAssistant {
     )
   }
 
-  onProgress(callback: (progress: number, message: string) => void): void {
-    this.onProgress = callback
+  setOnProgress(callback: (progress: number, message: string) => void): void {
+    this.onProgressCallback = callback
   }
 }
 

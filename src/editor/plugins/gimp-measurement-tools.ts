@@ -36,6 +36,14 @@ export interface MeasurementOptions {
   decimals: number
 }
 
+function parseColor(cssColor: string): { r: number; g: number; b: number; a: number } {
+  const m = cssColor.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i)
+  if (m) {
+    return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16), a: 255 }
+  }
+  return { r: 128, g: 128, b: 128, a: 255 }
+}
+
 export interface SamplePoint {
   id: string
   x: number
@@ -43,7 +51,6 @@ export interface SamplePoint {
   color: { r: number; g: number; b: number; a: number }
   position: 'absolute' | 'relative'
   label?: string
-  color: string
   size: number
   visible: boolean
   locked: boolean
@@ -369,7 +376,6 @@ export class MeasurementToolManager {
       color: { r: data[0], g: data[1], b: data[2], a: data[3] },
       position: options.position || 'absolute',
       label: options.label,
-      color: options.color || this.sampleOptions.defaultColor,
       size: options.size || this.sampleOptions.defaultSize,
       visible: true,
       locked: false,
@@ -418,7 +424,7 @@ export class MeasurementToolManager {
     for (const point of this.samplePoints.values()) {
       if (point.position === 'absolute') {
         const imgData = ctx.getImageData(point.x, point.y, 1, 1)
-        point.color = { r: data[0], g: data[1], b: data[2], a: data[3] }
+        point.color = { r: imgData.data[0], g: imgData.data[1], b: imgData.data[2], a: imgData.data[3] }
       }
     }
     this.notify()
@@ -584,7 +590,7 @@ export class MeasurementToolManager {
       ctx.rotate(0)
 
       // Draw crosshair
-      ctx.strokeStyle = point.color
+      ctx.strokeStyle = `rgba(${point.color.r}, ${point.color.g}, ${point.color.b}, ${point.color.a / 255})`
       ctx.lineWidth = 2
       ctx.beginPath()
       ctx.moveTo(-point.size, 0)
@@ -596,12 +602,12 @@ export class MeasurementToolManager {
       // Center dot
       ctx.beginPath()
       ctx.arc(0, 0, 3, 0, Math.PI * 2)
-      ctx.fillStyle = point.color
+      ctx.fillStyle = `rgba(${point.color.r}, ${point.color.g}, ${point.color.b}, ${point.color.a / 255})`
       ctx.fill()
 
       // Label
       if (this.sampleOptions.showCoordinates && point.label) {
-        ctx.fillStyle = point.color
+        ctx.fillStyle = `rgba(${point.color.r}, ${point.color.g}, ${point.color.b}, ${point.color.a / 255})`
         ctx.font = '10px sans-serif'
         ctx.fillText(point.label, point.size + 2, -point.size - 2)
       }
@@ -793,18 +799,14 @@ export function createMeasurementUI(
   const snapGridCb = container.querySelector('#snap-grid') as HTMLInputElement
   const snapGuidesCb = container.querySelector('#snap-guides') as HTMLInputElement
   const snapLayersCb = container.querySelector('#snap-layers') as HTMLInputElement
-  const decimalsInput = container.querySelector('#measure-decimals') as HTMLInputElement
   const sampleColorInput = container.querySelector('#sample-color') as HTMLInputElement
   const sampleSizeInput = container.querySelector('#sample-size') as HTMLInputElement
-  const sampleList = container.querySelector('#sample-list') as HTMLDivElement
-  const resultsList = container.querySelector('#results-list') as HTMLDivElement
-
-  const manager = new MeasurementToolManager()
 
   function updateUI(): void {
     // Update tool buttons
     toolButtons.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tool === currentTool)
+      const b = btn as HTMLElement
+      b.classList.toggle('active', b.dataset.tool === currentTool)
     })
     panels.forEach(panel => {
       panel.classList.toggle('active', panel.id === `${currentTool}-panel`)
@@ -854,8 +856,9 @@ export function createMeasurementUI(
 
   // Tool selection
   toolButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      currentTool = btn.dataset.tool!
+    const b = btn as HTMLElement
+    b.addEventListener('click', () => {
+      currentTool = b.dataset.tool!
       updateUI()
     })
   })
@@ -945,8 +948,10 @@ export function createMeasurementUI(
 
     if (sampleMode) {
       // Add sample point - would need actual canvas with image
+      const colorStr = (document.getElementById('sample-color') as HTMLInputElement).value
+      const color = parseColor(colorStr)
       manager.addSamplePoint(x, y, createCanvas(1, 1), {
-        color: (document.getElementById('sample-color') as HTMLInputElement).value,
+        color,
         size: parseInt((document.getElementById('sample-size') as HTMLInputElement).value),
       })
       updateUI()
@@ -1121,7 +1126,7 @@ export function createMeasurementUI(
 
   // Sample list click handlers
   sampleList.addEventListener('click', (e) => {
-    const deleteBtn = e.target.closest('.delete-btn')
+    const deleteBtn = (e.target as HTMLElement).closest('.delete-btn') as HTMLElement | null
     if (deleteBtn) {
       const id = deleteBtn.dataset.id
       if (id) {
@@ -1132,7 +1137,7 @@ export function createMeasurementUI(
   })
 
   resultsList.addEventListener('click', (e) => {
-    const deleteBtn = e.target.closest('.delete-btn')
+    const deleteBtn = (e.target as HTMLElement).closest('.delete-btn') as HTMLElement | null
     if (deleteBtn) {
       const id = deleteBtn.dataset.id
       if (id) {

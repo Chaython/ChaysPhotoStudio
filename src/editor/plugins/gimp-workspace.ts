@@ -73,7 +73,7 @@ export interface ToolOptionsLayout {
 
 export interface MenuConfig {
   menubar: MenuBarConfig[]
-  contextMenus: Record<string, ContextMenuConfig[]>
+  contextMenus: Record<string, MenuItemConfig[]>
 }
 
 export interface MenuBarConfig {
@@ -84,15 +84,15 @@ export interface MenuBarConfig {
 }
 
 export interface MenuItemConfig {
-  id: string
-  label: string
+  id?: string
+  label?: string
   shortcut?: string
   icon?: string
   action?: string
   submenu?: MenuItemConfig[]
   separator?: boolean
-  enabled: boolean
-  visible: boolean
+  enabled?: boolean
+  visible?: boolean
 }
 
 export interface ContextMenuConfig {
@@ -1168,39 +1168,6 @@ export class ThemeManager {
     }
   }
 
-  getCurrentTheme(): ThemeConfig {
-    return this.themes.get(this.currentTheme)!
-  }
-
-  setTheme(id: string): boolean {
-    if (!this.themes.has(id)) return false
-    this.currentTheme = id
-    this.applyTheme()
-    this.notify()
-    return true
-  }
-
-  getTheme(id: string): ThemeConfig | undefined {
-    return this.themes.get(id)
-  }
-
-  getAllThemes(): ThemeConfig[] {
-    return Array.from(this.themes.values())
-  }
-
-  addTheme(theme: ThemeConfig): void {
-    if (this.themes.has(theme.id)) throw new Error('Theme ID already exists')
-    this.themes.set(theme.id, theme)
-    this.notify()
-  }
-
-  removeTheme(id: string): boolean {
-    if (id === this.currentTheme) return false
-    const result = this.themes.delete(id)
-    if (result) this.notify()
-    return result
-  }
-
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
@@ -1243,7 +1210,6 @@ export class WorkspaceShortcutManager {
       'ctrl+1': 'view.100',
       'ctrl+shift+n': 'layer.new',
       'ctrl+j': 'layer.duplicate',
-      'ctrl+e': 'layer.merge-down',
       'ctrl+shift+e': 'layer.merge-visible',
       'v': 'tool.move',
       'm': 'tool.marquee-rect',
@@ -1283,7 +1249,6 @@ export class WorkspaceShortcutManager {
       'ctrl+shift+g': 'layer.ungroup',
       'ctrl+shift+]': 'layer.bring-forward',
       'ctrl+[': 'layer.send-backward',
-      'ctrl+shift+]': 'layer.bring-to-front',
       'ctrl+shift+[': 'layer.send-to-back',
     })
 

@@ -11,16 +11,17 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ControlRenderer } from '../toolbar/tool-options-bar'
-import { useEditorStore, defaultPanelState } from '../../store'
+import { useEditorStore } from '../../store'
 import { engine } from '../../engine/engine'
 import { getFlatComposite } from '../../engine/document'
 import { BLEND_MODES } from '../../constants/tools'
-import type { LayerKind, BlendMode } from '../../types'
+import type { LayerKind, BlendMode, Layer } from '../../types'
+import { createCanvas, ctx2d } from '../../utils/canvas'
 import { cn } from '@/lib/utils'
 import {
-  LayerMinus, LayerPlus, Layers, Eye, EyeOff, Lock, LockOpen, Copy, Trash2,
-  ChevronDown, ChevronUp, MoreVertical, Image, Mask, Minus, Plus, ArrowUp, ArrowDown,
-  Link, Link2, Brush, Blend, FolderOpen, FolderClosed, Opacity, Contrast,
+  Layers, Eye, EyeOff, Lock, LockOpen, Copy, Trash2,
+  ChevronDown, ChevronRight, MoreVertical, Image, Minus, Plus, ArrowUp, ArrowDown,
+  Link, Link2, Brush, Blend, FolderOpen, FolderClosed, Contrast, Circle,
 } from 'lucide-react'
 
 const BLEND_MODE_LABELS: Record<BlendMode, string> = Object.fromEntries(
@@ -31,8 +32,7 @@ export function GimpLayersDialog() {
   const layers = useEditorStore(s => s.layers)
   const activeLayerId = useEditorStore(s => s.activeLayerId)
   const selectedLayerIds = useEditorStore(s => s.selectedLayerIds)
-  const setActiveLayer = useEditorStore(s => s.setActiveLayer)
-  const setSelectedLayers = useEditorStore(s => s.setSelectedLayers)
+  const syncFromEngine = useEditorStore(s => s.syncFromEngine)
   const pushToast = useEditorStore(s => s.pushToast)
   const historyLabels = useEditorStore(s => s.historyLabels)
   const historyIndex = useEditorStore(s => s.historyIndex)
@@ -83,18 +83,8 @@ export function GimpLayersDialog() {
     const sourceId = e.dataTransfer.getData('text/plain') || dragSource
     if (!sourceId || sourceId === targetId) { handleDragEnd(); return }
 
-    // Move layer in stack
-    const sourceIdx = layers.findIndex(l => l.id === sourceId)
-    const targetIdx = layers.findIndex(l => l.id === targetId)
-    if (sourceIdx < 0 || targetIdx < 0) { handleDragEnd(); return }
-
-    const newLayers = [...layers]
-    const [moved] = newLayers.splice(sourceIdx, 1)
-    const insertAt = sourceIdx < targetIdx ? targetIdx - 1 : targetIdx
-    newLayers.splice(insertAt, 0, moved)
-
-    // Update store (would need engine method)
-    pushToast(`Moved ${moved.name}`, 'success')
+    // Move layer in stack - would need engine method
+    pushToast('Layer reorder not yet implemented', 'info')
     handleDragEnd()
   }
 
@@ -109,8 +99,8 @@ export function GimpLayersDialog() {
   }
 
   const toggleLink = (layerId: string) => {
-    const layer = getLayer(layerId)
-    if (layer) engine.setLayerProps(layerId, { linked: !layer.linked })
+    // Layer linking not yet implemented in engine
+    pushToast('Layer linking not yet implemented', 'info')
   }
 
   const duplicateLayer = (layerId: string) => {
@@ -123,34 +113,40 @@ export function GimpLayersDialog() {
   const deleteLayer = (layerId: string) => {
     if (layers.length <= 1) { pushToast('Cannot delete last layer', 'error'); return }
     engine.deleteLayer(layerId)
+    syncFromEngine()
   }
 
   const addLayer = () => {
-    engine.addLayer({ name: 'New Layer', kind: 'raster' })
+    engine.addLayerFromCanvas(createCanvas(512, 512), 'New Layer')
+    syncFromEngine()
   }
 
   const addGroup = () => {
-    engine.addLayer({ name: 'Layer Group', kind: 'group' })
+    // Would need engine.addGroup
+    pushToast('Add layer group not yet implemented', 'info')
   }
 
   const mergeDown = (layerId: string) => {
     const idx = layers.findIndex(l => l.id === layerId)
     if (idx > 0) {
       // Would need engine.mergeDown
-      pushToast('Merge down', 'success')
+      pushToast('Merge down not yet implemented', 'info')
     }
   }
 
   const addMask = (layerId: string) => {
-    pushToast('Add layer mask', 'success')
+    engine.addLayerMask(layerId)
+    syncFromEngine()
   }
 
   const applyMask = (layerId: string) => {
-    pushToast('Apply layer mask', 'success')
+    engine.deleteLayerMask(layerId, true)
+    syncFromEngine()
   }
 
   const deleteMask = (layerId: string) => {
-    pushToast('Delete layer mask', 'success')
+    engine.deleteLayerMask(layerId, false)
+    syncFromEngine()
   }
 
   const renderLayer = (layer: any, depth = 0) => {
@@ -160,7 +156,6 @@ export function GimpLayersDialog() {
     const children = getChildren(layer.id)
     const isExpanded = expandedGroups.has(layer.id)
     const locked = layer.locked
-    const linked = layer.linked
 
     const indent = depth * 20
 
@@ -203,14 +198,14 @@ export function GimpLayersDialog() {
             {locked ? <Lock size={10} /> : <LockOpen size={10} />}
           </button>
 
-          {/* Link */}
+          {/* Link (placeholder) */}
           <button
             onClick={e => { e.stopPropagation(); toggleLink(layer.id) }}
-            className={cn('p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/50', linked && 'text-primary')}
-            title={linked ? 'Unlink layer' : 'Link layer'}
-            aria-label={linked ? 'Unlink layer' : 'Link layer'}
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/50 opacity-50"
+            title="Link layer (not yet implemented)"
+            aria-label="Link layer (not yet implemented)"
           >
-            {linked ? <Link2 size={10} /> : <Link size={10} />}
+            <Link size={10} />
           </button>
 
           {/* Expand/Collapse for groups */}
@@ -276,7 +271,7 @@ export function GimpLayersDialog() {
 
           {/* Opacity */}
           <div className="w-24 flex items-center gap-1">
-            <Opacity size={10} className="text-muted-foreground" />
+            <Circle size={10} className="text-muted-foreground" />
             <Slider
               value={[layer.opacity ?? 1]}
               onValueChange={([v]) => engine.setLayerProps(layer.id, { opacity: v })}
@@ -321,10 +316,10 @@ export function GimpLayersDialog() {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-1.5 p-1.5 border-b border-border/40">
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={addLayer} title="New Layer">
-          <LayerPlus size={14} />
+          <Plus size={14} />
         </Button>
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={addGroup} title="New Layer Group">
-          <FolderPlus size={14} />
+          <FolderOpen size={14} />
         </Button>
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { if (activeLayerId) duplicateLayer(activeLayerId) }} title="Duplicate Layer" disabled={!activeLayerId}>
           <Copy size={14} />
@@ -333,9 +328,9 @@ export function GimpLayersDialog() {
           <Layers size={14} />
         </Button>
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { if (activeLayerId) addMask(activeLayerId) }} title="Add Layer Mask" disabled={!activeLayerId}>
-          <Mask size={14} />
+          <Image size={14} />
         </Button>
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { if (activeLayerId) deleteLayer(activeLayerId) }} title="Delete Layer" disabled={!activeLayerId || layers.length <= 1} className="text-destructive hover:text-destructive">
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => { if (activeLayerId) deleteLayer(activeLayerId) }} title="Delete Layer" disabled={!activeLayerId || layers.length <= 1}>
           <Trash2 size={14} />
         </Button>
         <div className="flex-1" />
@@ -348,7 +343,13 @@ export function GimpLayersDialog() {
           <div
             key={layer.id}
             role="listitem"
-            onClick={() => setActiveLayer(layer.id)}
+            onClick={() => {
+              const doc = engine.activeDoc
+              if (doc) {
+                doc.activeLayerId = layer.id
+                syncFromEngine()
+              }
+            }}
             onDoubleClick={e => { e.stopPropagation(); /* rename */ }}
             className={cn(
               'rounded-sm transition-colors',
