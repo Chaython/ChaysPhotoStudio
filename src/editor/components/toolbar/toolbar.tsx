@@ -17,7 +17,7 @@
 import { useMemo, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { TOOL_MAP } from '../../constants/tools'
-import { useEditorStore, defaultToolbarLayout } from '../../store'
+import { useEditorStore, defaultToolbarLayoutForPreset } from '../../store'
 import { formatCombo } from '../../shortcuts'
 import type { ToolDef, ToolId, ToolbarSection, ToolbarLayout } from '../../types'
 import {
@@ -27,6 +27,12 @@ import { cn } from '@/lib/utils'
 import { engine } from '../../engine/engine'
 import { setActiveTool } from '../../tools/registry'
 import { insertBefore, moveToGroup, pinToTop } from './layout-ops'
+
+/** Toolbox grid metrics (px). The button is 40px wide; the row gap and the
+ *  frame padding are added on top so a multi-column toolbox is never cut off. */
+const GRID_CELL_W = 40
+const GRID_GAP = 2
+const GRID_FRAME = 4
 
 /**
  * Workspace icon language. The tools and their behavior remain shared, but
@@ -180,8 +186,8 @@ function useToolbarLayout(): ToolbarLayout {
     if (layout && typeof layout === 'object' && 'mode' in layout) {
       return layout as ToolbarLayout
     }
-    // Default to rail mode with preset layout
-    return { mode: 'rail' as const, sections: defaultToolbarLayout(preset) }
+    // No customisation — the template default (multi-column grid for GIMP).
+    return defaultToolbarLayoutForPreset(preset)
   }, [layout, preset])
 }
 
@@ -218,7 +224,10 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
 
   const sections = layout.sections
   const isGridMode = layout.mode === 'grid'
-  const gridColumns = layout.gridColumns ?? 2
+  // A toolbox column holds one 40px button; the column gap and the frame
+  // padding are added on top so the grid is never clipped.
+  const gridColumns = Math.max(1, Math.min(4, layout.gridColumns ?? 2))
+  const gridWidth = gridColumns * GRID_CELL_W + (gridColumns - 1) * GRID_GAP + GRID_FRAME * 2
 
   // ---------- drag & drop (desktop rail only) ----------
   const [dragSrc, setDragSrc] = useState<ToolId | null>(null)
@@ -338,11 +347,15 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
     return (
       <div
         {...gridDnd}
+        data-toolbar-mode="grid"
         className={cn(
-          'flex bg-panel border-r flex-shrink-0 z-20 transition-all',
-          'flex-col w-12 h-full',
+          'flex bg-panel flex-shrink-0 z-20 transition-all flex-col h-full',
+          // the embedded GIMP toolbox sits in its own narrow column; the
+          // standalone grid gets the usual separator
+          embedded ? 'overflow-y-auto overflow-x-hidden' : 'border-r',
           dragActive && 'ring-1 ring-primary/60'
         )}
+        style={{ width: gridWidth }}
         role="toolbar"
         aria-label="Tools"
       >
@@ -350,7 +363,7 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
           <div key={`row-${rowIdx}`} className="flex flex-row gap-0.5 px-1 py-0.5">
             {Array.from({ length: gridColumns }, (_, colIdx) => {
               const sec = gridRows.get(rowIdx)?.get(colIdx)
-              if (!sec) return <div key={`empty-${rowIdx}-${colIdx}`} className="w-10 h-10" />
+              if (!sec) return <div key={`empty-${rowIdx}-${colIdx}`} className="w-10 h-9" />
               const key = sectionKey(sec)
               const hovered = !!hoverKey && hoverKey === key && dragSrc && dragSrc !== key
               if (sec.kind === 'single') {
@@ -455,6 +468,7 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
   return (
     <div
       {...railDnd}
+      data-toolbar-mode="rail"
       className={cn(
         'flex bg-panel border-r flex-shrink-0 z-20 transition-all',
         compact

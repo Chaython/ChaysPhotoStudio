@@ -395,7 +395,9 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   --muted-foreground: #b3b3b3;
 }
 .zphoto-photoshop-workspace [data-native-module="tools"] > :first-child { display: none; }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] { width: 48px; }
+/* the narrow single-column rail only — the GIMP toolbox is a multi-column
+   grid and keeps its own width (see [data-toolbar-mode="grid"]) */
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) { width: 48px; }
 .zphoto-photoshop-workspace [data-native-module="tool-options"] > :first-child { display: none; }
 .zphoto-photoshop-workspace [data-native-module="tool-options"] { min-height: 36px; }
 .zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"][aria-selected="true"] { box-shadow: inset 0 -1px var(--primary); }
@@ -406,11 +408,16 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
 .zphoto-photoshop-workspace [role="menubar"] { min-height: 30px; }
 .zphoto-photoshop-workspace [data-native-module="documents"] [role="tablist"] { height: 31px; }
 .zphoto-photoshop-workspace [data-native-module="documents"] [role="tab"][aria-selected="true"] { border-top-color: transparent; background: var(--workspace); }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] { width: 43px; }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] { max-height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]::-webkit-scrollbar { display: none; }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] > div { margin-bottom: 0; border-bottom: 0; padding: 1px; }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"] button { width: 38px; height: 34px; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) { width: 43px; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) { max-height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"])::-webkit-scrollbar { display: none; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) > div { margin-bottom: 0; border-bottom: 0; padding: 1px; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) button { width: 38px; height: 34px; }
+/* multi-column toolbox (GIMP): the grid owns its width, so keep the frame
+   padding and the natural button size instead of squeezing it into a rail */
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"][data-toolbar-mode="grid"] { max-height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"][data-toolbar-mode="grid"]::-webkit-scrollbar { display: none; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"][data-toolbar-mode="grid"] > div { margin-bottom: 0; border-bottom: 0; padding: 1px; }
 .zphoto-photoshop-workspace [data-native-module="tool-options"] [role="group"] { min-height: 34px; padding-block: 4px; column-gap: 9px; }
 .zphoto-photoshop-workspace [data-photoshop-dock] { font-size: 11px; }
 .zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"] { min-height: 30px; }

@@ -730,8 +730,6 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
     const sections = sanitizeToolbarLayout(groups.map(ids => ids.length === 1
       ? { kind: 'single' as const, tool: ids[0] }
       : { kind: 'group' as const, tools: ids }))
-    // GIMP preset uses grid mode (2 columns) by default — the grid config is
-    // applied by the toolbar component based on the active workspace preset.
     return sections
   }
   const map = new Map<number, ToolId[]>()
@@ -746,6 +744,37 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
         ? [{ kind: 'single', tool: ids[0] }]
         : [{ kind: 'group', tools: ids }]
     )
+}
+
+/** Number of toolbox columns the GIMP template opens with. */
+export const DEFAULT_GIMP_TOOLBOX_COLUMNS = 2
+
+/** Default toolbox layout of a workspace template.
+ *
+ *  GIMP ships a *multi-column* toolbox (a grid of tool groups, like GIMP 3),
+ *  every other template uses the classic single-column rail. `null` in the
+ *  store means "no customisation — use this". */
+export function defaultToolbarLayoutForPreset(preset: WorkspacePreset = 'classic'): ToolbarLayout {
+  const sections = defaultToolbarLayout(preset)
+  return preset === 'gimp'
+    ? { mode: 'grid', gridColumns: DEFAULT_GIMP_TOOLBOX_COLUMNS, gridRowHeight: 1, sections }
+    : { mode: 'rail', sections }
+}
+
+/** Upgrade a stored toolbox layout to the shape the active template expects.
+ *
+ *  Layouts saved before the multi-column toolbox existed have no
+ *  `gridColumns`; for GIMP those are migrated to the grid layout. A layout
+ *  that carries an explicit column count is a deliberate user choice and is
+ *  kept as-is. */
+export function normalizeToolbarForPreset(
+  layout: ToolbarLayout | null, preset: WorkspacePreset,
+): ToolbarLayout | null {
+  if (!layout) return null
+  if (preset === 'gimp' && layout.mode === 'rail' && layout.gridColumns === undefined) {
+    return { ...layout, mode: 'grid', gridColumns: DEFAULT_GIMP_TOOLBOX_COLUMNS }
+  }
+  return layout
 }
 
 /** sanitize a persisted/edited layout: unknown ids dropped, every tool
@@ -1202,7 +1231,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
   shortcutOverrides: loadActiveWorkspaceShortcutOverrides(),
   shortcutBackupAvailable: !!loadPersonalShortcutBackup(),
-  toolbarLayout: readWorkspaceRecord(loadWorkspacePreset()) ? readWorkspaceRecord(loadWorkspacePreset())!.toolbar : loadToolbarLayout(),
+  toolbarLayout: normalizeToolbarForPreset(
+    readWorkspaceRecord(loadWorkspacePreset()) ? readWorkspaceRecord(loadWorkspacePreset())!.toolbar : loadToolbarLayout(),
+    loadWorkspacePreset(),
+  ),
   savedLayouts: readSavedLayouts(),
 
   setWorkspacePreset: (preset) => set(s => {
@@ -1228,7 +1260,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const panels = previous?.panels
       ? { ...defaultPanelState(), ...previous.panels }
       : isInspectorPreset(preset) ? presetPanelState(preset, defaultPanelState()) : defaultPanelState()
-    const toolbarLayout = previous ? previous.toolbar : null
+    // null means "no customisation" — the toolbar then falls back to the
+    // template default (a multi-column grid for GIMP, the rail elsewhere).
+    const toolbarLayout = normalizeToolbarForPreset(previous?.toolbar ?? null, preset)
     try { localStorage.setItem(WORKSPACE_PRESET_KEY, preset) } catch { /* noop */ }
     persistPanelLayout(panels)
     persistToolbarLayout(toolbarLayout)
@@ -1257,8 +1291,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         toolbar: s.toolbarLayout 
           ? { ...s.toolbarLayout, sections: s.toolbarLayout.sections.map(section =>
               section.kind === 'single' ? { ...section } : { ...section, tools: [...section.tools] }) }
-          : { mode: 'rail' as const, sections: defaultToolbarLayout(s.workspacePreset).map(section =>
-              section.kind === 'single' ? { ...section } : { ...section, tools: [...section.tools] }) }
+          : (() => {
+              const fallback = defaultToolbarLayoutForPreset(s.workspacePreset)
+              return { ...fallback, sections: fallback.sections.map(section =>
+                section.kind === 'single' ? { ...section } : { ...section, tools: [...section.tools] }) }
+            })()
       } : {}),
     }
     const savedLayouts = [...s.savedLayouts.filter(x => x.name !== cleanName), layout]
