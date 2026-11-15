@@ -203,7 +203,7 @@ export const TOOL_DEFS: ToolDef[] = [
   { id: 'handle-transform', label: 'Handle Transform', group: 3, shortcut: 'Shift+L', icon: 'CornerUpLeft', cursor: 'crosshair', requiresLayer: true,
     defaults: { handles: 4, interpolation: 'cubic', clipping: 'adjust' }, options: [
       { key: 'handles', label: 'Handle Count', type: 'select', options: [{ label: '4 Corners', value: 4 }, { label: '8 Handles', value: 8 }] },
-      { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { key: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
+      { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { label: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
   { id: 'flip', label: 'Flip', group: 3, shortcut: 'Shift+F', icon: 'FlipHorizontal2', cursor: 'crosshair', requiresLayer: true,

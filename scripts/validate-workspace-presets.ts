@@ -61,12 +61,8 @@ assert.equal(isInspectorPreset('photoshop'), true)
 
 // --- Toolbar templates: every tool exactly once --------------------------------
 const allToolIds = TOOL_DEFS.map(def => def.id)
-function layoutSections(layout: ToolbarSection[] | { mode: string; sections: ToolbarSection[]; gridColumns?: number }): ToolbarSection[] {
-  if (Array.isArray(layout)) return layout
-  return layout.sections
-}
-function layoutTools(layout: ToolbarSection[] | { mode: string; sections: ToolbarSection[]; gridColumns?: number }): ToolId[] {
-  return layoutSections(layout).flatMap(section => section.kind === 'single' ? [section.tool] : section.tools)
+function layoutTools(sections: ToolbarSection[]): ToolId[] {
+  return sections.flatMap(section => section.kind === 'single' ? [section.tool] : section.tools)
 }
 for (const preset of presetList) {
   const layout = defaultToolbarLayout(preset)
@@ -82,7 +78,7 @@ for (const preset of presetList) {
     ], 'Illustrator primary rail must prioritize vector selection, drawing, type and navigation tools')
   }
   // The sanitizer is the authority on structure; templates must already comply.
-  assert.deepEqual(sanitizeToolbarLayout(layoutSections(layout)), layoutSections(layout),
+  assert.deepEqual(sanitizeToolbarLayout(layout), layout,
     `${preset}: template must survive sanitization unchanged`)
 }
 // Classic groups by ToolDef group number (stable within each group).

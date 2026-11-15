@@ -522,7 +522,7 @@ export function defaultWorkspaceShortcutProfile(preset: WorkspacePreset): Record
       // Image menu
       cropToSelection: 'ctrl+shift+x', canvasSize: 'ctrl+alt+c', printSize: 'ctrl+alt+p',
       // Colors menu
-      levels: 'ctrl+l', curves: 'ctrl+shift+m', hueSaturation: 'ctrl+u', colorBalance: 'ctrl+b', brightnessContrast: 'ctrl+shift+b', desaturate: 'ctrl+shift+d', invert: 'ctrl+i', posterize: 'ctrl+shift+p', threshold: 'ctrl+shift+t',
+      levels: 'ctrl+l', curves: 'ctrl+shift+m', hueSaturation: 'ctrl+u', colorBalance: 'ctrl+b', brightnessContrast: 'ctrl+shift+b', desaturate: 'ctrl+shift+d', posterize: 'ctrl+shift+p', threshold: 'ctrl+shift+t',
       // Filters menu
       blur: 'shift+u', enhance: 'shift+e', noise: 'shift+n', edgeDetect: 'ctrl+shift+e', generic: 'ctrl+f', repeatLast: 'ctrl+f',
       // Tools - selection
@@ -610,7 +610,7 @@ function savePersonalShortcutBackup(overrides: Record<string, string>) {
 /** default toolbar: ToolDef groups → sections, preserving TOOL_DEFS order.
  *  Application-inspired templates reorder the same registered tools into
  *  familiar flyout groupings; nothing is removed from any template. */
-export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): ToolbarSection[] | ToolbarLayout {
+export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): ToolbarSection[] {
   // Flyout-group templates by workspace. Every registered editor tool stays
   // accessible exactly once, with new tools appended automatically by the sanitizer.
   const flyoutTemplates: Partial<Record<WorkspacePreset, ToolId[][]>> = {
@@ -730,10 +730,8 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
     const sections = sanitizeToolbarLayout(groups.map(ids => ids.length === 1
       ? { kind: 'single' as const, tool: ids[0] }
       : { kind: 'group' as const, tools: ids }))
-    // GIMP preset uses grid mode (2 columns) by default
-    if (preset === 'gimp') {
-      return { mode: 'grid', sections, gridColumns: 2 }
-    }
+    // GIMP preset uses grid mode (2 columns) by default — the grid config is
+    // applied by the toolbar component based on the active workspace preset.
     return sections
   }
   const map = new Map<number, ToolId[]>()
