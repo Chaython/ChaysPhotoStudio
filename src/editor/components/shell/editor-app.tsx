@@ -22,6 +22,7 @@ import { startAutoSave } from '../../engine/autosave'
 import { dataUrlToCanvas } from '../../image-ops'
 import { fileToCanvas } from '../../utils/canvas'
 import { dispatchEditorKey, getViewport, setCursorCallbacks, setVirtualInputState } from '../../engine/render'
+import { clearChunkReloadGuard } from '../../utils/chunk-recovery'
 import { TOOL_DEFS } from '../../constants/tools'
 import { setActiveTool } from '../../tools/registry'
 import type { ToolId } from '../../types'
@@ -48,6 +49,9 @@ export function EditorApp() {
   const [dropping, setDropping] = useState(false)
 
   useKeyboardShortcuts()
+
+  // The editor booted: a chunk failure from now on may recover again.
+  useEffect(() => { clearChunkReloadGuard() }, [])
 
   // Keep system-image paste mounted even on the Welcome screen. CanvasWorkspace
   // only exists while a document is open, so a listener there can never create

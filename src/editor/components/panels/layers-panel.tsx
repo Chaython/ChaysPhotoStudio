@@ -32,7 +32,7 @@ export function LayersPanel() {
   const [contextPreferences, updateContextPreferences] = useLayerContextMenuPreferences()
   const [editingContextMenu, setEditingContextMenu] = useState(false)
   const dragId = useRef<string | null>(null)
-  const dragOverArtboard = useRef<string | null>(null)
+  const [dragOverArtboard, setDragOverArtboard] = useState<string | null>(null)
   const soloBackup = useRef<Record<string, boolean> | null>(null)
 
   const doc = engine.activeDoc
@@ -239,14 +239,14 @@ export function LayersPanel() {
               key={ab.id}
               className={cn(
                 'flex items-center gap-2 px-2 py-1.5 border border-border/30 rounded',
-                dragOverArtboard.current === ab.id ? 'bg-accent/50 ring-1 ring-accent' : 'hover:bg-accent/20',
+                dragOverArtboard === ab.id ? 'bg-accent/50 ring-1 ring-accent' : 'hover:bg-accent/20',
                 ab.id === doc?.activeArtboardId ? 'bg-accent/20' : ''
               )}
-              onDragOver={e => { e.preventDefault(); dragOverArtboard.current = ab.id }}
-              onDragLeave={() => dragOverArtboard.current = null}
+              onDragOver={e => { e.preventDefault(); setDragOverArtboard(ab.id) }}
+              onDragLeave={() => setDragOverArtboard(null)}
               onDrop={e => {
                 e.preventDefault()
-                dragOverArtboard.current = null
+                setDragOverArtboard(null)
                 if (dragId.current && dragId.current !== ab.id) {
                   engine.setLayerProps(dragId.current, { artboardId: ab.id }, { label: `Add to Artboard ${ab.name}` })
                   dragId.current = null

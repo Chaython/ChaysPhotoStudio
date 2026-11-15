@@ -44,13 +44,13 @@ import { getGeglOperation } from './gegl-ops'
 import { listProcedures, getProcedure, runProcedure as runProcProcedure } from './gimp-procedural'
 
 // Check if we should use native GIMP or browser fallback
-function useNativeGimp(): boolean {
+function isNativeGimpAvailable(): boolean {
   return gimpAvailable()
 }
 
 // Unified procedure runner - tries native GIMP first, falls back to browser implementation
 export async function runGimpProcedure(name: string, params: Record<string, any>): Promise<GimpRunResult> {
-  if (useNativeGimp()) {
+  if (isNativeGimpAvailable()) {
     try {
       // Convert params to native format
       const nativeParams: Record<string, string | number | boolean> = {}
@@ -86,14 +86,14 @@ export async function runGimpProcedure(name: string, params: Record<string, any>
 
 // List all available procedures (native + browser)
 export async function listAllProcedures(): Promise<string[]> {
-  const native = useNativeGimp() ? (await gimpListProcedures()).procedures : []
+  const native = isNativeGimpAvailable() ? (await gimpListProcedures()).procedures : []
   const browser = listProcedures().map(p => p.name)
   return [...new Set([...native, ...browser])].sort()
 }
 
 // Get procedure info (native + browser)
 export async function getProcedureInfo(name: string): Promise<GimpProcedureInfo | undefined> {
-  if (useNativeGimp()) {
+  if (isNativeGimpAvailable()) {
     try {
       return await gimpInspectProcedure(name)
     } catch { /* fall through */ }

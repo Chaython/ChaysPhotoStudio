@@ -149,6 +149,8 @@ jobs:
           test -f site/index.html
           test -d site/_next
           test -f site/.nojekyll
+          test -f site/sw-precache.json
+          node scripts/validate-sw-precache.mjs site
           grep -q '/ChaysPhotoStudio/_next/' site/index.html
 
       - name: Upload Pages artifact

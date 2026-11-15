@@ -308,6 +308,8 @@ jobs:
           node -e "const fs=require('fs'); const h=fs.readFileSync('build/webapp-export/index.html','utf8'); if (!/(?:src|href)=[\"']\\/_next\\//.test(h) || /(?:src|href)=[\"']\\.\\/_next\\//.test(h)) process.exit(1)"
           test -f build/webapp-export-pages/index.html
           test -f build/webapp-export-pages/.nojekyll
+          test -f build/webapp-export-pages/sw-precache.json
+          node scripts/validate-sw-precache.mjs build/webapp-export-pages
           grep -q '/ChaysPhotoStudio/_next/' build/webapp-export-pages/index.html
           node -e "const fs=require('fs'); const m=JSON.parse(fs.readFileSync('./build/webapp-export-pages/manifest.webmanifest','utf8')); if(m.start_url!=='/ChaysPhotoStudio/' || m.scope!=='/ChaysPhotoStudio/' || !m.icons.every(i=>i.src.startsWith('/ChaysPhotoStudio/'))) process.exit(1)"
           test -f build/extension/unpacked/manifest.json

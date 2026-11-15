@@ -95,6 +95,22 @@ for (const f of flavors) {
   fs.rmSync(f.out, { recursive: true, force: true })
   fs.cpSync(path.join(COPY, 'out'), f.out, { recursive: true })
 
+  // The PWA must work offline like the packaged webview, so the service
+  // worker needs the complete asset list of this exact build. The manifest
+  // is versioned by content hash: a new deployment precaches a fresh asset
+  // set and drops the stale one instead of mixing builds.
+  const precache = spawnSync(
+    process.execPath,
+    [path.join(ROOT, 'scripts/generate-sw-precache.mjs'), f.out],
+    { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' },
+  )
+  if (precache.stdout) process.stdout.write(precache.stdout)
+  if (precache.stderr) process.stderr.write(precache.stderr)
+  if (precache.status !== 0) {
+    console.error('export-webapp: service-worker precache manifest generation failed')
+    process.exit(1)
+  }
+
   if (f.label === 'pages') {
     // GitHub Pages serves the app from /ChaysPhotoStudio/. Keep the PWA
     // manifest scoped to that sub-path rather than sending installed launches

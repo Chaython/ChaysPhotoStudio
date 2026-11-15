@@ -1353,8 +1353,14 @@ export class GeglGraph {
   private async applyFlip(input: HTMLCanvasElement, horizontal: boolean, vertical: boolean): Promise<HTMLCanvasElement> {
     const canvas = createCanvas(input.width, input.height)
     const ctx = ctx2d(canvas)
-    if (horizontal) ctx.scale(-1, 1), ctx.translate(-canvas.width, 0)
-    if (vertical) ctx.scale(1, -1), ctx.translate(0, -canvas.height)
+    if (horizontal) {
+      ctx.scale(-1, 1)
+      ctx.translate(-canvas.width, 0)
+    }
+    if (vertical) {
+      ctx.scale(1, -1)
+      ctx.translate(0, -canvas.height)
+    }
     ctx.drawImage(input, 0, 0)
     return canvas
   }

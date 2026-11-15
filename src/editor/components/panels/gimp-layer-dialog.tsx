@@ -20,7 +20,7 @@ import { createCanvas, ctx2d } from '../../utils/canvas'
 import { cn } from '@/lib/utils'
 import {
   Layers, Eye, EyeOff, Lock, LockOpen, Copy, Trash2,
-  ChevronDown, ChevronRight, MoreVertical, Image, Minus, Plus, ArrowUp, ArrowDown,
+  ChevronDown, ChevronRight, MoreVertical, Image as ImageIcon, Minus, Plus, ArrowUp, ArrowDown,
   Link, Link2, Brush, Blend, FolderOpen, FolderClosed, Contrast, Circle,
 } from 'lucide-react'
 
@@ -288,7 +288,7 @@ export function GimpLayersDialog() {
              layer.kind === 'adjustment' ? <Contrast size={12} /> :
              layer.kind === 'text' ? <Brush size={12} /> :
              layer.kind === 'shape' ? <Blend size={12} /> :
-             <Image size={12} />}
+             <ImageIcon size={12} />}
           </span>
 
           {/* Menu */}
@@ -328,7 +328,7 @@ export function GimpLayersDialog() {
           <Layers size={14} />
         </Button>
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { if (activeLayerId) addMask(activeLayerId) }} title="Add Layer Mask" disabled={!activeLayerId}>
-          <Image size={14} />
+          <ImageIcon size={14} />
         </Button>
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => { if (activeLayerId) deleteLayer(activeLayerId) }} title="Delete Layer" disabled={!activeLayerId || layers.length <= 1}>
           <Trash2 size={14} />

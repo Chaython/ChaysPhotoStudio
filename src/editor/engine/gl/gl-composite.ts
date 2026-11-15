@@ -190,8 +190,8 @@ uniform vec3 uMask; // 1.0 for targeted, 0.0 for protected
 void main() {
   vec4 c = texture2D(uSrc, vUV);
   vec3 gray = vec3(dot(c.rgb, vec3(0.299, 0.587, 0.114)));
-  vec3 out = mix(gray, c.rgb, uMask);
-  gl_FragColor = vec4(out, c.a);
+  vec3 mixed = mix(gray, c.rgb, uMask);
+  gl_FragColor = vec4(mixed, c.a);
 }
 `
 

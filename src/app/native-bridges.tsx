@@ -12,6 +12,7 @@
 // ============================================================
 import { useEffect } from 'react'
 import { IMPORT_ACCEPT } from '@/editor/formats'
+import { isChunkLoadError, reloadOnceForChunkError } from '@/editor/utils/chunk-recovery'
 
 export function AppBridges() {
   useEffect(() => {
@@ -40,7 +41,14 @@ export function AppBridges() {
         && /^https?:$/.test(location.protocol)) {
       // relative: resolves correctly on root hosting and sub-path
       // hosting (GitHub Pages) alike; the worker derives its own BASE.
-      const register = () => { navigator.serviceWorker.register('sw.js').catch(() => {}) }
+      // `updateViaCache: 'none'` keeps the worker script itself out of the
+      // HTTP cache, so a new deployment is picked up on the next launch.
+      const register = () => {
+        navigator.serviceWorker
+          .register('sw.js', { updateViaCache: 'none' })
+          .then(reg => { void reg.update() })
+          .catch(() => {})
+      }
       if (document.readyState === 'complete') register()
       else window.addEventListener('load', register, { once: true })
     }
@@ -119,7 +127,24 @@ export function AppBridges() {
         // ignore
       }
     }
-    return () => tauriPollCleanup?.()
+    // ---- 3. chunk-load recovery ----
+    // A stale service-worker cache can leave the running app asking for a
+    // chunk that no longer exists. Reload once so the shell, the worker
+    // cache and the chunk list agree again.
+    const onWindowError = (event: ErrorEvent) => {
+      if (isChunkLoadError(event.error ?? event.message)) reloadOnceForChunkError()
+    }
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isChunkLoadError(event.reason)) reloadOnceForChunkError()
+    }
+    window.addEventListener('error', onWindowError)
+    window.addEventListener('unhandledrejection', onUnhandledRejection)
+
+    return () => {
+      window.removeEventListener('error', onWindowError)
+      window.removeEventListener('unhandledrejection', onUnhandledRejection)
+      tauriPollCleanup?.()
+    }
   }, [])
 
   return null

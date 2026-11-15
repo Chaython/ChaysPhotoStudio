@@ -93,7 +93,9 @@
     "artboards-offcanvas:validate": "node --import ./scripts/runner.mjs --experimental-strip-types scripts/validate-artboards-offcanvas.ts",
     "paint-into-saved-channel:validate": "node --import ./scripts/runner.mjs --experimental-strip-types scripts/validate-paint-into-saved-channel.ts",
     "atn-channel-target:validate": "node --import ./scripts/runner.mjs --experimental-strip-types scripts/validate-atn-channel-target.ts",
-    "artboard-layer-assignment:validate": "node --import ./scripts/runner.mjs --experimental-strip-types scripts/validate-artboard-layer-assignment.ts"
+    "artboard-layer-assignment:validate": "node --import ./scripts/runner.mjs --experimental-strip-types scripts/validate-artboard-layer-assignment.ts",
+    "sw:precache": "node scripts/generate-sw-precache.mjs build/webapp-export-pages",
+    "sw:validate": "node scripts/validate-sw-precache.mjs build/webapp-export-pages"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

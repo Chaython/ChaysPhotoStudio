@@ -39,9 +39,10 @@ export function listScriptFu(): ScriptFuScript[] {
 }
 
 // Built-in Script-Fu compatible procedures (Scheme-callable)
-const scriptFuProcedures = new Map<string, Function>()
+type ScriptFuProcedure = (...args: any[]) => any
+const scriptFuProcedures = new Map<string, ScriptFuProcedure>()
 
-export function registerScriptFuProcedure(name: string, fn: Function) {
+export function registerScriptFuProcedure(name: string, fn: ScriptFuProcedure) {
   scriptFuProcedures.set(name, fn)
 }
 

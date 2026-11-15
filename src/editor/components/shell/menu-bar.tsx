@@ -61,11 +61,6 @@ function PwaInstallButton() {
   const [deferred, setDeferred] = useState<PromiseEvent | null>(null)
   const [prompted, setPrompted] = useState(false)
 
-  // If already running standalone (installed), don't show the button.
-  if (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches) {
-    return null
-  }
-
   const onBeforeInstallPrompt = (e: Event) => {
     // Chrome fires beforeinstallprompt; prevent the mini-infobar so we can
     // surface our own button instead.
@@ -88,6 +83,11 @@ function PwaInstallButton() {
       window.removeEventListener('appinstalled', onAppInstalled)
     }
   }, [])
+
+  // If already running standalone (installed), don't show the button.
+  if (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches) {
+    return null
+  }
 
   const install = async () => {
     if (!deferred) return

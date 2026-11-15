@@ -2,7 +2,6 @@
 // GIMP-style Tool Options panel
 // Replicates GIMP 3.0's tool options dock with accordion sections
 
-import { useMemo } from 'react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ControlRenderer } from '../toolbar/tool-options-bar'
 import { useEditorStore } from '../../store'
@@ -87,15 +86,12 @@ export function GimpToolOptionsPanel() {
     : allOptions
 
   // Group options by section (simplified - could be enhanced)
-  const optionGroups = useMemo(() => {
-    const groups: Record<string, typeof allOptions> = {}
-    for (const opt of relevantOptions) {
-      const group = getOptionGroup(opt.key)
-      if (!groups[group]) groups[group] = []
-      groups[group].push(opt)
-    }
-    return groups
-  }, [relevantOptions])
+  const optionGroups: Record<string, typeof allOptions> = {}
+  for (const opt of relevantOptions) {
+    const group = getOptionGroup(opt.key)
+    if (!optionGroups[group]) optionGroups[group] = []
+    optionGroups[group].push(opt)
+  }
 
   return (
     <div className="space-y-2 p-1.5">
