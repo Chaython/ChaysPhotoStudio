@@ -19,6 +19,12 @@ import { cn } from '@/lib/utils'
 import { ADJUSTMENT_ICONS } from '../../constants/tools'
 import { FancyScroll } from '@/components/ui/fancy-scroll'
 
+/** Sentinel for the "layer belongs to no artboard" option.
+ *
+ * Radix's Select rejects an empty item value, so the option cannot use
+ * `value=""` like the native <select> controls elsewhere do. */
+const ALL_ARTBOARDS_VALUE = '__all_artboards__'
+
 export function LayersPanel() {
   const layers = useEditorStore(s => s.layers)
   const activeLayerId = useEditorStore(s => s.activeLayerId)
@@ -446,17 +452,21 @@ function LayerRow({ meta, tick, active, primary, renaming, renameValue, onActiva
                 {meta.locked && <Icons.Lock size={10} className="text-muted-foreground shrink-0" />}
                 {artboards.length > 0 && (
                   <Select
-                    value={meta.artboardId ?? ''}
+                    value={meta.artboardId ?? ALL_ARTBOARDS_VALUE}
                     onValueChange={v => {
                       if (!doc) return
-                      engine.setLayerProps(meta.id, { artboardId: v || undefined }, { label: `Artboard ${v || 'all'}` })
+                      const artboardId = v === ALL_ARTBOARDS_VALUE ? undefined : v
+                      engine.setLayerProps(meta.id, { artboardId }, { label: `Artboard ${artboardId ?? 'all'}` })
                     }}
                   >
                     <SelectTrigger className="h-6 w-20 px-1 py-0 text-[9px]">
                       <SelectValue>{activeArtboard?.name ?? 'All'}</SelectValue>
                     </SelectTrigger>
                     <SelectContent className="z-50 min-w-[24px] text-[10px]">
-                      <SelectItem value="" className="text-[10px]">All</SelectItem>
+                      {/* Radix rejects an empty item value ("must have a value prop
+                          that is not an empty string"), so the "no artboard"
+                          option uses a sentinel that maps back to undefined. */}
+                      <SelectItem value={ALL_ARTBOARDS_VALUE} className="text-[10px]">All</SelectItem>
                       {artboards.map(a => (
                         <SelectItem key={a.id} value={a.id} className="text-[10px]">{a.name}</SelectItem>
                       ))}

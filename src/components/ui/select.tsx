@@ -6,10 +6,30 @@ import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Radix throws when a Select.Item receives an empty-string value
+ * ("A <Select.Item /> must have a value prop that is not an empty string").
+ * The items are mounted even while the dropdown is closed, so such a throw
+ * takes the whole editor down instead of only breaking the dropdown.
+ *
+ * Empty item values are therefore rendered with this sentinel and mapped
+ * back to "" when the item gets selected.
+ */
+const EMPTY_ITEM_VALUE = "__empty_select_item__"
+
 function Select({
+  onValueChange,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+  return (
+    <SelectPrimitive.Root
+      data-slot="select"
+      {...props}
+      onValueChange={value =>
+        onValueChange?.(value === EMPTY_ITEM_VALUE ? "" : value)
+      }
+    />
+  )
 }
 
 function SelectGroup({
@@ -101,11 +121,13 @@ function SelectLabel({
 function SelectItem({
   className,
   children,
+  value,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Item>) {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
+      value={value === "" ? EMPTY_ITEM_VALUE : value}
       className={cn(
         "focus:bg-accent focus:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
         className
