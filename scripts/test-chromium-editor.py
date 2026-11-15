@@ -167,8 +167,12 @@ def run_test(name, fn):
 
 def main():
     with sync_playwright() as playwright:
-        executable = (shutil.which("google-chrome") or shutil.which("google-chrome-stable")
-                      or shutil.which("chromium"))
+        # CHAYS_E2E_BROWSER lets local runs point at any Chromium build
+        # (Edge, Chrome for Testing, ...); CI keeps using google-chrome.
+        executable = (os.getenv("CHAYS_E2E_BROWSER") or shutil.which("google-chrome")
+                      or shutil.which("google-chrome-stable")
+                      or shutil.which("chromium") or shutil.which("chromium-browser")
+                      or shutil.which("msedge") or shutil.which("microsoft-edge"))
         if not executable:
             raise RuntimeError("Chromium/Google Chrome is not installed on the CI runner")
         print(f"Launching real Chromium: {executable}", flush=True)
@@ -325,13 +329,13 @@ def main():
                     first.setToolbarLayout([{kind:'single', tool:'eraser'}])
                     first.setWorkspacePreset('classic')
                     const restored = window.__zphotoStore.getState()
-                    const classic = restored.toolbarLayout?.[0]?.tool === 'brush' && restored.panels.dockWidth === 340
+                    const classic = restored.toolbarLayout?.sections?.[0]?.tool === 'brush' && restored.panels.dockWidth === 340
                     restored.setWorkspacePreset('photoshop')
-                    const photoshop = window.__zphotoStore.getState().toolbarLayout?.[0]?.tool === 'eraser'
+                    const photoshop = window.__zphotoStore.getState().toolbarLayout?.sections?.[0]?.tool === 'eraser'
                     const importedName = window.__zphotoStore.getState().importNamedLayout(
                         exported.replace('"Test tools"', '"Imported tools"'))
                     window.__zphotoStore.getState().applyNamedLayout(importedName)
-                    const applied = window.__zphotoStore.getState().toolbarLayout?.[0]?.tool === 'brush'
+                    const applied = window.__zphotoStore.getState().toolbarLayout?.sections?.[0]?.tool === 'brush'
                     const untouched = window.__zphotoStore.getState().panels.dockWidth !== 340
                     return {isolated, classic, photoshop, applied, untouched}
                 }""")
@@ -377,7 +381,7 @@ def main():
                 page.wait_for_function("() => !!window.__zphotoStore")
                 check(store(page, "s.workspacePreset") == "photoshop",
                       "reload forgot workspace selection")
-                check(store(page, "s.toolbarLayout?.[0]?.tool") == "brush",
+                check(store(page, "s.toolbarLayout?.sections?.[0]?.tool") == "brush",
                       "reload forgot imported tool layout")
                 check(store(page, "s.panels.rightTab") == "history",
                       "reload forgot the active Photoshop panel tab")
@@ -396,7 +400,7 @@ def main():
                 page.evaluate("() => window.__zphotoStore.getState().setWorkspacePreset('classic')")
                 check(store(page, "s.panels.dockWidth") == 340,
                       "switching after reload lost Classic's panel width")
-                check(store(page, "s.toolbarLayout?.[0]?.tool") == "brush",
+                check(store(page, "s.toolbarLayout?.sections?.[0]?.tool") == "brush",
                       "switching after reload lost Classic's toolbar")
                 # Reset applies the active workspace's initial template only;
                 # named presets and the other workspace must remain intact.
@@ -791,7 +795,7 @@ def main():
                     s.setDockWidth(365)
                     s.setToolbarLayout([{kind:'single', tool:'eraser'}])
                     const classicChanged = window.__zphotoStore.getState().panels.dockWidth === 365 &&
-                                          window.__zphotoStore.getState().toolbarLayout?.[0]?.tool === 'eraser'
+                                          window.__zphotoStore.getState().toolbarLayout?.sections?.[0]?.tool === 'eraser'
                     s.setWorkspacePreset('photoshop')
                     return {unlocked, classicChanged}
                 }""")
@@ -812,7 +816,7 @@ def main():
                 }""")
                 check(store(page, "s.panels.photoshopInspector.sideTabs.includes('history')"),
                       "Unlock did not restore panel rearrangement")
-                check(store(page, "s.toolbarLayout?.[0]?.tool") == "eraser",
+                check(store(page, "s.toolbarLayout?.sections?.[0]?.tool") == "eraser",
                       "Unlock did not restore toolbar customization")
                 check(not errors, f"workspace locks generated JavaScript errors: {errors[:3]}")
 
@@ -1418,6 +1422,19 @@ def main():
                 }""")
                 page.wait_for_function("() => window.__zphotoStore.getState().activeTool === 'artboard'")
                 page.wait_for_function("() => !!window.__zphotoViewport?.canvas")
+                def wait_view_stable():
+                    # The editor fits a new document into the canvas on a later
+                    # frame. Interacting before that maps the pointer through a
+                    # stale pan/zoom, so the click misses the artboard.
+                    page.wait_for_function("""() => {
+                        const v = window.__zphotoEngine.activeDoc?.view
+                        if (!v) return false
+                        const key = `${v.panX}:${v.panY}:${v.zoom}`
+                        const stable = window.__chaysViewKey === key
+                        window.__chaysViewKey = key
+                        return stable
+                    }""", timeout=15000)
+                wait_view_stable()
                 def point(x, y):
                     return page.evaluate("""([x, y]) => {
                         const d = window.__zphotoEngine.activeDoc
@@ -1437,6 +1454,7 @@ def main():
                       f"Artboard drag failed: {boards}")
                 page.mouse.click(**point(24,25))
                 page.keyboard.press('ArrowRight')
+                page.wait_for_function("() => window.__zphotoEngine.activeDoc.artboards[0].x >= 13", timeout=10000)
                 check(page.evaluate("() => window.__zphotoEngine.activeDoc.artboards[0].x")>=13,
                       "Artboard keyboard nudge failed")
                 page.evaluate("() => window.__zphotoEngine.undo()")

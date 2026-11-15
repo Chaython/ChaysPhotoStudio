@@ -600,7 +600,11 @@ export function PluginManagerDialog({ onClose }: DialogProps) {
         </DialogTitle>
       </DialogHeader>
       <Tabs defaultValue="plugins" className="py-1">
-        <TabsList className="relative z-20 flex w-full flex-wrap items-center justify-start gap-1 !h-auto min-h-8 p-1">
+        {/* The trigger base class sizes itself to `calc(100% - 1px)`; in a
+            wrapped, auto-height list that resolves to the full list height and
+            the tabs overlap the panel below. Pin the trigger height here so
+            every wrapped row stays one button tall. */}
+        <TabsList className="relative z-20 flex w-full flex-wrap items-center justify-start gap-1 !h-auto min-h-8 p-1 [&>[role=tab]]:h-7">
           <TabsTrigger value="plugins" className="text-[11px] gap-1.5">
             <Puzzle size={11} /> Plugins
           </TabsTrigger>

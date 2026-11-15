@@ -876,6 +876,25 @@ function clonePanelLayout(panels: EditorStore['panels']): EditorStore['panels'] 
     topOrder: [...panels.topOrder], dockHeights: { ...panels.dockHeights },
     photoshopInspector: { ...panels.photoshopInspector } }
 }
+/** Normalize an imported toolbar payload.
+ *
+ * Saved layouts used to store the toolbar as a bare section array; the
+ * GIMP-style toolbox stores `{ mode, sections }`. Both are valid on disk,
+ * so an import (and the validation of a layout read back from storage)
+ * has to accept either shape. */
+function normalizeImportedToolbar(value: unknown): ToolbarLayout | null {
+  if (value === null) return null
+  if (Array.isArray(value)) {
+    const clean = sanitizeToolbarLayout(value as ToolbarSection[])
+    return clean.length ? { mode: 'rail', sections: clean } : null
+  }
+  if (value && typeof value === 'object' && Array.isArray((value as ToolbarLayout).sections)) {
+    const layout = value as ToolbarLayout
+    const clean = sanitizeToolbarLayout(layout.sections)
+    return clean.length ? { ...layout, sections: clean } : null
+  }
+  throw Error('Invalid tool layout')
+}
 function validateLayoutImport(value: unknown): SavedWorkspaceLayout {
   if (!value || typeof value !== 'object') throw Error('Not a workspace layout')
   const raw = value as Record<string, any>
@@ -887,7 +906,11 @@ function validateLayoutImport(value: unknown): SavedWorkspaceLayout {
       Array.isArray(raw.panels.dockSide) || !raw.panels.floating ||
       typeof raw.panels.floating !== 'object' || Array.isArray(raw.panels.floating)))
     throw Error('Invalid panel layout structure')
-  if (raw.kind !== 'panels' && raw.toolbar !== null && !Array.isArray(raw.toolbar))
+  // A tools layout must carry a toolbar. It may be the legacy section array
+  // or the current { mode, sections } object — both are on disk in the wild.
+  if (raw.kind !== 'panels' && raw.toolbar === undefined) throw Error('Invalid tool layout')
+  if (raw.kind !== 'panels' && raw.toolbar !== null &&
+      !Array.isArray(raw.toolbar) && !(typeof raw.toolbar === 'object' && Array.isArray(raw.toolbar.sections)))
     throw Error('Invalid tool layout')
   if (raw.panels && raw.kind !== 'tools') {
     for (const field of ['zTop', 'dockWidth', 'leftWidth', 'topHeight', 'bottomHeight']) {
@@ -907,8 +930,7 @@ function validateLayoutImport(value: unknown): SavedWorkspaceLayout {
   // forcing the active workspace's template tabs into the imported layout.
   const panels = raw.kind === 'tools' ? undefined : loadPanelLayout(JSON.stringify(raw.panels), null)
   if (raw.kind !== 'tools' && !panels) throw Error('Invalid panel layout')
-  const toolbar = raw.kind === 'panels' ? undefined :
-    raw.toolbar === null ? null : { mode: 'rail' as const, sections: sanitizeToolbarLayout(raw.toolbar) }
+  const toolbar = raw.kind === 'panels' ? undefined : normalizeImportedToolbar(raw.toolbar)
   return { version: 1, name: raw.name.trim(), kind: raw.kind,
     ...(panels ? { panels: { ...defaultPanelState(), ...panels } } : {}),
     ...(raw.kind !== 'panels' ? { toolbar } : {}) }

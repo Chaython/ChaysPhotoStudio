@@ -77,6 +77,11 @@ jobs:
       - name: Build static webapp exports (Pages + plugin flavors)
         run: node scripts/export-webapp.mjs both
 
+      - name: Validate service-worker precache manifests
+        run: |
+          node scripts/validate-sw-precache.mjs build/webapp-export-pages
+          node scripts/validate-sw-precache.mjs build/webapp-export
+
       - name: Upload web bundle
         uses: actions/upload-artifact@v4
         with:
@@ -150,7 +155,8 @@ jobs:
           test -d site/_next
           test -f site/.nojekyll
           test -f site/sw-precache.json
-          node scripts/validate-sw-precache.mjs site
+          # This job has no checkout, so validate the shipped manifest inline.
+          node -e "const m=require('./site/sw-precache.json'); if(!m || !Array.isArray(m.files) || !m.files.includes('index.html') || !m.files.some(f=>f.startsWith('_next/static/'))) { console.error('invalid precache manifest'); process.exit(1) }"
           grep -q '/ChaysPhotoStudio/_next/' site/index.html
 
       - name: Upload Pages artifact

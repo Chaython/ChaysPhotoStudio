@@ -305,6 +305,8 @@ jobs:
           test -d build/electron/app/.next/server
           test -d build/electron/app/.next/static
           test -f build/webapp-export/index.html
+          test -f build/webapp-export/sw-precache.json
+          node scripts/validate-sw-precache.mjs build/webapp-export
           node -e "const fs=require('fs'); const h=fs.readFileSync('build/webapp-export/index.html','utf8'); if (!/(?:src|href)=[\"']\\/_next\\//.test(h) || /(?:src|href)=[\"']\\.\\/_next\\//.test(h)) process.exit(1)"
           test -f build/webapp-export-pages/index.html
           test -f build/webapp-export-pages/.nojekyll
