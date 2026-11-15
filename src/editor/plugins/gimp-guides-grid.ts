@@ -412,6 +412,7 @@ export class GuideManager {
 
       ctx.restore()
     }
+  }
 
     // Guides
     for (const guide of this.getVisibleGuides()) {

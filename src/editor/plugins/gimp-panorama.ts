@@ -391,7 +391,7 @@ async function exposureCompensation(
     ctx.drawImage(images[i], 0, 0)
     ctx.filter = 'none'
     return output
-  }
+  })
 }
 
 async function calculateAverageBrightness(canvas: HTMLCanvasElement): Promise<number> {

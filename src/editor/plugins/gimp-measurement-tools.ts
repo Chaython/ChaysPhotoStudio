@@ -858,7 +858,7 @@ export function createMeasurementUI(
       currentTool = btn.dataset.tool!
       updateUI()
     })
-  )
+  })
 
   // Measurement buttons
   measureBtn.addEventListener('click', () => {
@@ -1164,7 +1164,7 @@ export function createMeasurementUI(
     a.download = 'measurements.json'
     a.click()
     URL.revokeObjectURL(url)
-  }
+  })
 
   // Initial UI update
   updateUI()

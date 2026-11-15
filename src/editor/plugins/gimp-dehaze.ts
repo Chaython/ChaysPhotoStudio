@@ -485,7 +485,7 @@ export async function autoDehaze(canvas: HTMLCanvasElement): Promise<DehazeResul
     iterations: 2,
     outputDepthMap: true,
     outputTransmissionMap: true,
-  })
+  });
 }
 
 /** Estimate haze level */
@@ -536,7 +536,7 @@ export async function dehazeWithSkyProtection(
   const result = await dehaze(canvas, {
     ...options,
     strength: options.strength * 0.7, // Reduce overall strength
-  })
+  });
 
   // Blend sky region back
   if (skyMask) {
@@ -629,4 +629,5 @@ export class DehazePreview {
   setOptions(options: Partial<DehazeOptions>): void {
     this.options = { ...this.options, ...options }
   }
+}
 }

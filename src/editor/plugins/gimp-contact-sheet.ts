@@ -601,7 +601,8 @@ export async function createWebGallery(
       } else {
         return { canvas: img, name: '', file: null }
       }
-    })
+    }))
+  ;
 
   // Generate thumbnails
   const thumbnails = await Promise.all(
@@ -612,6 +613,7 @@ export async function createWebGallery(
       ctx.drawImage(img.canvas, 0, 0, img.canvas.width * scale, img.canvas.height * scale)
       return thumb
     })
+  );
 
   // Apply watermark if enabled
   if (watermark.enabled) {

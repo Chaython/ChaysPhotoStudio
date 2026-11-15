@@ -346,14 +346,14 @@ export async function saveCanvas(
   quality = 90,
   options: Record<string, any> = {}
 ): Promise<Blob> {
-  const mimeType = SUPPORTED_FORMATS[format]?.mimeTypes[0] || 'image/png'
+  const mimeType = SUPPORTED_FORMATS[format]?.mimeTypes[0] || 'image/png';
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
-      if (blob) resolve(blob)
-      else reject(new Error('Failed to encode image'))
-    }, mimeType, quality / 100)
-  )
+      if (blob) resolve(blob);
+      else reject(new Error('Failed to encode image'));
+    }, mimeType, quality / 100);
+  });
 }
 
 /** Format capabilities checker */

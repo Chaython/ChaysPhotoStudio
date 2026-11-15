@@ -34,19 +34,27 @@ export type CommandId =
   // File
   | 'newDoc' | 'open' | 'save' | 'saveAs' | 'export'
   // Edit
-  | 'undo' | 'redo' | 'copy' | 'copyMerged' | 'cut' | 'paste' | 'pasteInto'
-  | 'fillFg' | 'fillBg' | 'clearSelection' | 'deleteLayer' | 'invert'
-  | 'duplicateLayer' | 'layerViaCut' | 'newLayer' | 'transform' | 'mergeDown' | 'mergeVisible'
+  | 'undo' | 'redo' | 'redoAlt' | 'copy' | 'copyMerged' | 'cut' | 'paste' | 'pasteInto' | 'pasteInPlace'
+  | 'clear' | 'fillFg' | 'fillBg' | 'fillWithFg' | 'fillWithBg' | 'clearSelection' | 'deleteLayer' | 'invert'
+  | 'duplicateLayer' | 'layerViaCut' | 'newLayer' | 'transform' | 'mergeDown' | 'mergeVisible' | 'flatten'
+  | 'layerToImageSize' | 'scaleLayer' | 'layerBoundarySize' | 'transparency' | 'addAlpha' | 'mask'
   // Image
   | 'imageSize' | 'canvasSize' | 'aiUpscale' | 'liquify' | 'repeatFilter'
   | 'autoTone' | 'autoContrast' | 'autoColor'
+  | 'cropToSelection' | 'printSize'
+  | 'levels' | 'curves' | 'hueSaturation' | 'colorBalance' | 'brightnessContrast' | 'desaturate'
+  | 'posterize' | 'threshold'
   // Layer
   | 'deselectLayer' | 'toggleClipping' | 'bringForward' | 'sendBackward' | 'bringToFront' | 'sendToBack'
   // Select
-  | 'selectAll' | 'deselect' | 'reselect' | 'invertSelection' | 'selectMask'
+  | 'selectAll' | 'all' | 'deselect' | 'none' | 'reselect' | 'invertSelection' | 'selectMask'
+  | 'float' | 'byColor' | 'sharpen' | 'shrink' | 'grow' | 'border' | 'feather' | 'toPath'
   // View
   | 'toggleRulers' | 'toggleGuides' | 'toggleGrid' | 'toggleSnapGrid' | 'proofColors' | 'gamutWarning'
   | 'zoomIn' | 'zoomOut' | 'zoomFit' | 'zoomFitContent' | 'zoom100'
+  | 'showGrid' | 'snapToGrid' | 'showGuides' | 'snapToGuides' | 'fullscreen'
+  // Filters
+  | 'blur' | 'enhance' | 'noise' | 'edgeDetect' | 'generic' | 'repeatLast'
 
 export interface CommandDef {
   id: CommandId
@@ -82,14 +90,19 @@ export const COMMANDS: CommandDef[] = [
   // ---- Edit ----
   { id: 'undo', label: 'Undo', section: 'Edit', defaultCombo: 'ctrl+z', run: () => engine.undo() },
   { id: 'redo', label: 'Redo', section: 'Edit', defaultCombo: 'ctrl+shift+z', run: () => engine.redo() },
+  { id: 'redoAlt', label: 'Redo (alternate)', section: 'Edit', defaultCombo: 'ctrl+y', aliases: ['ctrl+y'], run: () => engine.redo() },
   { id: 'copy', label: 'Copy Layer', section: 'Edit', defaultCombo: 'ctrl+c', run: () => engine.copyLayer(false) },
   { id: 'copyMerged', label: 'Copy Merged', section: 'Edit', defaultCombo: 'ctrl+shift+c', run: () => engine.copyLayer(true) },
   { id: 'cut', label: 'Cut', section: 'Edit', defaultCombo: 'ctrl+x', run: () => engine.cutLayer() },
   { id: 'paste', label: 'Paste', section: 'Edit', defaultCombo: 'ctrl+v', run: () => engine.pasteLayer() },
   { id: 'pasteInto', label: 'Paste Into Selection', section: 'Edit', defaultCombo: 'ctrl+alt+shift+v',
     run: () => { void engine.pasteIntoSelection() } },
+  { id: 'pasteInPlace', label: 'Paste in Place', section: 'Edit', defaultCombo: 'ctrl+shift+v', run: () => { void engine.pasteLayer() } },
   { id: 'fillFg', label: 'Fill with Foreground', section: 'Edit', defaultCombo: 'alt+backspace', run: () => engine.fillSelection(store().fgColor) },
   { id: 'fillBg', label: 'Fill with Background', section: 'Edit', defaultCombo: 'ctrl+backspace', run: () => engine.fillSelection(store().bgColor) },
+  { id: 'fillWithFg', label: 'Fill with Foreground Color', section: 'Edit', defaultCombo: 'ctrl+,', run: () => engine.fillSelection(store().fgColor) },
+  { id: 'fillWithBg', label: 'Fill with Background Color', section: 'Edit', defaultCombo: 'ctrl+.', run: () => engine.fillSelection(store().bgColor) },
+  { id: 'clear', label: 'Clear', section: 'Edit', defaultCombo: 'delete', run: () => { if (engine.activeDoc) engine.deleteSelectionPixels() } },
   { id: 'deleteLayer', label: 'Delete Layer', section: 'Edit', defaultCombo: 'delete', run: () => engine.deleteSelectedLayers() },
   { id: 'clearSelection', label: 'Clear Selected Pixels', section: 'Edit', defaultCombo: 'backspace', run: () => { if (engine.activeDoc) engine.deleteSelectionPixels() } },
   { id: 'invert', label: 'Invert (Adjustment)', section: 'Edit', defaultCombo: 'ctrl+i', run: () => { const l = engine.activeLayer; if (l) engine.applyAdjustmentToLayer(l.id, 'invert', {}) } },
@@ -101,6 +114,13 @@ export const COMMANDS: CommandDef[] = [
   { id: 'transform', label: 'Free Transform…', section: 'Edit', defaultCombo: 'ctrl+t', run: () => { const doc = engine.activeDoc; const ids = doc?.selectedLayerIds ?? []; const group = ids.length > 1 && ids.includes(doc?.activeLayerId ?? '') ? ids : undefined; openDlg('transform', { layerId: engine.activeLayer?.id, ...(group ? { layerIds: group } : {}) }) } },
   { id: 'mergeDown', label: 'Merge Down', section: 'Edit', defaultCombo: 'ctrl+e', run: () => engine.mergeDown() },
   { id: 'mergeVisible', label: 'Merge Visible', section: 'Edit', defaultCombo: 'ctrl+shift+e', run: () => engine.mergeVisible() },
+  { id: 'flatten', label: 'Flatten Image', section: 'Edit', defaultCombo: 'ctrl+shift+f', run: () => engine.mergeVisible() },
+  { id: 'layerToImageSize', label: 'Layer to Image Size', section: 'Edit', defaultCombo: 'ctrl+shift+i', run: () => {} },
+  { id: 'scaleLayer', label: 'Scale Layer', section: 'Edit', defaultCombo: 'ctrl+shift+t', run: () => openDlg('transform') },
+  { id: 'layerBoundarySize', label: 'Layer Boundary Size', section: 'Edit', defaultCombo: 'ctrl+shift+b', run: () => {} },
+  { id: 'transparency', label: 'Transparency', section: 'Edit', defaultCombo: 'ctrl+shift+o', run: () => {} },
+  { id: 'addAlpha', label: 'Add Alpha Channel', section: 'Edit', defaultCombo: 'ctrl+shift+a', run: () => {} },
+  { id: 'mask', label: 'Add Layer Mask', section: 'Edit', defaultCombo: 'ctrl+shift+m', run: () => {} },
   // ---- Image ----
   { id: 'imageSize', label: 'Image Size…', section: 'Image', defaultCombo: 'ctrl+alt+i', run: () => openDlg('image-size') },
   { id: 'canvasSize', label: 'Canvas Size…', section: 'Image', defaultCombo: 'ctrl+alt+c', run: () => openDlg('canvas-size') },
@@ -110,6 +130,16 @@ export const COMMANDS: CommandDef[] = [
   { id: 'autoTone', label: 'Auto Tone', section: 'Image', defaultCombo: 'ctrl+shift+l', run: () => void engine.autoCorrectAsync('tone') },
   { id: 'autoContrast', label: 'Auto Contrast', section: 'Image', defaultCombo: 'ctrl+alt+shift+l', run: () => void engine.autoCorrectAsync('contrast') },
   { id: 'autoColor', label: 'Auto Color', section: 'Image', defaultCombo: 'ctrl+shift+b', run: () => void engine.autoCorrectAsync('color') },
+  { id: 'cropToSelection', label: 'Crop to Selection', section: 'Image', defaultCombo: 'ctrl+shift+x', run: () => {} },
+  { id: 'printSize', label: 'Print Size…', section: 'Image', defaultCombo: 'ctrl+alt+p', run: () => {} },
+  { id: 'levels', label: 'Levels…', section: 'Image', defaultCombo: 'ctrl+l', run: () => openDlg('levels') },
+  { id: 'curves', label: 'Curves…', section: 'Image', defaultCombo: 'ctrl+shift+m', run: () => openDlg('curves') },
+  { id: 'hueSaturation', label: 'Hue/Saturation…', section: 'Image', defaultCombo: 'ctrl+u', run: () => openDlg('hue-saturation') },
+  { id: 'colorBalance', label: 'Color Balance…', section: 'Image', defaultCombo: 'ctrl+b', run: () => openDlg('color-balance') },
+  { id: 'brightnessContrast', label: 'Brightness/Contrast…', section: 'Image', defaultCombo: 'ctrl+shift+b', run: () => openDlg('brightness-contrast') },
+  { id: 'desaturate', label: 'Desaturate', section: 'Image', defaultCombo: 'ctrl+shift+d', run: () => {} },
+  { id: 'posterize', label: 'Posterize…', section: 'Image', defaultCombo: 'ctrl+shift+p', run: () => {} },
+  { id: 'threshold', label: 'Threshold…', section: 'Image', defaultCombo: 'ctrl+shift+t', run: () => {} },
   // ---- Layer ----
   { id: 'deselectLayer', label: 'Deselect Layer', section: 'Layer', defaultCombo: 'ctrl+alt+d', run: () => engine.deselectActiveLayer() },
   { id: 'toggleClipping', label: 'Create / Release Clipping Mask', section: 'Layer', defaultCombo: 'ctrl+alt+g', run: () => { const l = engine.activeLayer; if (l) engine.toggleClipping(l.id) } },
@@ -123,6 +153,16 @@ export const COMMANDS: CommandDef[] = [
   { id: 'reselect', label: 'Reselect Last Selection', section: 'Select', defaultCombo: 'ctrl+shift+d', run: () => engine.reselectSelection() },
   { id: 'invertSelection', label: 'Invert Selection', section: 'Select', defaultCombo: 'ctrl+shift+i', run: () => engine.invertSelection() },
   { id: 'selectMask', label: 'Select and Mask…', section: 'Select', defaultCombo: 'ctrl+alt+r', run: () => openDlg('select-mask') },
+  { id: 'all', label: 'Select All', section: 'Select', defaultCombo: 'ctrl+a', run: () => engine.selectAll() },
+  { id: 'none', label: 'Deselect', section: 'Select', defaultCombo: 'ctrl+shift+a', run: () => engine.deselect() },
+  { id: 'float', label: 'Float Selection', section: 'Select', defaultCombo: 'ctrl+shift+l', run: () => {} },
+  { id: 'byColor', label: 'Select by Color', section: 'Select', defaultCombo: 'shift+o', run: () => {} },
+  { id: 'sharpen', label: 'Sharpen Selection', section: 'Select', defaultCombo: 'shift+s', run: () => {} },
+  { id: 'shrink', label: 'Shrink Selection', section: 'Select', defaultCombo: 'ctrl+shift+s', run: () => {} },
+  { id: 'grow', label: 'Grow Selection', section: 'Select', defaultCombo: 'ctrl+g', run: () => {} },
+  { id: 'border', label: 'Border Selection', section: 'Select', defaultCombo: 'ctrl+b', run: () => {} },
+  { id: 'feather', label: 'Feather Selection', section: 'Select', defaultCombo: 'shift+f', run: () => {} },
+  { id: 'toPath', label: 'Selection to Path', section: 'Select', defaultCombo: 'shift+p', run: () => {} },
   // ---- View ----
   { id: 'toggleRulers', label: 'Toggle Rulers', section: 'View', defaultCombo: 'ctrl+r', run: () => store().setViewPref('showRulers', !store().view.showRulers) },
   { id: 'toggleGuides', label: 'Toggle Guides', section: 'View', defaultCombo: 'ctrl+;', run: () => store().setViewPref('showGuides', !store().view.showGuides) },
@@ -135,6 +175,18 @@ export const COMMANDS: CommandDef[] = [
   { id: 'zoomFit', label: 'Fit on Screen', section: 'View', defaultCombo: 'ctrl+0', run: () => viewport()?.fit() },
   { id: 'zoomFitContent', label: 'Fit Content (blank space)', section: 'View', defaultCombo: 'ctrl+shift+0', run: () => viewport()?.fitContent() },
   { id: 'zoom100', label: 'Zoom 100%', section: 'View', defaultCombo: 'ctrl+1', run: () => engine.setZoom(1) },
+  { id: 'showGrid', label: 'Show Grid', section: 'View', defaultCombo: "ctrl+shift+'", run: () => store().setViewPref('showGrid', !store().view.showGrid) },
+  { id: 'snapToGrid', label: 'Snap to Grid', section: 'View', defaultCombo: 'ctrl+shift+;', run: () => store().setViewPref('snapGrid', !store().view.snapGrid) },
+  { id: 'showGuides', label: 'Show Guides', section: 'View', defaultCombo: 'ctrl+;', run: () => store().setViewPref('showGuides', !store().view.showGuides) },
+  { id: 'snapToGuides', label: 'Snap to Guides', section: 'View', defaultCombo: 'ctrl+shift+;', run: () => store().setViewPref('snapGuides', !store().view.snapGuides) },
+  { id: 'fullscreen', label: 'Fullscreen', section: 'View', defaultCombo: 'f11', run: () => {} },
+  // ---- Filters ----
+  { id: 'blur', label: 'Blur', section: 'View', defaultCombo: 'shift+u', run: () => {} },
+  { id: 'enhance', label: 'Enhance', section: 'View', defaultCombo: 'shift+e', run: () => {} },
+  { id: 'noise', label: 'Noise', section: 'View', defaultCombo: 'shift+n', run: () => {} },
+  { id: 'edgeDetect', label: 'Edge Detect', section: 'View', defaultCombo: 'ctrl+shift+e', run: () => {} },
+  { id: 'generic', label: 'Generic Filter', section: 'View', defaultCombo: 'ctrl+f', run: () => {} },
+  { id: 'repeatLast', label: 'Repeat Last Filter', section: 'View', defaultCombo: 'ctrl+f', run: () => { void engine.repeatLastFilter() } },
 ]
 
 export const COMMAND_MAP: Record<CommandId, CommandDef> = Object.fromEntries(

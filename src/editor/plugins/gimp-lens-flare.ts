@@ -763,7 +763,7 @@ export function createLensFlareUI(
     option.value = key
     option.textContent = LENS_FLARE_PRESETS[key].name
     presetSelect.appendChild(option)
-  }
+  })
 
   // Preset change handler
   presetSelect.addEventListener('change', () => {

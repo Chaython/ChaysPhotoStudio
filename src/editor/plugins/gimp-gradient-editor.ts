@@ -751,7 +751,7 @@ export function createGradientEditorUI(
       if (segIdx === gradient.segments.length - 1) {
         addStopButton(stopsContainer, seg.rightStop, segIdx, 'right', gradient)
       }
-    }
+    })
 
     // Update selected stop properties
     if (state.selectedStopIndex !== null) {

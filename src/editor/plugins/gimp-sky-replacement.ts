@@ -541,3 +541,4 @@ export async function generateProceduralSky(
 
   return canvas
 }
+}

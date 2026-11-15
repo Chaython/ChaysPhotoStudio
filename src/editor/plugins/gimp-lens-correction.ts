@@ -991,3 +991,5 @@ function getCorrectionOptionsFromUI(container: HTMLElement): LensCorrectionOptio
     output: { crop: true, maintainResolution: true },
   }
 }
+}
+}

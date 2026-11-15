@@ -525,3 +525,4 @@ export async function hdrPanorama(
   // Simplified: just return first for now
   return hdrImages[0].canvas
 }
+}

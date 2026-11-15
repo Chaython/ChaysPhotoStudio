@@ -975,3 +975,5 @@ export const TEXTURE_PRESETS: Record<string, Partial<TextureOptions>> = {
   'pastel-paper': { type: 'pastel', amount: 40, scale: 100, monochrome: false },
   'chalkboard': { type: 'chalk', amount: 50, scale: 100 },
 }
+}
+}

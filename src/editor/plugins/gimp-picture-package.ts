@@ -132,63 +132,63 @@ const LAYOUTS: Record<string, (paper: { width: number; height: number }, margins
     cellWidth: (paper.width - margins.left - margins.right) / 4,
     cellH: (paper.height - margins.top - margins.bottom) / 5,
     spacing: 10,
-  },
+  }),
   passport: (paper, margins) => ({
     cols: 4,
     rows: 6,
     cellWidth: (paper.width - margins.left - margins.right) / 4,
     cellH: (paper.height - margins.top - margins.bottom) / 6,
     spacing: 10,
-  },
+  }),
   school: (paper, margins) => ({
     cols: 3,
     rows: 4,
     cellWidth: (paper.width - margins.left - margins.right) / 3,
     cellH: (paper.height - margins.top - margins.bottom) / 4,
     spacing: 15,
-  },
+  }),
   wedding: (paper, margins) => ({
     cols: 2,
     rows: 2,
     cellWidth: (paper.width - margins.left - margins.right) / 2,
     cellH: (paper.height - margins.top - margins.bottom) / 2,
     spacing: 30,
-  },
+  }),
   holiday: (paper, margins) => ({
     cols: 3,
     rows: 3,
     cellWidth: (paper.width - margins.left - margins.right) / 3,
     cellH: (paper.height - margins.top - margins.bottom) / 3,
     spacing: 20,
-  },
+  }),
   sports: (paper, margins) => ({
     cols: 3,
     rows: 4,
     cellWidth: (paper.width - margins.left - margins.right) / 3,
     cellH: (paper.height - margins.top - margins.bottom) / 4,
     spacing: 15,
-  },
+  }),
   family: (paper, margins) => ({
     cols: 2,
     rows: 4,
     cellWidth: (paper.width - margins.left - margins.right) / 2,
     cellH: (paper.height - margins.top - margins.bottom) / 4,
     spacing: 20,
-  },
+  }),
   portfolio: (paper, margins) => ({
     cols: 3,
     rows: 3,
     cellWidth: (paper.width - margins.left - margins.right) / 3,
     cellH: (paper.height - margins.top - margins.bottom) / 3,
     spacing: 25,
-  },
+  }),
   custom: (paper, margins) => ({
     cols: 3,
     rows: 3,
     cellWidth: (paper.width - margins.left - margins.right) / 3,
     cellH: (paper.height - margins.top - margins.bottom) / 3,
     spacing: 20,
-  },
+  }),
 }
 
 /** Main picture package generation function */
@@ -733,4 +733,6 @@ export const PICTURE_PACKAGE_PRESETS: Record<string, Partial<PicturePackageOptio
     border: { width: 2, color: '#dddddd', radius: 4 },
     background: '#fafafa',
   },
+}
+}
 }

@@ -750,7 +750,7 @@ export function createVanishingPointUI(
       btn.classList.add('active')
       manager.setTool(btn.dataset.tool as any)
     })
-  }
+  })
 
   // Plane actions
   container.querySelector('#duplicate-plane')?.addEventListener('click', () => {
@@ -919,7 +919,8 @@ export function createBoxPlane(
   const projected = rotated.map(p => ({
     x: p.x * focalLength / (focalLength + p.z) + centerX,
     y: p.y * focalLength / (focalLength + p.z) + centerY,
-  })
+  }))
+
 
   // Use front face corners (first 4 points)
   return {
