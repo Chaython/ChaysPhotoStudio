@@ -213,14 +213,15 @@ function persistWorkspaceLocks(locks: WorkspaceLayoutLocks) {
 const LEGACY_CLASSIC_BACKUP_KEY = 'zphoto-classic-layout-backup'
 
 /** Workspace templates: Classic plus application-inspired arrangements. */
-export type WorkspacePreset = 'classic' | 'photoshop' | 'illustrator' | 'gimp' | 'fireworks'
-export const WORKSPACE_PRESETS: readonly WorkspacePreset[] = ['classic', 'photoshop', 'illustrator', 'gimp', 'fireworks']
+export type WorkspacePreset = 'classic' | 'photoshop' | 'illustrator' | 'gimp' | 'fireworks' | 'paint'
+export const WORKSPACE_PRESETS: readonly WorkspacePreset[] = ['classic', 'photoshop', 'illustrator', 'gimp', 'fireworks', 'paint']
 export const WORKSPACE_PRESET_LABELS: Record<WorkspacePreset, string> = {
   classic: 'Classic / custom',
   photoshop: 'Photoshop-style',
   illustrator: 'Illustrator-style',
   gimp: 'GIMP-style',
   fireworks: 'Fireworks-style',
+  paint: 'MS Paint-style',
 }
 /** Workspaces built on the stacked inspector dock (single-column toolbox,
  *  stacked panel groups on the right). Classic keeps the tabbed dock. */
@@ -706,6 +707,18 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['slice-select', 'hotspot'],
       ['frame', 'shape'],
     ],
+    // MS Paint-style ribbon: everyday selection, drawing, fill, text and shape tools first.
+    paint: [
+      ['move', 'marquee-rect', 'marquee-ellipse', 'lasso'],
+      ['crop', 'eyedropper', 'color-sampler'],
+      ['pencil', 'brush', 'airbrush', 'ink', 'mypaint-brush'],
+      ['paint-bucket', 'gradient', 'eraser', 'magic-eraser'],
+      ['text', 'shape', 'pen'],
+      ['clone-stamp', 'blur', 'sharpen', 'smudge'],
+      ['zoom', 'hand'],
+      // Advanced tools remain reachable in the final group.
+      ['artboard', 'path-select', 'direct-select', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'quick-mask', 'object-select', 'quick-select', 'magic-wand', 'perspective-crop', 'slice', 'slice-select', 'hotspot', 'frame', 'measure', 'count', 'mixer-brush', 'color-replacement', 'clone-stamp', 'pattern-stamp', 'history-brush', 'art-history-brush', 'background-eraser', 'healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye', 'dodge', 'burn', 'sponge', 'pen-freeform', 'pen-curvature', 'type-mask-horizontal', 'type-mask-vertical', 'rotate-view'],
+    ],
     // Fireworks-style: Pointer/Subselect, the select suite, crop and the web
     // Slice/Hotspot export tools, then drawing, rubber stamp and fill.
     fireworks: [
@@ -987,7 +1000,8 @@ export function presetPanelState(preset: WorkspacePreset, current: EditorStore['
     // corresponding application's standard desktop workspace.
     bottomHeight: preset === 'fireworks' ? 210 : 192,
     dockHeights: preset === 'fireworks' ? { bottom: 210 } : {}, photoshopInspector: defaultInspector(preset),
-    dockWidth: preset === 'photoshop' ? 318
+    dockWidth: preset === 'paint' ? 260
+      : preset === 'photoshop' ? 318
       : preset === 'illustrator' ? 300
       : preset === 'gimp' ? 286
       : preset === 'fireworks' ? 270
