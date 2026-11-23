@@ -18,8 +18,8 @@ import { DOCKABLE_PANEL_IDS, isDockablePanelId } from '../src/editor/constants/p
 // --- Registry invariants -------------------------------------------------------
 const presetList = [...WORKSPACE_PRESETS]
 assert.equal(new Set(presetList).size, presetList.length, 'workspace presets must be unique')
-assert.deepEqual(presetList, ['classic', 'photoshop', 'illustrator', 'gimp', 'fireworks'],
-  'the five documented templates must be registered')
+assert.deepEqual(presetList, ['classic', 'photoshop', 'illustrator', 'gimp', 'fireworks', 'paint'],
+  'all documented workspace templates must be registered')
 for (const preset of presetList) {
   assert.ok(WORKSPACE_PRESET_LABELS[preset].length > 0, `label for ${preset}`)
   assert.ok(INSPECTOR_HEADER_LABELS[preset].length > 0, `inspector header for ${preset}`)
@@ -156,7 +156,7 @@ for (const glyph of ['artboard', 'path-select', 'direct-select', 'pen-freeform',
 assert.ok(toolbarSource.includes('WORKSPACE_CUSTOM_GLYPHS[workspacePreset]'),
   'custom glyphs must resolve by active workspace')
 assert.ok(toolbarSource.includes('const WORKSPACE_TOOL_ICONS'), 'workspace icon maps must be defined')
-for (const preset of ['photoshop', 'illustrator', 'gimp', 'fireworks']) {
+for (const preset of ['photoshop', 'illustrator', 'gimp', 'fireworks', 'paint']) {
   assert.ok(toolbarSource.includes(`  ${preset}: {`), `${preset} must have a distinct tool icon map`)
 }
 assert.ok(toolbarSource.includes('WORKSPACE_TOOL_ICONS[workspacePreset]'),
@@ -276,8 +276,12 @@ assert.match(toolOptionsSource, /layout === 'vertical'[\s\S]*?'flex-col items-st
   'GIMP tool options must stack controls vertically rather than wrap as a horizontal toolbar')
 assert.match(toolOptionsSource, /layout !== 'vertical' && <VDivider \/>/,
   'GIMP tool options must not show horizontal toolbar dividers')
-assert.match(editorShell, /workspacePreset !== 'gimp'[\s\S]*?<ToolOptionsBar embedded \/>/,
-  'other workspaces retain the shared horizontal tool-options strip')
+assert.match(editorShell, /workspacePreset !== 'gimp' && workspacePreset !== 'paint'[\s\S]*?<ToolOptionsBar embedded \/>/,
+  'non-GIMP/non-Paint workspaces retain the shared horizontal tool-options strip')
+assert.match(editorShell, /workspacePreset === 'paint'[\s\S]*?<Toolbar compact \/>[\s\S]*?<PaintColorPalette \/>[\s\S]*?<ToolOptionsBar embedded \/>/,
+  'Paint workspace renders a top ribbon, quick color palette and contextual tool options')
+assert.match(editorShell, /workspacePreset !== 'paint' && <LeftDock \/>/,
+  'Paint workspace hides the optional left dock to maximize canvas space')
 assert.match(topDockSource, /side === "bottom" && id === "properties"[\s\S]*?width: "100%"/,
   'Fireworks Properties must expand across the bottom dock instead of staying a narrow floating-panel width')
 
@@ -317,4 +321,4 @@ assert.equal(fireworks.dockHeights.bottom, 210, 'fireworks applies the default h
 assert.ok(!('properties' in presetPanelState('illustrator', { ...basePanels } as any).dockSide),
   'other templates do not move Properties to the bottom')
 
-console.log('Workspace templates: five presets, complete toolbars, per-template inspector stacks and Fireworks bottom Properties dock verified')
+console.log('Workspace templates: six presets, complete toolbars, per-template inspector stacks, Paint ribbon and Fireworks bottom Properties dock verified')
