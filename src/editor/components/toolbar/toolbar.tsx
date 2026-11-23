@@ -322,75 +322,80 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
 
   const dragActive = dnd && !!dragSrc
 
-  // MS Paint-style ribbon: expose the everyday tools as compact grouped buttons
-  // instead of the standard single-row rail of flyout icons.
+  // MS Paint-style ribbon: fixed, labeled tool groups arranged in a compact
+  // multi-row ribbon. Unlike the standard toolbar rail, each group is visible
+  // at a glance and tools carry their names like the Paint desktop app.
   if (workspacePreset === 'paint' && compact) {
-    const ribbonLabels = ['Selection', 'Image', 'Brushes', 'Fill', 'Text & Shapes', 'Retouch', 'View', 'More']
+    const ribbonGroups: { label: string; ids: ToolId[]; columns?: number }[] = [
+      { label: 'Selection', ids: ['move', 'marquee-rect', 'marquee-ellipse', 'lasso'] },
+      { label: 'Image', ids: ['crop', 'eyedropper', 'color-sampler'] },
+      { label: 'Tools', ids: ['pencil', 'paint-bucket', 'text', 'eraser', 'zoom', 'hand'] },
+      { label: 'Brushes', ids: ['brush', 'airbrush', 'ink', 'mypaint-brush'] },
+      { label: 'Shapes', ids: ['shape', 'pen'] },
+      { label: 'Retouch', ids: ['clone-stamp', 'blur', 'sharpen', 'smudge'] },
+    ]
+    const shownIds = new Set(ribbonGroups.flatMap(group => group.ids))
+    const allIds = sections.flatMap(sec => sec.kind === 'single' ? [sec.tool] : sec.tools)
+    const moreTools = [...new Set(allIds)].filter(id => !shownIds.has(id)).map(id => TOOL_MAP[id]).filter(Boolean) as ToolDef[]
     return (
       <div
         data-toolbar-mode="paint-ribbon"
-        className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto overflow-y-hidden px-1.5 py-1"
+        className="flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden px-1.5 py-1.5"
         role="toolbar"
-        aria-label="Paint ribbon tools"
+        aria-label="MS Paint tools ribbon"
       >
-        {sections.map((sec, index) => {
-          const tools = (sec.kind === 'single' ? [TOOL_MAP[sec.tool]] : sec.tools.map(id => TOOL_MAP[id])).filter(Boolean) as ToolDef[]
+        {ribbonGroups.map(group => {
+          const tools = group.ids.map(id => TOOL_MAP[id]).filter(Boolean) as ToolDef[]
           if (!tools.length) return null
-          const isMore = index >= 7
-          const visibleTools = isMore ? tools : tools.slice(0, 5)
           return (
-            <div key={`paint-ribbon-${index}`} className="flex shrink-0 flex-col justify-between border-r border-border/70 px-1.5 last:border-r-0">
-              <div className="flex items-center justify-center gap-0.5">
-                {isMore ? (
-                  <ToolGroupButton
-                    tools={tools}
-                    main={tools.find(t => t.id === activeTool) ?? tools[0]}
-                    active={tools.some(t => t.id === activeTool)}
-                    activeTool={activeTool}
-                    keys={keys}
-                    onSelect={selectTool}
-                    compact
-                    ribbon
-                    embedded={false}
-                    dnd={false}
-                    itemDragStart={itemDragStart}
-                    endDrag={endDrag}
-                  />
-                ) : visibleTools.map(tool => (
-                  <ToolButton
+            <section key={group.label} aria-label={group.label} className="flex shrink-0 flex-col justify-between border-r border-border/70 px-2 first:pl-1 last:border-r-0">
+              <div className="grid grid-cols-2 grid-rows-2 gap-1">
+                {tools.map(tool => (
+                  <button
                     key={tool.id}
-                    def={tool}
-                    shortcut={keys[tool.id]}
-                    active={activeTool === tool.id}
-                    onSelect={selectTool}
-                    compact
-                    ribbon
-                  />
+                    type="button"
+                    onClick={() => selectTool(tool.id)}
+                    title={`${tool.label} (${keys[tool.id] ? keys[tool.id].toUpperCase() : '—'})`}
+                    aria-label={tool.label}
+                    aria-pressed={activeTool === tool.id}
+                    className={cn(
+                      'flex h-8 min-w-[4.5rem] items-center gap-1.5 rounded px-1.5 text-left text-[10px] transition-colors',
+                      activeTool === tool.id
+                        ? 'bg-primary/15 text-primary ring-1 ring-primary/50'
+                        : 'text-foreground/85 hover:bg-accent'
+                    )}
+                  >
+                    <ToolIcon icon={tool.icon} toolId={tool.id} size={16} />
+                    <span className="max-w-[3.5rem] truncate">{tool.label}</span>
+                  </button>
                 ))}
-                {!isMore && tools.length > visibleTools.length && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button type="button" className="flex h-7 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent" title={`More ${ribbonLabels[index]} tools`} aria-label={`More ${ribbonLabels[index]} tools`}>
-                        <Icons.ChevronDown size={12} />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="bottom" align="start" className="z-[90] min-w-48">
-                      {tools.slice(visibleTools.length).map(tool => (
-                        <DropdownMenuItem key={tool.id} onSelect={() => selectTool(tool.id)} className="gap-2 text-xs">
-                          <ToolIcon icon={tool.icon} toolId={tool.id} />
-                          <span className="flex-1">{tool.label}</span>
-                          {tool.id === activeTool && <Icons.Check size={11} className="text-primary" />}
-                          <span className="font-mono text-[10px] text-muted-foreground">{formatCombo(keys[tool.id])}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
               </div>
-              <span className="mt-0.5 whitespace-nowrap text-center text-[9px] leading-3 text-muted-foreground">{ribbonLabels[index] ?? 'Tools'}</span>
-            </div>
+              <span className="mt-1 border-t border-border/60 pt-1 text-center text-[10px] leading-3 text-muted-foreground">{group.label}</span>
+            </section>
           )
         })}
+        <section aria-label="More tools" className="flex shrink-0 flex-col items-center justify-between px-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="flex h-9 items-center gap-2 rounded border border-border/70 px-2 text-xs hover:bg-accent" aria-label="More tools">
+                <Icons.Grid3X3 size={16} />
+                <span>More tools</span>
+                <Icons.ChevronDown size={12} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="bottom" align="start" className="z-[90] max-h-[70vh] min-w-56 overflow-y-auto">
+              {moreTools.map(tool => (
+                <DropdownMenuItem key={tool.id} onSelect={() => selectTool(tool.id)} className="gap-2 text-xs">
+                  <ToolIcon icon={tool.icon} toolId={tool.id} />
+                  <span className="flex-1">{tool.label}</span>
+                  {tool.id === activeTool && <Icons.Check size={11} className="text-primary" />}
+                  <span className="font-mono text-[10px] text-muted-foreground">{formatCombo(keys[tool.id])}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <span className="mt-1 border-t border-border/60 w-full pt-1 text-center text-[10px] leading-3 text-muted-foreground">More</span>
+        </section>
       </div>
     )
   }
