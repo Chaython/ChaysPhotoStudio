@@ -375,6 +375,7 @@ export function EditorApp() {
                       <div className="min-w-0 flex-1">
                         <Toolbar compact />
                       </div>
+                      <PaintColorPalette />
                     </div>
                     <div className="border-t border-border/70">
                       <NativeModuleShell id="tool-options" axis="horizontal">
@@ -719,4 +720,33 @@ function activateTool(id: ToolId) {
   useEditorStore.getState().setTool(id)
   setActiveTool(id)
   ;(engine as any)._activeToolId = id
+}
+
+/** Compact Paint-style foreground/background swatches and quick color palette. */
+function PaintColorPalette() {
+  const fg = useEditorStore(s => s.fgColor)
+  const bg = useEditorStore(s => s.bgColor)
+  const setFg = useEditorStore(s => s.setFgColor)
+  const setBg = useEditorStore(s => s.setBgColor)
+  const setTarget = useEditorStore(s => s.setActiveColorTarget)
+  const swap = useEditorStore(s => s.swapColors)
+  const colors = ['#000000','#ffffff','#7f7f7f','#c3c3c3','#880015','#ed1c24','#ff7f27','#fff200','#22b14c','#00a2e8','#3f48cc','#a349a4','#b97a57','#ffaec9','#ffc90e','#efe4b0','#b5e61d','#99d9ea','#7092be','#c8bfe7']
+  return (
+    <div aria-label="Paint color palette" className="flex shrink-0 items-center gap-2 border-l border-border px-2 py-1">
+      <div className="relative h-9 w-12 shrink-0" aria-label="Foreground and background colors">
+        <label className="absolute left-0 top-0 z-10 h-6 w-6 cursor-pointer rounded-sm border-2 border-foreground shadow-sm" style={{ backgroundColor: fg }} title="Foreground color">
+          <input type="color" value={fg} onFocus={() => setTarget('fg')} onChange={e => { setTarget('fg'); setFg(e.target.value) }} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Choose foreground color" />
+        </label>
+        <label className="absolute bottom-0 right-0 h-6 w-6 cursor-pointer rounded-sm border-2 border-foreground shadow-sm" style={{ backgroundColor: bg }} title="Background color">
+          <input type="color" value={bg} onFocus={() => setTarget('bg')} onChange={e => { setTarget('bg'); setBg(e.target.value) }} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Choose background color" />
+        </label>
+      </div>
+      <div className="grid grid-cols-10 gap-0.5" aria-label="Quick colors">
+        {colors.map(color => (
+          <button key={color} type="button" onClick={() => { setTarget('fg'); setFg(color) }} title={color} aria-label={`Set foreground color to ${color}`} className="h-3.5 w-3.5 rounded-[2px] border border-black/30 shadow-sm hover:scale-125 focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary" style={{ backgroundColor: color }} />
+        ))}
+      </div>
+      <button type="button" onClick={swap} title="Swap foreground and background colors" aria-label="Swap colors" className="rounded px-1 text-xs text-muted-foreground hover:bg-accent">⇄</button>
+    </div>
+  )
 }
