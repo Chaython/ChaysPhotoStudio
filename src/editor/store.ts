@@ -235,6 +235,7 @@ export const INSPECTOR_HEADER_LABELS: Record<WorkspacePreset, string> = {
   illustrator: 'Illustrator',
   gimp: 'GIMP',
   fireworks: 'Fireworks',
+  paint: 'Paint',
 }
 
 function loadWorkspacePreset(): WorkspacePreset {
