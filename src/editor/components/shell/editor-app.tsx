@@ -369,15 +369,21 @@ export function EditorApp() {
             ) : (
               <>
                 {workspacePreset === 'paint' && (
-                  <section aria-label="MS Paint ribbon" className="hidden md:flex min-w-0 flex-col border-b border-border bg-panel shadow-sm">
-                    <div className="flex min-w-0 items-center">
-                      <div className="shrink-0 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-r border-border">Tools</div>
-                      <div className="min-w-0 flex-1">
+                  <section
+                    aria-label="MS Paint ribbon"
+                    data-workspace-ribbon="paint"
+                    className="relative z-10 isolate hidden md:flex min-w-0 shrink-0 flex-col border-b border-border bg-panel shadow-sm"
+                  >
+                    <div className="relative z-10 flex min-h-[4.75rem] shrink-0 min-w-0 items-stretch">
+                      <div className="flex shrink-0 items-center px-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-r border-border">Tools</div>
+                      <div className="min-h-[4.75rem] min-w-0 flex-1">
                         <Toolbar compact />
                       </div>
-                      <PaintColorPalette />
+                      <div className="flex shrink-0 items-center">
+                        <PaintColorPalette />
+                      </div>
                     </div>
-                    <div className="border-t border-border/70">
+                    <div className="relative z-0 min-h-8 shrink-0 border-t border-border/70">
                       <NativeModuleShell id="tool-options" axis="horizontal">
                         <ToolOptionsBar embedded />
                       </NativeModuleShell>
