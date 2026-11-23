@@ -272,6 +272,16 @@ function hitTestHandle(docX: number, docY: number, r: Rect, uniformOnly: boolean
   return best
 }
 
+/** Rotation anchor floats above the top-center transform handle. */
+function rotationAnchorPoint(r: Rect, zoom: number) {
+  return { x: r.x + r.w / 2, y: r.y - 28 / Math.max(zoom, 0.02) }
+}
+
+function hitTestRotationAnchor(docX: number, docY: number, r: Rect, zoom: number): boolean {
+  const p = rotationAnchorPoint(r, zoom)
+  return Math.hypot(docX - p.x, docY - p.y) <= 10 / Math.max(zoom, 0.02)
+}
+
 /** active-layer transformability for handle drags */
 function transformableLayerId(): string | null {
   const doc = engine.activeDoc
@@ -304,6 +314,24 @@ export const moveTool: Tool = {
         const l = engine.layerById(id)
         return l?.kind === 'smart' || l?.kind === 'text'
       })
+      if (groupRect && hitTestRotationAnchor(p.docX, p.docY, groupRect, doc.view.zoom)) {
+        const center = { x: groupRect.x + groupRect.w / 2, y: groupRect.y + groupRect.h / 2 }
+        const snapshots = transformIds.map(id => engine.layerById(id)).filter((l): l is Layer => !!l).map(snapshotTransformLayer)
+        if (snapshots.length === transformIds.length) {
+          groupTransform = { ids: transformIds.slice(), snapshots, rect: groupRect }
+          movingIds = transformIds.slice()
+          tdrag = {
+            handle: 'n', rect: groupRect, hx: center.x, hy: groupRect.y,
+            ax: center.x, ay: center.y, startPx: p.docX, startPy: p.docY,
+            uniformOnly, mode: 'rotate', sx: 1, sy: 1, rotation: 0,
+            cx: center.x, cy: center.y,
+          }
+          live = null
+          doc._liveDrag = null
+          engine.requestRender()
+          return
+        }
+      }
       const h = groupRect ? hitTestHandle(p.docX, p.docY, groupRect, uniformOnly, doc.view.zoom) : null
       if (groupRect && h) {
         const pts = Object.fromEntries(handlePoints(groupRect, uniformOnly).map(pt => [pt.id, pt]))
@@ -341,6 +369,28 @@ export const moveTool: Tool = {
       const r = engine.layerContentRect(target0)
       const layer0 = engine.layerById(target0)!
       const uniformOnly = layer0.kind === 'smart' || layer0.kind === 'text'
+      if (r && hitTestRotationAnchor(p.docX, p.docY, r, doc.view.zoom)) {
+        const center = { x: r.x + r.w / 2, y: r.y + r.h / 2 }
+        const ld = buildLiveDrag(doc, target0)
+        if (ld) {
+          ld.dx = 0; ld.dy = 0
+          ld.liveTransform = { sx: 1, sy: 1, rotation: 0, ax: center.x, ay: center.y }
+          doc._liveDrag = ld
+          live = ld
+          tdrag = {
+            handle: 'n', rect: r, hx: center.x, hy: r.y,
+            ax: center.x, ay: center.y, startPx: p.docX, startPy: p.docY,
+            uniformOnly, mode: 'rotate', sx: 1, sy: 1, rotation: 0,
+            cx: center.x, cy: center.y,
+          }
+          const idx = doc.layers.findIndex(l => l.id === target0)
+          let end = idx + 1
+          while (end < doc.layers.length && doc.layers[end].clipped) end++
+          movingIds = doc.layers.slice(idx, end).map(l => l.id)
+          engine.requestRender()
+          return
+        }
+      }
       const h = r ? hitTestHandle(p.docX, p.docY, r, uniformOnly, doc.view.zoom) : null
       if (r && h) {
         const pts = Object.fromEntries(handlePoints(r, uniformOnly).map(pt => [pt.id, pt]))
@@ -1164,6 +1214,31 @@ function drawLayerHighlight(
       ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s)
       ctx.strokeRect(p.x - s / 2, p.y - s / 2, s, s)
     }
+    // Dedicated rotation control: stem + circular drag target above top center.
+    const topMidX = (scr[0][0] + scr[1][0]) / 2
+    const topMidY = (scr[0][1] + scr[1][1]) / 2
+    const rotateX = topMidX
+    const rotateY = topMidY - 28
+    const rotationActive = tdrag?.mode === 'rotate'
+    ctx.beginPath()
+    ctx.moveTo(topMidX, topMidY)
+    ctx.lineTo(rotateX, rotateY)
+    ctx.strokeStyle = `rgba(15,15,17,${(0.85 * dim).toFixed(3)})`
+    ctx.lineWidth = 3
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(topMidX, topMidY)
+    ctx.lineTo(rotateX, rotateY)
+    ctx.strokeStyle = `rgba(232,163,61,${(0.95 * dim).toFixed(3)})`
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(rotateX, rotateY, rotationActive ? 7 : 6, 0, Math.PI * 2)
+    ctx.fillStyle = rotationActive ? '#e8a33d' : '#fff'
+    ctx.strokeStyle = '#171719'
+    ctx.lineWidth = 1.5
+    ctx.fill()
+    ctx.stroke()
   }
 
   // ---- measurement badge ----
@@ -1200,8 +1275,9 @@ function drawLayerHighlight(
     const docY = (mouse.y - view.panY) / view.zoom
     // hover test against the live rect (with any drag offset applied)
     const rect = { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h }
-    hoverHandle = hitTestHandle(docX, docY, rect, uniformOnly, view.zoom)
-    setCursor(hoverHandle ? HANDLE_CURSOR[hoverHandle] : 'move')
+    const rotationHover = hitTestRotationAnchor(docX, docY, rect, view.zoom)
+    hoverHandle = rotationHover ? null : hitTestHandle(docX, docY, rect, uniformOnly, view.zoom)
+    setCursor(rotationHover ? 'crosshair' : hoverHandle ? HANDLE_CURSOR[hoverHandle] : 'move')
   } else if (tdrag) {
     setCursor(tdrag.mode === 'rotate' ? 'crosshair' : HANDLE_CURSOR[tdrag.handle])
   } else {
