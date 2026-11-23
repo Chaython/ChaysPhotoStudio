@@ -337,8 +337,10 @@ export function EditorApp() {
   return (
     <div className={cn("h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none", !mobileMode && isInspectorPreset(workspacePreset) && "zphoto-photoshop-workspace")} style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
       {isWindowsElectron && <div aria-hidden="true" className="h-8 w-full shrink-0" style={{ WebkitAppRegion: 'drag', backgroundColor: 'var(--background)' } as React.CSSProperties} />}
-      <MenuBar theme={theme} setTheme={setTheme} mobileMode={mobileMode} setMobileMode={setMobileMode} />
-      <div className={cn('flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
+      <div className="relative z-50 shrink-0">
+        <MenuBar theme={theme} setTheme={setTheme} mobileMode={mobileMode} setMobileMode={setMobileMode} />
+      </div>
+      <div className={cn('relative z-0 flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
         {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
         <div className="flex flex-1 min-h-0 min-w-0">
           {!mobileMode && workspacePreset !== 'paint' && (
@@ -372,7 +374,7 @@ export function EditorApp() {
                   <section
                     aria-label="MS Paint ribbon"
                     data-workspace-ribbon="paint"
-                    className="relative z-10 isolate hidden md:flex min-w-0 shrink-0 flex-col border-b border-border bg-panel shadow-sm"
+                    className="relative z-0 isolate flow-root hidden md:flex min-w-0 shrink-0 flex-col border-b border-border bg-panel shadow-sm"
                   >
                     <div className="relative z-10 flex min-h-[4.75rem] shrink-0 min-w-0 items-stretch">
                       <div className="flex shrink-0 items-center px-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-r border-border">Tools</div>
