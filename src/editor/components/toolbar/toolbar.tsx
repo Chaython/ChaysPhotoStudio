@@ -322,11 +322,10 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
 
   const dragActive = dnd && !!dragSrc
 
-  // MS Paint-style ribbon: fixed, labeled tool groups arranged in a compact
-  // multi-row ribbon. Unlike the standard toolbar rail, each group is visible
-  // at a glance and tools carry their names like the Paint desktop app.
+  // MS Paint ribbon: a single compact icon row with group captions,
+  // matching the classic Paint ribbon rather than a text-button toolbox.
   if (workspacePreset === 'paint' && compact) {
-    const ribbonGroups: { label: string; ids: ToolId[]; columns?: number }[] = [
+    const ribbonGroups: { label: string; ids: ToolId[] }[] = [
       { label: 'Selection', ids: ['move', 'marquee-rect', 'marquee-ellipse', 'lasso'] },
       { label: 'Image', ids: ['crop', 'eyedropper', 'color-sampler'] },
       { label: 'Tools', ids: ['pencil', 'paint-bucket', 'text', 'eraser', 'zoom', 'hand'] },
@@ -340,7 +339,7 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
     return (
       <div
         data-toolbar-mode="paint-ribbon"
-        className="flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden px-1.5 py-1.5"
+        className="flex h-[3.65rem] min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden bg-panel px-1 py-1"
         role="toolbar"
         aria-label="MS Paint tools ribbon"
       >
@@ -348,39 +347,38 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
           const tools = group.ids.map(id => TOOL_MAP[id]).filter(Boolean) as ToolDef[]
           if (!tools.length) return null
           return (
-            <section key={group.label} aria-label={group.label} className="flex shrink-0 flex-col justify-between border-r border-border/70 px-2 first:pl-1 last:border-r-0">
-              <div className="grid grid-cols-2 grid-rows-2 gap-1">
+            <section key={group.label} aria-label={group.label} className="flex shrink-0 flex-col justify-between border-r border-border/70 px-1.5 first:pl-1 last:border-r-0">
+              <div className="flex min-h-0 flex-1 items-center justify-center gap-0.5">
                 {tools.map(tool => (
                   <button
                     key={tool.id}
                     type="button"
                     onClick={() => selectTool(tool.id)}
-                    title={`${tool.label} (${keys[tool.id] ? keys[tool.id].toUpperCase() : '—'})`}
+                    title={`${tool.label}${keys[tool.id] ? ` (${keys[tool.id].toUpperCase()})` : ''}`}
                     aria-label={tool.label}
                     aria-pressed={activeTool === tool.id}
                     className={cn(
-                      'flex h-8 min-w-[4.5rem] items-center gap-1.5 rounded px-1.5 text-left text-[10px] transition-colors',
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors',
                       activeTool === tool.id
-                        ? 'bg-primary/15 text-primary ring-1 ring-primary/50'
+                        ? 'bg-primary/15 text-primary ring-1 ring-primary/60'
                         : 'text-foreground/85 hover:bg-accent'
                     )}
                   >
                     <ToolIcon icon={tool.icon} toolId={tool.id} size={16} />
-                    <span className="max-w-[3.5rem] truncate">{tool.label}</span>
                   </button>
                 ))}
               </div>
-              <span className="mt-1 border-t border-border/60 pt-1 text-center text-[10px] leading-3 text-muted-foreground">{group.label}</span>
+              <span className="whitespace-nowrap border-t border-border/60 pt-0.5 text-center text-[9px] leading-3 text-muted-foreground">{group.label}</span>
             </section>
           )
         })}
-        <section aria-label="More tools" className="flex shrink-0 flex-col items-center justify-between px-2">
+        <section aria-label="More tools" className="flex shrink-0 flex-col items-center justify-between px-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button type="button" className="flex h-9 items-center gap-2 rounded border border-border/70 px-2 text-xs hover:bg-accent" aria-label="More tools">
-                <Icons.Grid3X3 size={16} />
-                <span>More tools</span>
-                <Icons.ChevronDown size={12} />
+              <button type="button" className="flex h-7 items-center gap-1 rounded px-1.5 text-[10px] text-foreground/85 hover:bg-accent" aria-label="More tools">
+                <Icons.Grid3X3 size={15} />
+                <span>More</span>
+                <Icons.ChevronDown size={11} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="bottom" align="start" className="z-[90] max-h-[70vh] min-w-56 overflow-y-auto">
@@ -394,7 +392,7 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <span className="mt-1 border-t border-border/60 w-full pt-1 text-center text-[10px] leading-3 text-muted-foreground">More</span>
+          <span className="border-t border-border/60 pt-0.5 text-center text-[9px] leading-3 text-muted-foreground">More</span>
         </section>
       </div>
     )
