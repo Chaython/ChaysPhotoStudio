@@ -83,6 +83,13 @@ const WORKSPACE_TOOL_ICONS: Record<string, Record<string, string>> = {
     ink: 'Pen',
     'mypaint-brush': 'Paintbrush',
   },
+  paint: {
+    move: 'Move', 'marquee-rect': 'SquareDashed', 'marquee-ellipse': 'CircleDashed',
+    lasso: 'Lasso', crop: 'Crop', eyedropper: 'Pipette', 'color-sampler': 'Pipette',
+    pencil: 'Pencil', brush: 'Paintbrush', airbrush: 'SprayCan', ink: 'Pen',
+    'paint-bucket': 'PaintBucket', gradient: 'Blend', eraser: 'Eraser',
+    text: 'Type', shape: 'Shapes', pen: 'PenTool', zoom: 'ZoomIn', hand: 'Hand',
+  },
   fireworks: {
     move: 'Pointer', artboard: 'PanelsTopLeft', 'marquee-rect': 'Square',
     'marquee-ellipse': 'Circle', lasso: 'Lasso', crop: 'Crop',
