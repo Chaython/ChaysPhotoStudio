@@ -315,16 +315,16 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
 
   const dragActive = dnd && !!dragSrc
 
-  // MS Paint ribbon: a single compact icon row with group captions,
-  // matching the classic Paint ribbon rather than a text-button toolbox.
+  // Paint ribbon: each tool family is a compact multi-row group, not a
+  // single strip of icons. Keep the group captions and bottom options row.
   if (workspacePreset === 'paint' && compact) {
-    const ribbonGroups: { label: string; ids: ToolId[] }[] = [
-      { label: 'Selection', ids: ['move', 'marquee-rect', 'marquee-ellipse', 'lasso'] },
-      { label: 'Image', ids: ['crop', 'eyedropper', 'color-sampler'] },
-      { label: 'Tools', ids: ['pencil', 'paint-bucket', 'text', 'eraser', 'zoom', 'hand'] },
-      { label: 'Brushes', ids: ['brush', 'airbrush', 'ink', 'mypaint-brush'] },
-      { label: 'Shapes', ids: ['shape', 'pen'] },
-      { label: 'Retouch', ids: ['clone-stamp', 'blur', 'sharpen', 'smudge'] },
+    const ribbonGroups: { label: string; ids: ToolId[]; columns: number }[] = [
+      { label: 'Selection', ids: ['move', 'marquee-rect', 'marquee-ellipse', 'lasso'], columns: 2 },
+      { label: 'Image', ids: ['crop', 'eyedropper', 'color-sampler'], columns: 2 },
+      { label: 'Tools', ids: ['pencil', 'paint-bucket', 'text', 'eraser', 'zoom', 'hand'], columns: 2 },
+      { label: 'Brushes', ids: ['brush', 'airbrush', 'ink', 'mypaint-brush'], columns: 2 },
+      { label: 'Shapes', ids: ['shape', 'pen'], columns: 2 },
+      { label: 'Retouch', ids: ['clone-stamp', 'blur', 'sharpen', 'smudge'], columns: 2 },
     ]
     const shownIds = new Set(ribbonGroups.flatMap(group => group.ids))
     const allIds = sections.flatMap(sec => sec.kind === 'single' ? [sec.tool] : sec.tools)
@@ -332,16 +332,16 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
     return (
       <div
         data-toolbar-mode="paint-ribbon"
-        className="flex h-[3.65rem] min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden bg-panel px-1 py-1"
+        className="flex h-[4.5rem] min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden bg-panel px-1 py-1"
         role="toolbar"
-        aria-label="MS Paint tools ribbon"
+        aria-label="MS Paint grouped tools ribbon"
       >
         {ribbonGroups.map(group => {
           const tools = group.ids.map(id => TOOL_MAP[id]).filter(Boolean) as ToolDef[]
           if (!tools.length) return null
           return (
             <section key={group.label} aria-label={group.label} className="flex shrink-0 flex-col justify-between border-r border-border/70 px-1.5 first:pl-1 last:border-r-0">
-              <div className="flex min-h-0 flex-1 items-center justify-center gap-0.5">
+              <div className="grid min-h-0 flex-1 content-center gap-x-1 gap-y-0.5" style={{ gridTemplateColumns: `repeat(${group.columns}, minmax(0, 1fr))` }}>
                 {tools.map(tool => (
                   <button
                     key={tool.id}
@@ -351,7 +351,7 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
                     aria-label={tool.label}
                     aria-pressed={activeTool === tool.id}
                     className={cn(
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors',
+                      'flex h-7 w-7 items-center justify-center rounded transition-colors',
                       activeTool === tool.id
                         ? 'bg-primary/15 text-primary ring-1 ring-primary/60'
                         : 'text-foreground/85 hover:bg-accent'
