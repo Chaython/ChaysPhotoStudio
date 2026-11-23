@@ -72,6 +72,10 @@ jobs:
         with:
           path: site
 
+      - name: Wait for Pages artifact metadata
+        if: steps.check.outputs.failed == 'true'
+        run: sleep 15
+
       - name: Retry deployment
         if: steps.check.outputs.failed == 'true'
         id: deployment
