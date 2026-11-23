@@ -24,7 +24,6 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { engine } from '../../engine/engine'
 import { setActiveTool } from '../../tools/registry'
 import { insertBefore, moveToGroup, pinToTop } from './layout-ops'
 
@@ -213,8 +212,6 @@ function useToolKeys(): Record<ToolId, string> {
 export function Toolbar({ compact = false, embedded = false }: { compact?: boolean; embedded?: boolean }) {
   const activeTool = useEditorStore(s => s.activeTool)
   const setTool = useEditorStore(s => s.setTool)
-  const renderTick = useEditorStore(s => s.renderTick)
-  const hasDoc = useEditorStore(s => !!s.activeDocId)
   const setToolbarLayout = useEditorStore(s => s.setToolbarLayout)
   const pushToast = useEditorStore(s => s.pushToast)
   const layout = useToolbarLayout()
@@ -244,10 +241,6 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
   const selectTool = (id: ToolId) => {
     setTool(id)
     setActiveTool(id)
-    // update engine tool tracking
-    ; (engine as any)._activeToolId = id
-    void renderTick
-    void hasDoc
   }
 
   const readDropId = (e: React.DragEvent): ToolId | null => {
