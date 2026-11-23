@@ -332,7 +332,7 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
     return (
       <div
         data-toolbar-mode="paint-ribbon"
-        className="flex h-[4.5rem] min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden bg-panel px-1 py-1"
+        className="flex h-[4.75rem] min-h-[4.75rem] min-w-0 flex-1 shrink-0 items-stretch overflow-x-auto overflow-y-hidden bg-panel px-1 py-1"
         role="toolbar"
         aria-label="MS Paint grouped tools ribbon"
       >
