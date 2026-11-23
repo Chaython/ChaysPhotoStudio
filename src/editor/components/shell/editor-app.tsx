@@ -341,7 +341,7 @@ export function EditorApp() {
       <div className={cn('flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
         {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
         <div className="flex flex-1 min-h-0 min-w-0">
-          {!mobileMode && (
+          {!mobileMode && workspacePreset !== 'paint' && (
             <div className={cn("hidden md:flex shrink-0", workspacePreset === 'gimp' && "w-[300px] border-r border-border/70")}>
               <NativeModuleShell id="tools" axis="vertical">
                 <Toolbar embedded={workspacePreset === 'gimp'} />
@@ -359,7 +359,7 @@ export function EditorApp() {
               )}
             </div>
           )}
-          {!mobileMode && <LeftDock />}
+          {!mobileMode && workspacePreset !== 'paint' && <LeftDock />}
           <div data-workspace className="flex flex-1 min-w-0 flex-col">
             {mobileMode ? (
               <div>
@@ -368,11 +368,26 @@ export function EditorApp() {
               </div>
             ) : (
               <>
+                {workspacePreset === 'paint' && (
+                  <section aria-label="MS Paint ribbon" className="hidden md:flex min-w-0 flex-col border-b border-border bg-panel shadow-sm">
+                    <div className="flex min-w-0 items-center">
+                      <div className="shrink-0 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-r border-border">Tools</div>
+                      <div className="min-w-0 flex-1">
+                        <Toolbar compact />
+                      </div>
+                    </div>
+                    <div className="border-t border-border/70">
+                      <NativeModuleShell id="tool-options" axis="horizontal">
+                        <ToolOptionsBar embedded />
+                      </NativeModuleShell>
+                    </div>
+                  </section>
+                )}
                 <div className="md:hidden">
                   <Toolbar compact />
                   <ToolOptionsBar />
                 </div>
-                {workspacePreset !== 'gimp' && (
+                {workspacePreset !== 'gimp' && workspacePreset !== 'paint' && (
                   <div className="hidden md:block">
                     <NativeModuleShell id="tool-options" axis="horizontal">
                       <ToolOptionsBar embedded />
