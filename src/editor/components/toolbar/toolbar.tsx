@@ -322,6 +322,79 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
 
   const dragActive = dnd && !!dragSrc
 
+  // MS Paint-style ribbon: expose the everyday tools as compact grouped buttons
+  // instead of the standard single-row rail of flyout icons.
+  if (workspacePreset === 'paint' && compact) {
+    const ribbonLabels = ['Selection', 'Image', 'Brushes', 'Fill', 'Text & Shapes', 'Retouch', 'View', 'More']
+    return (
+      <div
+        data-toolbar-mode="paint-ribbon"
+        className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto overflow-y-hidden px-1.5 py-1"
+        role="toolbar"
+        aria-label="Paint ribbon tools"
+      >
+        {sections.map((sec, index) => {
+          const tools = (sec.kind === 'single' ? [TOOL_MAP[sec.tool]] : sec.tools.map(id => TOOL_MAP[id])).filter(Boolean) as ToolDef[]
+          if (!tools.length) return null
+          const isMore = index >= 7
+          const visibleTools = isMore ? tools : tools.slice(0, 5)
+          return (
+            <div key={`paint-ribbon-${index}`} className="flex shrink-0 flex-col justify-between border-r border-border/70 px-1.5 last:border-r-0">
+              <div className="flex items-center justify-center gap-0.5">
+                {isMore ? (
+                  <ToolGroupButton
+                    tools={tools}
+                    main={tools.find(t => t.id === activeTool) ?? tools[0]}
+                    active={tools.some(t => t.id === activeTool)}
+                    activeTool={activeTool}
+                    keys={keys}
+                    onSelect={selectTool}
+                    compact
+                    ribbon
+                    embedded={false}
+                    dnd={false}
+                    itemDragStart={itemDragStart}
+                    endDrag={endDrag}
+                  />
+                ) : visibleTools.map(tool => (
+                  <ToolButton
+                    key={tool.id}
+                    def={tool}
+                    shortcut={keys[tool.id]}
+                    active={activeTool === tool.id}
+                    onSelect={selectTool}
+                    compact
+                    ribbon
+                  />
+                ))}
+                {!isMore && tools.length > visibleTools.length && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" className="flex h-7 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent" title={`More ${ribbonLabels[index]} tools`} aria-label={`More ${ribbonLabels[index]} tools`}>
+                        <Icons.ChevronDown size={12} />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="bottom" align="start" className="z-[90] min-w-48">
+                      {tools.slice(visibleTools.length).map(tool => (
+                        <DropdownMenuItem key={tool.id} onSelect={() => selectTool(tool.id)} className="gap-2 text-xs">
+                          <ToolIcon icon={tool.icon} toolId={tool.id} />
+                          <span className="flex-1">{tool.label}</span>
+                          {tool.id === activeTool && <Icons.Check size={11} className="text-primary" />}
+                          <span className="font-mono text-[10px] text-muted-foreground">{formatCombo(keys[tool.id])}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+              <span className="mt-0.5 whitespace-nowrap text-center text-[9px] leading-3 text-muted-foreground">{ribbonLabels[index] ?? 'Tools'}</span>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   // Grid mode rendering (GIMP-style toolbox)
   if (isGridMode && !compact) {
     const gridDnd = dnd ? {
@@ -605,7 +678,7 @@ const TOOL_LONG_PRESS_MS = 450
 const TOOL_LONG_PRESS_MOVE_PX = 8
 
 function ToolGroupButton({
-  tools, main, active, activeTool, keys, onSelect, compact, embedded, dnd, itemDragStart, endDrag,
+  tools, main, active, activeTool, keys, onSelect, compact, ribbon = false, embedded, dnd, itemDragStart, endDrag,
 }: {
   tools: ToolDef[]
   main: ToolDef
@@ -614,6 +687,7 @@ function ToolGroupButton({
   keys: Record<ToolId, string>
   onSelect: (id: ToolId) => void
   compact: boolean
+  ribbon?: boolean
   embedded: boolean
   dnd: boolean
   itemDragStart: (id: ToolId) => (e: React.DragEvent) => void
@@ -680,6 +754,7 @@ function ToolGroupButton({
         active={active}
         onSelect={onSelect}
         compact={compact}
+        ribbon={ribbon}
         hasGroup
         beforeSelect={beforeSelect}
         onContextMenu={openFromContextMenu}
@@ -735,7 +810,7 @@ function ToolGroupButton({
 }
 
 function ToolButton({
-  def, shortcut, active, onSelect, compact, hasGroup, dragHandle, beforeSelect,
+  def, shortcut, active, onSelect, compact, ribbon = false, hasGroup, dragHandle, beforeSelect,
   onContextMenu, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onPointerLeave,
 }: {
   def: ToolDef
@@ -744,6 +819,7 @@ function ToolButton({
   active: boolean
   onSelect: (id: ToolId) => void
   compact?: boolean
+  ribbon?: boolean
   hasGroup?: boolean
   beforeSelect?: () => boolean
   onContextMenu?: React.MouseEventHandler<HTMLButtonElement>
@@ -775,14 +851,14 @@ function ToolButton({
       aria-pressed={active}
       className={cn(
         'relative rounded-sm flex items-center justify-center transition-colors touch-manipulation',
-        compact ? 'w-10 h-10' : 'w-10 h-9',
+        ribbon ? 'h-7 w-7' : compact ? 'w-10 h-10' : 'w-10 h-9',
         active
           ? 'bg-accent text-accent-foreground shadow-inner'
           : 'text-foreground/80 hover:bg-accent/60 hover:text-foreground',
         hasGroup && !compact && 'mb-0'
       )}
     >
-      <ToolIcon icon={def.icon} toolId={def.id} size={compact ? 15 : 17} />
+      <ToolIcon icon={def.icon} toolId={def.id} size={ribbon ? 14 : compact ? 15 : 17} />
       {active && <span className={cn('absolute bg-primary', compact ? 'left-0.5 w-0.5 h-6' : 'left-0 w-0.5 h-6')} />}
     </button>
   )
