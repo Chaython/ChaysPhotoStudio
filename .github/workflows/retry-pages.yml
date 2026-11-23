@@ -1,0 +1,78 @@
+name: Retry GitHub Pages deployment
+
+on:
+  workflow_run:
+    workflows: ["Release — Build & Distribute"]
+    types: [completed]
+    branches: [main, master]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  retry-pages:
+    if: github.event.workflow_run.event == 'push' && (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'master')
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check whether Pages deployment failed
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run_id = context.payload.workflow_run.id;
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id,
+              per_page: 100
+            });
+            const pages = data.jobs.find(job => job.name === 'pages');
+            const failed = pages?.conclusion === 'failure';
+            core.setOutput('failed', String(failed));
+            if (!failed) core.notice('Original Pages job did not fail; no retry is needed.');
+            else core.warning('Original Pages job failed. Retrying deployment from its original static-site artifact.');
+
+      - name: Configure Pages
+        if: steps.check.outputs.failed == 'true'
+        uses: actions/configure-pages@v6
+
+      - name: Download original Pages payload
+        if: steps.check.outputs.failed == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: webapp-static-pages
+          path: site
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Verify Pages payload
+        if: steps.check.outputs.failed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          touch site/.nojekyll
+          test -f site/index.html
+          test -d site/_next
+          test -f site/sw-precache.json
+          grep -q '/ChaysPhotoStudio/_next/' site/index.html
+
+      - name: Upload Pages artifact
+        if: steps.check.outputs.failed == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - name: Retry deployment
+        if: steps.check.outputs.failed == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v5
