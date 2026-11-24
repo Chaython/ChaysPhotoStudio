@@ -7,10 +7,13 @@ import { createElement, lazy, Suspense, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   Layers, GitBranch, History, Zap, SlidersHorizontal, Settings, Compass, BarChart3, Palette, Film, Stamp, Info, PenTool, Grid2X2, Sliders, Wrench, Files, LayoutList, Tags,
+  SquareDashed, Image as ImageIcon, Paintbrush, Shapes, Sparkles, Gauge, AlignLeft, BookOpen,
 } from 'lucide-react'
 import type { PanelId } from '../../constants/panel-ids'
-import { Toolbar } from '../toolbar/toolbar'
+import { TOOL_CLUSTERS, toolClusterPanelId, type ToolClusterId } from '../../constants/tool-clusters'
+import { WorkspaceToolbox } from '../toolbar/workspace-toolbox'
 import { ToolOptionsBar } from '../toolbar/tool-options-bar'
+import { ToolClusterPanel } from '../toolbar/tool-cluster-panel'
 import { DocumentTabs } from '../workspace/document-tabs'
 
 // Only the selected tab is mounted. Loading its module on first activation keeps
@@ -43,6 +46,10 @@ const PathsPanel = deferredPanel(() => import('./paths-panel').then(m => ({ defa
 const PatternsPanel = deferredPanel(() => import('./patterns-panel').then(m => ({ default: m.PatternsPanel })))
 const ToolPresetsPanel = deferredPanel(() => import('./tool-presets-panel').then(m => ({ default: m.ToolPresetsPanel })))
 const LayerCompsPanel = deferredPanel(() => import('./layer-comps-panel').then(m => ({ default: m.LayerCompsPanel })))
+const OptimizePanel = deferredPanel(() => import('./fireworks-panels').then(m => ({ default: m.OptimizePanel })))
+const AlignPanel = deferredPanel(() => import('./fireworks-panels').then(m => ({ default: m.AlignPanel })))
+const PagesPanel = deferredPanel(() => import('./fireworks-panels').then(m => ({ default: m.PagesPanel })))
+const StatesPanel = deferredPanel(() => import('./fireworks-panels').then(m => ({ default: m.StatesPanel })))
 
 export type { PanelId } from '../../constants/panel-ids'
 
@@ -57,14 +64,25 @@ export interface PanelDef {
   /** minimum floating window size */
   minFloat: { w: number; h: number }
   /** built-in shell location; absent = normal panel that defaults right */
-  home?: 'tools' | 'tool-options' | 'documents'
+  home?: 'tools' | 'tool-options' | 'documents' | 'cluster'
   /** preferred width when explicitly docked into the top strip */
   topWidth?: number
 }
 
-const ToolsModule = () => createElement(Toolbar, { embedded: true })
+const ToolsModule = () => createElement(WorkspaceToolbox, { embedded: true })
 const ToolOptionsModule = () => createElement(ToolOptionsBar, { embedded: true })
 const DocumentsModule = () => createElement(DocumentTabs, { embedded: true })
+
+/** Icons for the MS-Paint-style ribbon groups, also used by their floating
+ *  windows and dock tabs. */
+const CLUSTER_ICONS: Record<ToolClusterId, LucideIcon> = {
+  selection: SquareDashed,
+  image: ImageIcon,
+  tools: Wrench,
+  brushes: Paintbrush,
+  shapes: Shapes,
+  retouch: Sparkles,
+}
 
 export const PANELS: PanelDef[] = [
   {
@@ -135,6 +153,24 @@ export const PANELS: PanelDef[] = [
     id: 'layer-comps', label: 'Layer Comps', icon: LayoutList, render: LayerCompsPanel,
     defaultFloat: { w: 316, h: 440 }, minFloat: { w: 250, h: 280 },
   },
+  // Fireworks Expanded Mode inspector panels. They are regular dockable panels
+  // in every workspace; the Fireworks template simply places them by default.
+  {
+    id: 'optimize', label: 'Optimize', icon: Gauge, render: OptimizePanel,
+    defaultFloat: { w: 288, h: 380 }, minFloat: { w: 220, h: 240 },
+  },
+  {
+    id: 'align', label: 'Align', icon: AlignLeft, render: AlignPanel,
+    defaultFloat: { w: 264, h: 300 }, minFloat: { w: 210, h: 200 },
+  },
+  {
+    id: 'pages', label: 'Pages', icon: BookOpen, render: PagesPanel,
+    defaultFloat: { w: 288, h: 360 }, minFloat: { w: 220, h: 220 },
+  },
+  {
+    id: 'states', label: 'States', icon: Film, render: StatesPanel,
+    defaultFloat: { w: 288, h: 360 }, minFloat: { w: 220, h: 220 },
+  },
   {
     id: 'tools', label: 'Tools', icon: Wrench, render: ToolsModule,
     defaultFloat: { w: 300, h: 620 }, minFloat: { w: 180, h: 260 },
@@ -150,6 +186,19 @@ export const PANELS: PanelDef[] = [
     defaultFloat: { w: 720, h: 150 }, minFloat: { w: 320, h: 90 },
     home: 'documents', topWidth: 720,
   },
+  // Paint-ribbon toolbox groups are first-class windows in every workspace.
+  // At home they live in the Paint ribbon (or the toolbar's Groups menu); they
+  // are hidden from the default right dock until the user floats/docks them.
+  ...TOOL_CLUSTERS.map((cluster): PanelDef => ({
+    id: toolClusterPanelId(cluster.id),
+    label: `${cluster.label} Group`,
+    icon: CLUSTER_ICONS[cluster.id],
+    render: () => createElement(ToolClusterPanel, { cluster: cluster.id }),
+    defaultFloat: cluster.defaultFloat,
+    minFloat: { w: 104, h: 96 },
+    home: 'cluster',
+    topWidth: Math.max(120, cluster.defaultFloat.w - 24),
+  })),
 ]
 
 export const PANEL_MAP: Record<string, PanelDef> = Object.fromEntries(

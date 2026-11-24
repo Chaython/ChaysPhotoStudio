@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import type { DialogInstance, DialogType, ToolId, PsAction, ChannelView, ChannelTarget, ToolbarSection, ToolbarLayout } from './types'
 import { TOOL_DEFS, TOOL_MAP } from './constants/tools'
 import { DOCKABLE_PANEL_IDS, isDockablePanelId } from './constants/panel-ids'
+import { TOOL_CLUSTERS, TOOL_CLUSTER_MAP, isToolClusterPanelId, toolClusterIdFromPanelId } from './constants/tool-clusters'
 import { engine } from './engine/engine'
 
 export interface LayerMeta {
@@ -57,10 +58,10 @@ export const ILLUSTRATOR_INSPECTOR_LOWER_TABS = ['layers', 'paths', 'history', '
  *  Channels/Paths/Undo dock below. */
 export const GIMP_INSPECTOR_UPPER_TABS = ['color', 'tool-presets', 'patterns', 'clone-source'] as const
 export const GIMP_INSPECTOR_LOWER_TABS = ['layers', 'channels', 'paths', 'history'] as const
-/** Fireworks-inspired: Optimize/Info-style panels on top, Pages/Layers/History
+/** Fireworks Expanded Mode: Optimize/History/Align on top, Pages/States/Layers
  *  below; the Properties inspector docks as a bottom strip instead. */
-export const FIREWORKS_INSPECTOR_UPPER_TABS = ['color', 'info', 'histogram', 'navigator'] as const
-export const FIREWORKS_INSPECTOR_LOWER_TABS = ['layers', 'layer-comps', 'history', 'metadata'] as const
+export const FIREWORKS_INSPECTOR_UPPER_TABS = ['optimize', 'history', 'align'] as const
+export const FIREWORKS_INSPECTOR_LOWER_TABS = ['pages', 'states', 'layers'] as const
 
 /** Default inspector tab groups for a workspace template. */
 export function inspectorTemplateTabs(preset: WorkspacePreset): { upperTabs: string[]; lowerTabs: string[] } {
@@ -708,18 +709,10 @@ export function defaultToolbarLayout(preset: WorkspacePreset = 'classic'): Toolb
       ['slice-select', 'hotspot'],
       ['frame', 'shape'],
     ],
-    // MS Paint-style ribbon: everyday selection, drawing, fill, text and shape tools first.
-    paint: [
-      ['move', 'marquee-rect', 'marquee-ellipse', 'lasso'],
-      ['crop', 'eyedropper', 'color-sampler'],
-      ['pencil', 'brush', 'airbrush', 'ink', 'mypaint-brush'],
-      ['paint-bucket', 'gradient', 'eraser', 'magic-eraser'],
-      ['text', 'shape', 'pen'],
-      ['clone-stamp', 'blur', 'sharpen', 'smudge'],
-      ['zoom', 'hand'],
-      // Advanced tools remain reachable in the final group.
-      ['artboard', 'path-select', 'direct-select', 'polygon-lasso', 'magnetic-lasso', 'selection-brush', 'quick-mask', 'object-select', 'quick-select', 'magic-wand', 'perspective-crop', 'slice', 'slice-select', 'hotspot', 'frame', 'measure', 'count', 'mixer-brush', 'color-replacement', 'clone-stamp', 'pattern-stamp', 'history-brush', 'art-history-brush', 'background-eraser', 'healing-brush', 'spot-healing', 'patch', 'content-aware-move', 'red-eye', 'dodge', 'burn', 'sponge', 'pen-freeform', 'pen-curvature', 'type-mask-horizontal', 'type-mask-vertical', 'rotate-view'],
-    ],
+    // MS Paint-style ribbon: the toolbox clusters are the single source of
+    // truth, so the Groups menu, floating windows and More menu stay in sync.
+    // The sanitizer appends every advanced tool to a trailing group.
+    paint: TOOL_CLUSTERS.map(cluster => [...cluster.tools]),
     // Fireworks-style: Pointer/Subselect, the select suite, crop and the web
     // Slice/Hotspot export tools, then drawing, rubber stamp and fill.
     fireworks: [
@@ -1549,6 +1542,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (eff === (s.panels.dockSide[id] ?? 'right') && !s.panels.floating[id]) {
       const panels = {
         ...s.panels,
+        // A cluster's home is not a dock tab, so an explicit right-dock
+        // selection must be recorded even though the inspector already
+        // renders it. Without this, generic dock healing would reset rightTab
+        // to the first ordinary panel.
+        dockSide: isToolClusterPanelId(id)
+          ? { ...s.panels.dockSide, [id]: eff }
+          : s.panels.dockSide,
         rightTab: eff === 'right' ? id : s.panels.rightTab,
         photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, eff === 'right' ? s.workspacePreset : 'classic'),
         leftTab: eff === 'left' ? id : s.panels.leftTab,
@@ -1584,44 +1584,72 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     delete floating[id]
     const dockSide = { ...s.panels.dockSide }
     delete dockSide[id]
+    // A toolbox cluster's home is the Paint ribbon / Groups menu, not a dock
+    // tab. Remove it from every inspector stack so returning it home cannot
+    // leave a duplicate copy behind in the right dock.
+    let inspector = s.panels.photoshopInspector
+    if (isToolClusterPanelId(id)) {
+      const without = (ids: string[]) => ids.filter(tab => tab !== id)
+      inspector = normalizePhotoshopInspector({
+        ...inspector,
+        upperTabs: without(inspector.upperTabs),
+        lowerTabs: without(inspector.lowerTabs),
+        sideTabs: without(inspector.sideTabs),
+        sideLowerTabs: without(inspector.sideLowerTabs),
+      }, isInspectorPreset(s.workspacePreset) ? s.workspacePreset : null)
+    }
     const panels = {
       ...s.panels,
       floating,
       dockSide,
+      photoshopInspector: inspector,
+      rightTab: s.panels.rightTab === id ? (inspector.lowerTab || 'layers') : s.panels.rightTab,
+      leftTab: s.panels.leftTab === id ? '' : s.panels.leftTab,
       topOrder: s.panels.topOrder.filter(tid => tid !== id),
     }
     persistPanelLayout(panels)
     return { panels }
   }),
 
-  revealPanel: (id) => set(s => {
-    if (isInspectorPreset(s.workspacePreset) && s.workspaceLayoutLocks[s.workspacePreset].panels &&
-        ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
-          ...s.panels.photoshopInspector.sideTabs, ...s.panels.photoshopInspector.sideLowerTabs].includes(id) &&
-        (s.panels.dockSide[id] ?? 'right') === 'right') return {}
-    if (s.panels.floating[id]) {
-      const r = s.panels.floating[id]
-      if (r.z === s.panels.zTop) return {}
-      const z = s.panels.zTop + 1
-      const panels = { ...s.panels, floating: { ...s.panels.floating, [id]: { ...r, z } }, zTop: z }
+  revealPanel: (id) => {
+    const state = get()
+    const cluster = toolClusterIdFromPanelId(id)
+    // Toolbox clusters have no permanent dock tab; revealing one at home
+    // floats it so Window → Selection Tools is a useful command.
+    if (cluster && !state.panels.floating[id] && !state.panels.dockSide[id]) {
+      if (state.workspaceLayoutLocks[state.workspacePreset].panels) return
+      get().floatPanel(id, TOOL_CLUSTER_MAP[cluster].defaultFloat)
+      return
+    }
+    set(s => {
+      if (isInspectorPreset(s.workspacePreset) && s.workspaceLayoutLocks[s.workspacePreset].panels &&
+          ![...s.panels.photoshopInspector.upperTabs, ...s.panels.photoshopInspector.lowerTabs,
+            ...s.panels.photoshopInspector.sideTabs, ...s.panels.photoshopInspector.sideLowerTabs].includes(id) &&
+          (s.panels.dockSide[id] ?? 'right') === 'right') return {}
+      if (s.panels.floating[id]) {
+        const r = s.panels.floating[id]
+        if (r.z === s.panels.zTop) return {}
+        const z = s.panels.zTop + 1
+        const panels = { ...s.panels, floating: { ...s.panels.floating, [id]: { ...r, z } }, zTop: z }
+        persistPanelLayout(panels)
+        return { panels }
+      }
+      // Native workspace modules are already visible at home until the user
+      // explicitly docks/floats them; revealing one should not move it right.
+      if (isNativePanelId(id) && !s.panels.dockSide[id]) return {}
+      const side: DockSide = s.panels.dockSide[id] ?? 'right'
+      if (HORIZONTAL_DOCKS.includes(side)) return {} // horizontal strips show their panels side by side
+      const panels = {
+        ...s.panels,
+        rightTab: side === 'right' ? id : s.panels.rightTab,
+        photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, side === 'right' ? s.workspacePreset : 'classic'),
+        leftTab: side === 'left' ? id : s.panels.leftTab,
+        leftOpen: side === 'left' ? true : s.panels.leftOpen,
+      }
       persistPanelLayout(panels)
       return { panels }
-    }
-    // Native workspace modules are already visible at home until the user
-    // explicitly docks/floats them; revealing one should not move it right.
-    if (isNativePanelId(id) && !s.panels.dockSide[id]) return {}
-    const side: DockSide = s.panels.dockSide[id] ?? 'right'
-    if (HORIZONTAL_DOCKS.includes(side)) return {} // horizontal strips show their panels side by side
-    const panels = {
-      ...s.panels,
-      rightTab: side === 'right' ? id : s.panels.rightTab,
-      photoshopInspector: withPhotoshopInspectorTab(s.panels.photoshopInspector, id, side === 'right' ? s.workspacePreset : 'classic'),
-      leftTab: side === 'left' ? id : s.panels.leftTab,
-      leftOpen: side === 'left' ? true : s.panels.leftOpen,
-    }
-    persistPanelLayout(panels)
-    return { panels }
-  }),
+    })
+  },
 
   movePanel: (id, x, y) => set(s => {
     if (s.workspaceLayoutLocks[s.workspacePreset].panels) return {}

@@ -379,6 +379,57 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   --panel: #323232;
 }
 
+/* Fireworks Expanded Mode-inspired light chrome. Applied by the Fireworks
+   workspace (and selectable from the theme menu). The neutral gray panels,
+   darker window borders and blue selection match the classic Fireworks UI
+   instead of the default warm light theme. */
+.fireworks-theme {
+  color-scheme: light;
+  --background: #f0f0f0;
+  --foreground: #202020;
+  --card: #f7f7f7;
+  --card-foreground: #202020;
+  --popover: #ffffff;
+  --popover-foreground: #202020;
+  --primary: #2f7bbf;
+  --primary-foreground: #ffffff;
+  --secondary: #e4e4e4;
+  --secondary-foreground: #202020;
+  --muted: #e8e8e8;
+  --muted-foreground: #5a5a5a;
+  --accent: #cfe4f7;
+  --accent-foreground: #102a43;
+  --destructive: #c0392b;
+  --border: #b3b3b3;
+  --input: #a6a6a6;
+  --ring: #2f7bbf;
+  --sidebar: #e8e8e8;
+  --sidebar-foreground: #202020;
+  --sidebar-primary: #2f7bbf;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #cfe4f7;
+  --sidebar-accent-foreground: #102a43;
+  --sidebar-border: #b3b3b3;
+  --sidebar-ring: #2f7bbf;
+  --workspace: #d6d3ce;
+  --panel: #ececec;
+}
+.fireworks-theme [role="menubar"] {
+  background: linear-gradient(#f7f7f7, #e9e9e9);
+  border-bottom-color: #a6a6a6;
+}
+.fireworks-theme [data-native-module="documents"] [role="tablist"] {
+  background: #e6e6e6;
+  border-bottom-color: #a6a6a6;
+}
+.fireworks-theme [data-native-module="documents"] [role="tab"][aria-selected="true"] {
+  background: #ffffff;
+  border-color: #a6a6a6;
+}
+.fireworks-theme [data-photoshop-dock] [role="tab"][aria-selected="true"] {
+  background: #ffffff;
+}
+
 /* Layout skin when an inspector workspace (Photoshop-, Illustrator-, GIMP- or
    Fireworks-style) is selected with the regular dark theme; choosing OLED or
    Light does not unexpectedly override that theme. */
@@ -396,8 +447,9 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
 }
 .zphoto-photoshop-workspace [data-native-module="tools"] > :first-child { display: none; }
 /* the narrow single-column rail only — the GIMP toolbox is a multi-column
-   grid and keeps its own width (see [data-toolbar-mode="grid"]) */
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) { width: 48px; }
+   grid and the Fireworks toolbox is a two-column category palette, so both
+   keep their own width (see [data-toolbar-mode="grid"|"fireworks"]) */
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]):not([data-toolbar-mode="fireworks"]) { width: 48px; }
 .zphoto-photoshop-workspace [data-native-module="tool-options"] > :first-child { display: none; }
 .zphoto-photoshop-workspace [data-native-module="tool-options"] { min-height: 36px; }
 .zphoto-photoshop-workspace [data-photoshop-dock] [role="tab"][aria-selected="true"] { box-shadow: inset 0 -1px var(--primary); }
@@ -408,11 +460,11 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
 .zphoto-photoshop-workspace [role="menubar"] { min-height: 30px; }
 .zphoto-photoshop-workspace [data-native-module="documents"] [role="tablist"] { height: 31px; }
 .zphoto-photoshop-workspace [data-native-module="documents"] [role="tab"][aria-selected="true"] { border-top-color: transparent; background: var(--workspace); }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) { width: 43px; }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) { max-height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"])::-webkit-scrollbar { display: none; }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) > div { margin-bottom: 0; border-bottom: 0; padding: 1px; }
-.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]) button { width: 38px; height: 34px; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]):not([data-toolbar-mode="fireworks"]) { width: 43px; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]):not([data-toolbar-mode="fireworks"]) { max-height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]):not([data-toolbar-mode="fireworks"])::-webkit-scrollbar { display: none; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]):not([data-toolbar-mode="fireworks"]) > div { margin-bottom: 0; border-bottom: 0; padding: 1px; }
+.zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"]:not([data-toolbar-mode="grid"]):not([data-toolbar-mode="fireworks"]) button { width: 38px; height: 34px; }
 /* multi-column toolbox (GIMP): the grid owns its width, so keep the frame
    padding and the natural button size instead of squeezing it into a rail */
 .zphoto-photoshop-workspace [data-native-module="tools"] [role="toolbar"][data-toolbar-mode="grid"] { max-height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }

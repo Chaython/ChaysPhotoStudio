@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { canvasPixelCapabilities, fileToCanvas } from '../../utils/canvas'
 import { TOOL_MAP } from '../../constants/tools'
 import { DocumentTabs } from './document-tabs'
+import { FireworksDocumentBar, type FireworksViewMode } from './fireworks-document-bar'
 import { NativeModuleShell } from '../panels/native-module-shell'
 
 export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
@@ -26,8 +27,22 @@ export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
   const activeDocId = useEditorStore(s => s.activeDocId)
   const activeTool = useEditorStore(s => s.activeTool)
   const renderTick = useEditorStore(s => s.renderTick)
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const [fireworksView, setFireworksView] = useState<FireworksViewMode>('original')
   const [contextPreferences, updateContextPreferences] = useLayerContextMenuPreferences()
   const [editingContextMenu, setEditingContextMenu] = useState(false)
+
+  // The Optimize panel can jump straight to a clean preview.
+  useEffect(() => {
+    const onView = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail
+      if (detail === 'original' || detail === 'preview' || detail === '2-up' || detail === '4-up') {
+        setFireworksView(detail)
+      }
+    }
+    window.addEventListener('zphoto:fireworks-view', onView as EventListener)
+    return () => window.removeEventListener('zphoto:fireworks-view', onView as EventListener)
+  }, [])
 
   useEffect(() => {
     const host = hostRef.current
@@ -124,10 +139,13 @@ export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
           <div className="md:hidden">
             <DocumentTabs />
           </div>
-          <div className="hidden md:block">
+          <div className="hidden min-w-0 md:flex md:flex-col">
             <NativeModuleShell id="documents" axis="horizontal">
               <DocumentTabs embedded />
             </NativeModuleShell>
+            {workspacePreset === 'fireworks' && (
+              <FireworksDocumentBar view={fireworksView} onView={setFireworksView} />
+            )}
           </div>
         </>
       )}
@@ -152,9 +170,85 @@ export function CanvasWorkspace({ mobile = false }: { mobile?: boolean }) {
           </div>
         )}
         {activeDocId && <TextLayerEditor />}
+        {workspacePreset === 'fireworks' && fireworksView !== 'original' && (
+          <FireworksPreviewGrid view={fireworksView} />
+        )}
         <ViewControls mobile={mobile} />
       </div>
       <StatusBar />
+    </div>
+  )
+}
+
+/** Fireworks Original/Preview/2-Up/4-Up views. The editor has one live
+ *  viewport, so the comparison modes show flattened snapshots of the current
+ *  composite in a lightweight grid. The live canvas keeps its zoom/pan and
+ *  remains the source of truth; the overlay is pointer-transparent. */
+function FireworksPreviewGrid({ view }: { view: FireworksViewMode }) {
+  const panes = view === '4-up' ? 4 : view === '2-up' ? 2 : 1
+  const canvases = useRef<(HTMLCanvasElement | null)[]>([])
+
+  useEffect(() => {
+    let raf = 0
+    let last = 0
+    const draw = (time: number) => {
+      if (time - last >= 100) {
+        last = time
+        const source = getViewport().canvas
+        if (source) {
+          for (let i = 0; i < panes; i++) {
+            const canvas = canvases.current[i]
+            if (!canvas) continue
+            const rect = canvas.getBoundingClientRect()
+            const width = Math.max(1, Math.round(rect.width))
+            const height = Math.max(1, Math.round(rect.height))
+            if (canvas.width !== width || canvas.height !== height) {
+              canvas.width = width
+              canvas.height = height
+            }
+            const ctx = canvas.getContext('2d')
+            if (!ctx) continue
+            ctx.clearRect(0, 0, width, height)
+            const scale = Math.min(width / source.width, height / source.height)
+            const w = source.width * scale
+            const h = source.height * scale
+            ctx.imageSmoothingQuality = 'high'
+            ctx.drawImage(source, (width - w) / 2, (height - h) / 2, w, h)
+          }
+        }
+      }
+      raf = requestAnimationFrame(draw)
+    }
+    raf = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(raf)
+  }, [panes])
+
+  const label = (index: number) => {
+    if (panes === 1) return 'Preview'
+    if (index === 0) return 'Original'
+    return panes === 2 ? 'Preview' : `Preview ${index}`
+  }
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 bg-workspace p-2" data-fireworks-preview>
+      <div className={cn('grid h-full w-full gap-2', panes === 1 ? 'grid-cols-1' : 'grid-cols-2', panes === 4 && 'grid-rows-2')}>
+        {Array.from({ length: panes }, (_, index) => (
+          <div
+            key={index}
+            className="relative min-h-0 min-w-0 overflow-hidden border border-border bg-white shadow-sm"
+            style={{ backgroundImage: 'conic-gradient(#e8e8e8 25%, #f8f8f8 0 50%, #e8e8e8 0 75%, #f8f8f8 0)', backgroundSize: '16px 16px' }}
+          >
+            <canvas
+              ref={node => { canvases.current[index] = node }}
+              className="absolute inset-0 h-full w-full"
+              aria-hidden
+            />
+            <span className="absolute left-1 top-1 rounded-sm border border-border/80 bg-panel/90 px-1.5 py-0.5 text-[9px] font-medium text-foreground/80">
+              {label(index)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

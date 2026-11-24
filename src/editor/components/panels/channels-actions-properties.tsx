@@ -15,7 +15,7 @@ import { getImageData, uid, downloadBlob, clamp } from '../../utils/canvas'
 import { ADJUSTMENTS, FILTERS, listLuts, getLut, parseLutFile, sampleLUT } from '../../image-ops'
 import { readAtnActions, writeAtnActions } from '../../formats/atn-actions'
 import { PanelBtn } from './layers-panel'
-import { ControlRenderer } from '../toolbar/tool-options-bar'
+import { ControlRenderer, ToolOptionsBar } from '../toolbar/tool-options-bar'
 import { cn } from '@/lib/utils'
 import { FancyScroll } from '@/components/ui/fancy-scroll'
 import type {
@@ -640,6 +640,43 @@ export function ActionsPanel() {
 }
 
 // ================= Properties =================
+/** Fireworks Expanded Mode keeps tool options in the bottom Properties strip
+ *  (there is no Photoshop-style options row above the canvas). The rest of the
+ *  inspector scrolls underneath that fixed row. When Properties is docked in
+ *  the bottom strip, a Symbol Properties column mirrors the reference layout. */
+function FireworksPropertiesFrame({ children }: { children: React.ReactNode }) {
+  const propertiesDock = useEditorStore(s => s.panels.dockSide.properties)
+  const propertiesFloating = useEditorStore(s => !!s.panels.floating.properties)
+  const showSymbols = propertiesDock === 'bottom' && !propertiesFloating
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 border-b border-border/70 bg-panel">
+        <ToolOptionsBar embedded />
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <div className="min-w-0 flex-1 overflow-hidden">{children}</div>
+        {showSymbols && (
+          <aside
+            className="hidden w-56 shrink-0 flex-col border-l border-border/70 bg-panel/40 p-2 text-[10px] lg:flex"
+            aria-label="Symbol Properties"
+          >
+            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <Icons.Copy size={11} />
+              Symbol Properties
+            </div>
+            <div className="rounded border border-dashed border-border/70 px-2 py-3 text-[10px] leading-relaxed text-muted-foreground">
+              No symbol selected. Symbols are not part of this document.
+            </div>
+            <div className="mt-2 text-[9px] leading-relaxed text-muted-foreground">
+              Use Layer Comps for reusable appearance snapshots, or Pages for export artboards.
+            </div>
+          </aside>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function PropertiesPanel() {
   const activeLayerId = useEditorStore(s => s.activeLayerId)
   const tick = useEditorStore(s => s.renderTick)
@@ -652,20 +689,22 @@ export function PropertiesPanel() {
   if (!layer) {
     if (workspacePreset !== 'fireworks') return <div className="p-4 text-[11px] text-muted-foreground">No active layer</div>
     return (
-      <FancyScroll className="h-full" contentClassName="p-3 space-y-3 text-[11px]">
-        <FireworksDocumentProperties doc={doc} />
-        <div className="border-t pt-2 text-[10px] text-muted-foreground">
-          No object selected. Select a layer or web region to inspect its properties.
-        </div>
-      </FancyScroll>
+      <FireworksPropertiesFrame>
+        <FancyScroll className="h-full" contentClassName="p-3 space-y-3 text-[11px]">
+          <FireworksDocumentProperties doc={doc} />
+          <div className="border-t pt-2 text-[10px] text-muted-foreground">
+            No object selected. Select a layer or web region to inspect its properties.
+          </div>
+        </FancyScroll>
+      </FireworksPropertiesFrame>
     )
   }
 
   const isAdj = layer.kind === 'adjustment' && layer.adjustment
   const isText = layer.kind === 'text' && layer.text
 
-  return (
-    <FancyScroll className="h-full" contentClassName="p-3 space-y-3 text-[11px]">
+  const body = (
+    <>
       {workspacePreset === 'fireworks' ? <FireworksDocumentProperties doc={doc} /> : (
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Document</div>
@@ -709,7 +748,19 @@ export function PropertiesPanel() {
           </div>
         </div>
       )}
-    </FancyScroll>
+    </>
+  )
+
+  if (workspacePreset === 'fireworks') {
+    return (
+      <FireworksPropertiesFrame>
+        <FancyScroll className="h-full" contentClassName="p-3 space-y-3 text-[11px]">{body}</FancyScroll>
+      </FireworksPropertiesFrame>
+    )
+  }
+
+  return (
+    <FancyScroll className="h-full" contentClassName="p-3 space-y-3 text-[11px]">{body}</FancyScroll>
   )
 }
 

@@ -72,8 +72,11 @@ export async function decodeCameraRaw(buffer:ArrayBuffer,options?:RawDevelopSett
 export async function decodeModernWasm(buffer:ArrayBuffer,format:'jxl'|'heic'|'jxr'):Promise<RawImage>{
   let decoded:ImageData
   if(format==='jxl'){
-    const codec=await import('@jsquash/jxl')
-    decoded=await codec.decode(buffer)
+    // Import the decoder entry directly. The package root also re-exports the
+    // encoder, whose multi-threaded worker bundles trigger webpack's dynamic
+    // request warning and a circular runtime chunk even though we only decode.
+    const {default:decode}=await import('@jsquash/jxl/decode')
+    decoded=await decode(buffer)
   }else if(format==='heic'){
     const codec=await import('@discourse/heic')
     decoded=await codec.decode(buffer)

@@ -14,6 +14,9 @@ import type { ToolbarSection, ToolId } from '../src/editor/types'
 import { TOOL_DEFS } from '../src/editor/constants/tools'
 import { COMMANDS } from '../src/editor/shortcuts'
 import { DOCKABLE_PANEL_IDS, isDockablePanelId } from '../src/editor/constants/panel-ids'
+import {
+  TOOL_CLUSTERS, TOOL_CLUSTER_PANEL_IDS, isToolClusterPanelId, toolClusterPanelId,
+} from '../src/editor/constants/tool-clusters'
 
 // --- Registry invariants -------------------------------------------------------
 const presetList = [...WORKSPACE_PRESETS]
@@ -85,6 +88,33 @@ for (const preset of presetList) {
 const groupSorted = [...TOOL_DEFS].sort((a, b) => a.group - b.group).map(def => def.id)
 assert.deepEqual(layoutTools(defaultToolbarLayout('classic')), groupSorted,
   'classic toolbar must group tools by registry group, preserving in-group order')
+
+// --- Toolbox clusters: every group is a real panel target ----------------------
+const clusteredTools = TOOL_CLUSTERS.flatMap(cluster => [...cluster.tools])
+assert.equal(new Set(clusteredTools).size, clusteredTools.length,
+  'a tool may belong to only one ribbon cluster')
+for (const id of clusteredTools) {
+  assert.ok(toolIds.has(id), `cluster references registered tool ${id}`)
+}
+assert.equal(TOOL_CLUSTER_PANEL_IDS.length, TOOL_CLUSTERS.length,
+  'every cluster needs a stable panel id')
+for (const cluster of TOOL_CLUSTERS) {
+  const panelId = toolClusterPanelId(cluster.id)
+  assert.ok(isToolClusterPanelId(panelId), `${panelId} must be recognized as a cluster panel`)
+  assert.ok(isDockablePanelId(panelId), `${panelId} must be floatable/dockable in every workspace`)
+  assert.ok(DOCKABLE_PANEL_IDS.includes(panelId), `${panelId} must be in the dockable panel allowlist`)
+  assert.ok(cluster.defaultFloat.w >= 100 && cluster.defaultFloat.h >= 80,
+    `${cluster.id}: floating group needs a usable default size`)
+}
+// The Paint toolbar template is built from the same clusters the ribbon and
+// Groups menu use, so no group can drift out of sync.
+const paintSections = defaultToolbarLayout('paint')
+assert.deepEqual(
+  paintSections.slice(0, TOOL_CLUSTERS.length).map(section =>
+    section.kind === 'single' ? [section.tool] : section.tools),
+  TOOL_CLUSTERS.map(cluster => [...cluster.tools]),
+  'Paint toolbar template must start with the shared toolbox clusters',
+)
 // Photoshop template must remain byte-identical to the shipped grouping.
 assert.deepEqual(defaultToolbarLayout('photoshop').map(s => s.kind === 'single' ? [s.tool] : s.tools), [
   ['move', 'artboard'],
@@ -149,18 +179,33 @@ assert.ok(!inspectorTemplateTabs('fireworks').upperTabs.includes('properties') &
 // the shared horizontal options strip stays disabled for that preset.
 const editorShell = readFileSync(new URL('../src/editor/components/shell/editor-app.tsx', import.meta.url), 'utf8')
 const toolbarSource = readFileSync(new URL('../src/editor/components/toolbar/toolbar.tsx', import.meta.url), 'utf8')
-assert.ok(toolbarSource.includes('const WORKSPACE_CUSTOM_GLYPHS'), 'custom vector glyphs must be defined')
+const toolIconsSource = readFileSync(new URL('../src/editor/components/toolbar/tool-icons.tsx', import.meta.url), 'utf8')
+const toolClustersSource = readFileSync(new URL('../src/editor/constants/tool-clusters.ts', import.meta.url), 'utf8')
+const panelRegistrySource = readFileSync(new URL('../src/editor/components/panels/panel-registry.ts', import.meta.url), 'utf8')
+assert.ok(toolIconsSource.includes('const WORKSPACE_CUSTOM_GLYPHS'), 'custom vector glyphs must be defined')
 for (const glyph of ['artboard', 'path-select', 'direct-select', 'pen-freeform', 'slice', 'hotspot', 'lasso', 'crop', 'eyedropper', 'gradient', 'eraser', 'clone-stamp', 'healing-brush']) {
-  assert.ok(new RegExp(`(?:'${glyph}'|${glyph}):`).test(toolbarSource), `custom glyph required for ${glyph}`)
+  assert.ok(new RegExp(`(?:'${glyph}'|${glyph}):`).test(toolIconsSource), `custom glyph required for ${glyph}`)
 }
-assert.ok(toolbarSource.includes('WORKSPACE_CUSTOM_GLYPHS[workspacePreset]'),
+assert.ok(toolIconsSource.includes('WORKSPACE_CUSTOM_GLYPHS[workspacePreset]'),
   'custom glyphs must resolve by active workspace')
-assert.ok(toolbarSource.includes('const WORKSPACE_TOOL_ICONS'), 'workspace icon maps must be defined')
+assert.ok(toolIconsSource.includes('const WORKSPACE_TOOL_ICONS'), 'workspace icon maps must be defined')
 for (const preset of ['photoshop', 'illustrator', 'gimp', 'fireworks', 'paint']) {
-  assert.ok(toolbarSource.includes(`  ${preset}: {`), `${preset} must have a distinct tool icon map`)
+  assert.ok(toolIconsSource.includes(`  ${preset}: {`), `${preset} must have a distinct tool icon map`)
 }
-assert.ok(toolbarSource.includes('WORKSPACE_TOOL_ICONS[workspacePreset]'),
+assert.ok(toolIconsSource.includes('WORKSPACE_TOOL_ICONS[workspacePreset]'),
   'tool icon rendering must resolve through the active workspace preset')
+assert.ok(toolbarSource.includes("from './tool-icons'"),
+  'toolbar must reuse the shared workspace icon vocabulary')
+assert.ok(toolClustersSource.includes('TOOL_CLUSTER_PANEL_IDS') && toolClustersSource.includes('toolClusterPanelId'),
+  'toolbox clusters need stable panel ids')
+assert.ok(panelRegistrySource.includes('TOOL_CLUSTERS.map') && panelRegistrySource.includes("home: 'cluster'"),
+  'panel registry must expose every toolbox cluster as a floatable home panel')
+assert.ok(toolbarSource.includes('TOOL_CLUSTERS.map') && toolbarSource.includes('RibbonClusterGroup'),
+  'Paint ribbon must render the shared toolbox clusters with pop-out handles')
+assert.ok(toolbarSource.includes('ToolClusterMenu'),
+  'every workspace toolbar must offer a toolbox-groups pop-out menu')
+assert.ok(toolbarSource.includes('flex-wrap') && !/data-toolbar-mode="paint-ribbon"[\s\S]{0,700}overflow-y-hidden/.test(toolbarSource),
+  'Paint ribbon groups must wrap instead of clipping under a fixed-height row')
 assert.match(toolbarSource, /workspacePreset === 'illustrator' && !compact && !embedded/,
   'Illustrator Fill/Stroke controls belong at the bottom of the standard vertical toolbar')
 assert.ok(toolbarSource.includes('aria-label="Fill color picker"') && toolbarSource.includes('type="color"'),
@@ -267,8 +312,8 @@ for (const [axis, key] of [['X', 'x'], ['Y', 'y'], ['W', 'w'], ['H', 'h']] as co
 assert.match(toolbarSource, /swapColors/,
   'Illustrator toolbar must expose Fill/Stroke swapping')
 const topDockSource = readFileSync(new URL('../src/editor/components/panels/top-dock.tsx', import.meta.url), 'utf8')
-assert.match(editorShell, /<Toolbar embedded=\{workspacePreset === 'gimp'\} \/>/,
-  'GIMP toolbox must use the shared toolbar in its wide toolbox column')
+assert.match(editorShell, /<WorkspaceToolbox embedded=\{workspacePreset === 'gimp'\} \/>/,
+  'GIMP toolbox must use the shared workspace toolbox in its wide toolbox column')
 assert.match(editorShell, /workspacePreset === 'gimp'[\s\S]*?<ToolOptionsBar embedded layout="vertical" \/>/,
   'GIMP tool options must remain beneath the toolbox in a vertical contextual layout')
 const toolOptionsSource = readFileSync(new URL('../src/editor/components/toolbar/tool-options-bar.tsx', import.meta.url), 'utf8')
@@ -278,10 +323,61 @@ assert.match(toolOptionsSource, /layout !== 'vertical' && <VDivider \/>/,
   'GIMP tool options must not show horizontal toolbar dividers')
 assert.match(editorShell, /workspacePreset !== 'gimp' && workspacePreset !== 'paint'[\s\S]*?<ToolOptionsBar embedded \/>/,
   'non-GIMP/non-Paint workspaces retain the shared horizontal tool-options strip')
-assert.match(editorShell, /workspacePreset === 'paint'[\s\S]*?<Toolbar compact \/>[\s\S]*?<PaintColorPalette \/>[\s\S]*?<ToolOptionsBar embedded \/>/,
+assert.match(editorShell, /workspacePreset === 'paint'[\s\S]*?<Toolbar compact clusterWindows \/>[\s\S]*?<PaintColorPalette \/>[\s\S]*?<ToolOptionsBar embedded \/>/,
   'Paint workspace renders a top ribbon, quick color palette and contextual tool options')
-assert.match(editorShell, /workspacePreset !== 'paint' && <LeftDock \/>/,
-  'Paint workspace hides the optional left dock to maximize canvas space')
+assert.match(editorShell, /data-workspace-ribbon="paint"[\s\S]*?min-h-\[4\.5rem\][\s\S]*?min-h-9/,
+  'Paint tools and tool-options rows must use normal flow with independent minimum heights')
+assert.doesNotMatch(editorShell, /data-workspace-ribbon="paint"[\s\S]{0,700}h-\[4\.75rem\]/,
+  'Paint ribbon must not reserve a fixed height that lets settings overlap the toolbar')
+assert.match(editorShell, /!mobileMode && <LeftDock \/>/,
+  'the left dock stays available in every workspace so toolbox groups can be docked there')
+assert.match(editorShell, /!mobileMode && workspacePreset !== 'paint' &&[\s\S]{0,400}<WorkspaceToolbox embedded=\{workspacePreset === 'gimp'\} \/>/,
+  'Paint keeps its ribbon and omits the permanent vertical tool rail; Fireworks swaps in its two-column toolbox')
+const workspaceToolboxSource = readFileSync(new URL('../src/editor/components/toolbar/workspace-toolbox.tsx', import.meta.url), 'utf8')
+assert.match(workspaceToolboxSource, /workspacePreset === 'fireworks'[\s\S]*?<FireworksToolbox \/>[\s\S]*?<Toolbar embedded=\{embedded\} \/>/,
+  'the shared toolbox must switch to the Fireworks palette in that workspace')
+assert.match(editorShell, /!mobileMode && workspacePreset === 'fireworks' && <FireworksToolbar \/>/,
+  'Fireworks Expanded Mode renders its standard toolbar below the menu bar')
+assert.match(editorShell, /workspacePreset !== 'gimp' && workspacePreset !== 'paint' && workspacePreset !== 'fireworks'[\s\S]{0,200}<ToolOptionsBar embedded \/>/,
+  'Fireworks moves tool options out of the top strip and into Properties')
+assert.match(editorShell, /workspacePreset === 'fireworks' && "w-\[84px\]"/,
+  'Fireworks reserves a two-column toolbox width instead of the 43px rail')
+
+// --- Fireworks Expanded Mode layout -------------------------------------------
+const fireworksToolboxSource = readFileSync(new URL('../src/editor/components/toolbar/fireworks-toolbox.tsx', import.meta.url), 'utf8')
+for (const group of ['Select', 'Bitmap', 'Vector', 'Web', 'Colors', 'View']) {
+  assert.ok(fireworksToolboxSource.includes(`label: '${group}'`) || fireworksToolboxSource.includes(`aria-label="${group}"`),
+    `Fireworks toolbox must expose its ${group} category`)
+}
+assert.ok(fireworksToolboxSource.includes('grid-cols-2'),
+  'Fireworks toolbox tools must render in two columns')
+assert.ok(fireworksToolboxSource.includes('<ToolClusterMenu showLabel />'),
+  'Fireworks toolbox must keep the shared toolbox-groups menu')
+const fireworksToolbarSource = readFileSync(new URL('../src/editor/components/shell/fireworks-toolbar.tsx', import.meta.url), 'utf8')
+for (const command of ['New document', 'Open…', 'Save project', 'Undo', 'Redo', 'Cut layer', 'Copy layer', 'Paste layer', 'Zoom out', 'Zoom in', 'Fit on screen']) {
+  assert.ok(fireworksToolbarSource.includes(`label="${command}"`), `Fireworks standard toolbar must expose ${command}`)
+}
+assert.ok(fireworksToolbarSource.includes('Expanded Mode'),
+  'Fireworks standard toolbar must identify the Expanded Mode workspace')
+const fireworksDocumentBarSource = readFileSync(new URL('../src/editor/components/workspace/fireworks-document-bar.tsx', import.meta.url), 'utf8')
+for (const view of ['Original', 'Preview', '2-Up', '4-Up']) {
+  assert.ok(fireworksDocumentBarSource.includes(`label: '${view}'`), `Fireworks document bar must expose the ${view} view`)
+}
+assert.ok(fireworksDocumentBarSource.includes('aria-label="Active page"'),
+  'Fireworks document bar must expose the page selector')
+const canvasWorkspaceSource = readFileSync(new URL('../src/editor/components/workspace/canvas-workspace.tsx', import.meta.url), 'utf8')
+assert.match(canvasWorkspaceSource, /workspacePreset === 'fireworks' && \(\s*<FireworksDocumentBar/,
+  'Fireworks must render its view bar below the document tabs')
+assert.match(propertiesSource, /<ToolOptionsBar embedded \/>/,
+  'Fireworks Properties strip must embed the contextual tool options')
+assert.deepEqual(inspectorTemplateTabs('fireworks').upperTabs, ['optimize', 'history', 'align'],
+  'Fireworks Expanded Mode opens with Optimize/History/Align')
+assert.deepEqual(inspectorTemplateTabs('fireworks').lowerTabs, ['pages', 'states', 'layers'],
+  'Fireworks Expanded Mode opens with Pages/States/Layers')
+for (const panel of ['optimize', 'align', 'pages', 'states']) {
+  assert.ok(isDockablePanelId(panel), `Fireworks ${panel} panel must be dockable in every workspace`)
+  assert.ok(panelRegistrySource.includes(`id: '${panel}'`), `Fireworks ${panel} panel must be registered`)
+}
 assert.match(topDockSource, /side === "bottom" && id === "properties"[\s\S]*?width: "100%"/,
   'Fireworks Properties must expand across the bottom dock instead of staying a narrow floating-panel width')
 

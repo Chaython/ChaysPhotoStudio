@@ -33,6 +33,15 @@ const nextConfig: NextConfig = {
       ));
       config.resolve = config.resolve || {};
       config.resolve.fallback = { ...config.resolve.fallback, module: false };
+      // libraw-wasm's Emscripten pthread worker forms a chunk cycle with the
+      // webpack runtime. It is a third-party build notice, not a load failure,
+      // and the worker runs correctly — keep it out of the dev overlay.
+      config.ignoreWarnings = [
+        ...(config.ignoreWarnings || []),
+        (warning) =>
+          /Circular dependency between chunks with runtime/.test(warning.message) &&
+          /libraw-wasm/.test(warning.message),
+      ];
     }
     return config;
   },

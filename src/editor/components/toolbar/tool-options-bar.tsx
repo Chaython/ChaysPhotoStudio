@@ -53,7 +53,7 @@ export function ToolOptionsBar({ embedded = false, mobile = false, layout = 'hor
     // Collapsed (chevron): one slim row — extra controls swipe horizontally.
     // Below md the bar is always the single-row swipe strip (mobile overlay
     // scrollbars + no room to wrap anyway).
-    <div className={cn('flex bg-panel flex-shrink-0 min-w-0', layout === 'vertical' ? 'flex-col items-stretch' : 'flex-row', !embedded && 'border-b', embedded && 'h-full')}>
+    <div className={cn('flex bg-panel flex-shrink-0 min-w-0', layout === 'vertical' ? 'flex-col items-stretch' : 'flex-row', !embedded && 'border-b', embedded && layout === 'vertical' && 'h-full', embedded && layout !== 'vertical' && 'w-full')}>
       <div
         className={cn(
           'flex gap-x-3 gap-y-1.5 px-2 py-1.5 min-w-0 min-h-9',

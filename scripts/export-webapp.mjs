@@ -66,7 +66,7 @@ copyTree(ROOT, COPY)
 // to direct engine calls at runtime (generate.ts).
 fs.rmSync(path.join(COPY, 'src/app/api'), { recursive: true, force: true })
 // static flavors don't ship the ~1 MB source archive — the welcome
-// screen link falls back to the repository copy at runtime. Match
+// screen links straight to the repository archive instead. Match
 // any version so stale archives can never leak in.
 for (const f of fs.readdirSync(path.join(COPY, 'public'))) {
   if (/^chays-photo-studio-.*-project\.zip$/.test(f)) {

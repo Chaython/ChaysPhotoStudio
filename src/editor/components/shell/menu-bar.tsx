@@ -6,8 +6,8 @@ import {
 } from '@/components/ui/menubar'
 import type { MenuItem } from '../../constants/menus'
 import { MENUS, PLUGINS_MENU_INDEX, getPluginsMenuItems } from '../../constants/menus'
-import { useEditorStore, WORKSPACE_PRESETS, WORKSPACE_PRESET_LABELS } from '../../store'
-import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2, Pencil, X, Lock, Unlock, Download as DownloadIcon } from 'lucide-react'
+import { useEditorStore, WORKSPACE_PRESETS, WORKSPACE_PRESET_LABELS, type WorkspacePreset } from '../../store'
+import { Sparkles, Sun, Moon, Contrast, Settings, Keyboard, Puzzle, Info, CircleHelp, RotateCcw, LayoutGrid, Check, Smartphone, Download, Upload, Save, Trash2, Pencil, X, Lock, Unlock, Flame, Download as DownloadIcon } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -125,20 +125,20 @@ type PromiseEvent = Event & {
   prompt(): Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-type AppTheme = 'dark' | 'light' | 'oled' | 'photoshop'
+export type AppTheme = 'dark' | 'light' | 'oled' | 'photoshop' | 'fireworks'
 
-export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
+export function MenuBar({ theme, setTheme, mobileMode, setMobileMode, setWorkspacePreset }: {
   theme: AppTheme
   setTheme: (theme: AppTheme) => void
   mobileMode: boolean
   setMobileMode: (mobile: boolean) => void
+  setWorkspacePreset: (preset: WorkspacePreset) => void
 }) {
   const menus = useEditorStore(s => s.renderTick) // re-render on engine changes for enabled states
   const scTick = useEditorStore(s => s.shortcutOverrides) // TASK 17 — live shortcut labels
   const openDialog = useEditorStore(s => s.openDialog)
   const resetLayout = useEditorStore(s => s.resetPanelLayout)
   const workspacePreset = useEditorStore(s => s.workspacePreset)
-  const setWorkspacePreset = useEditorStore(s => s.setWorkspacePreset)
   const resetWorkspaceLayout = useEditorStore(s => s.resetWorkspaceLayout)
   const workspaceLocks = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset])
   const setWorkspaceLayoutLock = useEditorStore(s => s.setWorkspaceLayoutLock)
@@ -177,9 +177,9 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
   void menus // plugin installs/imports also bump renderTick → the dynamic Plugins menu stays fresh
   void scTick
 
-  const cycleTheme = () => setTheme(theme === 'dark' ? 'oled' : theme === 'oled' ? 'photoshop' : theme === 'photoshop' ? 'light' : 'dark')
-  const ThemeIcon = theme === 'light' ? Sun : theme === 'oled' ? Contrast : theme === 'photoshop' ? LayoutGrid : Moon
-  const themeLabel = theme === 'light' ? 'Light' : theme === 'oled' ? 'OLED black' : theme === 'photoshop' ? 'Photoshop-inspired' : 'Dark'
+  const cycleTheme = () => setTheme(theme === 'dark' ? 'oled' : theme === 'oled' ? 'photoshop' : theme === 'photoshop' ? 'fireworks' : theme === 'fireworks' ? 'light' : 'dark')
+  const ThemeIcon = theme === 'light' ? Sun : theme === 'oled' ? Contrast : theme === 'photoshop' ? LayoutGrid : theme === 'fireworks' ? Flame : Moon
+  const themeLabel = theme === 'light' ? 'Light' : theme === 'oled' ? 'OLED black' : theme === 'photoshop' ? 'Photoshop-inspired' : theme === 'fireworks' ? 'Fireworks (Expanded)' : 'Dark'
 
   return (
     <Menubar className={`h-8 rounded-none border-0 border-b bg-panel text-xs flex-shrink-0 gap-0 ${mobileMode ? 'overflow-x-auto zphoto-scroll' : ''}`}>
@@ -346,6 +346,9 @@ export function MenuBar({ theme, setTheme, mobileMode, setMobileMode }: {
             </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => setTheme('photoshop')}>
               <LayoutGrid size={13} /><span className="flex-1">Photoshop-inspired colors</span>{theme === 'photoshop' && <Check size={13} />}
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => setTheme('fireworks')}>
+              <Flame size={13} /><span className="flex-1">Fireworks (Expanded)</span>{theme === 'fireworks' && <Check size={13} />}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Workspace</div>

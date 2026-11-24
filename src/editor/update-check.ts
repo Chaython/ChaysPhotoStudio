@@ -1,6 +1,8 @@
-import { version as currentVersion } from '../../package.json'
+import packageInfo from '../../package.json'
 
-export { currentVersion }
+// Import the default JSON object: webpack warns (and will eventually fail) on
+// named imports from modules that only expose a default export.
+export const currentVersion = packageInfo.version
 
 export interface ReleaseCheck {
   tag: string

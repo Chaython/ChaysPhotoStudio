@@ -11,9 +11,9 @@ export const VALID_DOCK_SIDES: readonly DockSide[] = [
 export function resolvePanelDockSide(
   id: string,
   dockSide: Record<string, string>,
-  hasNativeHome: boolean,
+  hasHome: boolean,
 ): DockSide | null {
   const explicit = dockSide[id]
   if (VALID_DOCK_SIDES.includes(explicit as DockSide)) return explicit as DockSide
-  return hasNativeHome ? null : 'right'
+  return hasHome ? null : 'right'
 }

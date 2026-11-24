@@ -9,6 +9,7 @@ import { importGimpGradientFile } from '../plugins/gradient-presets'
 import { importPatternFile } from '../tools/patterns'
 import type { AdjustmentType, FilterType } from '../types'
 import { commandCombo, formatCombo, type CommandId } from '../shortcuts'
+import { TOOL_CLUSTERS, toolClusterPanelId } from './tool-clusters'
 import { IMPORT_ACCEPT } from '../formats'
 import { openSponsorsPage } from '../utils/open-sponsors'
 
@@ -675,6 +676,30 @@ export const MENUS: MenuItem[][] = [
     S(),
     { id: 'win-script', label: 'Scripting Console…', run: () => openDlg('script-console') },
     { id: 'win-batch', label: 'Batch / Image Processor…', run: () => openDlg('batch') },
+    S(),
+    // Paint-style ribbon groups are usable as floating palettes or dock tabs
+    // in every workspace, not just the MS Paint preset.
+    {
+      id: 'win-toolbox-groups',
+      label: 'Toolbox Groups',
+      submenu: TOOL_CLUSTERS.map(cluster => {
+        const id = toolClusterPanelId(cluster.id)
+        return {
+          id: `win-cluster-${cluster.id}`,
+          label: cluster.label,
+          submenu: [
+            { id: `win-cluster-${cluster.id}-float`, label: 'Float Group', run: () => store().floatPanel(id, cluster.defaultFloat) },
+            S(),
+            { id: `win-cluster-${cluster.id}-left`, label: 'Dock Left', run: () => store().dockPanel(id, 'left') },
+            { id: `win-cluster-${cluster.id}-right`, label: 'Dock Right', run: () => store().dockPanel(id, 'right') },
+            { id: `win-cluster-${cluster.id}-top`, label: 'Dock Top', run: () => store().dockPanel(id, 'top') },
+            { id: `win-cluster-${cluster.id}-bottom`, label: 'Dock Bottom', run: () => store().dockPanel(id, 'bottom') },
+            S(),
+            { id: `win-cluster-${cluster.id}-home`, label: 'Return to Ribbon', run: () => store().homePanel(id) },
+          ],
+        }
+      }),
+    },
     S(),
     { id: 'win-reset-layout', label: 'Reset Panel Layout', run: () => store().resetPanelLayout() },
   ],

@@ -21,11 +21,18 @@ import { useEditorStore, defaultToolbarLayoutForPreset } from '../../store'
 import { formatCombo } from '../../shortcuts'
 import type { ToolDef, ToolId, ToolbarSection, ToolbarLayout } from '../../types'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+  DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { setActiveTool } from '../../tools/registry'
+import { TOOL_CLUSTERS, toolClusterPanelId, type ToolClusterDef } from '../../constants/tool-clusters'
+import type { DockSide } from '../../store'
+import { beginWindowDrag } from '../panels/window-drag'
+import { PanelLayoutContextMenu } from '../panels/panel-layout-menu'
 import { insertBefore, moveToGroup, pinToTop } from './layout-ops'
+import { ToolIcon } from './tool-icons'
 
 /** Toolbox grid metrics (px). The button is 40px wide; the row gap and the
  *  frame padding are added on top so a multi-column toolbox is never cut off. */
@@ -33,151 +40,6 @@ const GRID_CELL_W = 40
 const GRID_GAP = 2
 const GRID_FRAME = 4
 
-/**
- * Workspace icon language. The tools and their behavior remain shared, but
- * each preset gets a recognizable icon vocabulary instead of reusing one
- * generic rail. Names resolve to lucide-react exports with a safe fallback.
- */
-const WORKSPACE_TOOL_ICONS: Record<string, Record<string, string>> = {
-  photoshop: {
-    move: 'Move', 'marquee-rect': 'SquareDashed', 'marquee-ellipse': 'CircleDashed',
-    lasso: 'Lasso', 'polygon-lasso': 'Pentagon', 'magnetic-lasso': 'Magnet',
-    'object-select': 'ScanSearch', 'quick-select': 'BrushHighlighter', 'magic-wand': 'WandSparkles',
-    crop: 'Crop', eyedropper: 'Pipette', brush: 'Paintbrush', pencil: 'Pencil',
-    eraser: 'Eraser', 'clone-stamp': 'Stamp', 'spot-healing': 'Sparkles',
-    gradient: 'Blend', 'paint-bucket': 'PaintBucket', pen: 'PenTool', text: 'Type',
-    shape: 'Shapes', hand: 'Hand', zoom: 'ZoomIn',
-  },
-  illustrator: {
-    move: 'Pointer', artboard: 'PanelsTopLeft', 'marquee-rect': 'MousePointer2',
-    'marquee-ellipse': 'Circle', lasso: 'Lasso', 'polygon-lasso': 'Pentagon',
-    'magic-wand': 'Wand2', eyedropper: 'Pipette', brush: 'Brush',
-    pencil: 'Pencil', eraser: 'Eraser', pen: 'PenTool', 'pen-freeform': 'PenLine',
-    'pen-curvature': 'Spline', text: 'Type', 'path-select': 'MousePointer2',
-    'direct-select': 'MousePointer', shape: 'Shapes', gradient: 'Blend',
-    'paint-bucket': 'PaintBucket', hand: 'Hand', zoom: 'ZoomIn',
-  },
-  gimp: {
-    move: 'Move', 'marquee-rect': 'Square', 'marquee-ellipse': 'Circle',
-    lasso: 'Lasso', 'polygon-lasso': 'PenLine', 'magnetic-lasso': 'Magnet',
-    'quick-select': 'Brush', 'magic-wand': 'WandSparkles', crop: 'Crop',
-    eyedropper: 'Pipette', brush: 'Paintbrush', pencil: 'Pencil',
-    eraser: 'Eraser', 'clone-stamp': 'Stamp', 'healing-brush': 'Bandage',
-    gradient: 'Blend', 'paint-bucket': 'PaintBucket', pen: 'Waypoints',
-    text: 'Type', shape: 'Shapes', hand: 'Hand', zoom: 'ZoomIn',
-    // New GIMP tools
-    alignment: 'AlignHorizontalDistributeCenter',
-    rotate: 'RotateCcw',
-    scale: 'Maximize2',
-    shear: 'Slash',
-    perspective: 'Box',
-    'unified-transform': 'Move3d',
-    'handle-transform': 'CornerUpLeft',
-    flip: 'FlipHorizontal2',
-    'cage-transform': 'Grid',
-    'warp-transform': 'Waves',
-    'scissors-select': 'Scissors',
-    'foreground-select': 'User',
-    airbrush: 'SprayCan',
-    ink: 'Pen',
-    'mypaint-brush': 'Paintbrush',
-  },
-  paint: {
-    move: 'Move', 'marquee-rect': 'SquareDashed', 'marquee-ellipse': 'CircleDashed',
-    lasso: 'Lasso', crop: 'Crop', eyedropper: 'Pipette', 'color-sampler': 'Pipette',
-    pencil: 'Pencil', brush: 'Paintbrush', airbrush: 'SprayCan', ink: 'Pen',
-    'paint-bucket': 'PaintBucket', gradient: 'Blend', eraser: 'Eraser',
-    text: 'Type', shape: 'Shapes', pen: 'PenTool', zoom: 'ZoomIn', hand: 'Hand',
-  },
-  fireworks: {
-    move: 'Pointer', artboard: 'PanelsTopLeft', 'marquee-rect': 'Square',
-    'marquee-ellipse': 'Circle', lasso: 'Lasso', crop: 'Crop',
-    slice: 'Scissors', hotspot: 'MousePointerClick', eyedropper: 'Pipette',
-    brush: 'Paintbrush', pencil: 'Pencil', eraser: 'Eraser',
-    pen: 'PenTool', text: 'Type', shape: 'Shapes', gradient: 'Blend',
-    'paint-bucket': 'PaintBucket', hand: 'Hand', zoom: 'ZoomIn',
-  },
-}
-
-const WORKSPACE_CUSTOM_GLYPHS: Record<string, Record<string, React.ReactNode>> = {
-  photoshop: {
-    'marquee-rect': <><rect x="4" y="5" width="16" height="14" strokeDasharray="2 2" /><path d="M7 8h10M7 16h10" /></>,
-    'spot-healing': <><circle cx="12" cy="12" r="7" /><path d="M12 7v10M7 12h10M9 9l6 6M15 9l-6 6" /></>,
-    'clone-stamp': <><path d="M7 8h10v7H7zM9 15v3h6v-3" /><path d="M9 5h6" /></>,
-    brush: <><path d="m5 16 9-9 4 4-9 9H5z" /><path d="m14 7 2-2 4 4-2 2" /></>,
-    lasso: <><path d="M5 8c0-3 3-5 7-5s7 2 7 5-3 5-7 5c-2 0-3-.5-4-1l-3 3 1-5" /><path d="M12 13v4c0 2 1 3 3 3" /></>,
-    'marquee-ellipse': <><ellipse cx="12" cy="12" rx="8" ry="6" strokeDasharray="2 2" /><path d="M4 12h16" /></>,
-    crop: <><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12" /></>,
-    eraser: <><path d="m4 15 8-10a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-5 6H9z" /><path d="m9 19 6-7" /></>,
-  },
-  illustrator: {
-    move: <><path d="M12 2v20M2 12h20M12 2l-2 3m2-3 2 3M22 12l-3-2m3 2-3 2M12 22l-2-3m2 3 2-3M2 12l3-2m-3 2 3 2" /></>,
-    artboard: <><rect x="4" y="4" width="16" height="16" /><path d="M8 2v4m8-4v4M8 18v4m8-4v4M2 8h4m12 0h4M2 16h4m12 0h4" /></>,
-    'path-select': <><path d="M5 19 7 5l12 4-8 10z" /><circle cx="5" cy="19" r="1.6" fill="currentColor" /><circle cx="7" cy="5" r="1.6" fill="currentColor" /><circle cx="19" cy="9" r="1.6" fill="currentColor" /><circle cx="11" cy="19" r="1.6" fill="currentColor" /></>,
-    'direct-select': <><path d="m5 3 2 17 4-5 4 5 2-2-4-5 6-1z" /><circle cx="7" cy="5" r="1.2" fill="currentColor" /></>,
-    pen: <><path d="m12 3 6 6-8 10-5 2 2-5z" /><path d="m10 5 6 6M5 16l4 3" /><circle cx="12" cy="3" r="1.5" /></>,
-    'pen-freeform': <><path d="M4 18c2-12 5-12 8-5s5 6 8-7" /><circle cx="4" cy="18" r="1.5" /><circle cx="20" cy="6" r="1.5" /></>,
-    text: <><path d="M4 5h16M12 5v14M8 19h8" /><path d="M8 5 6 9m10-4 2 4" /></>,
-    shape: <><rect x="3" y="4" width="8" height="8" /><circle cx="17" cy="8" r="4" /><path d="m12 21 4-7 4 7z" /></>,
-    'magic-wand': <><path d="m4 20 12-12 4 4L8 24z" /><path d="m16 3 1-2m4 5 2-1m-6 7 2 2" /></>,
-    eyedropper: <><path d="m14 4 6 6M12 6l6 6-9 9H4v-5z" /><path d="m4 20-1 1" /></>,
-    gradient: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M4 18 18 5M8 19 20 7M4 13l8-8" /></>,
-    pencil: <><path d="m4 16 11-11 5 5L9 21H4z" /><path d="m13 7 5 5M4 16l5 5" /></>,
-    eraser: <><path d="m4 15 8-10a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-5 6H9z" /><path d="m9 19 6-7" /></>,
-  },
-  gimp: {
-    'marquee-rect': <><rect x="4" y="4" width="16" height="16" strokeDasharray="1.5 2" /><path d="M8 8h8v8H8z" /></>,
-    brush: <><path d="m5 17 9-10 4 4-9 10H5z" /><path d="M14 7 17 4l4 4-3 3" /><path d="M4 21c0-2 2-3 4-3" /></>,
-    pen: <><path d="M4 19 12 4l8 15z" /><circle cx="12" cy="4" r="1.5" fill="currentColor" /><circle cx="4" cy="19" r="1.5" fill="currentColor" /><circle cx="20" cy="19" r="1.5" fill="currentColor" /></>,
-    'marquee-ellipse': <><ellipse cx="12" cy="12" rx="8" ry="6" strokeDasharray="2 2" /></>,
-    lasso: <><path d="M5 8c0-3 3-5 7-5s7 2 7 5-3 5-7 5c-2 0-3-.5-4-1l-3 3 1-5" /></>,
-    crop: <><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12" /></>,
-    eraser: <><path d="m4 15 8-10a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-5 6H9z" /><path d="m9 19 6-7" /></>,
-    'clone-stamp': <><path d="M7 8h10v7H7zM9 15v3h6v-3" /><path d="M9 5h6" /></>,
-    'healing-brush': <><path d="m5 15 10-10 5 5-10 10H5z" /><path d="m11 9 5 5M8 17l2-2" /></>,
-    gradient: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M4 18 18 5M8 19 20 7" /></>,
-    // New GIMP tools
-    alignment: <><rect x="4" y="4" width="16" height="16" /><path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="0.5" /></>,
-    rotate: <><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8m11.3 11.3l2.8 2.8M4.9 19.1l2.8-2.8m11.3-11.3l2.8-2.8" /><circle cx="12" cy="12" r="3" /></>,
-    scale: <><rect x="5" y="5" width="14" height="14" /><path d="M3 12h6M15 12h6M12 3v6M12 15v6" /></>,
-    shear: <><path d="M4 16l16-12" /><path d="M4 8l16 12" stroke="currentColor" strokeWidth="0.5" strokeDasharray="2 2" /></>,
-    perspective: <><path d="M6 4l6 16M12 4l6 16M6 20l6-16" /><path d="M6 4h12M12 20h12" stroke="currentColor" strokeWidth="0.5" strokeDasharray="2 2" /></>,
-    'unified-transform': <><rect x="4" y="4" width="16" height="16" /><path d="M12 4v4M12 16v4M4 12h4M16 12h4" /><path d="M8 8l8 8M16 8l-8 8" stroke="currentColor" strokeWidth="0.5" /></>,
-    'handle-transform': <><rect x="4" y="4" width="16" height="16" /><circle cx="4" cy="4" r="2" fill="currentColor" /><circle cx="20" cy="4" r="2" fill="currentColor" /><circle cx="4" cy="20" r="2" fill="currentColor" /><circle cx="20" cy="20" r="2" fill="currentColor" /></>,
-    flip: <><path d="M4 12h16" /><path d="M8 8l4-4 4 4M8 16l4 4 4-4" /></>,
-    'cage-transform': <><rect x="3" y="3" width="18" height="18" /><path d="M9 3v18M15 3v18M3 9h18M3 15h18" stroke="currentColor" strokeWidth="0.5" /></>,
-    'warp-transform': <><rect x="3" y="3" width="18" height="18" /><path d="M3 12c3-4 9-4 12 0M3 12c3 4 9 4 12 0" stroke="currentColor" strokeWidth="0.5" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></>,
-    'scissors-select': <><path d="M4 12l4-6 4 6 4-6 4 6" strokeWidth="1.5" /><circle cx="8" cy="6" r="1.5" fill="currentColor" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /><circle cx="16" cy="6" r="1.5" fill="currentColor" /></>,
-    'foreground-select': <><path d="M6 6l6 6 6-6" strokeWidth="2" /><path d="M12 2v20M2 12h20" strokeWidth="0.5" strokeDasharray="2 2" /></>,
-    airbrush: <><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 4.9l-2.8 2.8" /><circle cx="12" cy="12" r="4" /><path d="M12 8v8" strokeWidth="0.5" /></>,
-    ink: <><path d="M4 20l8-12 8 12" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M12 8v12" strokeWidth="0.5" /></>,
-    'mypaint-brush': <><path d="M12 2c0 3-3 5-7 5s-7-2-7-5c0-2 1-4 3-5l-3-3 1-5c4 1 7 3 7 6s-3 5-7 5z" /><path d="M12 13v4c0 2 1 3 3 3" /></>,
-  },
-  fireworks: {
-    slice: <><rect x="3" y="4" width="18" height="16" /><path d="M12 4v16M3 12h18" /><path d="m9 9 3 3-3 3" /></>,
-    hotspot: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3" /></>,
-    move: <><path d="M12 2v20M2 12h20M12 2l-3 3m3-3 3 3M22 12l-3-3m3 3-3 3M12 22l-3-3m3 3 3-3M2 12l3-3m-3 3 3 3" /></>,
-    eyedropper: <><path d="m14 4 6 6M12 6l6 6-9 9H4v-5z" /></>,
-    pen: <><path d="m12 3 6 6-8 10-5 2 2-5z" /><path d="m10 5 6 6" /></>,
-    shape: <><rect x="3" y="4" width="8" height="8" /><circle cx="17" cy="8" r="4" /><path d="m12 21 4-7 4 7z" /></>,
-  },
-}
-
-function ToolIcon({ icon, toolId, size = 16 }: { icon: string; toolId?: ToolId; size?: number }) {
-  const workspacePreset = useEditorStore(s => s.workspacePreset)
-  const workspaceIcon = toolId ? WORKSPACE_TOOL_ICONS[workspacePreset]?.[toolId] : undefined
-  const customGlyph = toolId ? WORKSPACE_CUSTOM_GLYPHS[workspacePreset]?.[toolId] : undefined
-  if (customGlyph) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        {customGlyph}
-      </svg>
-    )
-  }
-  const Cmp = (Icons as any)[workspaceIcon ?? icon] ?? (Icons as any)[icon] ?? Icons.MousePointer2
-  return <Cmp size={size} strokeWidth={1.75} />
-}
 
 /** effective toolbar layout: the user's custom layout, else the factory default */
 function useToolbarLayout(): ToolbarLayout {
@@ -209,7 +71,7 @@ function useToolKeys(): Record<ToolId, string> {
   }, [overrides])
 }
 
-export function Toolbar({ compact = false, embedded = false }: { compact?: boolean; embedded?: boolean }) {
+export function Toolbar({ compact = false, embedded = false, clusterWindows = false }: { compact?: boolean; embedded?: boolean; clusterWindows?: boolean }) {
   const activeTool = useEditorStore(s => s.activeTool)
   const setTool = useEditorStore(s => s.setTool)
   const setToolbarLayout = useEditorStore(s => s.setToolbarLayout)
@@ -315,33 +177,27 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
 
   const dragActive = dnd && !!dragSrc
 
-  // Paint ribbon: each tool family is a compact multi-row group, not a
-  // single strip of icons. Keep the group captions and bottom options row.
+  // MS Paint ribbon: each cluster is a compact multi-row group. Clusters are
+  // first-class window targets — drag the caption, double-click it, or use its
+  // pop-out button to float the group; dropping the floating window on any dock
+  // docks it there. A moved cluster disappears from the ribbon until returned.
   if (workspacePreset === 'paint' && compact) {
-    const ribbonGroups: { label: string; ids: ToolId[]; columns: number }[] = [
-      { label: 'Selection', ids: ['move', 'marquee-rect', 'marquee-ellipse', 'lasso'], columns: 2 },
-      { label: 'Image', ids: ['crop', 'eyedropper', 'color-sampler'], columns: 2 },
-      { label: 'Tools', ids: ['pencil', 'paint-bucket', 'text', 'eraser', 'zoom', 'hand'], columns: 2 },
-      { label: 'Brushes', ids: ['brush', 'airbrush', 'ink', 'mypaint-brush'], columns: 2 },
-      { label: 'Shapes', ids: ['shape', 'pen'], columns: 2 },
-      { label: 'Retouch', ids: ['clone-stamp', 'blur', 'sharpen', 'smudge'], columns: 2 },
-    ]
-    const shownIds = new Set(ribbonGroups.flatMap(group => group.ids))
+    const shownIds = new Set(TOOL_CLUSTERS.flatMap(group => group.tools))
     const allIds = sections.flatMap(sec => sec.kind === 'single' ? [sec.tool] : sec.tools)
     const moreTools = [...new Set(allIds)].filter(id => !shownIds.has(id)).map(id => TOOL_MAP[id]).filter(Boolean) as ToolDef[]
     return (
       <div
         data-toolbar-mode="paint-ribbon"
-        className="flex h-[4.75rem] min-h-[4.75rem] min-w-0 flex-1 shrink-0 items-stretch overflow-x-auto overflow-y-hidden bg-panel px-1 py-1"
+        className="flex min-h-[4.5rem] min-w-0 flex-1 shrink-0 flex-wrap items-stretch gap-y-1 bg-panel px-1 py-1"
         role="toolbar"
         aria-label="MS Paint grouped tools ribbon"
       >
-        {ribbonGroups.map(group => {
-          const tools = group.ids.map(id => TOOL_MAP[id]).filter(Boolean) as ToolDef[]
+        {TOOL_CLUSTERS.map(group => {
+          const tools = group.tools.map(id => TOOL_MAP[id]).filter(Boolean) as ToolDef[]
           if (!tools.length) return null
           return (
-            <section key={group.label} aria-label={group.label} className="flex shrink-0 flex-col justify-between border-r border-border/70 px-1.5 first:pl-1 last:border-r-0">
-              <div className="grid min-h-0 flex-1 content-center gap-x-1 gap-y-0.5" style={{ gridTemplateColumns: `repeat(${group.columns}, minmax(0, 1fr))` }}>
+            <RibbonClusterGroup key={group.id} cluster={group} windows={clusterWindows}>
+              <div className="grid content-center gap-x-1 gap-y-0.5" style={{ gridTemplateColumns: `repeat(${group.columns}, minmax(0, 1fr))` }}>
                 {tools.map(tool => (
                   <button
                     key={tool.id}
@@ -361,11 +217,10 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
                   </button>
                 ))}
               </div>
-              <span className="whitespace-nowrap border-t border-border/60 pt-0.5 text-center text-[9px] leading-3 text-muted-foreground">{group.label}</span>
-            </section>
+            </RibbonClusterGroup>
           )
         })}
-        <section aria-label="More tools" className="flex shrink-0 flex-col items-center justify-between px-1">
+        <section aria-label="More tools" className="flex shrink-0 flex-col justify-between px-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button" className="flex h-7 items-center gap-1 rounded px-1.5 text-[10px] text-foreground/85 hover:bg-accent" aria-label="More tools">
@@ -387,6 +242,12 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
           </DropdownMenu>
           <span className="border-t border-border/60 pt-0.5 text-center text-[9px] leading-3 text-muted-foreground">More</span>
         </section>
+        {clusterWindows && (
+          <section aria-label="Toolbox groups" className="flex shrink-0 flex-col items-center justify-between px-1">
+            <ToolClusterMenu showLabel />
+            <span className="border-t border-border/60 pt-0.5 text-center text-[9px] leading-3 text-muted-foreground">Groups</span>
+          </section>
+        )}
       </div>
     )
   }
@@ -490,6 +351,11 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
             })}
           </div>
         ))}
+        {!compact && (
+          <div className="mt-auto flex items-center justify-center border-t border-border/60 px-1 py-1" aria-label="Toolbox groups">
+            <ToolClusterMenu />
+          </div>
+        )}
         {illustratorColors && (
           <div className="mt-auto border-t border-border/60 px-1.5 py-2 flex flex-col items-center gap-1.5" aria-label="Fill and Stroke colors">
             <div className="relative w-9 h-9" aria-label="Fill and Stroke swatches">
@@ -620,6 +486,11 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
           </div>
         )
       })}
+      {!compact && (
+        <div className="mt-auto flex items-center justify-center border-t border-border/40 p-1" aria-label="Toolbox groups">
+          <ToolClusterMenu />
+        </div>
+      )}
       {illustratorColors && (
         <div className="mt-auto border-t border-border/60 px-1.5 py-2 flex flex-col items-center gap-1.5" aria-label="Fill and Stroke colors">
           <div className="relative w-9 h-9" aria-label="Fill and Stroke swatches">
@@ -667,6 +538,197 @@ export function Toolbar({ compact = false, embedded = false }: { compact?: boole
         </div>
       )}
     </div>
+  )
+}
+
+/** One ribbon cluster. The caption is a pull handle: drag it to float the
+ *  cluster, double-click it to pop it out, or use the small pop-out button.
+ *  While a cluster is floating or explicitly docked its ribbon slot is removed
+ *  so the same tools cannot be shown twice. Touch layouts pass windows={false}
+ *  because floating windows are desktop-only. */
+function RibbonClusterGroup({
+  cluster,
+  children,
+  windows,
+}: {
+  cluster: ToolClusterDef
+  children: React.ReactNode
+  windows: boolean
+}) {
+  const id = toolClusterPanelId(cluster.id)
+  const floating = useEditorStore(s => !!s.panels.floating[id])
+  const dockSide = useEditorStore(s => s.panels.dockSide[id])
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
+  const pull = useRef<{ x: number; y: number; handed: boolean } | null>(null)
+
+  if (windows && (floating || dockSide)) return null
+
+  if (!windows) {
+    return (
+      <section
+        data-tool-cluster={cluster.id}
+        aria-label={`${cluster.label} tools`}
+        className="flex shrink-0 flex-col border-r border-border/70 px-1.5 first:pl-1 last:border-r-0"
+      >
+        <div className="flex min-h-[3.25rem] flex-1 items-center justify-center">{children}</div>
+        <span className="whitespace-nowrap border-t border-border/60 pt-0.5 text-center text-[9px] leading-3 text-muted-foreground">{cluster.label}</span>
+      </section>
+    )
+  }
+
+  const popOut = () => {
+    if (panelsLocked) return
+    useEditorStore.getState().floatPanel(id, cluster.defaultFloat)
+  }
+  const onDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (panelsLocked || e.button !== 0) return
+    if ((e.target as HTMLElement).closest('button')) return
+    pull.current = { x: e.clientX, y: e.clientY, handed: false }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const onMove = (e: React.PointerEvent<HTMLElement>) => {
+    const d = pull.current
+    if (!d || d.handed || panelsLocked) return
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) >= 12) {
+      d.handed = true
+      beginWindowDrag(id, e, { defaultFloat: cluster.defaultFloat, home: true })
+    }
+  }
+  const onUp = () => { pull.current = null }
+
+  return (
+    <PanelLayoutContextMenu
+      id={id}
+      label={`${cluster.label} tools`}
+      hasHome
+      defaultFloat={cluster.defaultFloat}
+    >
+      <section
+        data-tool-cluster={cluster.id}
+        aria-label={`${cluster.label} tools`}
+        className="group/cluster flex shrink-0 flex-col border-r border-border/70 px-1.5 first:pl-1 last:border-r-0"
+      >
+        <div className="flex min-h-[3.25rem] flex-1 items-center justify-center">{children}</div>
+        <div
+          className={cn(
+            'flex items-center justify-center gap-0.5 border-t border-border/60 pt-0.5',
+            panelsLocked ? 'cursor-default' : 'cursor-grab active:cursor-grabbing',
+          )}
+          title={panelsLocked
+            ? `${cluster.label} — toolbox groups are locked in this workspace`
+            : `${cluster.label} — drag or double-click to float · right-click for dock options`}
+          onDoubleClick={event => {
+            if ((event.target as HTMLElement).closest('button')) return
+            popOut()
+          }}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
+        >
+          <Icons.GripVertical size={8} className="shrink-0 opacity-35 transition-opacity group-hover/cluster:opacity-80" aria-hidden />
+          <span className="whitespace-nowrap text-center text-[9px] leading-3 text-muted-foreground">{cluster.label}</span>
+          <button
+            type="button"
+            disabled={panelsLocked}
+            onClick={event => { event.stopPropagation(); popOut() }}
+            className="rounded p-0.5 text-muted-foreground opacity-40 transition-opacity hover:bg-accent hover:text-primary focus-visible:opacity-100 group-hover/cluster:opacity-100 disabled:hidden"
+            title={`Float ${cluster.label} tools`}
+            aria-label={`Float ${cluster.label} tools`}
+          >
+            <Icons.PanelTopOpen size={9} />
+          </button>
+        </div>
+      </section>
+    </PanelLayoutContextMenu>
+  )
+}
+
+const DOCK_SIDE_LABELS: Record<DockSide, string> = {
+  left: 'Left', right: 'Right', top: 'Top', bottom: 'Bottom',
+  'top-left': 'Top left', 'top-right': 'Top right',
+  'bottom-left': 'Bottom left', 'bottom-right': 'Bottom right',
+}
+
+/** Pop-out / dock / return menu for every toolbox cluster in every workspace. */
+export function ToolClusterMenu({ showLabel = false }: { showLabel?: boolean }) {
+  const workspacePreset = useEditorStore(s => s.workspacePreset)
+  const floating = useEditorStore(s => s.panels.floating)
+  const dockSide = useEditorStore(s => s.panels.dockSide)
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="flex h-7 items-center justify-center gap-1 rounded px-1.5 text-[10px] text-foreground/85 hover:bg-accent disabled:opacity-40"
+          title={panelsLocked ? 'Toolbox groups are locked in this workspace' : 'Float, dock or return toolbox groups'}
+          aria-label="Toolbox groups"
+        >
+          <Icons.LayoutGrid size={15} />
+          {showLabel && <span>Groups</span>}
+          <Icons.ChevronDown size={11} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="bottom" align="start" className="z-[95] min-w-60">
+        <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground select-none">
+          Toolbox groups
+        </div>
+        {TOOL_CLUSTERS.map(cluster => {
+          const id = toolClusterPanelId(cluster.id)
+          const docked = floating[id] ? null : dockSide[id]
+          const status = floating[id] ? 'Floating'
+            : docked ? DOCK_SIDE_LABELS[docked]
+            : workspacePreset === 'paint' ? 'Ribbon' : 'Hidden'
+          const Icon = (Icons as unknown as Record<string, React.ComponentType<{ size?: number }>>)[cluster.icon] ?? Icons.LayoutGrid
+          return (
+            <DropdownMenuSub key={cluster.id}>
+              <DropdownMenuSubTrigger className="gap-2 text-xs">
+                <Icon size={13} />
+                <span className="flex-1">{cluster.label}</span>
+                <span className={cn(
+                  'rounded border px-1 py-px text-[9px]',
+                  status === 'Floating' || status === 'Ribbon'
+                    ? 'border-primary/40 bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground',
+                )}>{status}</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="z-[100] min-w-44">
+                <DropdownMenuItem
+                  disabled={panelsLocked}
+                  className="gap-2 text-xs"
+                  onSelect={() => useEditorStore.getState().floatPanel(id, cluster.defaultFloat)}
+                >
+                  <Icons.Maximize2 size={13} />
+                  <span>Float group</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {(['left', 'right', 'top', 'bottom'] as const).map(side => (
+                  <DropdownMenuItem
+                    key={side}
+                    disabled={panelsLocked}
+                    className="gap-2 text-xs"
+                    onSelect={() => useEditorStore.getState().dockPanel(id, side)}
+                  >
+                    <Icons.PanelRight size={13} className={side === 'left' ? 'rotate-180' : side === 'top' ? '-rotate-90' : side === 'bottom' ? 'rotate-90' : undefined} />
+                    <span>Dock {side}</span>
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={panelsLocked || (!floating[id] && !docked)}
+                  className="gap-2 text-xs"
+                  onSelect={() => useEditorStore.getState().homePanel(id)}
+                >
+                  <Icons.RotateCcw size={13} />
+                  <span>{workspacePreset === 'paint' ? 'Return to ribbon' : 'Hide group'}</span>
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

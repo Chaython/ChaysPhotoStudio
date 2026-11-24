@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { resolvePanelDockSide, VALID_DOCK_SIDES } from '../src/editor/components/panels/dock-resolution'
+import { TOOL_CLUSTERS, toolClusterPanelId } from '../src/editor/constants/tool-clusters'
 
 const id = 'layers'
 assert.equal(VALID_DOCK_SIDES.length, 8, 'the selector must represent all eight dock positions')
@@ -15,4 +16,13 @@ for (const side of VALID_DOCK_SIDES) {
 assert.equal(resolvePanelDockSide('tools', {}, true), null, 'native module stays at its home')
 assert.equal(resolvePanelDockSide('layers', {}, false), 'right', 'ordinary undocked panel defaults right')
 assert.equal(resolvePanelDockSide('layers', { layers: 'invalid' }, false), 'right', 'invalid saved side falls back safely')
-console.log('All eight dock destinations resolve exclusively; native/default fallback preserved')
+for (const cluster of TOOL_CLUSTERS) {
+  const id = toolClusterPanelId(cluster.id)
+  assert.equal(resolvePanelDockSide(id, {}, true), null,
+    `${id} stays in its ribbon/home until explicitly docked`)
+  for (const side of VALID_DOCK_SIDES) {
+    assert.equal(resolvePanelDockSide(id, { [id]: side }, true), side,
+      `${id} must dock to ${side} when the user chooses it`)
+  }
+}
+console.log('All eight dock destinations resolve exclusively; native/cluster/default fallback preserved')

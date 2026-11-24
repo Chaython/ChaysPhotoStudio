@@ -2,11 +2,16 @@
  * Keep this module free of components and store imports to avoid dependency cycles
  * when validating a portable workspace layout before the editor UI mounts.
  */
+import { TOOL_CLUSTER_PANEL_IDS } from './tool-clusters'
+
 export const DOCKABLE_PANEL_IDS = [
   'color', 'layers', 'channels', 'history', 'actions', 'adjustments', 'properties',
   'metadata', 'navigator', 'histogram', 'timeline', 'clone-source', 'info',
   'paths', 'patterns', 'tool-presets', 'layer-comps',
+  // Fireworks Expanded Mode inspector stacks.
+  'optimize', 'align', 'pages', 'states',
   'tools', 'tool-options', 'documents',
+  ...TOOL_CLUSTER_PANEL_IDS,
 ] as const
 
 export type PanelId = (typeof DOCKABLE_PANEL_IDS)[number]

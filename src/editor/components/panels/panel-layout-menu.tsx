@@ -1,0 +1,151 @@
+'use client'
+// Registry-neutral panel arrangement menu. PanelContextMenu wraps this with a
+// PANEL_MAP lookup; toolbox clusters use it directly so the toolbar can offer
+// the same float/dock/return actions without importing the panel registry.
+import { useRef, useState } from 'react'
+import { ArrowUp, Check, ChevronDown, ChevronUp, Home, Maximize2, PanelLeft, PanelRight } from 'lucide-react'
+import { useEditorStore, type DockSide } from '../../store'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
+
+/** Defer mutations that reparent the context menu trigger until Radix has
+ * finished selection and closing. Otherwise the original menu can survive
+ * and apply a stale "Dock bottom" item on the next right-click.
+ */
+function afterContextMenuClose(close: () => void, action: () => void) {
+  close()
+  // Close in a separate turn before the menu's trigger changes DOM parent.
+  window.setTimeout(action, 0)
+}
+
+export function PanelLayoutContextMenu({
+  id,
+  label,
+  hasHome,
+  defaultFloat,
+  children,
+}: {
+  id: string
+  label: string
+  hasHome: boolean
+  defaultFloat: { w: number; h: number }
+  children: React.ReactElement
+}) {
+  const [menuGeneration, setMenuGeneration] = useState(0)
+  const closeMenu = () => setMenuGeneration(generation => generation + 1)
+  // When Radix flips a menu upward at the bottom of the viewport, the
+  // secondary mouseup that OPENED it must not select the item under the cursor.
+  const openingSecondaryRelease = useRef(false)
+  const choose = (event: Event, action: () => void) => {
+    if (openingSecondaryRelease.current) {
+      event.preventDefault()
+      return
+    }
+    afterContextMenuClose(closeMenu, action)
+  }
+  const panelsLocked = useEditorStore(s => s.workspaceLayoutLocks[s.workspacePreset].panels)
+  const dockSide = useEditorStore(s => s.panels.dockSide)
+  const floatingRect = useEditorStore(s => s.panels.floating[id])
+
+  const explicitSide: DockSide | undefined = Object.prototype.hasOwnProperty.call(dockSide, id)
+    ? dockSide[id]
+    : undefined
+  const current: DockSide | 'floating' | 'home' = floatingRect
+    ? 'floating'
+    : explicitSide ?? (hasHome ? 'home' : 'right')
+
+  const move = (event: Event, side: DockSide) => choose(event, () => useEditorStore.getState().dockPanel(id, side))
+
+  return (
+    <ContextMenu key={menuGeneration}>
+      <ContextMenuTrigger asChild onContextMenuCapture={event => {
+        if (event.button === 2) openingSecondaryRelease.current = true
+      }}>{children}</ContextMenuTrigger>
+      <ContextMenuContent className="z-[90] min-w-52"
+        onPointerDownCapture={event => { if (event.button === 0) openingSecondaryRelease.current = false }}
+        onPointerUpCapture={event => {
+          if (event.button === 2) window.setTimeout(() => { openingSecondaryRelease.current = false }, 0)
+        }}
+        onKeyDownCapture={event => {
+          if (event.key === 'Enter' || event.key === ' ') openingSecondaryRelease.current = false
+        }}
+      >
+        {panelsLocked && <div className="px-2 py-1 text-[10px] text-muted-foreground">Panel positions locked in this workspace</div>}
+        {hasHome && (
+          <>
+            <ContextMenuItem disabled={panelsLocked} className="gap-2 text-xs" onSelect={event => choose(event, () => useEditorStore.getState().homePanel(id))}>
+              <Home size={13} />
+              <span className="flex-1">Return to default position</span>
+              {current === 'home' && <Check size={12} className="text-primary" />}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
+
+        {floatingRect ? (
+          <>
+            <ContextMenuItem
+              className="gap-2 text-xs"
+              onSelect={event => choose(event, () => useEditorStore.getState().collapsePanel(id, !floatingRect.collapsed))}
+            >
+              {floatingRect.collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+              <span className="flex-1">{floatingRect.collapsed ? 'Expand panel' : 'Collapse panel'}</span>
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        ) : (
+          <>
+            <ContextMenuItem disabled={panelsLocked}
+              className="gap-2 text-xs"
+              onSelect={event => choose(event, () => useEditorStore.getState().floatPanel(id, defaultFloat))}
+            >
+              <Maximize2 size={13} />
+              <span className="flex-1">Float panel</span>
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
+
+        <DockItem label="Dock left" side="left" current={current} disabled={panelsLocked} onSelect={event => move(event, 'left')} />
+        <DockItem label="Dock right" side="right" current={current} disabled={panelsLocked} onSelect={event => move(event, 'right')} />
+        <DockItem label="Dock top" side="top" current={current} disabled={panelsLocked} onSelect={event => move(event, 'top')} />
+        {(['bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map(side => (
+          <DockItem key={side} label={`Dock ${side.replaceAll('-', ' ')}`} side={side} current={current} disabled={panelsLocked} onSelect={event => move(event, side)} />
+        ))}
+        <span className="sr-only">{label}</span>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+}
+
+function DockItem({
+  label,
+  side,
+  current,
+  onSelect,
+  disabled = false,
+}: {
+  label: string
+  side: DockSide
+  current: DockSide | 'floating' | 'home'
+  onSelect: (event: Event) => void
+  disabled?: boolean
+}) {
+  const Icon = side === 'left' ? PanelLeft : side === 'right' ? PanelRight : ArrowUp
+  return (
+    <ContextMenuItem
+      disabled={disabled}
+      className="gap-2 text-xs"
+      onSelect={onSelect}
+    >
+      <Icon size={13} />
+      <span className="flex-1">{label}</span>
+      {current === side && <Check size={12} className="text-primary" />}
+    </ContextMenuItem>
+  )
+}

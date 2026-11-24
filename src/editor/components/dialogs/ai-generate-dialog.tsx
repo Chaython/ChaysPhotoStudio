@@ -52,12 +52,12 @@ export function AiGenerateDialog({ onClose }: DialogProps) {
   const [placing, setPlacing] = useState(false)
   const [engineId, setEngineId] = useState<AiGenProvider>('pollinations')
   const [freeModel, setFreeModel] = useState<PollinationsModel>('flux')
-  const [customCfg, setCustomCfg] = useState<CustomGenConfig>({ baseUrl: '', apiKey: '', model: '' })
+  // Read the persisted endpoint config during initialization instead of
+  // setting state from an effect. The dialog only mounts on the client, and
+  // the custom fields are hidden until that engine is selected.
+  const [customCfg, setCustomCfg] = useState<CustomGenConfig>(loadCustomGenConfig)
   const [meta, setMeta] = useState<AiGenMeta | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-
-  // load persisted custom-endpoint config once
-  useEffect(() => { setCustomCfg(loadCustomGenConfig()) }, [])
   const updateCustom = (patch: Partial<CustomGenConfig>) => {
     setCustomCfg(prev => { const next = { ...prev, ...patch }; saveCustomGenConfig(next); return next })
   }

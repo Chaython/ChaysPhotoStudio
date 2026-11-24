@@ -22,7 +22,10 @@ import { memo, useEffect, useState } from 'react'
 import { useEditorStore, type PanelRect, type DockSide } from '../../store'
 import { PANEL_MAP } from './panel-registry'
 import { PanelContextMenu } from './panel-actions-menu'
+import { beginWindowDrag, registerWindowDragStarter, type WindowDragHint } from './window-drag'
 import { cn } from '@/lib/utils'
+
+export { beginWindowDrag }
 
 type ResizeEdge = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 type DragMode = 'move' | `resize-${ResizeEdge}`
@@ -305,18 +308,23 @@ function startSession(
  * the current gesture as a window title-bar drag. Called when a tab drag
  * exceeds the pull threshold.
  */
-export function beginWindowDrag(id: string, e: { clientX: number; clientY: number; pointerId: number }) {
+function beginWindowDragImpl(
+  id: string,
+  e: { clientX: number; clientY: number; pointerId: number },
+  hint?: WindowDragHint,
+) {
   const def = PANEL_MAP[id]
-  if (!def) return
+  if (!def && !hint?.defaultFloat) return
   const store = useEditorStore.getState()
   if (store.workspaceLayoutLocks[store.workspacePreset].panels) return
   const existing = store.panels.floating[id]
   const hadExplicitDock = !!store.panels.dockSide[id]
-  const wasHome = !existing && !hadExplicitDock && !!def.home
+  const hasHome = hint?.home ?? !!def?.home
+  const wasHome = !existing && !hadExplicitDock && hasHome
   const vw = window.innerWidth
   const vh = window.innerHeight
-  const w = existing?.w ?? def.defaultFloat.w
-  const h = existing?.h ?? def.defaultFloat.h
+  const w = existing?.w ?? hint?.defaultFloat?.w ?? def?.defaultFloat.w ?? 280
+  const h = existing?.h ?? hint?.defaultFloat?.h ?? def?.defaultFloat.h ?? 360
   const x = clampNum(e.clientX - 12, -w + 80, Math.max(-w + 80, vw - 80))
   const y = clampNum(e.clientY - 8, 48, Math.max(48, vh - 60))
   if (existing) {
@@ -333,6 +341,8 @@ export function beginWindowDrag(id: string, e: { clientX: number; clientY: numbe
     originHome: wasHome,
   })
 }
+
+registerWindowDragStarter(beginWindowDragImpl)
 
 // ---- components ----------------------------------------------------------------
 

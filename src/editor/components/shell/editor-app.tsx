@@ -1,9 +1,11 @@
 'use client'
 // Chay's Photo Studio — main application shell
-import { useEffect, useState, type ComponentType } from 'react'
+import { useEffect, useRef, useState, type ComponentType } from 'react'
 import * as Icons from 'lucide-react'
-import { MenuBar } from './menu-bar'
+import { MenuBar, type AppTheme } from './menu-bar'
+import { FireworksToolbar } from './fireworks-toolbar'
 import { Toolbar } from '../toolbar/toolbar'
+import { WorkspaceToolbox } from '../toolbar/workspace-toolbox'
 import { ToolOptionsBar } from '../toolbar/tool-options-bar'
 import { CanvasWorkspace } from '../workspace/canvas-workspace'
 import { PanelDock, LeftDock } from '../panels/panel-dock'
@@ -13,7 +15,7 @@ import { NativeModuleShell } from '../panels/native-module-shell'
 import { DialogManager } from '../dialogs/dialog-manager'
 import { WelcomeScreen } from './welcome-screen'
 import { useKeyboardShortcuts } from '../../keyboard-shortcuts'
-import { useEditorStore, isInspectorPreset } from '../../store'
+import { useEditorStore, isInspectorPreset, type WorkspacePreset } from '../../store'
 import { engine } from '../../engine/engine'
 import { openFiles, placeImageAsSmartLayer } from '../../engine/io'
 import { findImageFrameAtScreen } from '../../tools/frame-tool'
@@ -29,14 +31,60 @@ import type { ToolId } from '../../types'
 import { PanelRight, Wrench, ImagePlus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+const THEME_KEY = 'chays-photo-studio-theme'
+const LAST_NON_FIREWORKS_THEME_KEY = 'chays-photo-studio-last-non-fireworks-theme'
+
+function isAppTheme(value: string | null): value is AppTheme {
+  return value === 'dark' || value === 'light' || value === 'oled' || value === 'photoshop' || value === 'fireworks'
+}
+
+function readSavedTheme(): AppTheme | null {
+  if (typeof window === 'undefined') return null
+  const saved = window.localStorage.getItem(THEME_KEY)
+  return isAppTheme(saved) ? saved : null
+}
+
+function readLastNonFireworksTheme(): AppTheme {
+  if (typeof window === 'undefined') return 'dark'
+  const saved = window.localStorage.getItem(LAST_NON_FIREWORKS_THEME_KEY)
+  if (isAppTheme(saved) && saved !== 'fireworks') return saved
+  const theme = readSavedTheme()
+  return theme && theme !== 'fireworks' ? theme : 'dark'
+}
+
 export function EditorApp() {
   const hasDoc = useEditorStore(s => !!s.activeDocId)
   const workspacePreset = useEditorStore(s => s.workspacePreset)
-  const [theme, setTheme] = useState<'dark' | 'light' | 'oled' | 'photoshop'>(() => {
-    if (typeof window === 'undefined') return 'dark'
-    const saved = window.localStorage.getItem('chays-photo-studio-theme')
-    return saved === 'light' || saved === 'oled' || saved === 'dark' || saved === 'photoshop' ? saved : 'dark'
+  const [theme, setTheme] = useState<AppTheme>(() => {
+    // Entering the Fireworks template applies its Expanded Mode chrome, but an
+    // explicit theme choice made while inside it survives a reload.
+    const saved = readSavedTheme()
+    if (saved) return saved
+    if (typeof window !== 'undefined' && useEditorStore.getState().workspacePreset === 'fireworks') return 'fireworks'
+    return 'dark'
   })
+  const storeSetWorkspacePreset = useEditorStore(s => s.setWorkspacePreset)
+  const lastNonFireworksTheme = useRef<AppTheme>(readLastNonFireworksTheme())
+  const changeTheme = (next: AppTheme) => {
+    if (next !== 'fireworks') {
+      lastNonFireworksTheme.current = next
+      try { window.localStorage.setItem(LAST_NON_FIREWORKS_THEME_KEY, next) } catch { /* storage unavailable */ }
+    }
+    setTheme(next)
+  }
+  const changeWorkspacePreset = (preset: WorkspacePreset) => {
+    if (preset === workspacePreset) return
+    if (preset === 'fireworks') {
+      if (theme !== 'fireworks') {
+        lastNonFireworksTheme.current = theme
+        try { window.localStorage.setItem(LAST_NON_FIREWORKS_THEME_KEY, theme) } catch { /* storage unavailable */ }
+      }
+      setTheme('fireworks')
+    } else if (workspacePreset === 'fireworks' && theme === 'fireworks') {
+      setTheme(lastNonFireworksTheme.current)
+    }
+    storeSetWorkspacePreset(preset)
+  }
   const [mobileMode, setMobileMode] = useState(() => {
     if (typeof window === 'undefined') return false
     const saved = window.localStorage.getItem('zphoto-mobile-mode')
@@ -109,11 +157,12 @@ export function EditorApp() {
   }, [])
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme !== 'light')
+    document.documentElement.classList.toggle('dark', theme !== 'light' && theme !== 'fireworks')
     document.documentElement.classList.toggle('oled', theme === 'oled')
     document.documentElement.classList.toggle('photoshop-theme', theme === 'photoshop')
+    document.documentElement.classList.toggle('fireworks-theme', theme === 'fireworks')
     document.documentElement.classList.toggle('zphoto', true)
-    window.localStorage.setItem('chays-photo-studio-theme', theme)
+    window.localStorage.setItem(THEME_KEY, theme)
     const desktop = (window as any).chaysPhotoStudio
     if (desktop?.platform === 'win32') void desktop.setTitleBarTheme?.(theme)
   }, [theme])
@@ -121,13 +170,20 @@ export function EditorApp() {
   useEffect(() => {
     window.localStorage.setItem('zphoto-mobile-mode', mobileMode ? '1' : '0')
     document.documentElement.classList.toggle('zphoto-mobile', mobileMode)
-    if (!mobileMode) {
-      setMobilePanels(false)
-      setMobileTools(false)
-      setVirtualInputState({ shift: false, alt: false, ctrl: false, pan: false })
-    }
+    if (!mobileMode) setVirtualInputState({ shift: false, alt: false, ctrl: false, pan: false })
     return () => document.documentElement.classList.remove('zphoto-mobile')
   }, [mobileMode])
+
+  // Close the mobile sheets as part of the mode change rather than in the
+  // effect above: resetting React state inside an effect causes a second
+  // render and is flagged by react-hooks/set-state-in-effect.
+  const changeMobileMode = (mobile: boolean) => {
+    setMobileMode(mobile)
+    if (!mobile) {
+      setMobilePanels(false)
+      setMobileTools(false)
+    }
+  }
 
   // engine → store bridge + ui bridge
   useEffect(() => {
@@ -338,15 +394,16 @@ export function EditorApp() {
     <div className={cn("h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground font-sans select-none", !mobileMode && isInspectorPreset(workspacePreset) && "zphoto-photoshop-workspace")} style={{ ['--ws-bg' as any]: 'var(--workspace)' }}>
       {isWindowsElectron && <div aria-hidden="true" className="h-8 w-full shrink-0" style={{ WebkitAppRegion: 'drag', backgroundColor: 'var(--background)' } as React.CSSProperties} />}
       <div className="relative z-50 shrink-0">
-        <MenuBar theme={theme} setTheme={setTheme} mobileMode={mobileMode} setMobileMode={setMobileMode} />
+        <MenuBar theme={theme} setTheme={changeTheme} mobileMode={mobileMode} setMobileMode={changeMobileMode} setWorkspacePreset={changeWorkspacePreset} />
       </div>
+      {!mobileMode && workspacePreset === 'fireworks' && <FireworksToolbar />}
       <div className={cn('relative z-0 flex-1 min-h-0 flex', mobileMode ? 'flex-col-reverse' : 'flex-row')}>
         {/* touch mode uses a compact top tool strip + panel drawers at any viewport width */}
         <div className="flex flex-1 min-h-0 min-w-0">
           {!mobileMode && workspacePreset !== 'paint' && (
-            <div className={cn("hidden md:flex shrink-0", workspacePreset === 'gimp' && "w-[300px] border-r border-border/70")}>
-              <NativeModuleShell id="tools" axis="vertical">
-                <Toolbar embedded={workspacePreset === 'gimp'} />
+            <div className={cn("hidden md:flex shrink-0", workspacePreset === 'gimp' && "w-[300px] border-r border-border/70", workspacePreset === 'fireworks' && "w-[84px]")}>
+              <NativeModuleShell id="tools" axis="vertical" className={workspacePreset === 'fireworks' ? 'w-full' : undefined}>
+                <WorkspaceToolbox embedded={workspacePreset === 'gimp'} />
               </NativeModuleShell>
               {workspacePreset === 'gimp' && (
                 /* GIMP keeps the toolbox narrow and puts the tool options
@@ -361,7 +418,7 @@ export function EditorApp() {
               )}
             </div>
           )}
-          {!mobileMode && workspacePreset !== 'paint' && <LeftDock />}
+          {!mobileMode && <LeftDock />}
           <div data-workspace className="flex flex-1 min-w-0 flex-col">
             {mobileMode ? (
               <div>
@@ -374,18 +431,22 @@ export function EditorApp() {
                   <section
                     aria-label="MS Paint ribbon"
                     data-workspace-ribbon="paint"
-                    className="relative z-0 isolate flow-root hidden md:flex min-w-0 shrink-0 flex-col border-b border-border bg-panel shadow-sm"
+                    className="relative isolate hidden md:flex min-w-0 shrink-0 flex-col border-b border-border bg-panel shadow-sm"
                   >
-                    <div className="relative z-10 flex min-h-[4.75rem] shrink-0 min-w-0 items-stretch">
-                      <div className="flex shrink-0 items-center px-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-r border-border">Tools</div>
-                      <div className="min-h-[4.75rem] min-w-0 flex-1">
-                        <Toolbar compact />
+                    {/* Tools and their options are normal-flow rows. No fixed
+                        heights or z-index tricks: a wrapped group grows the
+                        tools row and pushes the options row down instead of
+                        overlapping it. */}
+                    <div className="flex min-h-[4.5rem] min-w-0 shrink-0 items-stretch">
+                      <div className="flex shrink-0 items-center border-r border-border px-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tools</div>
+                      <div className="flex min-w-0 flex-1 items-stretch">
+                        <Toolbar compact clusterWindows />
                       </div>
                       <div className="flex shrink-0 items-center">
                         <PaintColorPalette />
                       </div>
                     </div>
-                    <div className="relative z-0 min-h-8 shrink-0 border-t border-border/70">
+                    <div className="min-h-9 shrink-0 border-t border-border/70">
                       <NativeModuleShell id="tool-options" axis="horizontal">
                         <ToolOptionsBar embedded />
                       </NativeModuleShell>
@@ -396,7 +457,7 @@ export function EditorApp() {
                   <Toolbar compact />
                   <ToolOptionsBar />
                 </div>
-                {workspacePreset !== 'gimp' && workspacePreset !== 'paint' && (
+                {workspacePreset !== 'gimp' && workspacePreset !== 'paint' && workspacePreset !== 'fireworks' && (
                   <div className="hidden md:block">
                     <NativeModuleShell id="tool-options" axis="horizontal">
                       <ToolOptionsBar embedded />
