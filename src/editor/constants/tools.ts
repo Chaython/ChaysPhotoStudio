@@ -221,7 +221,7 @@ export const TOOL_DEFS: ToolDef[] = [
     ] },
   { id: 'warp-transform', label: 'Warp Transform', group: 3, shortcut: 'Shift+W', icon: 'Waves', cursor: 'crosshair', requiresLayer: true,
     defaults: { gridSize: 4, interpolation: 'cubic', clipping: 'adjust' }, options: [
-      { key: 'gridSize', label: 'Grid Size', type: 'slider', min: 2, max: 16, step: 1 },
+      { key: 'gridSize', label: 'Grid Size', type: 'slider', min: 2, max: 12, step: 1 },
       { key: 'interpolation', label: 'Interpolation', type: 'select', options: [{ label: 'None', value: 'none' }, { label: 'Linear', value: 'linear' }, { label: 'Cubic', value: 'cubic' }, { label: 'LoHalo', value: 'lohalo' }, { label: 'NoHalo', value: 'nohalo' }] },
       { key: 'clipping', label: 'Clipping', type: 'select', options: [{ label: 'Adjust', value: 'adjust' }, { label: 'Clip', value: 'clip' }, { label: 'Crop to Result', value: 'crop' }, { label: 'Crop with Aspect', value: 'crop-aspect' }] },
     ] },
