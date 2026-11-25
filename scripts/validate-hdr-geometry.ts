@@ -40,6 +40,26 @@ const identity = affineHdrPixels(source, 2, 3, 2, 3, {
   sourceCenterX: 1, sourceCenterY: 1.5, rotationRadians: 0, scale: 1,
 })
 assert.deepEqual(red(identity), red(source), 'Identity affine transform preserves HDR highlights')
+const mirrored = affineHdrPixels(source, 2, 3, 2, 3, {
+  sourceCenterX: 1, sourceCenterY: 1.5, rotationRadians: 0, scale: 1, scaleX: -1, scaleY: 1,
+})
+const flipped = flipHdrPixels(source, 2, 3, 'horizontal')
+for (let i = 0; i < mirrored.length; i++) {
+  assert.ok(Math.abs(mirrored[i] - flipped[i]) < 1e-6,
+    'Signed per-axis scale mirrors HDR pixels without preview round-tripping')
+}
+const nonUniform = affineHdrPixels(image([10, 20]), 2, 1, 2, 1, {
+  sourceCenterX: 1, sourceCenterY: .5, rotationRadians: 0, scale: 1, scaleX: 2, scaleY: 1,
+})
+assert.ok(Math.abs(nonUniform[0] - 12.5) < 1e-6 && Math.abs(nonUniform[4] - 17.5) < 1e-6,
+  'Non-uniform affine scale samples each axis independently')
+const sheared = affineHdrPixels(image([10, 20]), 1, 2, 3, 2, {
+  sourceCenterX: .5, sourceCenterY: 1, rotationRadians: 0, scale: 1, shearX: .5, shearY: 0,
+})
+assert.equal(sheared[4], 10, 'Horizontal shear keeps the top source row on top')
+assert.equal(sheared[16], 20, 'Horizontal shear keeps the bottom source row on bottom')
+assert.ok(Math.abs(sheared[3] - .25) < 1e-6 && Math.abs(sheared[11]) < 1e-6,
+  'Horizontal shear samples in the correct direction')
 const midpoint = affineHdrPixels(alpha, 2, 1, 3, 1, {
   sourceCenterX: 1, sourceCenterY: .5, rotationRadians: 0, scale: 1.5,
 })
@@ -52,4 +72,7 @@ assert.ok(rot45[16] >= 19.99, 'Arbitrary-angle rotation retains HDR values above
 assert.throws(() => affineHdrPixels(source, 2, 3, 3, 2, {
   sourceCenterX: 1, sourceCenterY: 1, rotationRadians: NaN, scale: 1,
 }), /Invalid HDR affine/)
-console.log('Float32 arbitrary rotation and uniform Free Transform regression checks passed')
+assert.throws(() => affineHdrPixels(source, 2, 3, 3, 2, {
+  sourceCenterX: 1, sourceCenterY: 1, rotationRadians: 0, scale: 1, shearX: 1, shearY: 1,
+}), /Invalid HDR affine/)
+console.log('Float32 arbitrary rotation, shear and per-axis Free Transform regression checks passed')

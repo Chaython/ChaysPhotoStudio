@@ -90,32 +90,54 @@ export function resampleHdrPixels(src: Float32Array, sw: number, sh: number, w: 
 /** Canvas2D-compatible affine resampling directly in scene-linear Float32 RGBA.
  * Centers are measured in source pixel EDGE coordinates (0..width). Positive
  * rotation is clockwise in the editor's y-down coordinate system. Destination
- * is centered in its own dimensions. Sampling occurs at pixel centers.
- * Out-of-image pixels are transparent (NOT edge-clamped), and interpolation
- * is premultiplied-alpha to prevent halos around rotated transparent edges.
+ * is centered in its own dimensions. Optional signed per-axis scale and shear
+ * tangents follow the same R·S·H order as the live Canvas2D preview. Sampling
+ * occurs at pixel centers. Out-of-image pixels are transparent (NOT
+ * edge-clamped), and interpolation is premultiplied-alpha to prevent halos
+ * around rotated transparent edges.
  */
 export function affineHdrPixels(
   src: Float32Array, sw: number, sh: number, dw: number, dh: number,
-  opts: { sourceCenterX: number; sourceCenterY: number; rotationRadians: number; scale: number },
+  opts: {
+    sourceCenterX: number; sourceCenterY: number; rotationRadians: number; scale: number
+    /** Optional per-axis scale. Signed values mirror; zero is rejected. */
+    scaleX?: number; scaleY?: number
+    /** Optional shear tangents, applied before scale/rotation. */
+    shearX?: number; shearY?: number
+  },
 ): Float32Array {
   check(src, sw, sh)
+  const scaleX = opts.scaleX ?? opts.scale
+  const scaleY = opts.scaleY ?? opts.scale
+  const shearX = opts.shearX ?? 0
+  const shearY = opts.shearY ?? 0
+  const shearDet = 1 - shearX * shearY
   if (!Number.isSafeInteger(dw) || dw < 1 || !Number.isSafeInteger(dh) || dh < 1 ||
       !Number.isFinite(opts.sourceCenterX) || !Number.isFinite(opts.sourceCenterY) ||
-      !Number.isFinite(opts.rotationRadians) || !Number.isFinite(opts.scale) || opts.scale <= 0) {
+      !Number.isFinite(opts.rotationRadians) ||
+      !Number.isFinite(scaleX) || !Number.isFinite(scaleY) ||
+      !Number.isFinite(shearX) || !Number.isFinite(shearY) ||
+      scaleX === 0 || scaleY === 0 || Math.abs(shearDet) < 1e-6) {
     throw new Error('Invalid HDR affine transform')
   }
   const dst = new Float32Array(dw * dh * 4)
   const cos = Math.cos(opts.rotationRadians), sin = Math.sin(opts.rotationRadians)
-  const inv = 1 / opts.scale
+  const invX = 1 / scaleX, invY = 1 / scaleY, invDet = 1 / shearDet
+  // Forward map is M = R * S * H (shear, then scale, then rotate), so the
+  // inverse used for sampling is H^-1 * S^-1 * R^-1.
+  const m00 = (cos * invX + shearX * sin * invY) * invDet
+  const m01 = (sin * invX - shearX * cos * invY) * invDet
+  const m10 = (-shearY * cos * invX - sin * invY) * invDet
+  const m11 = (-shearY * sin * invX + cos * invY) * invDet
   for (let y = 0; y < dh; y++) {
     const cy = y + .5 - dh / 2
     for (let x = 0; x < dw; x++) {
       const cx = x + .5 - dw / 2
       // Back-project the CENTER of the destination pixel into source index space.
-      const sx = opts.sourceCenterX + (cx * cos + cy * sin) * inv - .5
-      const sy = opts.sourceCenterY + (-cx * sin + cy * cos) * inv - .5
-      const x0 = Math.floor(sx), y0 = Math.floor(sy)
-      const tx = sx - x0, ty = sy - y0
+      const srcX = opts.sourceCenterX + (m00 * cx + m01 * cy) - .5
+      const srcY = opts.sourceCenterY + (m10 * cx + m11 * cy) - .5
+      const x0 = Math.floor(srcX), y0 = Math.floor(srcY)
+      const tx = srcX - x0, ty = srcY - y0
       const weights = [(1-tx)*(1-ty), tx*(1-ty), (1-tx)*ty, tx*ty]
       const indices = [x0, x0+1, x0, x0+1]
       const ys = [y0, y0, y0+1, y0+1]
