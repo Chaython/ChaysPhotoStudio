@@ -2950,14 +2950,16 @@ export class Engine {
     this.emit()
   }
 
-  /** Commit an on-canvas free-transform drag: scale (sx, sy — negative = flip)
-   *  + rotation (radians, delta) about the doc-space anchor (ax, ay) that
-   *  stayed fixed during the gesture — p → a + R·S·(p − a), the exact map the
-   *  live preview rendered. Raster bakes once into a rotation-aware AABB
-   *  canvas (content center re-registered); smart layers scale
-   *  non-destructively (uniform — the tool only offers uniform for smart);
-   *  text/shape scale their specs (any rotation or flip rasterizes first). */
-  directTransformLayer(id: string, spec: { sx: number; sy: number; rotation: number; ax: number; ay: number }, opts?: { skipHistory?: boolean; silent?: boolean }) {
+  /** Commit an on-canvas free-transform drag: scale (sx, sy — negative = flip),
+   *  optional shear tangents and rotation (radians, delta) about the doc-space
+   *  anchor (ax, ay) that stayed fixed during the gesture —
+   *  p → a + R·S·H·(p − a), the exact map the live preview rendered. Raster
+   *  bakes once into a rotation/shear-aware AABB canvas (content center
+   *  re-registered); HDR rasters resample their Float32 buffer directly; smart
+   *  layers keep a projective quad for non-uniform/sheared gestures; text and
+   *  shape keep their specs for ordinary uniform scaling and rasterize for
+   *  rotation, flips, shear or non-uniform scale. */
+  directTransformLayer(id: string, spec: { sx: number; sy: number; rotation: number; ax: number; ay: number; shearX?: number; shearY?: number }, opts?: { skipHistory?: boolean; silent?: boolean }) {
     const doc = this.activeDoc
     if (!doc) return
     const layer = this.layerById(id)
@@ -2967,13 +2969,25 @@ export class Engine {
     const sx = Math.abs(spec.sx) < 0.02 ? (spec.sx < 0 ? -0.02 : 0.02) : spec.sx
     const sy = Math.abs(spec.sy) < 0.02 ? (spec.sy < 0 ? -0.02 : 0.02) : spec.sy
     const rot = spec.rotation
+    const shearX = Number(spec.shearX) || 0
+    const shearY = Number(spec.shearY) || 0
+    const shearDet = 1 - shearX * shearY
+    if (Math.abs(shearDet) < 1e-6) {
+      this.ui?.toast('This transform would collapse the layer', 'error')
+      return
+    }
     const ax = spec.ax, ay = spec.ay
     const cos = Math.cos(rot), sin = Math.sin(rot)
-    /** doc-space linear map p → a + M(p − a) */
+    /** doc-space linear map p → a + R·S·H·(p − a) */
     const map = (px: number, py: number): [number, number] => {
       const dx = px - ax, dy = py - ay
-      return [ax + dx * sx * cos - dy * sy * sin, ay + dx * sx * sin + dy * sy * cos]
+      const hx = dx + shearX * dy
+      const hy = shearY * dx + dy
+      return [ax + sx * hx * cos - sy * hy * sin, ay + sx * hx * sin + sy * hy * cos]
     }
+    // HDR rasters carry authoritative Float32 pixels. Absorb pending Canvas2D
+    // paint edits before measuring or resampling them.
+    if (layer.kind === 'raster' && layer.hdrPixels) this.syncPendingHdrCanvasEdits(doc)
     const r = this.layerContentRect(id)
     if (!r || r.w < 1 || r.h < 1) { this.ui?.toast('This layer has no content to transform', 'error'); return }
 
@@ -3005,7 +3019,7 @@ export class Engine {
       const s = Math.abs((sx + sy) / 2) || 0.01
       const t = layer.transform ?? { x: doc.width / 2, y: doc.height / 2, scale: 1, rotation: 0 }
       const [nx, ny] = map(t.x, t.y)
-      if (t.quad || t.warp) {
+      if (t.quad || t.warp || shearX || shearY || sx < 0 || sy < 0 || Math.abs(sx - sy) > 1e-6) {
         const currentQuad = this.layerTransformQuad(id)
         const nextQuad = currentQuad?.map(p => {
           const [x, y] = map(p.x, p.y)
@@ -3026,8 +3040,13 @@ export class Engine {
         }
       }
       mutated = true
-    } else if ((baseKind === 'text' || baseKind === 'shape') && Math.abs(rot) < 0.002 && sx > 0 && sy > 0) {
-      // spec scaling without rotation/flip: linear rect mapping
+    } else if ((baseKind === 'text' || baseKind === 'shape') &&
+        Math.abs(rot) < 0.002 && sx > 0 && sy > 0 &&
+        (baseKind === 'shape' || Math.abs(sx - sy) < 1e-6) &&
+        shearX === 0 && shearY === 0) {
+      // spec scaling without rotation/flip: linear rect mapping. Shapes can
+      // keep non-uniform scaling in their w/h spec; text only scales uniformly
+      // (fontSize), so a stretched text layer rasterizes above.
       const [nx, ny] = map(r.x, r.y)
       if (baseKind === 'text' && layer.text) {
         layer.text = { ...layer.text, fontSize: Math.max(1, layer.text.fontSize * sy), x: Math.round(nx), y: Math.round(ny) }
@@ -3036,21 +3055,23 @@ export class Engine {
       }
       mutated = true
     } else {
-      // raster bake (also the path for rotated/flipped text & shape after
-      // rasterizing — specs carry no rotation field)
-      if ((baseKind === 'text' || baseKind === 'shape') && (Math.abs(rot) >= 0.002 || sx < 0 || sy < 0)) {
+      // raster bake (also the path for rotated/flipped/sheared text & shape
+      // after rasterizing — specs carry no rotation field)
+      if (baseKind === 'text' || baseKind === 'shape') {
         this.rasterizeLayer(id, { history: false, emit: false })
       }
       const l = this.layerById(id)!
       if (l.kind === 'raster' && l.canvas) {
         const src = l.canvas
+        const hdr = l.hdrPixels
         // full alpha-bounds scan (content may be smaller than the canvas)
-        const d = getImageData(src).data
+        const d = hdr ? null : getImageData(src).data
         let minX = src.width, minY = src.height, maxX = -1, maxY = -1
         for (let y = 0; y < src.height; y++) {
           const row = y * src.width
           for (let x = 0; x < src.width; x++) {
-            if (d[(row + x) * 4 + 3] > 0) {
+            const alpha = hdr ? hdr[(row + x) * 4 + 3] : d![(row + x) * 4 + 3]
+            if (alpha > 0) {
               if (x < minX) minX = x; if (x > maxX) maxX = x
               if (y < minY) minY = y; if (y > maxY) maxY = y
             }
@@ -3062,18 +3083,46 @@ export class Engine {
           const ox = l.offsetX ?? 0, oy = l.offsetY ?? 0
           // content center in doc space → through the gesture map
           const [ncx, ncy] = map(ox + bcx, oy + bcy)
-          // transformed content AABB (rotation-aware), 2px AA margin
-          const nw = Math.max(1, Math.ceil(Math.abs(bw * sx * cos) + Math.abs(bh * sy * sin)) + 2)
-          const nh = Math.max(1, Math.ceil(Math.abs(bw * sx * sin) + Math.abs(bh * sy * cos)) + 2)
-          const out = createCanvas(nw, nh)
-          const c = ctx2d(out)
-          c.imageSmoothingEnabled = true
-          c.imageSmoothingQuality = 'high'
-          c.translate(nw / 2, nh / 2)
-          c.rotate(rot)
-          c.scale(sx, sy)
-          c.drawImage(src, -bcx, -bcy)
-          l.canvas = out
+          // transformed content AABB (rotation/shear-aware), 2px AA margin
+          let minTX = Infinity, minTY = Infinity, maxTX = -Infinity, maxTY = -Infinity
+          for (const [cx, cy] of [[-bw / 2, -bh / 2], [bw / 2, -bh / 2], [bw / 2, bh / 2], [-bw / 2, bh / 2]]) {
+            const hx = cx + shearX * cy
+            const hy = shearY * cx + cy
+            const tx = sx * hx * cos - sy * hy * sin
+            const ty = sx * hx * sin + sy * hy * cos
+            if (tx < minTX) minTX = tx; if (tx > maxTX) maxTX = tx
+            if (ty < minTY) minTY = ty; if (ty > maxTY) maxTY = ty
+          }
+          const nw = Math.max(1, Math.ceil(maxTX - minTX) + 2)
+          const nh = Math.max(1, Math.ceil(maxTY - minTY) + 2)
+          if (hdr) {
+            // Resample the authoritative scene-linear Float32 buffer directly
+            // so highlights above 1 survive the affine transform.
+            const hdrOut = affineHdrPixels(hdr, src.width, src.height, nw, nh, {
+              sourceCenterX: bcx,
+              sourceCenterY: bcy,
+              rotationRadians: rot,
+              scale: 1,
+              scaleX: sx,
+              scaleY: sy,
+              shearX,
+              shearY,
+            })
+            l.hdrPixels = hdrOut
+            l.canvas = hdrFloat32ToPreviewCanvas(hdrOut, nw, nh, 'srgb')
+            l._hdrPreviewBefore = null
+          } else {
+            const out = createCanvas(nw, nh)
+            const c = ctx2d(out)
+            c.imageSmoothingEnabled = true
+            c.imageSmoothingQuality = 'high'
+            c.translate(nw / 2, nh / 2)
+            c.rotate(rot)
+            c.scale(sx, sy)
+            if (shearX || shearY) c.transform(1, shearY, shearX, 1, 0, 0)
+            c.drawImage(src, -bcx, -bcy)
+            l.canvas = out
+          }
           l.offsetX = Math.round(ncx - nw / 2)
           l.offsetY = Math.round(ncy - nh / 2)
           mutated = true
@@ -3093,6 +3142,7 @@ export class Engine {
       mc.translate(ax, ay)
       mc.rotate(rot)
       mc.scale(sx, sy)
+      if (shearX || shearY) mc.transform(1, shearY, shearX, 1, 0, 0)
       mc.drawImage(layer.mask, -ax, -ay)
       layer.mask = maskOut
       layer._mv++

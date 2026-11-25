@@ -971,6 +971,7 @@ export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement, o
       outCtx.translate(lt.ax, lt.ay)
       outCtx.rotate(lt.rotation)
       outCtx.scale(lt.sx, lt.sy)
+      if (lt.shearX || lt.shearY) outCtx.transform(1, lt.shearY ?? 0, lt.shearX ?? 0, 1, 0, 0)
       outCtx.translate(-lt.ax, -lt.ay)
     }
     if (ld.clipMask) {
@@ -983,6 +984,7 @@ export function compositeDocument(doc: PsDocument, target?: HTMLCanvasElement, o
         sctx.translate(lt.ax, lt.ay)
         sctx.rotate(lt.rotation)
         sctx.scale(lt.sx, lt.sy)
+        if (lt.shearX || lt.shearY) sctx.transform(1, lt.shearY ?? 0, lt.shearX ?? 0, 1, 0, 0)
         sctx.translate(-lt.ax, -lt.ay)
       } else {
         sctx.translate(Math.round(ld.dx), Math.round(ld.dy))

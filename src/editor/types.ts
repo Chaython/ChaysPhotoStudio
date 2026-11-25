@@ -853,10 +853,21 @@ export interface LiveLayerDrag {
   blendMode: string
   opacity: number
   clipMask?: HTMLCanvasElement | null
-  /** live SCALE/ROTATE preview (on-canvas free-transform drag): when set,
-   *  `stack` is drawn transformed about the doc-space anchor (ax, ay) —
-   *  p → a + R·S·(p − a) — instead of translated by dx/dy (dx/dy stay 0). */
-  liveTransform?: { sx: number; sy: number; rotation: number; ax: number; ay: number } | null
+  /** live SCALE/ROTATE/SHEAR preview (on-canvas free-transform drag): when
+   *  set, `stack` is drawn transformed about the doc-space anchor (ax, ay) —
+   *  p → a + R·S·K·(p − a), where K is the optional shear matrix — instead of
+   *  translated by dx/dy (dx/dy stay 0). Shear values are tangents. */
+  liveTransform?: {
+    sx: number
+    sy: number
+    rotation: number
+    ax: number
+    ay: number
+    /** tan(shear angle) applied on X as a function of Y */
+    shearX?: number
+    /** tan(shear angle) applied on Y as a function of X */
+    shearY?: number
+  } | null
 }
 
 // ---------- Tool architecture ----------

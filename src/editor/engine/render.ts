@@ -361,6 +361,7 @@ export class Viewport {
         ctx.translate(asx, asy)
         ctx.rotate(lt.rotation)
         ctx.scale(lt.sx, lt.sy)
+        if (lt.shearX || lt.shearY) ctx.transform(1, lt.shearY ?? 0, lt.shearX ?? 0, 1, 0, 0)
         ctx.translate(-asx, -asy)
       }
       ctx.drawImage(ld.stack, gx, gy, gw, gh)
